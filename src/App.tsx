@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import Lobby from './Lobby';
 import GameView from './GameView';
 import { Bell, Settings } from 'lucide-react';
@@ -6,6 +6,9 @@ import type {AuthResponse} from './types';
 
 export default function App() {
   const [auth, setAuth] = useState<AuthResponse | null>(null);
+  const handleLeave = useCallback(() => {
+    setAuth(null);
+  }, []);
 
   return (
       <div className="min-h-screen bg-surface selection:bg-emerald-primary selection:text-surface">
@@ -28,7 +31,7 @@ export default function App() {
         {!auth ? (
             <Lobby onAuth={setAuth} />
         ) : (
-            <GameView auth={auth} onLeave={() => setAuth(null)} />
+          <GameView auth={auth} onLeave={handleLeave} />
         )}
 
         {/* Footer Branding */}

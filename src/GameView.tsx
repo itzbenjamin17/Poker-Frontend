@@ -7,7 +7,12 @@ import { Button, Card } from './components/UI';
 import { PlayerPod, CardUI } from './components/GameUI';
 import { Info, Play, Coins } from 'lucide-react';
 
-export default function GameView({ auth }: { auth: AuthResponse }) {
+type GameViewProps = {
+    auth: AuthResponse;
+    onLeave: () => void;
+};
+
+export default function GameView({ auth, onLeave }: GameViewProps) {
     const [roomState, setRoomState] = useState<RoomUpdate['data'] | null>(null);
     const [gameState, setGameState] = useState<GameState | null>(null);
     const [privateState, setPrivateState] = useState<{ holeCards: string[] } | null>(null);
@@ -58,8 +63,9 @@ export default function GameView({ auth }: { auth: AuthResponse }) {
 
         return () => {
             client.deactivate();
+            onLeave();
         };
-    }, [auth]);
+    }, [auth, onLeave]);
 
     const handleAction = async (action: string, amount: number = 0) => {
         try {
