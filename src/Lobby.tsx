@@ -31,8 +31,7 @@ export default function Lobby({ onAuth }: { onAuth: (data: AuthResponse) => void
             onAuth(res);
         } catch (err) {
             console.error('Failed to create room:', err);
-            setError('Failed to establish table. Please check your connection.');
-            setTimeout(() => setError(null), 5000);
+            setError(err instanceof Error ? err.message : 'Failed to establish table. Please check your connection.');
         } finally {
             setLoading(false);
         }
@@ -47,8 +46,7 @@ export default function Lobby({ onAuth }: { onAuth: (data: AuthResponse) => void
             onAuth(res);
         } catch (err) {
             console.error('Failed to join room:', err);
-            setError('Failed to enter vault. Room may not exist or password incorrect.');
-            setTimeout(() => setError(null), 5000);
+            setError(err instanceof Error ? err.message : 'Failed to enter vault. Room may not exist or password incorrect.');
         } finally {
             setLoading(false);
         }
@@ -62,9 +60,15 @@ export default function Lobby({ onAuth }: { onAuth: (data: AuthResponse) => void
                         initial={{ opacity: 0, y: -20 }}
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0 }}
-                        className="fixed top-24 left-1/2 -translate-x-1/2 z-50 bg-red-500/90 text-white px-6 py-3 rounded-full font-headline font-bold shadow-2xl backdrop-blur-md border border-white/10"
+                        className="fixed top-24 left-1/2 -translate-x-1/2 z-50 bg-red-500/90 text-white px-6 py-4 rounded-xl font-headline font-bold shadow-2xl backdrop-blur-md border border-white/10 flex items-center gap-4"
                     >
-                        {error}
+                        <span>{error}</span>
+                        <button 
+                            onClick={() => setError(null)} 
+                            className="bg-black/20 hover:bg-black/40 rounded-full w-6 h-6 flex items-center justify-center transition-colors"
+                        >
+                            &times;
+                        </button>
                     </motion.div>
                 )}
             </AnimatePresence>

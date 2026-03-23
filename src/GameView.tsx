@@ -2,24 +2,80 @@ import { useEffect, useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Client } from '@stomp/stompjs';
 import { createStompClient, pokerApi } from './services/api';
-import {type GameState, type RoomUpdate, type ShowdownUpdate, cn, type AuthResponse } from './types';
+import {type GameState, type RoomUpdate, cn, type AuthResponse } from './types';
 import { Button, Card } from './components/UI';
 import { PlayerPod, CardUI } from './components/GameUI';
 import { Info, Play, Coins } from 'lucide-react';
 
 type GameViewProps = {
     auth: AuthResponse;
-    onLeave: () => void;
+    onLeave?: () => void;
 };
 
 export default function GameView({ auth, onLeave }: GameViewProps) {
-    const [roomState, setRoomState] = useState<RoomUpdate['data'] | null>(null);
+    const SHOWDOWN_DISPLAY_MS = 5000;
+    const ROOM_CLOSED_REDIRECT_MS = 3000;
+
+    const [roomState, setRoomState] = useState<RoomUpdate['data'] | null>(() => ({
+        roomId: auth.roomId,
+        roomName: auth.roomId,
+        players: [{ name: auth.playerName, isHost: false }],
+    }));
     const [gameState, setGameState] = useState<GameState | null>(null);
     const [privateState, setPrivateState] = useState<{ holeCards: string[] } | null>(null);
-    const [showdown, setShowdown] = useState<ShowdownUpdate | null>(null);
+    const [showdown, setShowdown] = useState<GameState | null>(null);
+    const [showdownResult, setShowdownResult] = useState<GameState | null>(null);
     const [notification, setNotification] = useState<string | null>(null);
+    const [loadingStatus, setLoadingStatus] = useState<string>('Connecting to Vault...');
+    const [myPlayerId, setMyPlayerId] = useState<string | null>(auth.playerId || null);
+    const [raiseAmount, setRaiseAmount] = useState<string>('');
+    const [raiseError, setRaiseError] = useState<string | null>(null);
 
     const stompClientRef = useRef<Client | null>(null);
+    const privateSubscribedByName = useRef(false);
+    const privateSubscribedPlayerName = useRef<string | null>(null);
+    const gameIdRef = useRef<string | null>(null);
+    const showdownTimerRef = useRef<number | null>(null);
+    const showdownResultTimerRef = useRef<number | null>(null);
+
+    useEffect(() => {
+        gameIdRef.current = gameState?.gameId ?? null;
+    }, [gameState?.gameId]);
+
+    const clearShowdownTimers = () => {
+        if (showdownTimerRef.current !== null) {
+            window.clearTimeout(showdownTimerRef.current);
+            showdownTimerRef.current = null;
+        }
+
+        if (showdownResultTimerRef.current !== null) {
+            window.clearTimeout(showdownResultTimerRef.current);
+            showdownResultTimerRef.current = null;
+        }
+    };
+
+    useEffect(() => {
+        let mounted = true;
+        pokerApi.getRoomInfo(auth.roomId, auth.token)
+            .then(data => {
+                if (!mounted) return;
+                setRoomState(prev => ({
+                    ...prev,
+                    roomId: data.roomId,
+                    roomName: data.roomName,
+                    players: data.players.map((p: any) => ({ name: p.name, isHost: p.isHost })),
+                    maxPlayers: data.maxPlayers,
+                    canStart: data.canStartGame,
+                }));
+            })
+            .catch(err => {
+                if (!mounted) return;
+                console.error("Room info fetch error:", err);
+                onLeave?.();
+            });
+
+        return () => { mounted = false; };
+    }, [auth.roomId, auth.token, onLeave]);
 
     useEffect(() => {
         const client = createStompClient(auth.token);
@@ -28,50 +84,176 @@ export default function GameView({ auth, onLeave }: GameViewProps) {
         client.onConnect = () => {
             console.log('Connected to WebSocket');
 
+            const subscribeToMany = (destinations: string[], handler: (body: string) => void) => {
+                destinations.forEach((destination) => {
+                    client.subscribe(destination, (msg) => handler(msg.body));
+                });
+            };
+
+            const subscribeToPrivateStateByName = (playerName: string) => {
+                const encodedName = encodeURIComponent(playerName);
+                if (privateSubscribedByName.current && privateSubscribedPlayerName.current === encodedName) {
+                    return;
+                }
+
+                privateSubscribedByName.current = true;
+                privateSubscribedPlayerName.current = encodedName;
+                subscribeToMany([
+                    `/game/${auth.roomId}/player-name/${encodedName}/private`,
+                    `/topic/game/${auth.roomId}/player-name/${encodedName}/private`,
+                ], (privBody) => {
+                    setPrivateState(JSON.parse(privBody));
+                });
+            };
+
+            // Subscribe immediately by stable player name so the first hand's private cards are not missed.
+            subscribeToPrivateStateByName(auth.playerName);
+
+            if (auth.playerId) {
+                setMyPlayerId(auth.playerId);
+            }
+
             // Subscribe to Room Updates
-            client.subscribe(`/topic/rooms/${auth.roomId}`, (msg) => {
-                const update = JSON.parse(msg.body);
+            subscribeToMany([
+                `/rooms${auth.roomId}`,
+                `/rooms/${auth.roomId}`,
+                `/topic/rooms/${auth.roomId}`,
+            ], (body) => {
+                const update = JSON.parse(body) as RoomUpdate;
+                if (update.message === 'ROOM_CLOSED') {
+                    const hostLeftMessage = 'Host left the lobby. Returning to main lobby...';
+                    setNotification(hostLeftMessage);
+                    setLoadingStatus(hostLeftMessage);
+                    setRoomState(null);
+                    setTimeout(() => onLeave?.(), ROOM_CLOSED_REDIRECT_MS);
+                    return;
+                }
+
                 if (update.message === 'ROOM_CREATED' || update.message === 'PLAYER_JOINED' || update.message === 'PLAYER_LEFT') {
-                    setRoomState(update.data);
+                    setRoomState((prev) => {
+                        const nextBase: RoomUpdate['data'] = {
+                            ...(prev ?? {
+                                roomId: auth.roomId,
+                                roomName: auth.roomId,
+                                players: [{ name: auth.playerName, isHost: false }],
+                            }),
+                            ...(update.data ?? {}),
+                        };
+
+                        // Some backend events contain only `player/currentCount` for joins/leaves.
+                        // Keep a locally merged list so players remain visible between full snapshots.
+                        if (update.message === 'PLAYER_JOINED' && update.data?.player) {
+                            const players = nextBase.players ?? [];
+                            if (!players.some((p) => p.name === update.data?.player)) {
+                                nextBase.players = [...players, { name: update.data.player, isHost: false }];
+                            }
+                        }
+
+                        if (update.message === 'PLAYER_LEFT' && update.data?.player) {
+                            const players = nextBase.players ?? [];
+                            nextBase.players = players.filter((p) => p.name !== update.data?.player);
+                        }
+
+                        if (update.data?.canStartGame !== undefined) {
+                            nextBase.canStart = update.data.canStartGame;
+                        }
+
+                        if (!nextBase.players || nextBase.players.length === 0) {
+                            nextBase.players = [{ name: auth.playerName, isHost: false }];
+                        }
+
+                        return nextBase;
+                    });
                 }
             });
 
             // Subscribe to Game State
-            client.subscribe(`/topic/game/${auth.roomId}`, (msg) => {
-                const data = JSON.parse(msg.body);
-                if (data.type === 'SHOWDOWN') {
-                    setShowdown(data);
-                    setTimeout(() => setShowdown(null), 8000);
-                } else if (data.type === 'PLAYER_NOTIFICATION') {
+            subscribeToMany([
+                `/game/${auth.roomId}`,
+                `/topic/game/${auth.roomId}`,
+            ], (body) => {
+                const data = JSON.parse(body);
+                // Note: The backend DTO doesn't have `type` for game state, it has `phase`
+                if (data.type === 'PLAYER_NOTIFICATION') {
                     setNotification(data.message);
                     setTimeout(() => setNotification(null), 4000);
                 } else if (data.type === 'GAME_END') {
                     setNotification(data.message);
+                    setTimeout(() => {
+                        setNotification(null);
+                        setGameState(null);
+                        setPrivateState(null);
+                        setShowdown(null);
+                        setShowdownResult(null);
+                        clearShowdownTimers();
+                        // Fetch fresh lobby info so we re-enter cleanly
+                        pokerApi.getRoomInfo(auth.roomId, auth.token).then(r => {
+                            setRoomState({
+                                roomId: r.roomId,
+                                roomName: r.roomName,
+                                players: r.players.map((p: any) => ({ name: p.name, isHost: p.isHost })),
+                                maxPlayers: r.maxPlayers,
+                                canStart: r.canStartGame,
+                            });
+                        }).catch(() => {
+                            onLeave?.();
+                        });
+                    }, 5000);
                 } else {
                     setGameState(data);
                     setRoomState(null); // Game started, hide lobby
-                }
-            });
 
-            // Subscribe to Private State
-            client.subscribe(`/topic/game/${auth.roomId}/player/${auth.playerId}/private`, (msg) => {
-                setPrivateState(JSON.parse(msg.body));
+                    if (data.winners && data.winners.length > 0) {
+                        clearShowdownTimers();
+                        setShowdown(data);
+                        setShowdownResult(data);
+                        showdownTimerRef.current = window.setTimeout(() => {
+                            setShowdown(null);
+                        }, SHOWDOWN_DISPLAY_MS);
+                        showdownResultTimerRef.current = window.setTimeout(() => {
+                            setShowdownResult(null);
+                        }, SHOWDOWN_DISPLAY_MS);
+                    } else {
+                        setShowdown(null);
+                        setShowdownResult(null);
+                        clearShowdownTimers();
+                    }
+
+                    if (data.players) {
+                        const myPlayer = data.players.find((p: any) => p.name === auth.playerName);
+                        if (myPlayer?.id) {
+                            setMyPlayerId(myPlayer.id);
+                        }
+                    }
+                }
             });
         };
 
         client.activate();
 
         return () => {
+            clearShowdownTimers();
             client.deactivate();
-            onLeave();
         };
-    }, [auth, onLeave]);
+    }, [auth]);
 
     const handleAction = async (action: string, amount: number = 0) => {
         try {
-            await pokerApi.performAction(auth.roomId, action, amount, auth.token);
+            await pokerApi.performAction(gameState?.gameId ?? auth.roomId, action, amount, auth.token);
         } catch (err) {
-            console.error(err);
+            console.error('Failed action:', err);
+            const backendMessage = err instanceof Error ? err.message : 'Action failed. Please try again.';
+            const isRaiseAction = action === 'BET' || action === 'RAISE';
+            const isBetRaiseBackendError = /bet|raise|insufficient|amount|chip/i.test(backendMessage);
+
+            if (isRaiseAction && isBetRaiseBackendError) {
+                setRaiseError(backendMessage);
+                setNotification('That bet size is not allowed. Adjust the amount and try again.');
+            } else {
+                setNotification(backendMessage);
+            }
+
+            setTimeout(() => setNotification(null), 4000);
         }
     };
 
@@ -80,8 +262,24 @@ export default function GameView({ auth, onLeave }: GameViewProps) {
             await pokerApi.startGame(auth.roomId, auth.token);
         } catch (err) {
             console.error('Failed to start game:', err);
-            setNotification('Only the host can initiate the royal action.');
+            setNotification(err instanceof Error ? err.message : 'Only the host can initiate the royal action.');
             setTimeout(() => setNotification(null), 4000);
+        }
+    };
+
+    const handleLeaveGame = async () => {
+        try {
+            clearShowdownTimers();
+            setPrivateState(null);
+            if (gameState?.gameId) {
+                await pokerApi.leaveGame(gameState.gameId, auth.token);
+            }
+            await pokerApi.leaveRoom(auth.roomId, auth.token);
+            onLeave?.();
+        } catch (err) {
+            setNotification('Failed to leave game safely.');
+            setTimeout(() => setNotification(null), 4000);
+            onLeave?.();
         }
     };
 
@@ -89,6 +287,28 @@ export default function GameView({ auth, onLeave }: GameViewProps) {
     if (roomState && !gameState) {
         return (
             <div className="min-h-screen p-8 flex flex-col items-center justify-center">
+                
+                {/* Notifications */}
+                <AnimatePresence>
+                    {notification && (
+                        <motion.div
+                            initial={{ opacity: 0, scale: 0.9 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            exit={{ opacity: 0 }}
+                            className="fixed top-24 left-1/2 -translate-x-1/2 z-50 bg-gold-secondary text-surface px-6 py-3 rounded-full font-headline font-bold shadow-2xl"
+                        >
+                            {notification}
+                        </motion.div>
+                    )}
+                </AnimatePresence>
+
+                {/* Leave Button */}
+                <div className="fixed top-24 right-8 z-50">
+                    <Button variant="outline" size="sm" onClick={handleLeaveGame} className="border-red-500/50 text-red-500 hover:bg-red-500/10">
+                        LEAVE LOBBY
+                    </Button>
+                </div>
+
                 <div className="w-full max-w-5xl">
                     <div className="mb-12">
                         <span className="text-emerald-primary text-[10px] font-bold tracking-[0.3em] uppercase">Active Tournament</span>
@@ -138,17 +358,26 @@ export default function GameView({ auth, onLeave }: GameViewProps) {
                                 </div>
                             </Card>
 
-                            <Button
-                                variant="primary"
-                                size="xl"
-                                className="w-full"
-                                onClick={handleStartGame}
-                                disabled={!roomState.canStart}
-                            >
-                                <Play className="w-5 h-5 fill-current" />
-                                START GAME
-                            </Button>
-                            <p className="text-center text-[10px] text-zinc-600 uppercase tracking-widest">Host controls only</p>
+                            {roomState.players?.find(p => p.name === auth.playerName)?.isHost ? (
+                                <>
+                                    <Button
+                                        variant="primary"
+                                        size="xl"
+                                        className="w-full"
+                                        onClick={handleStartGame}
+                                        disabled={!roomState.canStart}
+                                    >
+                                        <Play className="w-5 h-5 fill-current" />
+                                        START GAME
+                                    </Button>
+                                    <p className="text-center text-[10px] text-zinc-600 uppercase tracking-widest">Host controls only</p>
+                                </>
+                            ) : (
+                                <div className="border border-white/5 rounded-xl p-6 flex flex-col items-center justify-center border-dashed gap-3">
+                                    <div className="w-6 h-6 border-2 border-emerald-primary border-t-transparent rounded-full animate-spin" />
+                                    <p className="text-zinc-500 text-xs uppercase tracking-widest text-center">Waiting for host to start...</p>
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>
@@ -158,11 +387,101 @@ export default function GameView({ auth, onLeave }: GameViewProps) {
 
     // Game Table View
     if (gameState) {
-        const isMyTurn = gameState.currentPlayerId === auth.playerId;
-        const me = gameState.players.find(p => p.playerId === auth.playerId);
+        const isMyTurn = myPlayerId ? gameState.currentPlayerId === myPlayerId : false;
+        const me = myPlayerId ? gameState.players.find(p => p.id === myPlayerId) : undefined;
+        const actionType = (gameState.currentBet || 0) === 0 ? 'BET' : 'RAISE';
+        const minRaiseAmount = actionType === 'BET'
+            ? 1
+            : Math.max(1, (gameState.currentBet || 0) - (me?.currentBet ?? 0) + 1);
+        const availableChips = me?.chips ?? 0;
+        const rawRaise = raiseAmount.trim();
+        const parsedRaiseAmount = rawRaise === '' ? NaN : Number.parseInt(rawRaise, 10);
+        let computedRaiseError: string | null = null;
+
+        if (rawRaise !== '') {
+            if (!/^\d+$/.test(rawRaise)) {
+                computedRaiseError = 'Enter a whole number.';
+            } else if (!Number.isFinite(parsedRaiseAmount) || parsedRaiseAmount <= 0) {
+                computedRaiseError = 'Amount must be greater than 0.';
+            } else if (parsedRaiseAmount < minRaiseAmount) {
+                computedRaiseError = actionType === 'BET'
+                    ? 'Bet amount must be at least 1 chip.'
+                    : `Minimum raise is ${minRaiseAmount.toLocaleString()} chips.`;
+            } else if (parsedRaiseAmount > availableChips) {
+                computedRaiseError = `You only have ${availableChips.toLocaleString()} chips.`;
+            }
+        }
+
+        const activeRaiseError = raiseError ?? computedRaiseError;
+        const canSubmitRaise = rawRaise !== '' && !activeRaiseError;
 
         return (
-            <div className="min-h-screen flex flex-col overflow-hidden">
+            <div className="min-h-screen flex flex-col overflow-hidden relative">
+                
+                {/* Win Modal/Tab */}
+                <AnimatePresence>
+                    {showdownResult && (
+                        <motion.div 
+                            initial={{ y: -50, opacity: 0 }}
+                            animate={{ y: 0, opacity: 1 }}
+                            exit={{ y: -50, opacity: 0 }}
+                            className="absolute top-8 left-1/2 -translate-x-1/2 z-[100] bg-surface-highest/95 backdrop-blur border border-emerald-primary/30 rounded-2xl p-6 shadow-[0_0_40px_rgba(16,185,129,0.2)] text-center min-w-[300px]"
+                        >
+                            <h2 className="text-xl font-headline font-bold text-white mb-2">Round Over</h2>
+                            
+                            {showdownResult.winners && showdownResult.winners.length > 0 ? (
+                                <div className="space-y-4">
+                                    <p className="text-emerald-primary text-lg font-bold">
+                                        {showdownResult.winners.length > 1
+                                            ? `It's a tie: ${showdownResult.winners.join(', ')}`
+                                            : `${showdownResult.winners[0]} won!`}
+                                    </p>
+                                    
+                                    {showdownResult.winningsPerPlayer ? (
+                                        <div className="space-y-1">
+                                            <p className="text-gold-secondary font-bold text-sm">
+                                                +${showdownResult.winningsPerPlayer.toLocaleString()}
+                                            </p>
+                                            {showdownResult.winners.length > 1 ? (
+                                                <p className="text-zinc-500 text-[10px] uppercase tracking-widest">
+                                                    Pot split equally
+                                                </p>
+                                            ) : null}
+                                        </div>
+                                    ) : null}
+                                    
+                                    {/* Hand rank display */}
+                                    {(() => {
+                                        const winningPlayer = showdownResult.players.find(p => showdownResult.winners?.includes(p.name));
+                                        if (winningPlayer?.handRank && winningPlayer.handRank !== 'NO_HAND') {
+                                            return (
+                                                <p className="text-zinc-400 text-xs uppercase tracking-widest mt-2">
+                                                    Won with <span className="text-zinc-200">{winningPlayer.handRank.replace(/_/g, ' ')}</span>
+                                                </p>
+                                            );
+                                        } else {
+                                            return (
+                                                <p className="text-zinc-400 text-xs uppercase tracking-widest mt-2">
+                                                    Won the round
+                                                </p>
+                                            );
+                                        }
+                                    })()}
+                                </div>
+                            ) : (
+                                <p className="text-zinc-400 text-sm">Processing results...</p>
+                            )}
+                        </motion.div>
+                    )}
+                </AnimatePresence>
+
+                {/* Leave Button */}
+                <div className="absolute top-24 right-8 z-50">
+                    <Button variant="outline" size="sm" onClick={handleLeaveGame} className="border-red-500/50 text-red-500 hover:bg-red-500/10">
+                        LEAVE TABLE
+                    </Button>
+                </div>
+
                 {/* Table Area */}
                 <div className="flex-1 relative flex items-center justify-center p-8">
                     <div className="w-full max-w-5xl aspect-[2/1] poker-table-gradient rounded-[200px] border-[12px] border-surface-high shadow-[0_0_100px_rgba(0,0,0,0.8)] relative">
@@ -201,19 +520,54 @@ export default function GameView({ auth, onLeave }: GameViewProps) {
 
                             return (
                                 <div
-                                    key={p.playerId}
-                                    className="absolute -translate-x-1/2 -translate-y-1/2"
+                                    key={p.id}
+                                    className="absolute -translate-x-1/2 -translate-y-1/2 flex flex-col items-center"
                                     style={{ left: `${x}%`, top: `${y}%` }}
                                 >
                                     <PlayerPod
                                         player={p}
-                                        isCurrent={gameState.currentPlayerId === p.playerId}
+                                        isCurrent={gameState.currentPlayerId === p.id}
                                     />
-                                    {showdown && showdown.players.find(sp => sp.playerId === p.playerId)?.holeCards && (
-                                        <div className="flex gap-1 mt-2 justify-center">
-                                            {showdown.players.find(sp => sp.playerId === p.playerId)?.holeCards?.map((c, ci) => (
-                                                <CardUI key={ci} card={c} className="w-8 h-12" />
-                                            ))}
+                                    
+                                    {/* Player hole cards display */}
+                                    {(p.status === 'ACTIVE' || p.status === 'ALL_IN') && (
+                                        <div className="flex flex-col items-center z-10 mt-1">
+                                            <div className="flex gap-1 justify-center">
+                                                {showdown && showdown.players.find(sp => sp.id === p.id)?.holeCards && showdown.players.find(sp => sp.id === p.id)!.holeCards!.length > 0 ? 
+                                                    showdown.players.find(sp => sp.id === p.id)!.holeCards!.map((c, ci) => (
+                                                        <motion.div
+                                                            key={`showdown-${p.id}-${ci}`}
+                                                            initial={{ scale: 0, rotateY: 90 }}
+                                                            animate={{ scale: 1, rotateY: 0 }}
+                                                            transition={{ delay: ci * 0.1 }}
+                                                        >
+                                                            <CardUI card={c} className="w-8 h-12 shadow-md" />
+                                                        </motion.div>
+                                                    )) 
+                                                : 
+                                                    p.id !== myPlayerId ? [0, 1].map((ci) => (
+                                                        <motion.div 
+                                                            key={`hidden-${p.id}-${ci}`}
+                                                            initial={{ opacity: 0 }}
+                                                            animate={{ opacity: 1 }}
+                                                        >
+                                                            <CardUI card="" hidden className="w-8 h-12 shadow-md opacity-90" />
+                                                        </motion.div>
+                                                    )) : null
+                                                }
+                                            </div>
+                                            
+                                            {/* Hand rank display during showdown */}
+                                            {showdown && showdown.players.find(sp => sp.id === p.id)?.handRank && (
+                                                <motion.div
+                                                    initial={{ opacity: 0, y: -5 }}
+                                                    animate={{ opacity: 1, y: 0 }}
+                                                    transition={{ delay: 0.3 }}
+                                                    className="mt-1 text-[9px] font-headline font-bold uppercase tracking-widest text-emerald-primary bg-black/80 px-2 py-0.5 rounded-full whitespace-nowrap border border-emerald-primary/30 shadow-lg"
+                                                >
+                                                    {showdown.players.find(sp => sp.id === p.id)?.handRank?.replace(/_/g, ' ')}
+                                                </motion.div>
+                                            )}
                                         </div>
                                     )}
                                 </div>
@@ -249,14 +603,55 @@ export default function GameView({ auth, onLeave }: GameViewProps) {
                             initial={{ y: 100 }}
                             animate={{ y: 0 }}
                             exit={{ y: 100 }}
-                            className="bg-surface-high border-t border-white/5 p-6 flex items-center justify-center gap-4"
+                            className="bg-surface-high border-t border-white/5 p-6 flex flex-wrap items-center justify-center gap-4"
                         >
                             <Button variant="outline" onClick={() => handleAction('FOLD')}>Fold</Button>
-                            <Button variant="outline" onClick={() => handleAction('CHECK')}>Check</Button>
-                            <Button variant="secondary" onClick={() => handleAction('BET', 100)}>Bet $100</Button>
-                            <Button variant="primary" onClick={() => handleAction('RAISE', gameState.currentHighestBet * 2)}>
-                                Raise to ${gameState.currentHighestBet * 2}
-                            </Button>
+                            {(!me || (me.currentBet ?? 0) >= (gameState.currentBet || 0)) ? (
+                                <Button variant="outline" onClick={() => handleAction('CHECK')}>Check</Button>
+                            ) : (
+                                <Button variant="outline" onClick={() => handleAction('CALL')}>
+                                    Call ${(Math.max(0, (gameState.currentBet || 0) - (me?.currentBet ?? 0))).toLocaleString()}
+                                </Button>
+                            )}
+                            
+                            {/* Custom Bet / Raise Input */}
+                            <div className="flex items-center gap-2 bg-black/40 p-1 rounded-md border border-white/10 ml-4">
+                                <span className="text-zinc-400 pl-3 font-bold">$</span>
+                                <input 
+                                    type="number" 
+                                    className="bg-transparent text-white font-bold w-24 outline-none placeholder:text-zinc-600"
+                                    placeholder={minRaiseAmount.toString()}
+                                    value={raiseAmount}
+                                    onChange={e => {
+                                        setRaiseAmount(e.target.value);
+                                        setRaiseError(null);
+                                    }}
+                                    min={minRaiseAmount}
+                                    step={1}
+                                />
+                                <Button 
+                                    variant="primary" 
+                                    disabled={!canSubmitRaise}
+                                    onClick={() => {
+                                        if (!canSubmitRaise) {
+                                            setRaiseError(activeRaiseError ?? 'Enter a valid amount.');
+                                            return;
+                                        }
+
+                                        const amount = Number.parseInt(rawRaise, 10);
+                                        handleAction(actionType, amount);
+                                        setRaiseAmount(''); // clear after sending
+                                        setRaiseError(null);
+                                    }}
+                                >
+                                    {(gameState.currentBet || 0) === 0 ? 'Bet' : 'Raise'}
+                                </Button>
+                            </div>
+                            {activeRaiseError && (
+                                <p className="w-full text-center text-[11px] text-red-400 font-bold uppercase tracking-wider">
+                                    {activeRaiseError}
+                                </p>
+                            )}
                         </motion.div>
                     )}
                 </AnimatePresence>
@@ -282,7 +677,7 @@ export default function GameView({ auth, onLeave }: GameViewProps) {
         <div className="min-h-screen flex items-center justify-center">
             <div className="flex flex-col items-center gap-4">
                 <div className="w-12 h-12 border-4 border-emerald-primary border-t-transparent rounded-full animate-spin" />
-                <p className="font-headline text-xs tracking-widest uppercase text-emerald-primary">Connecting to Vault...</p>
+                <p className="font-headline text-xs tracking-widest uppercase text-emerald-primary">{loadingStatus}</p>
             </div>
         </div>
     );

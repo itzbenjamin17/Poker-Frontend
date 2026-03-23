@@ -1,7 +1,40 @@
 import { Client } from '@stomp/stompjs';
 import SockJS from 'sockjs-client';
+import type { AuthResponse } from '../types';
 
 const API_BASE = '/api';
+
+async function getErrorMessage(res: Response, fallback: string): Promise<string> {
+    try {
+        const contentType = res.headers.get('content-type') ?? '';
+
+        if (contentType.includes('application/json')) {
+            const data = await res.json();
+            if (typeof data?.message === 'string' && data.message.trim()) return data.message;
+            if (typeof data?.error === 'string' && data.error.trim()) return data.error;
+        } else {
+            const text = await res.text();
+            if (text.trim()) return text;
+        }
+    } catch {
+        // Keep fallback when payload parsing fails.
+    }
+
+    return fallback;
+}
+
+function normalizeAuthResponse(raw: unknown): AuthResponse {
+    const src = (raw ?? {}) as Record<string, unknown>;
+    const data = (src.data ?? src.tokenResponse ?? src.tokenReponse ?? src.TokenResponse ?? src.tokenresponse ?? src) as Record<string, unknown>;
+
+    return {
+        message: typeof src.message === 'string' ? src.message : '',
+        token: typeof data.token === 'string' ? data.token : '',
+        roomId: typeof data.roomId === 'string' ? data.roomId : '',
+        playerName: typeof data.playerName === 'string' ? data.playerName : '',
+        playerId: typeof data.playerId === 'string' ? data.playerId : undefined,
+    };
+}
 
 export const pokerApi = {
     async createRoom(payload: {
@@ -21,8 +54,8 @@ export const pokerApi = {
             },
             body: JSON.stringify(payload),
         });
-        if (!res.ok) throw new Error('Failed to create room');
-        return res.json();
+        if (!res.ok) throw new Error(await getErrorMessage(res, 'Failed to create room'));
+        return normalizeAuthResponse(await res.json());
     },
 
     async joinRoom(payload: { roomName: string; playerName: string; password?: string }) {
@@ -34,8 +67,46 @@ export const pokerApi = {
             },
             body: JSON.stringify(payload),
         });
-        if (!res.ok) throw new Error('Failed to join room');
+        if (!res.ok) throw new Error(await getErrorMessage(res, 'Failed to join room'));
+        return normalizeAuthResponse(await res.json());
+    },
+
+    async getRoomInfo(roomId: string, token: string) {
+        const res = await fetch(`${API_BASE}/room/${roomId}`, {
+            method: 'GET',
+            headers: {
+                Authorization: `Bearer ${token}`,
+                'ngrok-skip-browser-warning': 'true'
+            }
+        });
+        if (!res.ok) throw new Error(await getErrorMessage(res, 'Failed to get room info'));
         return res.json();
+    },
+
+    async leaveRoom(roomId: string, token: string, keepalive: boolean = false) {
+        const res = await fetch(`${API_BASE}/room/${roomId}/leave`, {
+            method: 'POST',
+            headers: {
+                Authorization: `Bearer ${token}`,
+                'ngrok-skip-browser-warning': 'true'
+            },
+            keepalive,
+        });
+        if (!res.ok) throw new Error(await getErrorMessage(res, 'Failed to leave room'));
+        return res;
+    },
+
+    async leaveGame(gameId: string, token: string, keepalive: boolean = false) {
+        const res = await fetch(`${API_BASE}/game/${gameId}/leave`, {
+            method: 'POST',
+            headers: {
+                Authorization: `Bearer ${token}`,
+                'ngrok-skip-browser-warning': 'true'
+            },
+            keepalive,
+        });
+        if (!res.ok) throw new Error(await getErrorMessage(res, 'Failed to leave game'));
+        return res;
     },
 
     async startGame(roomId: string, token: string) {
@@ -46,8 +117,14 @@ export const pokerApi = {
                 'ngrok-skip-browser-warning': 'true'
             },
         });
-        if (!res.ok) throw new Error('Failed to start game');
-        return res.json();
+        if (!res.ok) throw new Error(await getErrorMessage(res, 'Failed to start game'));
+
+        const contentType = res.headers.get('content-type') ?? '';
+        if (contentType.includes('application/json')) {
+            return res.json();
+        }
+
+        return null;
     },
 
     async performAction(gameId: string, action: string, amount: number, token: string) {
@@ -60,7 +137,7 @@ export const pokerApi = {
             },
             body: JSON.stringify({ action, amount }),
         });
-        if (!res.ok) throw new Error('Action failed');
+        if (!res.ok) throw new Error(await getErrorMessage(res, 'Action failed'));
         return res.ok;
     },
 };

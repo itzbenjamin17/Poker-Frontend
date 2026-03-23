@@ -1,11 +1,46 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import Lobby from './Lobby';
 import GameView from './GameView';
 import { Bell, Settings } from 'lucide-react';
 import type {AuthResponse} from './types';
 
+const AUTH_STORAGE_KEY = 'poker-auth';
+
 export default function App() {
   const [auth, setAuth] = useState<AuthResponse | null>(null);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(AUTH_STORAGE_KEY);
+      if (!raw) return;
+
+      const parsed = JSON.parse(raw) as Partial<AuthResponse>;
+      if (parsed?.token && parsed?.roomId && parsed?.playerName) {
+        setAuth({
+          message: typeof parsed.message === 'string' ? parsed.message : '',
+          token: parsed.token,
+          roomId: parsed.roomId,
+          playerName: parsed.playerName,
+          playerId: parsed.playerId,
+        });
+      }
+    } catch {
+      localStorage.removeItem(AUTH_STORAGE_KEY);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!auth) {
+      localStorage.removeItem(AUTH_STORAGE_KEY);
+      return;
+    }
+    localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(auth));
+  }, [auth]);
+
+  const handleAuth = useCallback((data: AuthResponse) => {
+    setAuth(data);
+  }, []);
+
   const handleLeave = useCallback(() => {
     setAuth(null);
   }, []);
@@ -29,7 +64,7 @@ export default function App() {
         </nav>
 
         {!auth ? (
-            <Lobby onAuth={setAuth} />
+            <Lobby onAuth={handleAuth} />
         ) : (
           <GameView auth={auth} onLeave={handleLeave} />
         )}
