@@ -14,7 +14,25 @@ type GameViewProps = {
 
 export default function GameView({ auth, onLeave }: GameViewProps) {
     const SHOWDOWN_DISPLAY_MS = 5000;
+    const GAME_END_DISPLAY_MS = 7000;
     const ROOM_CLOSED_REDIRECT_MS = 3000;
+
+    const isObject = (value: unknown): value is Record<string, unknown> =>
+        typeof value === 'object' && value !== null;
+
+    const isGameStatePayload = (
+        value: unknown,
+    ): value is Omit<GameState, 'gameId'> & { gameId?: string } => {
+        if (!isObject(value)) {
+            return false;
+        }
+
+        return (typeof value.gameId === 'string' || value.gameId === undefined)
+            && typeof value.phase === 'string'
+            && Array.isArray(value.players)
+            && Array.isArray(value.communityCards)
+            && typeof value.pot === 'number';
+    };
 
     const [roomState, setRoomState] = useState<RoomUpdate['data'] | null>(() => ({
         roomId: auth.roomId,
@@ -172,13 +190,35 @@ export default function GameView({ auth, onLeave }: GameViewProps) {
                 `/game/${auth.roomId}`,
                 `/topic/game/${auth.roomId}`,
             ], (body) => {
-                const data = JSON.parse(body);
-                // Note: The backend DTO doesn't have `type` for game state, it has `phase`
-                if (data.type === 'PLAYER_NOTIFICATION') {
-                    setNotification(data.message);
+                let parsed: unknown;
+                try {
+                    parsed = JSON.parse(body);
+                } catch (parseError) {
+                    console.warn('Ignoring malformed game payload:', body, parseError);
+                    return;
+                }
+
+                if (!isObject(parsed)) {
+                    console.warn('Ignoring non-object game payload:', parsed);
+                    return;
+                }
+
+                const messageType = typeof parsed.type === 'string' ? parsed.type : null;
+                const messageText = typeof parsed.message === 'string' ? parsed.message : null;
+
+                // Note: The backend DTO for game state does not include `type`; it includes `phase`.
+                if (messageType === 'PLAYER_NOTIFICATION'
+                    || messageType === 'AUTO_ADVANCE_START'
+                    || messageType === 'AUTO_ADVANCE_COMPLETE') {
+                    if (messageText) {
+                        setNotification(messageText);
+                    }
                     setTimeout(() => setNotification(null), 4000);
-                } else if (data.type === 'GAME_END') {
-                    setNotification(data.message);
+                    return;
+                }
+
+                if (messageType === 'GAME_END') {
+                    setNotification(messageText ?? 'Game finished. Returning to lobby...');
                     setTimeout(() => {
                         setNotification(null);
                         setGameState(null);
@@ -198,32 +238,42 @@ export default function GameView({ auth, onLeave }: GameViewProps) {
                         }).catch(() => {
                             onLeave?.();
                         });
-                    }, 5000);
-                } else {
-                    setGameState(data);
-                    setRoomState(null); // Game started, hide lobby
+                    }, GAME_END_DISPLAY_MS);
+                    return;
+                }
 
-                    if (data.winners && data.winners.length > 0) {
-                        clearShowdownTimers();
-                        setShowdown(data);
-                        setShowdownResult(data);
-                        showdownTimerRef.current = window.setTimeout(() => {
-                            setShowdown(null);
-                        }, SHOWDOWN_DISPLAY_MS);
-                        showdownResultTimerRef.current = window.setTimeout(() => {
-                            setShowdownResult(null);
-                        }, SHOWDOWN_DISPLAY_MS);
-                    } else {
+                if (!isGameStatePayload(parsed)) {
+                    console.warn('Ignoring non-game payload on game topic:', parsed);
+                    return;
+                }
+
+                const data: GameState = {
+                    ...parsed,
+                    gameId: parsed.gameId ?? auth.roomId,
+                };
+                setGameState(data);
+                setRoomState(null); // Game started, hide lobby
+
+                if (data.winners && data.winners.length > 0) {
+                    clearShowdownTimers();
+                    setShowdown(data);
+                    setShowdownResult(data);
+                    showdownTimerRef.current = window.setTimeout(() => {
                         setShowdown(null);
+                    }, SHOWDOWN_DISPLAY_MS);
+                    showdownResultTimerRef.current = window.setTimeout(() => {
                         setShowdownResult(null);
-                        clearShowdownTimers();
-                    }
+                    }, SHOWDOWN_DISPLAY_MS);
+                } else {
+                    setShowdown(null);
+                    setShowdownResult(null);
+                    clearShowdownTimers();
+                }
 
-                    if (data.players) {
-                        const myPlayer = data.players.find((p: any) => p.name === auth.playerName);
-                        if (myPlayer?.id) {
-                            setMyPlayerId(myPlayer.id);
-                        }
+                if (data.players) {
+                    const myPlayer = data.players.find((p: any) => p.name === auth.playerName);
+                    if (myPlayer?.id) {
+                        setMyPlayerId(myPlayer.id);
                     }
                 }
             });
@@ -394,6 +444,8 @@ export default function GameView({ auth, onLeave }: GameViewProps) {
             ? 1
             : Math.max(1, (gameState.currentBet || 0) - (me?.currentBet ?? 0) + 1);
         const availableChips = me?.chips ?? 0;
+        const callAmount = Math.max(0, (gameState.currentBet || 0) - (me?.currentBet ?? 0));
+        const callExceedsStack = callAmount > availableChips;
         const rawRaise = raiseAmount.trim();
         const parsedRaiseAmount = rawRaise === '' ? NaN : Number.parseInt(rawRaise, 10);
         let computedRaiseError: string | null = null;
@@ -404,9 +456,13 @@ export default function GameView({ auth, onLeave }: GameViewProps) {
             } else if (!Number.isFinite(parsedRaiseAmount) || parsedRaiseAmount <= 0) {
                 computedRaiseError = 'Amount must be greater than 0.';
             } else if (parsedRaiseAmount < minRaiseAmount) {
-                computedRaiseError = actionType === 'BET'
-                    ? 'Bet amount must be at least 1 chip.'
-                    : `Minimum raise is ${minRaiseAmount.toLocaleString()} chips.`;
+                if (actionType === 'RAISE' && parsedRaiseAmount === availableChips) {
+                    computedRaiseError = `Minimum raise is ${minRaiseAmount.toLocaleString()} chips. Your full stack is smaller, use All In${callExceedsStack ? '' : ' or Call'}.`;
+                } else {
+                    computedRaiseError = actionType === 'BET'
+                        ? 'Bet amount must be at least 1 chip.'
+                        : `Minimum raise is ${minRaiseAmount.toLocaleString()} chips.`;
+                }
             } else if (parsedRaiseAmount > availableChips) {
                 computedRaiseError = `You only have ${availableChips.toLocaleString()} chips.`;
             }
@@ -608,9 +664,13 @@ export default function GameView({ auth, onLeave }: GameViewProps) {
                             <Button variant="outline" onClick={() => handleAction('FOLD')}>Fold</Button>
                             {(!me || (me.currentBet ?? 0) >= (gameState.currentBet || 0)) ? (
                                 <Button variant="outline" onClick={() => handleAction('CHECK')}>Check</Button>
+                            ) : callExceedsStack ? (
+                                <Button variant="outline" onClick={() => handleAction('ALL_IN')}>
+                                    All In ${availableChips.toLocaleString()}
+                                </Button>
                             ) : (
                                 <Button variant="outline" onClick={() => handleAction('CALL')}>
-                                    Call ${(Math.max(0, (gameState.currentBet || 0) - (me?.currentBet ?? 0))).toLocaleString()}
+                                    Call ${callAmount.toLocaleString()}
                                 </Button>
                             )}
                             
