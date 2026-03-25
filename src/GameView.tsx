@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Client } from '@stomp/stompjs';
 import { createStompClient, pokerApi } from './services/api';
@@ -46,6 +46,7 @@ export default function GameView({ auth, onLeave }: GameViewProps) {
     const [notification, setNotification] = useState<string | null>(null);
     const [loadingStatus, setLoadingStatus] = useState<string>('Connecting to Vault...');
     const [myPlayerId, setMyPlayerId] = useState<string | null>(auth.playerId || null);
+    const [windowWidth, setWindowWidth] = useState<number>(() => window.innerWidth);
     const [raiseAmount, setRaiseAmount] = useState<string>('');
     const [raiseError, setRaiseError] = useState<string | null>(null);
 
@@ -56,9 +57,56 @@ export default function GameView({ auth, onLeave }: GameViewProps) {
     const showdownTimerRef = useRef<number | null>(null);
     const showdownResultTimerRef = useRef<number | null>(null);
 
+    const isMobileTable = windowWidth < 900;
+
+    type SeatPosition = {
+        left: number;
+        top: number;
+        cardsAbove: boolean;
+    };
+
+    const getSeatPosition = (index: number, total: number, mobile: boolean): SeatPosition => {
+        if (index === 0) {
+            return {
+                left: 50,
+                top: mobile ? 84 : 86,
+                cardsAbove: true,
+            };
+        }
+
+        if (total === 2) {
+            return {
+                left: 50,
+                top: mobile ? 16 : 14,
+                cardsAbove: false,
+            };
+        }
+
+        const others = total - 1;
+        const t = (index - 1) / Math.max(1, others - 1);
+        const angleDegrees = 210 - t * 240;
+        const angle = (angleDegrees * Math.PI) / 180;
+        const radiusX = mobile ? 41 : 43;
+        const radiusY = mobile ? 30 : 35;
+        const left = 50 + radiusX * Math.cos(angle);
+        const top = 50 + radiusY * Math.sin(angle);
+
+        return {
+            left,
+            top,
+            cardsAbove: top > 58,
+        };
+    };
+
     useEffect(() => {
         gameIdRef.current = gameState?.gameId ?? null;
     }, [gameState?.gameId]);
+
+    useEffect(() => {
+        const onResize = () => setWindowWidth(window.innerWidth);
+        window.addEventListener('resize', onResize);
+        return () => window.removeEventListener('resize', onResize);
+    }, []);
 
     const clearShowdownTimers = () => {
         if (showdownTimerRef.current !== null) {
@@ -437,6 +485,13 @@ export default function GameView({ auth, onLeave }: GameViewProps) {
 
     // Game Table View
     if (gameState) {
+        const pivotIndex = myPlayerId
+            ? gameState.players.findIndex((p) => p.id === myPlayerId)
+            : gameState.players.findIndex((p) => p.name === auth.playerName);
+        const orderedPlayers = pivotIndex < 0
+            ? gameState.players
+            : gameState.players.map((_, offset) => gameState.players[(pivotIndex + offset) % gameState.players.length]);
+
         const isMyTurn = myPlayerId ? gameState.currentPlayerId === myPlayerId : false;
         const me = myPlayerId ? gameState.players.find(p => p.id === myPlayerId) : undefined;
         const actionType = (gameState.currentBet || 0) === 0 ? 'BET' : 'RAISE';
@@ -532,15 +587,18 @@ export default function GameView({ auth, onLeave }: GameViewProps) {
                 </AnimatePresence>
 
                 {/* Leave Button */}
-                <div className="absolute top-24 right-8 z-50">
+                <div className="absolute top-20 right-4 md:top-24 md:right-8 z-50">
                     <Button variant="outline" size="sm" onClick={handleLeaveGame} className="border-red-500/50 text-red-500 hover:bg-red-500/10">
                         LEAVE TABLE
                     </Button>
                 </div>
 
                 {/* Table Area */}
-                <div className="flex-1 relative flex items-center justify-center p-8">
-                    <div className="w-full max-w-5xl aspect-[2/1] poker-table-gradient rounded-[200px] border-[12px] border-surface-high shadow-[0_0_100px_rgba(0,0,0,0.8)] relative">
+                <div className="flex-1 relative flex items-center justify-center p-3 md:p-8">
+                    <div className={cn(
+                        "w-full max-w-5xl poker-table-gradient border-surface-high shadow-[0_0_100px_rgba(0,0,0,0.8)] relative transition-all duration-300",
+                        isMobileTable ? "aspect-[1.1/1] rounded-[80px] border-[8px]" : "aspect-[2/1] rounded-[200px] border-[12px]"
+                    )}>
 
                         {/* Community Cards */}
                         <div className="absolute inset-0 flex flex-col items-center justify-center gap-6">
@@ -568,60 +626,105 @@ export default function GameView({ auth, onLeave }: GameViewProps) {
                         </div>
 
                         {/* Players */}
-                        {gameState.players.map((p, i) => {
-                            // Position players around the table
-                            const angle = (i / gameState.players.length) * 2 * Math.PI;
-                            const x = 50 + 42 * Math.cos(angle);
-                            const y = 50 + 42 * Math.sin(angle);
+                        {orderedPlayers.map((p, i) => {
+                            const seat = getSeatPosition(i, orderedPlayers.length, isMobileTable);
+                            const showdownPlayer = showdown?.players.find(sp => sp.id === p.id);
+                            const isSelf = p.id === myPlayerId;
+                            const shouldReveal = Boolean(showdownPlayer?.holeCards && showdownPlayer.holeCards.length > 0);
+                            const privateCards = isSelf ? privateState?.holeCards ?? [] : [];
+                            const displayCards = shouldReveal
+                                ? showdownPlayer!.holeCards!
+                                : privateCards;
 
                             return (
                                 <div
                                     key={p.id}
                                     className="absolute -translate-x-1/2 -translate-y-1/2 flex flex-col items-center"
-                                    style={{ left: `${x}%`, top: `${y}%` }}
+                                    style={{ left: `${seat.left}%`, top: `${seat.top}%` }}
                                 >
-                                    <PlayerPod
-                                        player={p}
-                                        isCurrent={gameState.currentPlayerId === p.id}
-                                    />
-                                    
-                                    {/* Player hole cards display */}
-                                    {(p.status === 'ACTIVE' || p.status === 'ALL_IN') && (
-                                        <div className="flex flex-col items-center z-10 mt-1">
+                                    {seat.cardsAbove && (p.status === 'ACTIVE' || p.status === 'ALL_IN') && (
+                                        <div className="mb-2 flex flex-col items-center z-10">
                                             <div className="flex gap-1 justify-center">
-                                                {showdown && showdown.players.find(sp => sp.id === p.id)?.holeCards && showdown.players.find(sp => sp.id === p.id)!.holeCards!.length > 0 ? 
-                                                    showdown.players.find(sp => sp.id === p.id)!.holeCards!.map((c, ci) => (
+                                                {displayCards.length > 0
+                                                    ? displayCards.map((c, ci) => (
                                                         <motion.div
-                                                            key={`showdown-${p.id}-${ci}`}
-                                                            initial={{ scale: 0, rotateY: 90 }}
-                                                            animate={{ scale: 1, rotateY: 0 }}
-                                                            transition={{ delay: ci * 0.1 }}
+                                                            key={`cards-top-${p.id}-${ci}`}
+                                                            initial={{ scale: 0.9, opacity: 0 }}
+                                                            animate={{ scale: 1, opacity: 1 }}
+                                                            transition={{ delay: ci * 0.08 }}
                                                         >
-                                                            <CardUI card={c} className="w-8 h-12 shadow-md" />
+                                                            <CardUI card={c} className={cn(
+                                                                isSelf ? "w-10 h-14 md:w-11 md:h-16" : "w-8 h-12",
+                                                                "shadow-md"
+                                                            )} />
                                                         </motion.div>
-                                                    )) 
-                                                : 
-                                                    p.id !== myPlayerId ? [0, 1].map((ci) => (
-                                                        <motion.div 
-                                                            key={`hidden-${p.id}-${ci}`}
-                                                            initial={{ opacity: 0 }}
-                                                            animate={{ opacity: 1 }}
-                                                        >
-                                                            <CardUI card="" hidden className="w-8 h-12 shadow-md opacity-90" />
-                                                        </motion.div>
-                                                    )) : null
-                                                }
+                                                    ))
+                                                    : !isSelf
+                                                        ? [0, 1].map((ci) => (
+                                                            <CardUI key={`hidden-top-${p.id}-${ci}`} card="" hidden className="w-8 h-12 shadow-md opacity-90" />
+                                                        ))
+                                                        : null}
                                             </div>
-                                            
-                                            {/* Hand rank display during showdown */}
-                                            {showdown && showdown.players.find(sp => sp.id === p.id)?.handRank && (
+
+                                            {showdownPlayer?.handRank && (
                                                 <motion.div
                                                     initial={{ opacity: 0, y: -5 }}
                                                     animate={{ opacity: 1, y: 0 }}
-                                                    transition={{ delay: 0.3 }}
+                                                    transition={{ delay: 0.25 }}
                                                     className="mt-1 text-[9px] font-headline font-bold uppercase tracking-widest text-emerald-primary bg-black/80 px-2 py-0.5 rounded-full whitespace-nowrap border border-emerald-primary/30 shadow-lg"
                                                 >
-                                                    {showdown.players.find(sp => sp.id === p.id)?.handRank?.replace(/_/g, ' ')}
+                                                    {showdownPlayer.handRank.replace(/_/g, ' ')}
+                                                </motion.div>
+                                            )}
+                                        </div>
+                                    )}
+
+                                    <PlayerPod
+                                        player={p}
+                                        isCurrent={gameState.currentPlayerId === p.id}
+                                        blindLabel={p.isBigBlind ? 'BB' : p.isSmallBlind ? 'SB' : undefined}
+                                        size={isMobileTable ? 'sm' : 'md'}
+                                    />
+
+                                    {(p.status === 'ACTIVE' || p.status === 'ALL_IN') && !seat.cardsAbove && (
+                                        <div className="mt-2 flex flex-col items-center z-10">
+                                            <div className="flex gap-1 justify-center">
+                                                {displayCards.length > 0
+                                                    ? displayCards.map((c, ci) => (
+                                                        <motion.div
+                                                            key={`cards-bottom-${p.id}-${ci}`}
+                                                            initial={{ scale: 0.9, opacity: 0 }}
+                                                            animate={{ scale: 1, opacity: 1 }}
+                                                            transition={{ delay: ci * 0.08 }}
+                                                        >
+                                                            <CardUI card={c} className={cn(
+                                                                isSelf ? "w-10 h-14 md:w-12 md:h-16" : "w-8 h-12",
+                                                                "shadow-md"
+                                                            )} />
+                                                        </motion.div>
+                                                    ))
+                                                    : !isSelf
+                                                        ? [0, 1].map((ci) => (
+                                                            <CardUI key={`hidden-bottom-${p.id}-${ci}`} card="" hidden className="w-8 h-12 shadow-md opacity-90" />
+                                                        ))
+                                                        : null}
+                                            </div>
+
+                                            {isSelf && (
+                                                <div className="mt-1 bg-surface-high/80 px-3 py-1 rounded-full border border-white/10 backdrop-blur-md">
+                                                    <span className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest">Your Stack: </span>
+                                                    <span className="text-xs font-bold text-white">${me?.chips.toLocaleString()}</span>
+                                                </div>
+                                            )}
+
+                                            {showdownPlayer?.handRank && (
+                                                <motion.div
+                                                    initial={{ opacity: 0, y: -5 }}
+                                                    animate={{ opacity: 1, y: 0 }}
+                                                    transition={{ delay: 0.25 }}
+                                                    className="mt-1 text-[9px] font-headline font-bold uppercase tracking-widest text-emerald-primary bg-black/80 px-2 py-0.5 rounded-full whitespace-nowrap border border-emerald-primary/30 shadow-lg"
+                                                >
+                                                    {showdownPlayer.handRank.replace(/_/g, ' ')}
                                                 </motion.div>
                                             )}
                                         </div>
@@ -629,26 +732,6 @@ export default function GameView({ auth, onLeave }: GameViewProps) {
                                 </div>
                             );
                         })}
-                    </div>
-
-                    {/* My Hole Cards (Floating) */}
-                    <div className="absolute bottom-12 left-1/2 -translate-x-1/2 flex flex-col items-center gap-4">
-                        <div className="flex gap-2">
-                            {privateState?.holeCards.map((card, i) => (
-                                <motion.div
-                                    key={i}
-                                    initial={{ y: 50, opacity: 0 }}
-                                    animate={{ y: 0, opacity: 1 }}
-                                    transition={{ delay: i * 0.1 }}
-                                >
-                                    <CardUI card={card} className="w-16 h-24" />
-                                </motion.div>
-                            ))}
-                        </div>
-                        <div className="bg-surface-high/80 px-4 py-1 rounded-full border border-white/10 backdrop-blur-md">
-                            <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Your Stack: </span>
-                            <span className="text-sm font-bold text-white">${me?.chips.toLocaleString()}</span>
-                        </div>
                     </div>
                 </div>
 
@@ -659,7 +742,7 @@ export default function GameView({ auth, onLeave }: GameViewProps) {
                             initial={{ y: 100 }}
                             animate={{ y: 0 }}
                             exit={{ y: 100 }}
-                            className="bg-surface-high border-t border-white/5 p-6 flex flex-wrap items-center justify-center gap-4"
+                            className="bg-surface-high border-t border-white/5 p-4 md:p-6 flex flex-wrap items-center justify-center gap-3 md:gap-4"
                         >
                             <Button variant="outline" onClick={() => handleAction('FOLD')}>Fold</Button>
                             {(!me || (me.currentBet ?? 0) >= (gameState.currentBet || 0)) ? (

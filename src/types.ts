@@ -15,6 +15,8 @@ export interface Player {
     status: PlayerStatus;
     currentBet: number;
     hasFolded: boolean;
+    isSmallBlind?: boolean;
+    isBigBlind?: boolean;
     holeCards?: string[]; // Only present in private state or showdown
     handRank?: string;    // Only present in showdown
     bestHand?: string[];

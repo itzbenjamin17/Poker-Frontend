@@ -38,29 +38,49 @@ export const CardUI: React.FC<{ card: string; hidden?: boolean; className?: stri
 export const PlayerPod = ({
                               player,
                               isCurrent,
+                              blindLabel,
+                              size = 'md',
                               className
                           }: {
     player: Player;
     isCurrent?: boolean;
+    blindLabel?: 'SB' | 'BB';
+    size?: 'sm' | 'md';
     isDealer?: boolean;
     className?: string;
 }) => {
+    const podSizeClass = size === 'sm' ? 'w-16 h-16' : 'w-20 h-20';
+    const initialsClass = size === 'sm' ? 'text-base' : 'text-xl';
+    const chipsClass = size === 'sm' ? 'text-[9px]' : 'text-[10px]';
+
     return (
         <div className={cn("flex flex-col items-center gap-2", className)}>
             <div className={cn(
-                "relative w-20 h-20 rounded-full flex items-center justify-center transition-all duration-500",
+                "relative rounded-full flex items-center justify-center transition-all duration-500",
+                podSizeClass,
                 isCurrent ? "ring-2 ring-emerald-primary ring-offset-4 ring-offset-surface scale-110" : "ring-1 ring-white/10",
                 player.status === 'FOLDED' ? "opacity-40 grayscale" : "opacity-100"
             )}>
                 <div className="w-full h-full rounded-full bg-surface-highest flex items-center justify-center overflow-hidden border border-white/5">
-           <span className="text-xl font-headline font-bold text-emerald-primary/40">
+           <span className={cn("font-headline font-bold text-emerald-primary/40", initialsClass)}>
              {player.name.slice(0, 2).toUpperCase()}
            </span>
                 </div>
 
+                {blindLabel && (
+                    <div className={cn(
+                        "absolute -left-2 -top-2 px-1.5 py-0.5 rounded-full border shadow-md",
+                        blindLabel === 'BB'
+                            ? "bg-gold-secondary text-surface border-gold-dim"
+                            : "bg-emerald-primary text-surface border-emerald-dim"
+                    )}>
+                        <span className="text-[9px] font-headline font-extrabold tracking-wider">{blindLabel}</span>
+                    </div>
+                )}
+
                 {/* Chips Badge */}
                 <div className="absolute -bottom-2 bg-surface-high px-2 py-0.5 rounded-full border border-white/10 shadow-lg">
-                    <span className="text-[10px] font-bold text-gold-secondary">${player.chips.toLocaleString()}</span>
+                    <span className={cn("font-bold text-gold-secondary", chipsClass)}>${player.chips.toLocaleString()}</span>
                 </div>
 
                 {/* Action Indicator */}
