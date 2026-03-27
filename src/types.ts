@@ -28,6 +28,8 @@ export interface GameState {
     gameId: string;
     maxPlayers: number;
     pot: number;
+    pots?: number[];
+    uncalledAmount?: number;
     phase: GamePhase;
     currentBet: number;
     communityCards: string[];

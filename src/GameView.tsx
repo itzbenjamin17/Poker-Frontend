@@ -31,7 +31,10 @@ export default function GameView({ auth, onLeave }: GameViewProps) {
             && typeof value.phase === 'string'
             && Array.isArray(value.players)
             && Array.isArray(value.communityCards)
-            && typeof value.pot === 'number';
+            && typeof value.pot === 'number'
+            && (value.uncalledAmount === undefined || typeof value.uncalledAmount === 'number')
+            && (value.pots === undefined
+                || (Array.isArray(value.pots) && value.pots.every((pot) => typeof pot === 'number')));
     };
 
     const [roomState, setRoomState] = useState<RoomUpdate['data'] | null>(() => ({
@@ -501,6 +504,13 @@ export default function GameView({ auth, onLeave }: GameViewProps) {
         const availableChips = me?.chips ?? 0;
         const callAmount = Math.max(0, (gameState.currentBet || 0) - (me?.currentBet ?? 0));
         const callExceedsStack = callAmount > availableChips;
+        const uncalledAmount = gameState.uncalledAmount ?? 0;
+        const potBreakdown = gameState.pots && gameState.pots.length > 0
+            ? gameState.pots
+            : [gameState.pot];
+        const displayedPot = Math.max(0, gameState.pot - uncalledAmount);
+        const mainPot = potBreakdown[0] ?? gameState.pot;
+        const sidePots = potBreakdown.slice(1);
         const rawRaise = raiseAmount.trim();
         const parsedRaiseAmount = rawRaise === '' ? NaN : Number.parseInt(rawRaise, 10);
         let computedRaiseError: string | null = null;
@@ -605,8 +615,32 @@ export default function GameView({ auth, onLeave }: GameViewProps) {
                             <div className="bg-black/40 px-6 py-2 rounded-full border border-white/5 backdrop-blur-md flex items-center gap-3">
                                 <Coins className="w-4 h-4 text-gold-secondary" />
                                 <span className="font-headline font-bold text-2xl tracking-tight text-white">
-                  ${gameState.pot.toLocaleString()}
+                                    ${displayedPot.toLocaleString()}
                 </span>
+                            </div>
+
+                            <div className="flex flex-wrap items-center justify-center gap-2 px-4">
+                                <div className="bg-black/35 px-3 py-1 rounded-full border border-white/10">
+                                    <span className="text-[10px] uppercase tracking-widest font-bold text-white/70">Main Pot</span>
+                                    <span className="ml-2 text-sm font-bold text-gold-secondary">${mainPot.toLocaleString()}</span>
+                                </div>
+                                {sidePots.map((amount, index) => (
+                                    <div
+                                        key={`side-pot-${index}`}
+                                        className="bg-black/35 px-3 py-1 rounded-full border border-emerald-primary/30"
+                                    >
+                                        <span className="text-[10px] uppercase tracking-widest font-bold text-white/70">
+                                            Side Pot {index + 1}
+                                        </span>
+                                        <span className="ml-2 text-sm font-bold text-emerald-primary">${amount.toLocaleString()}</span>
+                                    </div>
+                                ))}
+                                {uncalledAmount > 0 && (
+                                    <div className="bg-black/35 px-3 py-1 rounded-full border border-red-400/40">
+                                        <span className="text-[10px] uppercase tracking-widest font-bold text-white/70">Uncalled</span>
+                                        <span className="ml-2 text-sm font-bold text-red-300">${uncalledAmount.toLocaleString()}</span>
+                                    </div>
+                                )}
                             </div>
 
                             <div className="flex gap-3">
