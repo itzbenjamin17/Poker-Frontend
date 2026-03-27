@@ -114,12 +114,26 @@ export default function Lobby({ onAuth }: { onAuth: (data: AuthResponse) => void
                                     required
                                 />
                             </div>
+                            <div className="col-span-full">
+                                <Input
+                                    label="Player Alias"
+                                    placeholder="Viking_01"
+                                    value={createData.playerName}
+                                    onChange={e => setCreateData({...createData, playerName: e.target.value})}
+                                    required
+                                />
+                            </div>
                             <Input
-                                label="Player Alias"
-                                placeholder="Viking_01"
-                                value={createData.playerName}
-                                onChange={e => setCreateData({...createData, playerName: e.target.value})}
-                                required
+                                label="Small Blind"
+                                type="number"
+                                value={createData.smallBlind}
+                                onChange={e => setCreateData({...createData, smallBlind: parseInt(e.target.value)})}
+                            />
+                            <Input
+                                label="Big Blind"
+                                type="number"
+                                value={createData.bigBlind}
+                                onChange={e => setCreateData({...createData, bigBlind: parseInt(e.target.value)})}
                             />
                             <div className="space-y-2">
                                 <label className="block font-headline text-[10px] font-bold tracking-widest text-zinc-500 uppercase">Max Players</label>
@@ -138,12 +152,6 @@ export default function Lobby({ onAuth }: { onAuth: (data: AuthResponse) => void
                                 type="number"
                                 value={createData.buyIn}
                                 onChange={e => setCreateData({...createData, buyIn: parseInt(e.target.value)})}
-                            />
-                            <Input
-                                label="Small Blind"
-                                type="number"
-                                value={createData.smallBlind}
-                                onChange={e => setCreateData({...createData, smallBlind: parseInt(e.target.value)})}
                             />
 
                             <div className="col-span-full mt-4">
