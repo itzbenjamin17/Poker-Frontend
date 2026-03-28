@@ -29,11 +29,3 @@
   }
 }
 
-.glass-card {
-  @apply bg-surface-highest/60 backdrop-blur-3xl border border-emerald-primary/10;
-}
-
-.poker-table-gradient {
-  background: radial-gradient(circle at 50% 50%, var(--color-emerald-container) 0%, var(--color-surface) 80%);
-}
-
