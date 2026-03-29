@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Client } from '@stomp/stompjs';
 import { createStompClient, pokerApi } from './services/api';
-import {type GameState, type RoomUpdate, cn, type AuthResponse } from './types';
+import { type GameState, type RoomUpdate, cn, type AuthResponse } from './types';
 import { Button, Card } from './components/UI';
 import { PlayerPod, CardUI } from './components/GameUI';
 import { Info, Play, Coins } from 'lucide-react';
@@ -70,11 +70,41 @@ export default function GameView({ auth, onLeave }: GameViewProps) {
                 || (Array.isArray(value.holeCards) && value.holeCards.every((card) => typeof card === 'string')));
     }, [isObject]);
 
+    const normalizeErrorMessage = useCallback((message: string | null): string | null => {
+        if (!message) return null;
+
+        const msg = message.trim();
+
+        // Handle Jackson / Technical errors that leak to the UI
+        if (msg.includes('Cannot deserialize') || msg.includes('JSON parse error') || msg.includes('Unexpected character') || msg.includes('HttpMessageNotReadable')) {
+            return 'Invalid request format. Please try again.';
+        }
+
+        if (msg.includes('Internal Server Error') || msg.includes('500')) {
+            return 'Technical difficulties.';
+        }
+
+        if (msg.includes('java.lang') || msg.includes('org.springframework')) {
+            return 'A system error occurred. Please try again.';
+        }
+
+        // Enforce hard truncation for UI safety
+        const MAX_LENGTH = 80;
+        if (msg.length > MAX_LENGTH) {
+            return msg.substring(0, MAX_LENGTH - 3) + '...';
+        }
+
+        return msg;
+    }, []);
+
+
     const [roomState, setRoomState] = useState<RoomUpdate['data'] | null>(() => ({
         roomId: auth.roomId,
         roomName: auth.roomId,
         players: [{ name: auth.playerName, isHost: false }],
+        gameStarted: false,
     }));
+
     const [gameState, setGameState] = useState<GameState | null>(null);
     const [privateState, setPrivateState] = useState<{ holeCards: string[] } | null>(null);
     const [showdown, setShowdown] = useState<GameState | null>(null);
@@ -274,9 +304,11 @@ export default function GameView({ auth, onLeave }: GameViewProps) {
         let mounted = true;
 
         const redirectToLobby = (message: string) => {
-            setNotification(message);
-            setLoadingStatus(message);
+            const cleanMsg = normalizeErrorMessage(message);
+            setNotification(cleanMsg);
+            setLoadingStatus(cleanMsg || 'Returning to lobby...');
             setTimeout(() => {
+
                 if (!mounted) {
                     return;
                 }
@@ -308,8 +340,17 @@ export default function GameView({ auth, onLeave }: GameViewProps) {
                     players: roomData.players.map((p: { name: string; isHost: boolean }) => ({ name: p.name, isHost: p.isHost })),
                     maxPlayers: roomData.maxPlayers,
                     canStart: roomData.canStartGame,
+                    gameStarted: roomData.gameStarted,
                 }));
+
+                // Only attempt to restore game state if the backend says a game was actually started.
+                // This prevents 404 "Error" logs in the browser console when joining a fresh lobby.
+                if (!roomData.gameStarted) {
+                    setLoadingStatus('Connected to Vault...');
+                    return;
+                }
             } catch (err) {
+
                 if (!mounted) {
                     return;
                 }
@@ -377,6 +418,8 @@ export default function GameView({ auth, onLeave }: GameViewProps) {
     useEffect(() => {
         const client = createStompClient(auth.token);
         stompClientRef.current = client;
+        // For testing in chrome dev console
+        (window as any).pokerSocket = client;
 
         client.onConnect = () => {
             console.log('Connected to WebSocket');
@@ -401,6 +444,24 @@ export default function GameView({ auth, onLeave }: GameViewProps) {
                 ], (privBody) => {
                     try {
                         const parsed = JSON.parse(privBody);
+
+                        // Handle action errors from WebSocket back to the UI
+                        if (parsed.type === 'ACTION_ERROR' && typeof parsed.message === 'string') {
+                            const normalized = normalizeErrorMessage(parsed.message);
+                            setNotification(normalized);
+
+                            // Re-apply special formatting for raise errors if possible
+                            const isBetRaiseBackendError = /bet|raise|insufficient|amount|chip/i.test(parsed.message);
+                            if (isBetRaiseBackendError) {
+                                setRaiseError(normalized);
+                                setNotification('That bet size is not allowed. Adjust the amount and try again.');
+                            }
+
+                            setTimeout(() => setNotification(null), 4000);
+                            return;
+                        }
+
+
                         if (isPrivateStatePayload(parsed)) {
                             applyIncomingPrivateState(parsed);
                         }
@@ -497,16 +558,19 @@ export default function GameView({ auth, onLeave }: GameViewProps) {
                     || messageType === 'AUTO_ADVANCE_START'
                     || messageType === 'AUTO_ADVANCE_COMPLETE') {
                     if (messageText) {
-                        setNotification(messageText);
+                        setNotification(normalizeErrorMessage(messageText));
                     }
                     setTimeout(() => setNotification(null), 4000);
                     return;
                 }
 
+
                 if (messageType === 'GAME_END') {
-                    setNotification(messageText ?? 'Game finished. Returning to lobby...');
+                    const endMsg = normalizeErrorMessage(messageText ?? 'Game finished. Returning to lobby...');
+                    setNotification(endMsg);
                     setTimeout(() => {
                         setNotification(null);
+
                         setGameState(null);
                         setPrivateState(null);
                         setShowdown(null);
@@ -541,41 +605,46 @@ export default function GameView({ auth, onLeave }: GameViewProps) {
                 applyIncomingGameState(parsed);
             });
 
-            // Re-sync immediately after subscribing so reconnects do not depend on
-            // timing of broadcast events.
-            void pokerApi.getGameState(auth.roomId, auth.token)
-                .then((snapshot) => {
-                    if (isGameStatePayload(snapshot)) {
-                        applyIncomingGameState(snapshot);
-                    }
-                })
-                .catch((err) => {
-                    const statusCode = getErrorStatusCode(err);
-                    if (statusCode === 403) {
-                        const message = 'Your seat is no longer active. Returning to lobby...';
-                        setNotification(message);
-                        setLoadingStatus(message);
-                        setTimeout(() => onLeave?.(), ROOM_CLOSED_REDIRECT_MS);
-                        return;
-                    }
+            // Only re-sync game state if we are already in a game session.
+            const currentlyInGame = gameIdRef.current !== null;
 
-                    if (statusCode !== 404) {
-                        console.warn('State re-sync failed after connect:', err);
-                    }
-                });
+            if (currentlyInGame) {
+                void pokerApi.getGameState(auth.roomId, auth.token)
+                    .then((snapshot) => {
+                        if (isGameStatePayload(snapshot)) {
+                            applyIncomingGameState(snapshot);
+                        }
+                    })
+                    .catch((err) => {
+                        const statusCode = getErrorStatusCode(err);
+                        if (statusCode === 403) {
+                            const message = normalizeErrorMessage('Your seat is no longer active. Returning to lobby...');
+                            setNotification(message);
+                            setLoadingStatus(message || 'Returning...');
+                            setTimeout(() => onLeave?.(), ROOM_CLOSED_REDIRECT_MS);
+                            return;
+                        }
 
-            void pokerApi.getPrivateState(auth.roomId, auth.token)
-                .then((privateSnapshot) => {
-                    if (isPrivateStatePayload(privateSnapshot)) {
-                        applyIncomingPrivateState(privateSnapshot);
-                    }
-                })
-                .catch((err) => {
-                    const statusCode = getErrorStatusCode(err);
-                    if (statusCode !== 404) {
-                        console.warn('Private state re-sync failed after connect:', err);
-                    }
-                });
+
+                        if (statusCode !== 404) {
+                            console.warn('State re-sync failed after connect:', err);
+                        }
+                    });
+
+                void pokerApi.getPrivateState(auth.roomId, auth.token)
+                    .then((privateSnapshot) => {
+                        if (isPrivateStatePayload(privateSnapshot)) {
+                            applyIncomingPrivateState(privateSnapshot);
+                        }
+                    })
+                    .catch((err) => {
+                        const statusCode = getErrorStatusCode(err);
+                        if (statusCode !== 404) {
+                            console.warn('Private state re-sync failed after connect:', err);
+                        }
+                    });
+            }
+
         };
 
         client.activate();
@@ -586,23 +655,29 @@ export default function GameView({ auth, onLeave }: GameViewProps) {
         };
     }, [auth, applyIncomingGameState, applyIncomingPrivateState, clearShowdownTimers, getErrorStatusCode, isGameStatePayload, isObject, isPrivateStatePayload, onLeave]);
 
-    const handleAction = async (action: string, amount: number = 0) => {
+    const handleAction = (action: string, amount: number = 0) => {
+        const targetGameId = gameState?.gameId ?? auth.roomId;
+
+        if (!stompClientRef.current?.connected) {
+            console.warn('STOMP client not connected, action deferred');
+            setNotification(normalizeErrorMessage('Waiting for table connection...'));
+            return;
+        }
+
+
         try {
-            await pokerApi.performAction(gameState?.gameId ?? auth.roomId, action, amount, auth.token);
+            // Send action through the existing heartbeat pipe
+            stompClientRef.current.publish({
+                destination: `/app/${targetGameId}/action`,
+                body: JSON.stringify({ action, amount })
+            });
+
+            // Optimistic reset (success/error will sync via game state or private channel)
+            setRaiseAmount('');
+            setRaiseError(null);
         } catch (err) {
-            console.error('Failed action:', err);
-            const backendMessage = err instanceof Error ? err.message : 'Action failed. Please try again.';
-            const isRaiseAction = action === 'BET' || action === 'RAISE';
-            const isBetRaiseBackendError = /bet|raise|insufficient|amount|chip/i.test(backendMessage);
-
-            if (isRaiseAction && isBetRaiseBackendError) {
-                setRaiseError(backendMessage);
-                setNotification('That bet size is not allowed. Adjust the amount and try again.');
-            } else {
-                setNotification(backendMessage);
-            }
-
-            setTimeout(() => setNotification(null), 4000);
+            console.error('Failed to publish action:', err);
+            setNotification('System malfunction. Please refresh.');
         }
     };
 
@@ -611,9 +686,11 @@ export default function GameView({ auth, onLeave }: GameViewProps) {
             await pokerApi.startGame(auth.roomId, auth.token);
         } catch (err) {
             console.error('Failed to start game:', err);
-            setNotification(err instanceof Error ? err.message : 'Only the host can initiate the royal action.');
+            const rawMsg = err instanceof Error ? err.message : 'Only the host can initiate the royal action.';
+            setNotification(normalizeErrorMessage(rawMsg));
             setTimeout(() => setNotification(null), 4000);
         }
+
     };
 
     const handleClaimWin = async () => {
@@ -626,9 +703,10 @@ export default function GameView({ auth, onLeave }: GameViewProps) {
             setTimeout(() => setNotification(null), 4000);
         } catch (err) {
             const message = err instanceof Error ? err.message : 'Claim win failed.';
-            setNotification(message);
+            setNotification(normalizeErrorMessage(message));
             setTimeout(() => setNotification(null), 4000);
         } finally {
+
             setClaimPending(false);
         }
     };
@@ -653,18 +731,19 @@ export default function GameView({ auth, onLeave }: GameViewProps) {
     if (roomState && !gameState) {
         return (
             <div className="min-h-screen p-8 flex flex-col items-center justify-center">
-                
+
                 {/* Notifications */}
                 <AnimatePresence>
                     {notification && (
                         <motion.div
-                            initial={{ opacity: 0, scale: 0.9 }}
-                            animate={{ opacity: 1, scale: 1 }}
-                            exit={{ opacity: 0 }}
-                            className="fixed top-24 left-1/2 -translate-x-1/2 z-50 bg-gold-secondary text-surface px-6 py-3 rounded-full font-headline font-bold shadow-2xl"
+                            initial={{ opacity: 0, scale: 0.9, x: "-50%" }}
+                            animate={{ opacity: 1, scale: 1, x: "-50%" }}
+                            exit={{ opacity: 0, scale: 0.9, x: "-50%" }}
+                            className="fixed top-24 left-1/2 z-50 bg-gold-secondary text-surface px-6 py-3 rounded-2xl md:rounded-full font-headline font-bold shadow-2xl max-w-[90vw] md:max-w-2xl text-center"
                         >
                             {notification}
                         </motion.div>
+
                     )}
                 </AnimatePresence>
 
@@ -678,7 +757,7 @@ export default function GameView({ auth, onLeave }: GameViewProps) {
                 <div className="w-full max-w-5xl">
                     <div className="mb-12">
                         <span className="text-emerald-primary text-[10px] font-bold tracking-[0.3em] uppercase">Active Tournament</span>
-                        <h1 className="text-5xl font-headline font-bold mt-2">GAME LOBBY: <br/><span className="text-emerald-primary/60">{roomState.roomName || 'VAULT_ROOM'}</span></h1>
+                        <h1 className="text-5xl font-headline font-bold mt-2">GAME LOBBY: <br /><span className="text-emerald-primary/60">{roomState.roomName || 'VAULT_ROOM'}</span></h1>
                     </div>
 
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -825,18 +904,18 @@ export default function GameView({ auth, onLeave }: GameViewProps) {
                 "h-screen flex flex-col relative",
                 "overflow-auto"
             )}>
-                
+
                 {/* Win Modal/Tab */}
                 <AnimatePresence>
                     {showdownResult && (
-                        <motion.div 
+                        <motion.div
                             initial={{ y: -50, opacity: 0 }}
                             animate={{ y: 0, opacity: 1 }}
                             exit={{ y: -50, opacity: 0 }}
                             className="fixed top-8 left-1/2 -translate-x-1/2 z-[100] bg-surface-highest/95 backdrop-blur border border-emerald-primary/30 rounded-2xl p-6 shadow-[0_0_40px_rgba(16,185,129,0.2)] text-center min-w-[300px]"
                         >
                             <h2 className="text-xl font-headline font-bold text-white mb-2">Round Over</h2>
-                            
+
                             {showdownResult.winners && showdownResult.winners.length > 0 ? (
                                 <div className="space-y-4">
                                     <p className="text-emerald-primary text-lg font-bold">
@@ -844,7 +923,7 @@ export default function GameView({ auth, onLeave }: GameViewProps) {
                                             ? `It's a tie: ${showdownResult.winners.join(', ')}`
                                             : `${showdownResult.winners[0]} won!`}
                                     </p>
-                                    
+
                                     {showdownResult.winningsPerPlayer ? (
                                         <div className="space-y-1">
                                             <p className="text-gold-secondary font-bold text-sm">
@@ -857,7 +936,7 @@ export default function GameView({ auth, onLeave }: GameViewProps) {
                                             ) : null}
                                         </div>
                                     ) : null}
-                                    
+
                                     {/* Hand rank display */}
                                     {(() => {
                                         const winningPlayer = showdownResult.players.find(p => showdownResult.winners?.includes(p.name));
@@ -922,7 +1001,7 @@ export default function GameView({ auth, onLeave }: GameViewProps) {
                                 <Coins className="w-3 h-3 md:w-4 md:h-4 text-gold-secondary" />
                                 <span className="font-headline font-bold text-lg md:text-2xl tracking-tight text-white">
                                     ${displayedPot.toLocaleString()}
-                </span>
+                                </span>
                             </div>
 
                             {!isCompactTable && (
@@ -959,9 +1038,9 @@ export default function GameView({ auth, onLeave }: GameViewProps) {
                                 ))}
                                 {Array.from({ length: 5 - gameState.communityCards.length }).map((_, i) => (
                                     <div key={i} className="w-12 h-16 border-2 border-white/5 rounded-md border-dashed flex items-center justify-center">
-                    <span className="text-[8px] text-white/10 font-bold uppercase tracking-widest">
-                      {i === 0 && gameState.communityCards.length === 3 ? 'TURN' : i === 1 && gameState.communityCards.length === 4 ? 'RIVER' : ''}
-                    </span>
+                                        <span className="text-[8px] text-white/10 font-bold uppercase tracking-widest">
+                                            {i === 0 && gameState.communityCards.length === 3 ? 'TURN' : i === 1 && gameState.communityCards.length === 4 ? 'RIVER' : ''}
+                                        </span>
                                     </div>
                                 ))}
                             </div>
@@ -1084,7 +1163,7 @@ export default function GameView({ auth, onLeave }: GameViewProps) {
                                     Call ${callAmount.toLocaleString()}
                                 </Button>
                             )}
-                            
+
                             {/* Custom Bet / Raise Input */}
                             <div className={cn(
                                 "flex items-center gap-2 bg-black/40 p-1 rounded-md border border-white/10",
@@ -1093,8 +1172,8 @@ export default function GameView({ auth, onLeave }: GameViewProps) {
                                 <span className={cn("font-bold", isCompactTable ? "text-zinc-400 text-xs pl-2" : "text-zinc-400 pl-3")}>
                                     $
                                 </span>
-                                <input 
-                                    type="number" 
+                                <input
+                                    type="number"
                                     className={cn(
                                         "bg-transparent text-white font-bold outline-none placeholder:text-zinc-600",
                                         isCompactTable ? "w-12 text-xs" : "w-24"
@@ -1108,8 +1187,8 @@ export default function GameView({ auth, onLeave }: GameViewProps) {
                                     min={minRaiseAmount}
                                     step={1}
                                 />
-                                <Button 
-                                    variant="primary" 
+                                <Button
+                                    variant="primary"
                                     disabled={!canSubmitRaise}
                                     size={isCompactTable ? "sm" : "md"}
                                     onClick={() => {
@@ -1128,10 +1207,11 @@ export default function GameView({ auth, onLeave }: GameViewProps) {
                                 </Button>
                             </div>
                             {activeRaiseError && (
-                                <p className="w-full text-center text-[11px] text-red-400 font-bold uppercase tracking-wider">
+                                <p className="w-full max-w-md mx-auto text-center text-[10px] md:text-[11px] text-red-400 font-bold uppercase tracking-wider line-clamp-2 md:line-clamp-3">
                                     {activeRaiseError}
                                 </p>
                             )}
+
                         </motion.div>
                     )}
                 </AnimatePresence>
@@ -1140,13 +1220,14 @@ export default function GameView({ auth, onLeave }: GameViewProps) {
                 <AnimatePresence>
                     {notification && (
                         <motion.div
-                            initial={{ opacity: 0, scale: 0.9 }}
-                            animate={{ opacity: 1, scale: 1 }}
-                            exit={{ opacity: 0 }}
-                            className="fixed top-24 left-1/2 -translate-x-1/2 z-50 bg-gold-secondary text-surface px-6 py-3 rounded-full font-headline font-bold shadow-2xl"
+                            initial={{ opacity: 0, scale: 0.9, x: "-50%" }}
+                            animate={{ opacity: 1, scale: 1, x: "-50%" }}
+                            exit={{ opacity: 0, scale: 0.9, x: "-50%" }}
+                            className="fixed top-24 left-1/2 z-[100] bg-gold-secondary text-surface px-6 py-3 rounded-2xl md:rounded-full font-headline font-bold shadow-2xl max-w-[90vw] md:max-w-2xl text-center"
                         >
                             {notification}
                         </motion.div>
+
                     )}
                 </AnimatePresence>
             </div>

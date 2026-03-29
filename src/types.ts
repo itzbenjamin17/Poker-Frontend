@@ -56,8 +56,11 @@ export interface RoomUpdate {
         canStartGame?: boolean;
         player?: string;
         currentCount?: number;
+        gameStarted?: boolean;
     };
 }
+
+
 
 export interface RoomDataResponse {
     roomId: string;
@@ -75,7 +78,9 @@ export interface RoomDataResponse {
     }[];
     currentPlayers: number;
     canStartGame: boolean;
+    gameStarted: boolean;
 }
+
 
 export interface AuthResponse {
     message: string;

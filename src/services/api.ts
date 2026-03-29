@@ -159,19 +159,6 @@ export const pokerApi = {
         return null;
     },
 
-    async performAction(gameId: string, action: string, amount: number, token: string) {
-        const res = await fetch(`${API_BASE}/game/${gameId}/action`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                Authorization: `Bearer ${token}`,
-                'ngrok-skip-browser-warning': 'true'
-            },
-            body: JSON.stringify({ action, amount }),
-        });
-        if (!res.ok) throw new Error(await getErrorMessage(res, 'Action failed'));
-        return res.ok;
-    },
 
     async claimWin(gameId: string, token: string) {
         const res = await fetch(`${API_BASE}/game/${gameId}/claim-win`, {
