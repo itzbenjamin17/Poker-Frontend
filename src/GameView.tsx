@@ -124,6 +124,7 @@ export default function GameView({ auth, onLeave }: GameViewProps) {
     const gameIdRef = useRef<string | null>(null);
     const showdownTimerRef = useRef<number | null>(null);
     const showdownResultTimerRef = useRef<number | null>(null);
+    const lastStateSyncTime = useRef<number>(0);
 
     const isCompactTable = windowWidth < 1024;
     const isWideTable = windowWidth >= 1280;
@@ -366,12 +367,14 @@ export default function GameView({ auth, onLeave }: GameViewProps) {
             }
 
             try {
+                const fetchTime = Date.now();
                 const snapshot = await pokerApi.getGameState(auth.roomId, auth.token);
                 if (!mounted) {
                     return;
                 }
 
-                if (isGameStatePayload(snapshot)) {
+                if (isGameStatePayload(snapshot) && fetchTime >= lastStateSyncTime.current) {
+                    lastStateSyncTime.current = fetchTime;
                     applyIncomingGameState(snapshot);
 
                     try {
@@ -566,15 +569,30 @@ export default function GameView({ auth, onLeave }: GameViewProps) {
 
 
                 if (messageType === 'GAME_END') {
+                    setNotification(null);
+                    
                     const endMsg = normalizeErrorMessage(messageText ?? 'Game finished. Returning to lobby...');
-                    setNotification(endMsg);
+                    const winnerName = typeof parsed.winner === 'string' ? parsed.winner : null;
+                    const winnerChips = typeof parsed.winnerChips === 'number' ? parsed.winnerChips : undefined;
+                    const isForfeit = parsed.isForfeit === true;
+
+                    if (winnerName && isForfeit) {
+                        setShowdownResult({
+                            winners: [winnerName],
+                            winningsPerPlayer: winnerChips,
+                            players: [{ name: winnerName }],
+                        } as any);
+                    } else {
+                        setNotification(endMsg);
+                    }
+
                     setTimeout(() => {
+                        setShowdownResult(null);
                         setNotification(null);
 
                         setGameState(null);
                         setPrivateState(null);
                         setShowdown(null);
-                        setShowdownResult(null);
                         clearShowdownTimers();
                         // Fetch fresh lobby info so we re-enter cleanly
                         pokerApi.getRoomInfo(auth.roomId, auth.token).then(r => {
@@ -602,20 +620,20 @@ export default function GameView({ auth, onLeave }: GameViewProps) {
                     return;
                 }
 
+                lastStateSyncTime.current = Date.now();
                 applyIncomingGameState(parsed);
             });
 
-            // Only re-sync game state if we are already in a game session.
-            const currentlyInGame = gameIdRef.current !== null;
-
-            if (currentlyInGame) {
-                void pokerApi.getGameState(auth.roomId, auth.token)
-                    .then((snapshot) => {
-                        if (isGameStatePayload(snapshot)) {
-                            applyIncomingGameState(snapshot);
-                        }
-                    })
-                    .catch((err) => {
+            // Unconditionally sync state on connect to catch missed updates
+            const syncTime = Date.now();
+            void pokerApi.getGameState(auth.roomId, auth.token)
+                .then((snapshot) => {
+                    if (isGameStatePayload(snapshot) && syncTime >= lastStateSyncTime.current) {
+                        lastStateSyncTime.current = syncTime;
+                        applyIncomingGameState(snapshot);
+                    }
+                })
+                .catch((err) => {
                         const statusCode = getErrorStatusCode(err);
                         if (statusCode === 403) {
                             const message = normalizeErrorMessage('Your seat is no longer active. Returning to lobby...');
@@ -643,7 +661,6 @@ export default function GameView({ auth, onLeave }: GameViewProps) {
                             console.warn('Private state re-sync failed after connect:', err);
                         }
                     });
-            }
 
         };
 
@@ -699,14 +716,12 @@ export default function GameView({ auth, onLeave }: GameViewProps) {
         try {
             setClaimPending(true);
             await pokerApi.claimWin(activeGameId, auth.token);
-            setNotification('Win claim submitted. Resolving hand...');
-            setTimeout(() => setNotification(null), 4000);
+            // We intentionally do not clear claimPending yet, as the hand will resolve and 
+            // GAME_END will nuke the state, transitioning the view cleanly.
         } catch (err) {
             const message = err instanceof Error ? err.message : 'Claim win failed.';
             setNotification(normalizeErrorMessage(message));
             setTimeout(() => setNotification(null), 4000);
-        } finally {
-
             setClaimPending(false);
         }
     };
@@ -914,14 +929,18 @@ export default function GameView({ auth, onLeave }: GameViewProps) {
                             exit={{ y: -50, opacity: 0 }}
                             className="fixed top-8 left-1/2 -translate-x-1/2 z-[100] bg-surface-highest/95 backdrop-blur border border-emerald-primary/30 rounded-2xl p-6 shadow-[0_0_40px_rgba(16,185,129,0.2)] text-center min-w-[300px]"
                         >
-                            <h2 className="text-xl font-headline font-bold text-white mb-2">Round Over</h2>
+                            <h2 className="text-xl font-headline font-bold text-white mb-2">
+                                {showdownResult.players?.length === 1 ? 'Game Over' : 'Round Over'}
+                            </h2>
 
                             {showdownResult.winners && showdownResult.winners.length > 0 ? (
                                 <div className="space-y-4">
                                     <p className="text-emerald-primary text-lg font-bold">
                                         {showdownResult.winners.length > 1
                                             ? `It's a tie: ${showdownResult.winners.join(', ')}`
-                                            : `${showdownResult.winners[0]} won!`}
+                                            : showdownResult.players?.length === 1
+                                                ? `${showdownResult.winners[0]} won by forfeit!`
+                                                : `${showdownResult.winners[0]} won!`}
                                     </p>
 
                                     {showdownResult.winningsPerPlayer ? (
@@ -939,6 +958,9 @@ export default function GameView({ auth, onLeave }: GameViewProps) {
 
                                     {/* Hand rank display */}
                                     {(() => {
+                                        const isForfeit = showdownResult.players?.length === 1;
+                                        if (isForfeit) return null;
+
                                         const winningPlayer = showdownResult.players.find(p => showdownResult.winners?.includes(p.name));
                                         if (winningPlayer?.handRank && winningPlayer.handRank !== 'NO_HAND') {
                                             return (
