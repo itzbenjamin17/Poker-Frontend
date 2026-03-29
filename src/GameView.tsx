@@ -822,8 +822,8 @@ export default function GameView({ auth, onLeave }: GameViewProps) {
 
         return (
             <div className={cn(
-                "min-h-screen flex flex-col relative",
-                isCompactTable ? "overflow-auto" : "overflow-hidden"
+                "h-screen flex flex-col relative",
+                "overflow-auto"
             )}>
                 
                 {/* Win Modal/Tab */}
@@ -833,7 +833,7 @@ export default function GameView({ auth, onLeave }: GameViewProps) {
                             initial={{ y: -50, opacity: 0 }}
                             animate={{ y: 0, opacity: 1 }}
                             exit={{ y: -50, opacity: 0 }}
-                            className="absolute top-8 left-1/2 -translate-x-1/2 z-[100] bg-surface-highest/95 backdrop-blur border border-emerald-primary/30 rounded-2xl p-6 shadow-[0_0_40px_rgba(16,185,129,0.2)] text-center min-w-[300px]"
+                            className="fixed top-8 left-1/2 -translate-x-1/2 z-[100] bg-surface-highest/95 backdrop-blur border border-emerald-primary/30 rounded-2xl p-6 shadow-[0_0_40px_rgba(16,185,129,0.2)] text-center min-w-[300px]"
                         >
                             <h2 className="text-xl font-headline font-bold text-white mb-2">Round Over</h2>
                             
@@ -884,14 +884,14 @@ export default function GameView({ auth, onLeave }: GameViewProps) {
                 </AnimatePresence>
 
                 {/* Leave Button */}
-                <div className="fixed top-6 right-8 z-50">
+                <div className="fixed bottom-6 right-8 z-40">
                     <Button variant="outline" size="sm" onClick={handleLeaveGame} className="border-red-500/50 text-red-500 hover:bg-red-500/10">
                         LEAVE TABLE
                     </Button>
                 </div>
 
                 {canClaimWin && (
-                    <div className="absolute top-20 left-4 md:top-24 md:left-8 z-50">
+                    <div className="absolute bottom-6 left-4 md:bottom-6 md:left-8 z-40">
                         <Button
                             variant="primary"
                             size="sm"
@@ -906,14 +906,14 @@ export default function GameView({ auth, onLeave }: GameViewProps) {
 
                 {/* Table Area */}
                 <div className={cn(
-                    "relative flex",
-                    isCompactTable ? "items-start justify-start p-2" : "flex-1 items-center justify-center p-4 sm:p-6 md:p-8 lg:p-10"
+                    "relative flex flex-1 min-w-[800px] min-h-[600px]",
+                    isCompactTable ? "items-center justify-center p-2" : "items-center justify-center p-4 sm:p-6 md:p-8 lg:p-10"
                 )}>
                     <div className={cn(
                         "poker-table-gradient border-surface-high shadow-[0_0_100px_rgba(0,0,0,0.8)] relative transition-all duration-300 overflow-visible",
-                        tableTier === 'compact' && "w-full min-w-[800px] rounded-[72px] border-[8px] min-h-[600px] mx-[100px]",
-                        tableTier === 'standard' && "w-full max-w-[78rem] aspect-[2.15/1] rounded-[170px] border-[10px]",
-                        tableTier === 'wide' && "w-full max-w-[92rem] aspect-[2.35/1] rounded-[220px] border-[12px]",
+                        tableTier === 'compact' && "w-full h-full aspect-[2.15/1] rounded-[72px] border-[8px] min-w-[800px] min-h-[600px]",
+                        tableTier === 'standard' && "w-full h-full aspect-[2.15/1] rounded-[170px] border-[10px]",
+                        tableTier === 'wide' && "w-full h-full aspect-[2.35/1] rounded-[220px] border-[12px]",
                     )}>
 
                         {/* Community Cards */}

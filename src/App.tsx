@@ -49,7 +49,7 @@ export default function App() {
   return (
       <div className="min-h-screen bg-surface selection:bg-emerald-primary selection:text-surface">
         {/* Global Nav */}
-        <nav className="fixed top-0 left-0 w-full z-50 flex justify-between items-center px-8 py-6 bg-surface/80 backdrop-blur-xl border-b border-white/5">
+        <nav className="fixed top-0 left-0 w-full z-50 hidden md:flex justify-between items-center px-8 py-6 bg-surface/80 backdrop-blur-xl border-b border-white/5">
           <div className="flex items-center gap-12">
             <span className="text-2xl font-headline font-bold tracking-tighter text-emerald-primary">VAULT POKER</span>
             <div className="hidden md:flex items-center gap-8">
