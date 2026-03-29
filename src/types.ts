@@ -5,7 +5,7 @@ export function cn(...inputs: ClassValue[]) {
     return twMerge(clsx(inputs));
 }
 
-export type PlayerStatus = 'ACTIVE' | 'FOLDED' | 'OUT' | 'ALL_IN';
+export type PlayerStatus = 'ACTIVE' | 'FOLDED' | 'OUT' | 'ALL_IN' | 'DISCONNECTED';
 export type GamePhase = 'PRE_FLOP' | 'FLOP' | 'TURN' | 'RIVER' | 'SHOWDOWN';
 
 export interface Player {
@@ -13,6 +13,7 @@ export interface Player {
     name: string;
     chips: number;
     status: PlayerStatus;
+    disconnectDeadlineEpochMs?: number;
     currentBet: number;
     hasFolded: boolean;
     isSmallBlind?: boolean;
@@ -40,6 +41,8 @@ export interface GameState {
     winningsPerPlayer?: number;
     isAutoAdvancing?: boolean;
     autoAdvanceMessage?: string;
+    claimWinAvailable?: boolean;
+    claimWinPlayerName?: string;
 }
 
 export interface RoomUpdate {

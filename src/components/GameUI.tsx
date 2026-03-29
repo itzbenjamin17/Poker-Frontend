@@ -40,6 +40,7 @@ export const PlayerPod = ({
                               isCurrent,
                               blindLabel,
                               size = 'md',
+                              disconnectSecondsRemaining,
                               className
                           }: {
     player: Player;
@@ -47,11 +48,19 @@ export const PlayerPod = ({
     blindLabel?: 'SB' | 'BB';
     size?: 'sm' | 'md';
     isDealer?: boolean;
+    disconnectSecondsRemaining?: number;
     className?: string;
 }) => {
     const podSizeClass = size === 'sm' ? 'w-16 h-16' : 'w-20 h-20';
     const initialsClass = size === 'sm' ? 'text-base' : 'text-xl';
     const chipsClass = size === 'sm' ? 'text-[9px]' : 'text-[10px]';
+    const isDisconnected = player.status === 'DISCONNECTED';
+    const formatDisconnectCountdown = (secondsRemaining: number) => {
+        const clamped = Math.max(0, secondsRemaining);
+        const minutes = Math.floor(clamped / 60).toString().padStart(2, '0');
+        const seconds = (clamped % 60).toString().padStart(2, '0');
+        return `${minutes}:${seconds}`;
+    };
 
     return (
         <div className={cn("flex flex-col items-center gap-2", className)}>
@@ -59,7 +68,8 @@ export const PlayerPod = ({
                 "relative rounded-full flex items-center justify-center transition-all duration-500",
                 podSizeClass,
                 isCurrent ? "ring-2 ring-emerald-primary ring-offset-4 ring-offset-surface scale-110" : "ring-1 ring-white/10",
-                player.status === 'FOLDED' ? "opacity-40 grayscale" : "opacity-100"
+                player.status === 'FOLDED' ? "opacity-40 grayscale" : "opacity-100",
+                isDisconnected ? "ring-2 ring-amber-400/80 opacity-80" : ""
             )}>
                 <div className="w-full h-full rounded-full bg-surface-highest flex items-center justify-center overflow-hidden border border-white/5">
            <span className={cn("font-headline font-bold text-emerald-primary/40", initialsClass)}>
@@ -84,8 +94,14 @@ export const PlayerPod = ({
                 </div>
 
                 {/* Action Indicator */}
-                {isCurrent && (
+                {isCurrent && !isDisconnected && (
                     <div className="absolute -top-1 -right-1 w-4 h-4 bg-emerald-primary rounded-full animate-pulse shadow-[0_0_10px_rgba(170,234,208,0.5)]" />
+                )}
+
+                {isDisconnected && (
+                    <div className="absolute -top-1 -right-1 px-1.5 py-0.5 rounded-full bg-amber-500 text-surface border border-amber-300 shadow-lg">
+                        <span className="text-[8px] font-headline font-extrabold tracking-wider">OFF</span>
+                    </div>
                 )}
             </div>
 
@@ -93,6 +109,13 @@ export const PlayerPod = ({
                 <p className="text-[10px] font-headline font-bold uppercase tracking-widest text-white/80">{player.name}</p>
                 {player.currentBet > 0 && (
                     <p className="text-[9px] font-bold text-emerald-primary/60">BET: ${player.currentBet}</p>
+                )}
+                {isDisconnected && (
+                    <p className="text-[9px] font-bold text-amber-300 uppercase tracking-wider">
+                        {typeof disconnectSecondsRemaining === 'number'
+                            ? `Reconnect in ${formatDisconnectCountdown(disconnectSecondsRemaining)}`
+                            : 'Waiting to reconnect...'}
+                    </p>
                 )}
             </div>
         </div>

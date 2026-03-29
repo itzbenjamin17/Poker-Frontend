@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Client } from '@stomp/stompjs';
 import { createStompClient, pokerApi } from './services/api';
@@ -17,12 +17,25 @@ export default function GameView({ auth, onLeave }: GameViewProps) {
     const GAME_END_DISPLAY_MS = 7000;
     const ROOM_CLOSED_REDIRECT_MS = 3000;
 
-    const isObject = (value: unknown): value is Record<string, unknown> =>
-        typeof value === 'object' && value !== null;
+    type IncomingGameStatePayload = Omit<GameState, 'gameId' | 'claimWinAvailable' | 'claimWinPlayerName' | 'uncalledAmount' | 'pots'> & {
+        gameId?: string;
+        claimWinAvailable?: boolean | null;
+        claimWinPlayerName?: string | null;
+        uncalledAmount?: number | null;
+        pots?: number[] | null;
+    };
 
-    const isGameStatePayload = (
+    type IncomingPrivateStatePayload = {
+        playerId?: string;
+        holeCards?: string[] | null;
+    };
+
+    const isObject = useCallback((value: unknown): value is Record<string, unknown> =>
+        typeof value === 'object' && value !== null, []);
+
+    const isGameStatePayload = useCallback((
         value: unknown,
-    ): value is Omit<GameState, 'gameId'> & { gameId?: string } => {
+    ): value is IncomingGameStatePayload => {
         if (!isObject(value)) {
             return false;
         }
@@ -32,10 +45,30 @@ export default function GameView({ auth, onLeave }: GameViewProps) {
             && Array.isArray(value.players)
             && Array.isArray(value.communityCards)
             && typeof value.pot === 'number'
-            && (value.uncalledAmount === undefined || typeof value.uncalledAmount === 'number')
-            && (value.pots === undefined
+            && (value.claimWinAvailable == null || typeof value.claimWinAvailable === 'boolean')
+            && (value.claimWinPlayerName == null || typeof value.claimWinPlayerName === 'string')
+            && (value.uncalledAmount == null || typeof value.uncalledAmount === 'number')
+            && (value.pots == null
                 || (Array.isArray(value.pots) && value.pots.every((pot) => typeof pot === 'number')));
-    };
+    }, [isObject]);
+
+    const getErrorStatusCode = useCallback((error: unknown): number | undefined => {
+        if (!isObject(error)) {
+            return undefined;
+        }
+
+        return typeof error.status === 'number' ? error.status : undefined;
+    }, [isObject]);
+
+    const isPrivateStatePayload = useCallback((value: unknown): value is IncomingPrivateStatePayload => {
+        if (!isObject(value)) {
+            return false;
+        }
+
+        return (typeof value.playerId === 'string' || value.playerId === undefined)
+            && (value.holeCards == null
+                || (Array.isArray(value.holeCards) && value.holeCards.every((card) => typeof card === 'string')));
+    }, [isObject]);
 
     const [roomState, setRoomState] = useState<RoomUpdate['data'] | null>(() => ({
         roomId: auth.roomId,
@@ -52,6 +85,8 @@ export default function GameView({ auth, onLeave }: GameViewProps) {
     const [windowWidth, setWindowWidth] = useState<number>(() => window.innerWidth);
     const [raiseAmount, setRaiseAmount] = useState<string>('');
     const [raiseError, setRaiseError] = useState<string | null>(null);
+    const [claimPending, setClaimPending] = useState(false);
+    const [nowMs, setNowMs] = useState<number>(() => Date.now());
 
     const stompClientRef = useRef<Client | null>(null);
     const privateSubscribedByName = useRef(false);
@@ -60,44 +95,96 @@ export default function GameView({ auth, onLeave }: GameViewProps) {
     const showdownTimerRef = useRef<number | null>(null);
     const showdownResultTimerRef = useRef<number | null>(null);
 
-    const isMobileTable = windowWidth < 900;
+    const isCompactTable = windowWidth < 1024;
+    const isWideTable = windowWidth >= 1280;
+
+    type TableTier = 'compact' | 'standard' | 'wide';
+    const tableTier: TableTier = isCompactTable ? 'compact' : (isWideTable ? 'wide' : 'standard');
 
     type SeatPosition = {
         left: number;
         top: number;
-        cardsAbove: boolean;
+        cardPlacement: 'left' | 'right' | 'below';
     };
 
-    const getSeatPosition = (index: number, total: number, mobile: boolean): SeatPosition => {
+    const getSeatPosition = (index: number, total: number, tier: TableTier): SeatPosition => {
+        // Local player always at bottom-center
         if (index === 0) {
             return {
                 left: 50,
-                top: mobile ? 84 : 86,
-                cardsAbove: true,
+                top: tier === 'wide' ? 82 : tier === 'standard' ? 80 : 78,
+                cardPlacement: 'right',
             };
         }
 
+        // Heads-up: opponent directly across
         if (total === 2) {
             return {
                 left: 50,
-                top: mobile ? 16 : 14,
-                cardsAbove: false,
+                top: tier === 'wide' ? 16 : tier === 'standard' ? 18 : 20,
+                cardPlacement: 'right',
             };
         }
 
+        // Predefined seat layouts for common player counts (3-6 players, index 1..N-1)
+        const seatLayouts: Record<number, { left: number; top: number; cardPlacement: SeatPosition['cardPlacement'] }[]> = {
+            3: [
+                { left: 18, top: tier === 'wide' ? 45 : tier === 'standard' ? 45 : 46, cardPlacement: 'below' },
+                { left: 82, top: tier === 'wide' ? 45 : tier === 'standard' ? 45 : 46, cardPlacement: 'below' },
+            ],
+            4: [
+                { left: 15, top: tier === 'wide' ? 45 : tier === 'standard' ? 45 : 48, cardPlacement: 'below' },
+                { left: 50, top: tier === 'wide' ? 14 : tier === 'standard' ? 16 : 18, cardPlacement: 'right' },
+                { left: 85, top: tier === 'wide' ? 45 : tier === 'standard' ? 45 : 48, cardPlacement: 'below' },
+            ],
+            5: [
+                { left: 14, top: tier === 'wide' ? 50 : tier === 'standard' ? 50 : 52, cardPlacement: 'below' },
+                { left: 28, top: tier === 'wide' ? 18 : tier === 'standard' ? 20 : 22, cardPlacement: 'right' },
+                { left: 72, top: tier === 'wide' ? 18 : tier === 'standard' ? 20 : 22, cardPlacement: 'left' },
+                { left: 86, top: tier === 'wide' ? 50 : tier === 'standard' ? 50 : 52, cardPlacement: 'below' },
+            ],
+            6: [
+                { left: 12, top: tier === 'wide' ? 50 : tier === 'standard' ? 50 : 52, cardPlacement: 'below' },
+                { left: 24, top: tier === 'wide' ? 19 : tier === 'standard' ? 20 : 22, cardPlacement: 'right' },
+                { left: 50, top: tier === 'wide' ? 12 : tier === 'standard' ? 14 : 16, cardPlacement: 'right' },
+                { left: 76, top: tier === 'wide' ? 19 : tier === 'standard' ? 20 : 22, cardPlacement: 'left' },
+                { left: 88, top: tier === 'wide' ? 50 : tier === 'standard' ? 50 : 52, cardPlacement: 'below' },
+            ],
+        };
+
+        const layout = seatLayouts[total];
+        if (layout && index - 1 < layout.length) {
+            const seat = layout[index - 1];
+            return {
+                left: seat.left,
+                top: seat.top,
+                cardPlacement: seat.cardPlacement,
+            };
+        }
+
+        // Fallback: elliptical distribution for 7+ players
         const others = total - 1;
         const t = (index - 1) / Math.max(1, others - 1);
-        const angleDegrees = 210 - t * 240;
+        // Sweep from ~200° to ~340° (upper arc, left-to-right)
+        const angleDegrees = 200 + t * 140;
         const angle = (angleDegrees * Math.PI) / 180;
-        const radiusX = mobile ? 41 : 43;
-        const radiusY = mobile ? 30 : 35;
-        const left = 50 + radiusX * Math.cos(angle);
-        const top = 50 + radiusY * Math.sin(angle);
+        const centerY = tier === 'wide' ? 44 : tier === 'standard' ? 45 : 47;
+        const radiusX = tier === 'wide' ? 40 : tier === 'standard' ? 38 : 35;
+        const radiusY = tier === 'wide' ? 30 : tier === 'standard' ? 28 : 26;
+        const left = Math.max(10, Math.min(90, 50 + radiusX * Math.cos(angle)));
+        const top = Math.max(12, Math.min(70, centerY + radiusY * Math.sin(angle)));
+
+        let cardPlacement: SeatPosition['cardPlacement'];
+        if (top < 30 && left < 50) cardPlacement = 'right';
+        else if (top < 30 && left >= 50) cardPlacement = 'left';
+        else if (left < 35) cardPlacement = 'below';
+        else if (left > 65) cardPlacement = 'below';
+        else cardPlacement = 'right';
 
         return {
             left,
             top,
-            cardsAbove: top > 58,
+            cardPlacement,
         };
     };
 
@@ -111,7 +198,21 @@ export default function GameView({ auth, onLeave }: GameViewProps) {
         return () => window.removeEventListener('resize', onResize);
     }, []);
 
-    const clearShowdownTimers = () => {
+    useEffect(() => {
+        const hasDisconnectedPlayers = Boolean(gameState?.players.some((player) => player.status === 'DISCONNECTED'));
+        if (!hasDisconnectedPlayers) {
+            return;
+        }
+
+        setNowMs(Date.now());
+        const intervalId = window.setInterval(() => {
+            setNowMs(Date.now());
+        }, 1000);
+
+        return () => window.clearInterval(intervalId);
+    }, [gameState]);
+
+    const clearShowdownTimers = useCallback(() => {
         if (showdownTimerRef.current !== null) {
             window.clearTimeout(showdownTimerRef.current);
             showdownTimerRef.current = null;
@@ -121,30 +222,157 @@ export default function GameView({ auth, onLeave }: GameViewProps) {
             window.clearTimeout(showdownResultTimerRef.current);
             showdownResultTimerRef.current = null;
         }
-    };
+    }, []);
+
+    const applyIncomingGameState = useCallback((payload: IncomingGameStatePayload) => {
+        const data: GameState = {
+            ...payload,
+            gameId: payload.gameId ?? auth.roomId,
+            claimWinAvailable: payload.claimWinAvailable ?? undefined,
+            claimWinPlayerName: payload.claimWinPlayerName ?? undefined,
+            uncalledAmount: payload.uncalledAmount ?? undefined,
+            pots: payload.pots ?? undefined,
+        };
+
+        setGameState(data);
+        setRoomState(null);
+
+        if (data.winners && data.winners.length > 0) {
+            clearShowdownTimers();
+            setShowdown(data);
+            setShowdownResult(data);
+            showdownTimerRef.current = window.setTimeout(() => {
+                setShowdown(null);
+            }, SHOWDOWN_DISPLAY_MS);
+            showdownResultTimerRef.current = window.setTimeout(() => {
+                setShowdownResult(null);
+            }, SHOWDOWN_DISPLAY_MS);
+        } else {
+            setShowdown(null);
+            setShowdownResult(null);
+            clearShowdownTimers();
+        }
+
+        if (data.players) {
+            const myPlayer = data.players.find((p) => p.name === auth.playerName);
+            if (myPlayer?.id) {
+                setMyPlayerId(myPlayer.id);
+            }
+        }
+    }, [auth.playerName, auth.roomId, clearShowdownTimers]);
+
+    const applyIncomingPrivateState = useCallback((payload: IncomingPrivateStatePayload) => {
+        const nextHoleCards = Array.isArray(payload.holeCards) ? payload.holeCards : [];
+        setPrivateState({ holeCards: nextHoleCards });
+
+        if (payload.playerId) {
+            setMyPlayerId((prev) => prev ?? payload.playerId ?? null);
+        }
+    }, []);
 
     useEffect(() => {
         let mounted = true;
-        pokerApi.getRoomInfo(auth.roomId, auth.token)
-            .then(data => {
-                if (!mounted) return;
-                setRoomState(prev => ({
-                    ...prev,
-                    roomId: data.roomId,
-                    roomName: data.roomName,
-                    players: data.players.map((p: any) => ({ name: p.name, isHost: p.isHost })),
-                    maxPlayers: data.maxPlayers,
-                    canStart: data.canStartGame,
-                }));
-            })
-            .catch(err => {
-                if (!mounted) return;
-                console.error("Room info fetch error:", err);
+
+        const redirectToLobby = (message: string) => {
+            setNotification(message);
+            setLoadingStatus(message);
+            setTimeout(() => {
+                if (!mounted) {
+                    return;
+                }
                 onLeave?.();
-            });
+            }, ROOM_CLOSED_REDIRECT_MS);
+        };
+
+        const hydrateSession = async () => {
+            setLoadingStatus('Restoring your seat...');
+
+            try {
+                const roomData = await pokerApi.getRoomInfo(auth.roomId, auth.token);
+                if (!mounted) {
+                    return;
+                }
+
+                const playerStillInRoom = Array.isArray(roomData.players)
+                    && roomData.players.some((player: { name?: string }) => player.name === auth.playerName);
+
+                if (!playerStillInRoom) {
+                    redirectToLobby('Your seat is no longer active. Returning to lobby...');
+                    return;
+                }
+
+                setRoomState((prev) => ({
+                    ...prev,
+                    roomId: roomData.roomId,
+                    roomName: roomData.roomName,
+                    players: roomData.players.map((p: { name: string; isHost: boolean }) => ({ name: p.name, isHost: p.isHost })),
+                    maxPlayers: roomData.maxPlayers,
+                    canStart: roomData.canStartGame,
+                }));
+            } catch (err) {
+                if (!mounted) {
+                    return;
+                }
+
+                const statusCode = getErrorStatusCode(err);
+                if (statusCode === 403 || statusCode === 404) {
+                    redirectToLobby('Session expired. Returning to lobby...');
+                } else {
+                    console.error('Room info fetch error:', err);
+                    setLoadingStatus('Reconnecting to Vault...');
+                }
+                return;
+            }
+
+            try {
+                const snapshot = await pokerApi.getGameState(auth.roomId, auth.token);
+                if (!mounted) {
+                    return;
+                }
+
+                if (isGameStatePayload(snapshot)) {
+                    applyIncomingGameState(snapshot);
+
+                    try {
+                        const privateSnapshot = await pokerApi.getPrivateState(auth.roomId, auth.token);
+                        if (mounted && isPrivateStatePayload(privateSnapshot)) {
+                            applyIncomingPrivateState(privateSnapshot);
+                        }
+                    } catch (privateErr) {
+                        const privateStatusCode = getErrorStatusCode(privateErr);
+                        if (privateStatusCode !== 404) {
+                            console.warn('Private snapshot fetch error during hydrate:', privateErr);
+                        }
+                    }
+
+                    setLoadingStatus('Seat restored. Syncing live updates...');
+                    return;
+                }
+            } catch (err) {
+                if (!mounted) {
+                    return;
+                }
+
+                const statusCode = getErrorStatusCode(err);
+                if (statusCode === 403) {
+                    redirectToLobby('Your seat is no longer active. Returning to lobby...');
+                    return;
+                }
+
+                if (statusCode !== 404) {
+                    console.error('Game snapshot fetch error:', err);
+                    setLoadingStatus('Reconnecting to table...');
+                    return;
+                }
+            }
+
+            setLoadingStatus('Connected to Vault...');
+        };
+
+        void hydrateSession();
 
         return () => { mounted = false; };
-    }, [auth.roomId, auth.token, onLeave]);
+    }, [auth.playerName, auth.roomId, auth.token, onLeave, applyIncomingGameState, applyIncomingPrivateState, getErrorStatusCode, isGameStatePayload, isPrivateStatePayload]);
 
     useEffect(() => {
         const client = createStompClient(auth.token);
@@ -171,7 +399,14 @@ export default function GameView({ auth, onLeave }: GameViewProps) {
                     `/game/${auth.roomId}/player-name/${encodedName}/private`,
                     `/topic/game/${auth.roomId}/player-name/${encodedName}/private`,
                 ], (privBody) => {
-                    setPrivateState(JSON.parse(privBody));
+                    try {
+                        const parsed = JSON.parse(privBody);
+                        if (isPrivateStatePayload(parsed)) {
+                            applyIncomingPrivateState(parsed);
+                        }
+                    } catch (parseError) {
+                        console.warn('Ignoring malformed private payload:', privBody, parseError);
+                    }
                 });
             };
 
@@ -282,7 +517,7 @@ export default function GameView({ auth, onLeave }: GameViewProps) {
                             setRoomState({
                                 roomId: r.roomId,
                                 roomName: r.roomName,
-                                players: r.players.map((p: any) => ({ name: p.name, isHost: p.isHost })),
+                                players: r.players.map((p: { name: string; isHost: boolean }) => ({ name: p.name, isHost: p.isHost })),
                                 maxPlayers: r.maxPlayers,
                                 canStart: r.canStartGame,
                             });
@@ -294,40 +529,53 @@ export default function GameView({ auth, onLeave }: GameViewProps) {
                 }
 
                 if (!isGameStatePayload(parsed)) {
-                    console.warn('Ignoring non-game payload on game topic:', parsed);
+                    console.warn('Ignoring non-game payload on game topic:', {
+                        keys: Object.keys(parsed),
+                        claimWinAvailable: parsed.claimWinAvailable,
+                        claimWinPlayerName: parsed.claimWinPlayerName,
+                        payload: parsed,
+                    });
                     return;
                 }
 
-                const data: GameState = {
-                    ...parsed,
-                    gameId: parsed.gameId ?? auth.roomId,
-                };
-                setGameState(data);
-                setRoomState(null); // Game started, hide lobby
-
-                if (data.winners && data.winners.length > 0) {
-                    clearShowdownTimers();
-                    setShowdown(data);
-                    setShowdownResult(data);
-                    showdownTimerRef.current = window.setTimeout(() => {
-                        setShowdown(null);
-                    }, SHOWDOWN_DISPLAY_MS);
-                    showdownResultTimerRef.current = window.setTimeout(() => {
-                        setShowdownResult(null);
-                    }, SHOWDOWN_DISPLAY_MS);
-                } else {
-                    setShowdown(null);
-                    setShowdownResult(null);
-                    clearShowdownTimers();
-                }
-
-                if (data.players) {
-                    const myPlayer = data.players.find((p: any) => p.name === auth.playerName);
-                    if (myPlayer?.id) {
-                        setMyPlayerId(myPlayer.id);
-                    }
-                }
+                applyIncomingGameState(parsed);
             });
+
+            // Re-sync immediately after subscribing so reconnects do not depend on
+            // timing of broadcast events.
+            void pokerApi.getGameState(auth.roomId, auth.token)
+                .then((snapshot) => {
+                    if (isGameStatePayload(snapshot)) {
+                        applyIncomingGameState(snapshot);
+                    }
+                })
+                .catch((err) => {
+                    const statusCode = getErrorStatusCode(err);
+                    if (statusCode === 403) {
+                        const message = 'Your seat is no longer active. Returning to lobby...';
+                        setNotification(message);
+                        setLoadingStatus(message);
+                        setTimeout(() => onLeave?.(), ROOM_CLOSED_REDIRECT_MS);
+                        return;
+                    }
+
+                    if (statusCode !== 404) {
+                        console.warn('State re-sync failed after connect:', err);
+                    }
+                });
+
+            void pokerApi.getPrivateState(auth.roomId, auth.token)
+                .then((privateSnapshot) => {
+                    if (isPrivateStatePayload(privateSnapshot)) {
+                        applyIncomingPrivateState(privateSnapshot);
+                    }
+                })
+                .catch((err) => {
+                    const statusCode = getErrorStatusCode(err);
+                    if (statusCode !== 404) {
+                        console.warn('Private state re-sync failed after connect:', err);
+                    }
+                });
         };
 
         client.activate();
@@ -336,7 +584,7 @@ export default function GameView({ auth, onLeave }: GameViewProps) {
             clearShowdownTimers();
             client.deactivate();
         };
-    }, [auth]);
+    }, [auth, applyIncomingGameState, applyIncomingPrivateState, clearShowdownTimers, getErrorStatusCode, isGameStatePayload, isObject, isPrivateStatePayload, onLeave]);
 
     const handleAction = async (action: string, amount: number = 0) => {
         try {
@@ -368,6 +616,23 @@ export default function GameView({ auth, onLeave }: GameViewProps) {
         }
     };
 
+    const handleClaimWin = async () => {
+        const activeGameId = gameState?.gameId ?? auth.roomId;
+
+        try {
+            setClaimPending(true);
+            await pokerApi.claimWin(activeGameId, auth.token);
+            setNotification('Win claim submitted. Resolving hand...');
+            setTimeout(() => setNotification(null), 4000);
+        } catch (err) {
+            const message = err instanceof Error ? err.message : 'Claim win failed.';
+            setNotification(message);
+            setTimeout(() => setNotification(null), 4000);
+        } finally {
+            setClaimPending(false);
+        }
+    };
+
     const handleLeaveGame = async () => {
         try {
             clearShowdownTimers();
@@ -377,7 +642,7 @@ export default function GameView({ auth, onLeave }: GameViewProps) {
             }
             await pokerApi.leaveRoom(auth.roomId, auth.token);
             onLeave?.();
-        } catch (err) {
+        } catch {
             setNotification('Failed to leave game safely.');
             setTimeout(() => setNotification(null), 4000);
             onLeave?.();
@@ -497,6 +762,25 @@ export default function GameView({ auth, onLeave }: GameViewProps) {
 
         const isMyTurn = myPlayerId ? gameState.currentPlayerId === myPlayerId : false;
         const me = myPlayerId ? gameState.players.find(p => p.id === myPlayerId) : undefined;
+        const currentTurnPlayer = gameState.players.find((p) => p.id === gameState.currentPlayerId);
+        const isWaitingForReconnect = currentTurnPlayer?.status === 'DISCONNECTED';
+        const canClaimWin = Boolean(gameState.claimWinAvailable && gameState.claimWinPlayerName === auth.playerName);
+        const isSelfDisconnected = me?.status === 'DISCONNECTED';
+        const getDisconnectSecondsRemaining = (player: (typeof orderedPlayers)[number]) => {
+            if (player.status !== 'DISCONNECTED') {
+                return undefined;
+            }
+
+            const disconnectDeadlineEpochMs = typeof player.disconnectDeadlineEpochMs === 'number'
+                ? player.disconnectDeadlineEpochMs
+                : undefined;
+
+            if (disconnectDeadlineEpochMs === undefined) {
+                return undefined;
+            }
+
+            return Math.max(0, Math.ceil((disconnectDeadlineEpochMs - nowMs) / 1000));
+        };
         const actionType = (gameState.currentBet || 0) === 0 ? 'BET' : 'RAISE';
         const minRaiseAmount = actionType === 'BET'
             ? 1
@@ -537,7 +821,10 @@ export default function GameView({ auth, onLeave }: GameViewProps) {
         const canSubmitRaise = rawRaise !== '' && !activeRaiseError;
 
         return (
-            <div className="min-h-screen flex flex-col overflow-hidden relative">
+            <div className={cn(
+                "min-h-screen flex flex-col relative",
+                isCompactTable ? "overflow-auto" : "overflow-hidden"
+            )}>
                 
                 {/* Win Modal/Tab */}
                 <AnimatePresence>
@@ -597,51 +884,72 @@ export default function GameView({ auth, onLeave }: GameViewProps) {
                 </AnimatePresence>
 
                 {/* Leave Button */}
-                <div className="absolute top-20 right-4 md:top-24 md:right-8 z-50">
+                <div className="fixed top-6 right-8 z-50">
                     <Button variant="outline" size="sm" onClick={handleLeaveGame} className="border-red-500/50 text-red-500 hover:bg-red-500/10">
                         LEAVE TABLE
                     </Button>
                 </div>
 
+                {canClaimWin && (
+                    <div className="absolute top-20 left-4 md:top-24 md:left-8 z-50">
+                        <Button
+                            variant="primary"
+                            size="sm"
+                            onClick={handleClaimWin}
+                            disabled={claimPending}
+                            className="shadow-[0_0_24px_rgba(170,234,208,0.35)]"
+                        >
+                            {claimPending ? 'CLAIMING...' : 'CLAIM THE WIN'}
+                        </Button>
+                    </div>
+                )}
+
                 {/* Table Area */}
-                <div className="flex-1 relative flex items-center justify-center p-3 md:p-8">
+                <div className={cn(
+                    "relative flex",
+                    isCompactTable ? "items-start justify-start p-2" : "flex-1 items-center justify-center p-4 sm:p-6 md:p-8 lg:p-10"
+                )}>
                     <div className={cn(
-                        "w-full max-w-5xl poker-table-gradient border-surface-high shadow-[0_0_100px_rgba(0,0,0,0.8)] relative transition-all duration-300",
-                        isMobileTable ? "aspect-[1.1/1] rounded-[80px] border-[8px]" : "aspect-[2/1] rounded-[200px] border-[12px]"
+                        "poker-table-gradient border-surface-high shadow-[0_0_100px_rgba(0,0,0,0.8)] relative transition-all duration-300 overflow-visible",
+                        tableTier === 'compact' && "w-full min-w-[800px] rounded-[72px] border-[8px] min-h-[600px] mx-[100px]",
+                        tableTier === 'standard' && "w-full max-w-[78rem] aspect-[2.15/1] rounded-[170px] border-[10px]",
+                        tableTier === 'wide' && "w-full max-w-[92rem] aspect-[2.35/1] rounded-[220px] border-[12px]",
                     )}>
 
                         {/* Community Cards */}
-                        <div className="absolute inset-0 flex flex-col items-center justify-center gap-6">
-                            <div className="bg-black/40 px-6 py-2 rounded-full border border-white/5 backdrop-blur-md flex items-center gap-3">
-                                <Coins className="w-4 h-4 text-gold-secondary" />
-                                <span className="font-headline font-bold text-2xl tracking-tight text-white">
+                        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 md:gap-6">
+                            <div className="bg-black/40 px-3 md:px-6 py-2 rounded-full border border-white/5 backdrop-blur-md flex items-center gap-2 md:gap-3">
+                                <Coins className="w-3 h-3 md:w-4 md:h-4 text-gold-secondary" />
+                                <span className="font-headline font-bold text-lg md:text-2xl tracking-tight text-white">
                                     ${displayedPot.toLocaleString()}
                 </span>
                             </div>
 
-                            <div className="flex flex-wrap items-center justify-center gap-2 px-4">
-                                <div className="bg-black/35 px-3 py-1 rounded-full border border-white/10">
-                                    <span className="text-[10px] uppercase tracking-widest font-bold text-white/70">Main Pot</span>
-                                    <span className="ml-2 text-sm font-bold text-gold-secondary">${mainPot.toLocaleString()}</span>
+                            {!isCompactTable && (
+                                <div className="flex flex-wrap items-center justify-center gap-2 px-4">
+                                    <div className="bg-black/35 px-3 py-1 rounded-full border border-white/10">
+                                        <span className="text-[10px] uppercase tracking-widest font-bold text-white/70">Main Pot</span>
+                                        <span className="ml-2 text-sm font-bold text-gold-secondary">${mainPot.toLocaleString()}</span>
+                                    </div>
+                                    {sidePots.map((amount, index) => (
+                                        <div
+                                            key={`side-pot-${index}`}
+                                            className="bg-black/35 px-3 py-1 rounded-full border border-emerald-primary/30"
+                                        >
+                                            <span className="text-[10px] uppercase tracking-widest font-bold text-white/70">
+                                                Side Pot {index + 1}
+                                            </span>
+                                            <span className="ml-2 text-sm font-bold text-emerald-primary">${amount.toLocaleString()}</span>
+                                        </div>
+                                    ))}
+                                    {uncalledAmount > 0 && (
+                                        <div className="bg-black/35 px-3 py-1 rounded-full border border-red-400/40">
+                                            <span className="text-[10px] uppercase tracking-widest font-bold text-white/70">Uncalled</span>
+                                            <span className="ml-2 text-sm font-bold text-red-300">${uncalledAmount.toLocaleString()}</span>
+                                        </div>
+                                    )}
                                 </div>
-                                {sidePots.map((amount, index) => (
-                                    <div
-                                        key={`side-pot-${index}`}
-                                        className="bg-black/35 px-3 py-1 rounded-full border border-emerald-primary/30"
-                                    >
-                                        <span className="text-[10px] uppercase tracking-widest font-bold text-white/70">
-                                            Side Pot {index + 1}
-                                        </span>
-                                        <span className="ml-2 text-sm font-bold text-emerald-primary">${amount.toLocaleString()}</span>
-                                    </div>
-                                ))}
-                                {uncalledAmount > 0 && (
-                                    <div className="bg-black/35 px-3 py-1 rounded-full border border-red-400/40">
-                                        <span className="text-[10px] uppercase tracking-widest font-bold text-white/70">Uncalled</span>
-                                        <span className="ml-2 text-sm font-bold text-red-300">${uncalledAmount.toLocaleString()}</span>
-                                    </div>
-                                )}
-                            </div>
+                            )}
 
                             <div className="flex gap-3">
                                 {gameState.communityCards.map((card, i) => (
@@ -661,9 +969,10 @@ export default function GameView({ auth, onLeave }: GameViewProps) {
 
                         {/* Players */}
                         {orderedPlayers.map((p, i) => {
-                            const seat = getSeatPosition(i, orderedPlayers.length, isMobileTable);
+                            const seat = getSeatPosition(i, orderedPlayers.length, tableTier);
                             const showdownPlayer = showdown?.players.find(sp => sp.id === p.id);
                             const isSelf = p.id === myPlayerId;
+                            const canRenderCards = p.status === 'ACTIVE' || p.status === 'ALL_IN' || p.status === 'DISCONNECTED';
                             const shouldReveal = Boolean(showdownPlayer?.holeCards && showdownPlayer.holeCards.length > 0);
                             const privateCards = isSelf ? privateState?.holeCards ?? [] : [];
                             const displayCards = shouldReveal
@@ -673,83 +982,55 @@ export default function GameView({ auth, onLeave }: GameViewProps) {
                             return (
                                 <div
                                     key={p.id}
-                                    className="absolute -translate-x-1/2 -translate-y-1/2 flex flex-col items-center"
+                                    className="absolute -translate-x-1/2 -translate-y-1/2 flex flex-col items-center z-20"
                                     style={{ left: `${seat.left}%`, top: `${seat.top}%` }}
                                 >
-                                    {seat.cardsAbove && (p.status === 'ACTIVE' || p.status === 'ALL_IN') && (
-                                        <div className="mb-2 flex flex-col items-center z-10">
-                                            <div className="flex gap-1 justify-center">
-                                                {displayCards.length > 0
-                                                    ? displayCards.map((c, ci) => (
-                                                        <motion.div
-                                                            key={`cards-top-${p.id}-${ci}`}
-                                                            initial={{ scale: 0.9, opacity: 0 }}
-                                                            animate={{ scale: 1, opacity: 1 }}
-                                                            transition={{ delay: ci * 0.08 }}
-                                                        >
-                                                            <CardUI card={c} className={cn(
-                                                                isSelf ? "w-10 h-14 md:w-11 md:h-16" : "w-8 h-12",
-                                                                "shadow-md"
-                                                            )} />
-                                                        </motion.div>
-                                                    ))
-                                                    : !isSelf
-                                                        ? [0, 1].map((ci) => (
-                                                            <CardUI key={`hidden-top-${p.id}-${ci}`} card="" hidden className="w-8 h-12 shadow-md opacity-90" />
-                                                        ))
-                                                        : null}
-                                            </div>
-
-                                            {showdownPlayer?.handRank && (
-                                                <motion.div
-                                                    initial={{ opacity: 0, y: -5 }}
-                                                    animate={{ opacity: 1, y: 0 }}
-                                                    transition={{ delay: 0.25 }}
-                                                    className="mt-1 text-[9px] font-headline font-bold uppercase tracking-widest text-emerald-primary bg-black/80 px-2 py-0.5 rounded-full whitespace-nowrap border border-emerald-primary/30 shadow-lg"
-                                                >
-                                                    {showdownPlayer.handRank.replace(/_/g, ' ')}
-                                                </motion.div>
-                                            )}
-                                        </div>
-                                    )}
-
                                     <PlayerPod
                                         player={p}
                                         isCurrent={gameState.currentPlayerId === p.id}
                                         blindLabel={p.isBigBlind ? 'BB' : p.isSmallBlind ? 'SB' : undefined}
-                                        size={isMobileTable ? 'sm' : 'md'}
+                                        disconnectSecondsRemaining={getDisconnectSecondsRemaining(p)}
+                                        size={isCompactTable ? 'sm' : 'md'}
                                     />
 
-                                    {(p.status === 'ACTIVE' || p.status === 'ALL_IN') && !seat.cardsAbove && (
-                                        <div className="mt-2 flex flex-col items-center z-10">
+                                    {canRenderCards && (
+                                        <div className={cn(
+                                            "absolute z-10 flex flex-col items-center",
+                                            seat.cardPlacement === 'left' && "right-full top-1/2 -translate-y-1/2 mr-2",
+                                            seat.cardPlacement === 'right' && "left-full top-1/2 -translate-y-1/2 ml-2",
+                                            seat.cardPlacement === 'below' && "left-1/2 top-full -translate-x-1/2 mt-2",
+                                        )}>
                                             <div className="flex gap-1 justify-center">
                                                 {displayCards.length > 0
                                                     ? displayCards.map((c, ci) => (
                                                         <motion.div
-                                                            key={`cards-bottom-${p.id}-${ci}`}
+                                                            key={`cards-${p.id}-${ci}`}
                                                             initial={{ scale: 0.9, opacity: 0 }}
                                                             animate={{ scale: 1, opacity: 1 }}
                                                             transition={{ delay: ci * 0.08 }}
                                                         >
                                                             <CardUI card={c} className={cn(
-                                                                isSelf ? "w-10 h-14 md:w-12 md:h-16" : "w-8 h-12",
+                                                                isSelf
+                                                                    ? isCompactTable ? "w-8 h-12" : "w-11 h-16 md:w-12 md:h-16"
+                                                                    : isCompactTable ? "w-5 h-8" : "w-7 h-10 md:w-8 md:h-12",
                                                                 "shadow-md"
                                                             )} />
                                                         </motion.div>
                                                     ))
                                                     : !isSelf
                                                         ? [0, 1].map((ci) => (
-                                                            <CardUI key={`hidden-bottom-${p.id}-${ci}`} card="" hidden className="w-8 h-12 shadow-md opacity-90" />
+                                                            <CardUI
+                                                                key={`hidden-${p.id}-${ci}`}
+                                                                card=""
+                                                                hidden
+                                                                className={cn(
+                                                                    isCompactTable ? "w-5 h-8" : "w-7 h-10 md:w-8 md:h-12",
+                                                                    "shadow-md opacity-90"
+                                                                )}
+                                                            />
                                                         ))
                                                         : null}
                                             </div>
-
-                                            {isSelf && (
-                                                <div className="mt-1 bg-surface-high/80 px-3 py-1 rounded-full border border-white/10 backdrop-blur-md">
-                                                    <span className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest">Your Stack: </span>
-                                                    <span className="text-xs font-bold text-white">${me?.chips.toLocaleString()}</span>
-                                                </div>
-                                            )}
 
                                             {showdownPlayer?.handRank && (
                                                 <motion.div
@@ -769,34 +1050,55 @@ export default function GameView({ auth, onLeave }: GameViewProps) {
                     </div>
                 </div>
 
+                {isWaitingForReconnect && currentTurnPlayer && !isCompactTable && (
+                    <div className="px-4 md:px-8 pb-3">
+                        <div className="mx-auto max-w-3xl bg-amber-500/20 border border-amber-300/40 rounded-xl px-4 py-3 text-center backdrop-blur-md">
+                            <p className="text-amber-200 font-headline font-bold uppercase tracking-wider text-xs md:text-sm">
+                                Waiting for {currentTurnPlayer.name} to reconnect...
+                            </p>
+                        </div>
+                    </div>
+                )}
+
                 {/* Action Panel */}
                 <AnimatePresence>
-                    {isMyTurn && (
+                    {isMyTurn && !isSelfDisconnected && (
                         <motion.div
                             initial={{ y: 100 }}
                             animate={{ y: 0 }}
                             exit={{ y: 100 }}
-                            className="bg-surface-high border-t border-white/5 p-4 md:p-6 flex flex-wrap items-center justify-center gap-3 md:gap-4"
+                            className={cn(
+                                "bg-surface-high border-t border-white/5 flex flex-wrap items-center justify-center gap-3 md:gap-4",
+                                isCompactTable ? "p-2" : "p-4 md:p-6"
+                            )}
                         >
-                            <Button variant="outline" onClick={() => handleAction('FOLD')}>Fold</Button>
+                            <Button variant="outline" size={isCompactTable ? "sm" : "md"} onClick={() => handleAction('FOLD')}>Fold</Button>
                             {(!me || (me.currentBet ?? 0) >= (gameState.currentBet || 0)) ? (
-                                <Button variant="outline" onClick={() => handleAction('CHECK')}>Check</Button>
+                                <Button variant="outline" size={isCompactTable ? "sm" : "md"} onClick={() => handleAction('CHECK')}>Check</Button>
                             ) : callExceedsStack ? (
-                                <Button variant="outline" onClick={() => handleAction('ALL_IN')}>
+                                <Button variant="outline" size={isCompactTable ? "sm" : "md"} onClick={() => handleAction('ALL_IN')}>
                                     All In ${availableChips.toLocaleString()}
                                 </Button>
                             ) : (
-                                <Button variant="outline" onClick={() => handleAction('CALL')}>
+                                <Button variant="outline" size={isCompactTable ? "sm" : "md"} onClick={() => handleAction('CALL')}>
                                     Call ${callAmount.toLocaleString()}
                                 </Button>
                             )}
                             
                             {/* Custom Bet / Raise Input */}
-                            <div className="flex items-center gap-2 bg-black/40 p-1 rounded-md border border-white/10 ml-4">
-                                <span className="text-zinc-400 pl-3 font-bold">$</span>
+                            <div className={cn(
+                                "flex items-center gap-2 bg-black/40 p-1 rounded-md border border-white/10",
+                                isCompactTable ? "" : "ml-4"
+                            )}>
+                                <span className={cn("font-bold", isCompactTable ? "text-zinc-400 text-xs pl-2" : "text-zinc-400 pl-3")}>
+                                    $
+                                </span>
                                 <input 
                                     type="number" 
-                                    className="bg-transparent text-white font-bold w-24 outline-none placeholder:text-zinc-600"
+                                    className={cn(
+                                        "bg-transparent text-white font-bold outline-none placeholder:text-zinc-600",
+                                        isCompactTable ? "w-12 text-xs" : "w-24"
+                                    )}
                                     placeholder={minRaiseAmount.toString()}
                                     value={raiseAmount}
                                     onChange={e => {
@@ -809,6 +1111,7 @@ export default function GameView({ auth, onLeave }: GameViewProps) {
                                 <Button 
                                     variant="primary" 
                                     disabled={!canSubmitRaise}
+                                    size={isCompactTable ? "sm" : "md"}
                                     onClick={() => {
                                         if (!canSubmitRaise) {
                                             setRaiseError(activeRaiseError ?? 'Enter a valid amount.');

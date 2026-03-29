@@ -1,33 +1,34 @@
 import { useCallback, useEffect, useState } from 'react';
 import Lobby from './Lobby';
 import GameView from './GameView';
-import { Bell, Settings } from 'lucide-react';
 import type {AuthResponse} from './types';
 
 const AUTH_STORAGE_KEY = 'poker-auth';
 
-export default function App() {
-  const [auth, setAuth] = useState<AuthResponse | null>(null);
+function readStoredAuth(): AuthResponse | null {
+  try {
+    const raw = localStorage.getItem(AUTH_STORAGE_KEY);
+    if (!raw) return null;
 
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem(AUTH_STORAGE_KEY);
-      if (!raw) return;
-
-      const parsed = JSON.parse(raw) as Partial<AuthResponse>;
-      if (parsed?.token && parsed?.roomId && parsed?.playerName) {
-        setAuth({
-          message: typeof parsed.message === 'string' ? parsed.message : '',
-          token: parsed.token,
-          roomId: parsed.roomId,
-          playerName: parsed.playerName,
-          playerId: parsed.playerId,
-        });
-      }
-    } catch {
-      localStorage.removeItem(AUTH_STORAGE_KEY);
+    const parsed = JSON.parse(raw) as Partial<AuthResponse>;
+    if (parsed?.token && parsed?.roomId && parsed?.playerName) {
+      return {
+        message: typeof parsed.message === 'string' ? parsed.message : '',
+        token: parsed.token,
+        roomId: parsed.roomId,
+        playerName: parsed.playerName,
+        playerId: parsed.playerId,
+      };
     }
-  }, []);
+  } catch {
+    localStorage.removeItem(AUTH_STORAGE_KEY);
+  }
+
+  return null;
+}
+
+export default function App() {
+  const [auth, setAuth] = useState<AuthResponse | null>(() => readStoredAuth());
 
   useEffect(() => {
     if (!auth) {
@@ -54,12 +55,9 @@ export default function App() {
             <div className="hidden md:flex items-center gap-8">
               <button className="text-[10px] font-bold uppercase tracking-widest text-emerald-primary border-b-2 border-emerald-primary pb-1">Lobby</button>
               <button className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 hover:text-white transition-colors">Tables</button>
-              <button className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 hover:text-white transition-colors">Rewards</button>
             </div>
           </div>
           <div className="flex items-center gap-4">
-            <button className="p-2 text-zinc-500 hover:text-white transition-all"><Bell className="w-5 h-5" /></button>
-            <button className="p-2 text-zinc-500 hover:text-white transition-all"><Settings className="w-5 h-5" /></button>
           </div>
         </nav>
 
@@ -69,10 +67,6 @@ export default function App() {
           <GameView auth={auth} onLeave={handleLeave} />
         )}
 
-        {/* Footer Branding */}
-        <footer className="fixed bottom-8 left-8 pointer-events-none opacity-20">
-          <span className="text-[8px] font-headline font-bold uppercase tracking-[0.5em] text-white">Uncompromised Royal Action</span>
-        </footer>
       </div>
   );
 }

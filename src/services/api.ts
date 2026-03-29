@@ -4,6 +4,14 @@ import type { AuthResponse } from '../types';
 
 const API_BASE = '/api';
 
+type ApiError = Error & { status: number };
+
+function buildApiError(status: number, message: string): ApiError {
+    const error = new Error(message) as ApiError;
+    error.status = status;
+    return error;
+}
+
 async function getErrorMessage(res: Response, fallback: string): Promise<string> {
     try {
         const contentType = res.headers.get('content-type') ?? '';
@@ -79,7 +87,31 @@ export const pokerApi = {
                 'ngrok-skip-browser-warning': 'true'
             }
         });
-        if (!res.ok) throw new Error(await getErrorMessage(res, 'Failed to get room info'));
+        if (!res.ok) throw buildApiError(res.status, await getErrorMessage(res, 'Failed to get room info'));
+        return res.json();
+    },
+
+    async getGameState(gameId: string, token: string) {
+        const res = await fetch(`${API_BASE}/game/${gameId}/state`, {
+            method: 'GET',
+            headers: {
+                Authorization: `Bearer ${token}`,
+                'ngrok-skip-browser-warning': 'true'
+            }
+        });
+        if (!res.ok) throw buildApiError(res.status, await getErrorMessage(res, 'Failed to get game state'));
+        return res.json();
+    },
+
+    async getPrivateState(gameId: string, token: string) {
+        const res = await fetch(`${API_BASE}/game/${gameId}/private-state`, {
+            method: 'GET',
+            headers: {
+                Authorization: `Bearer ${token}`,
+                'ngrok-skip-browser-warning': 'true'
+            }
+        });
+        if (!res.ok) throw buildApiError(res.status, await getErrorMessage(res, 'Failed to get private state'));
         return res.json();
     },
 
@@ -138,6 +170,18 @@ export const pokerApi = {
             body: JSON.stringify({ action, amount }),
         });
         if (!res.ok) throw new Error(await getErrorMessage(res, 'Action failed'));
+        return res.ok;
+    },
+
+    async claimWin(gameId: string, token: string) {
+        const res = await fetch(`${API_BASE}/game/${gameId}/claim-win`, {
+            method: 'POST',
+            headers: {
+                Authorization: `Bearer ${token}`,
+                'ngrok-skip-browser-warning': 'true'
+            },
+        });
+        if (!res.ok) throw new Error(await getErrorMessage(res, 'Failed to claim win'));
         return res.ok;
     },
 };
