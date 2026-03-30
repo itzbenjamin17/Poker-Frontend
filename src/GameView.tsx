@@ -421,8 +421,6 @@ export default function GameView({ auth, onLeave }: GameViewProps) {
     useEffect(() => {
         const client = createStompClient(auth.token);
         stompClientRef.current = client;
-        // For testing in chrome dev console
-        (window as any).pokerSocket = client;
 
         client.onConnect = () => {
             console.log('Connected to WebSocket');
@@ -443,7 +441,6 @@ export default function GameView({ auth, onLeave }: GameViewProps) {
                 privateSubscribedPlayerName.current = encodedName;
                 subscribeToMany([
                     `/game/${auth.roomId}/player-name/${encodedName}/private`,
-                    `/topic/game/${auth.roomId}/player-name/${encodedName}/private`,
                 ], (privBody) => {
                     try {
                         const parsed = JSON.parse(privBody);
@@ -483,9 +480,7 @@ export default function GameView({ auth, onLeave }: GameViewProps) {
 
             // Subscribe to Room Updates
             subscribeToMany([
-                `/rooms${auth.roomId}`,
-                `/rooms/${auth.roomId}`,
-                `/topic/rooms/${auth.roomId}`,
+                `/room/${auth.roomId}`,
             ], (body) => {
                 const update = JSON.parse(body) as RoomUpdate;
                 if (update.message === 'ROOM_CLOSED') {
@@ -538,7 +533,6 @@ export default function GameView({ auth, onLeave }: GameViewProps) {
             // Subscribe to Game State
             subscribeToMany([
                 `/game/${auth.roomId}`,
-                `/topic/game/${auth.roomId}`,
             ], (body) => {
                 let parsed: unknown;
                 try {

@@ -197,15 +197,9 @@ All endpoints are called through the frontend proxy (Vite) and resolve to backen
 
 **Subscribe Channels:**
 
-- `/rooms{roomId}` - Lobby updates (players joining/leaving)
+- `/room/{roomId}` - Lobby updates (players joining/leaving)
 - `/game/{gameId}` - Public game state (community cards, pot, phase)
 - `/game/{gameId}/player-name/{encodedPlayerName}/private` - Private player data (hole cards)
-
-The frontend also listens to compatibility aliases depending on broker routing:
-
-- `/topic/game/{gameId}`
-- `/topic/game/{gameId}/player-name/{encodedPlayerName}/private`
-- `/rooms/{roomId}` and `/topic/rooms/{roomId}`
 
 **Action Transport:**
 
