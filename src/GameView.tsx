@@ -278,7 +278,7 @@ export default function GameView({ auth, onLeave }: GameViewProps) {
             showdownResultTimerRef.current = window.setTimeout(() => {
                 setShowdownResult(null);
             }, SHOWDOWN_DISPLAY_MS);
-        } else {
+        } else if (data.phase !== 'SHOWDOWN') {
             setShowdown(null);
             setShowdownResult(null);
             clearShowdownTimers();
