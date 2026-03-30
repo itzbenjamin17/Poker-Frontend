@@ -23,3 +23,5 @@ dist-ssr
 *.sln
 *.sw?
 *.code-workspace
+
+SECURITY_TODO.md
