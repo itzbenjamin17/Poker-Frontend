@@ -3,7 +3,7 @@ import { cn } from '../types';
 
 export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
     variant?: 'primary' | 'secondary' | 'outline' | 'ghost';
-    size?: 'sm' | 'md' | 'lg' | 'xl';
+    size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl';
 }
 
 export const Button = ({
@@ -21,6 +21,7 @@ export const Button = ({
     };
 
     const sizes = {
+        xs: 'px-2.5 py-1 text-[10px]',
         sm: 'px-3 py-1.5 text-xs',
         md: 'px-6 py-2.5 text-sm',
         lg: 'px-8 py-4 text-lg',

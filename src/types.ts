@@ -14,6 +14,7 @@ export interface Player {
     chips: number;
     status: PlayerStatus;
     disconnectDeadlineEpochMs?: number;
+    isReadyForNextHand?: boolean;
     currentBet: number;
     hasFolded: boolean;
     isSmallBlind?: boolean;
@@ -41,6 +42,8 @@ export interface GameState {
     winningsPerPlayer?: number;
     isAutoAdvancing?: boolean;
     autoAdvanceMessage?: string;
+    isReadyCountdownActive?: boolean;
+    readyCountdownDeadlineEpochMs?: number;
     claimWinAvailable?: boolean;
     claimWinPlayerName?: string;
 }
@@ -52,6 +55,9 @@ export interface RoomUpdate {
         roomName?: string;
         players?: { name: string; isHost: boolean }[];
         maxPlayers?: number;
+        buyIn?: number;
+        smallBlind?: number;
+        bigBlind?: number;
         canStart?: boolean;
         canStartGame?: boolean;
         player?: string;

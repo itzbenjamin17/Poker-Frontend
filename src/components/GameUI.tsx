@@ -38,6 +38,7 @@ export const CardUI: React.FC<{ card: string; hidden?: boolean; className?: stri
 export const PlayerPod = ({
                               player,
                               isCurrent,
+                              isWinner,
                               blindLabel,
                               size = 'md',
                               disconnectSecondsRemaining,
@@ -45,6 +46,7 @@ export const PlayerPod = ({
                           }: {
     player: Player;
     isCurrent?: boolean;
+    isWinner?: boolean;
     blindLabel?: 'SB' | 'BB';
     size?: 'sm' | 'md';
     isDealer?: boolean;
@@ -67,12 +69,24 @@ export const PlayerPod = ({
             <div className={cn(
                 "relative rounded-full flex items-center justify-center transition-all duration-500",
                 podSizeClass,
-                isCurrent ? "ring-2 ring-emerald-primary ring-offset-4 ring-offset-surface scale-110" : "ring-1 ring-white/10",
+                isCurrent
+                    ? "ring-2 ring-emerald-primary ring-offset-4 ring-offset-surface scale-110"
+                    : isWinner
+                        ? "ring-2 ring-gold-secondary/90 shadow-[0_0_24px_rgba(252,192,37,0.42)]"
+                        : "ring-1 ring-white/10",
+                isWinner && "shadow-[0_0_18px_rgba(252,192,37,0.28)]",
                 player.status === 'FOLDED' ? "opacity-40 grayscale" : "opacity-100",
                 isDisconnected ? "ring-2 ring-amber-400/80 opacity-80" : ""
             )}>
-                <div className="w-full h-full rounded-full bg-surface-highest flex items-center justify-center overflow-hidden border border-white/5">
-           <span className={cn("font-headline font-bold text-emerald-primary/40", initialsClass)}>
+                <div className={cn(
+                    "w-full h-full rounded-full bg-surface-highest flex items-center justify-center overflow-hidden border",
+                    isWinner ? "border-gold-secondary/70 bg-gold-secondary/10" : "border-white/5"
+                )}>
+           <span className={cn(
+               "font-headline font-bold",
+               isWinner ? "text-gold-secondary/85" : "text-emerald-primary/40",
+               initialsClass
+           )}>
              {player.name.slice(0, 2).toUpperCase()}
            </span>
                 </div>
@@ -115,6 +129,11 @@ export const PlayerPod = ({
                         {typeof disconnectSecondsRemaining === 'number'
                             ? `Reconnect in ${formatDisconnectCountdown(disconnectSecondsRemaining)}`
                             : 'Waiting to reconnect...'}
+                    </p>
+                )}
+                {player.isReadyForNextHand && (
+                    <p className="text-[9px] font-bold text-emerald-primary uppercase tracking-wider">
+                        READY
                     </p>
                 )}
             </div>
