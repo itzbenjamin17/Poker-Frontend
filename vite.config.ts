@@ -20,5 +20,10 @@ export default defineConfig({
       '/api': 'http://localhost:8080',
       '/ws': { target: 'http://localhost:8080', ws: true }
     }
+  },
+  test: {
+    globals: true,
+    environment: 'jsdom',
+    setupFiles: './src/test/setup.ts',
   }
-})
+} as any)

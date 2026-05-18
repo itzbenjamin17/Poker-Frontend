@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useId } from 'react';
 import { cn } from '../types';
 
 export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
@@ -43,23 +43,31 @@ export const Button = ({
     );
 };
 
-export const Input = ({ label, error, ...props }: { label?: string; error?: string } & React.InputHTMLAttributes<HTMLInputElement>) => (
-    <div className="space-y-2 w-full">
-        {label && (
-            <label className="block font-headline text-[10px] font-bold tracking-widest text-zinc-500 uppercase">
-                {label}
-            </label>
-        )}
-        <input
-            className={cn(
-                "w-full bg-surface-highest border-none rounded-lg p-4 text-white placeholder:text-white/20 focus:ring-1 focus:ring-emerald-primary/30 transition-all font-body outline-none",
-                error && "ring-1 ring-red-500/50"
+export const Input = ({ label, error, ...props }: { label?: string; error?: string } & React.InputHTMLAttributes<HTMLInputElement>) => {
+    const id = useId();
+    return (
+        <div className="space-y-2 w-full">
+            {label && (
+                <label 
+                    htmlFor={id}
+                    className="block font-headline text-[10px] font-bold tracking-widest text-zinc-500 uppercase"
+                >
+                    {label}
+                </label>
             )}
-            {...props}
-        />
-        {error && <p className="text-[10px] text-red-500 uppercase tracking-wider">{error}</p>}
-    </div>
-);
+            <input
+                id={id}
+                aria-invalid={!!error}
+                className={cn(
+                    "w-full bg-surface-highest border-none rounded-lg p-4 text-white placeholder:text-white/20 focus:ring-1 focus:ring-emerald-primary/30 transition-all font-body outline-none",
+                    error && "ring-1 ring-red-500/50"
+                )}
+                {...props}
+            />
+            {error && <p role="alert" className="text-[10px] text-red-500 uppercase tracking-wider">{error}</p>}
+        </div>
+    );
+};
 
 export const Card: React.FC<{ children: React.ReactNode; className?: string; glint?: boolean }> = ({ children, className, glint = true }) => (
     <div className={cn("glass-card rounded-2xl p-8 relative overflow-hidden group", className)}>
