@@ -57,6 +57,7 @@ export default function Lobby({ onAuth }: { onAuth: (data: AuthResponse) => void
             <AnimatePresence>
                 {error && (
                     <motion.div
+                        role="alert"
                         initial={{ opacity: 0, y: -20 }}
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0 }}
@@ -64,6 +65,7 @@ export default function Lobby({ onAuth }: { onAuth: (data: AuthResponse) => void
                     >
                         <span>{error}</span>
                         <button 
+                            aria-label="Close error notification"
                             onClick={() => setError(null)} 
                             className="bg-black/20 hover:bg-black/40 rounded-full w-6 h-6 flex items-center justify-center transition-colors"
                         >
@@ -101,7 +103,7 @@ export default function Lobby({ onAuth }: { onAuth: (data: AuthResponse) => void
                                 <h2 className="font-headline text-3xl font-bold text-white mb-2">Create Table</h2>
                                 <p className="text-zinc-500 text-sm">Define the stakes and command the room.</p>
                             </div>
-                            <Rocket className="text-emerald-primary/20 w-10 h-10" />
+                            <Rocket aria-hidden="true" className="text-emerald-primary/20 w-10 h-10" />
                         </div>
 
                         <form onSubmit={handleCreate} className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -136,8 +138,9 @@ export default function Lobby({ onAuth }: { onAuth: (data: AuthResponse) => void
                                 onChange={e => setCreateData({...createData, bigBlind: parseInt(e.target.value)})}
                             />
                             <div className="space-y-2">
-                                <label className="block font-headline text-[10px] font-bold tracking-widest text-zinc-500 uppercase">Max Players</label>
+                                <label htmlFor="max-players" className="block font-headline text-[10px] font-bold tracking-widest text-zinc-500 uppercase">Max Players</label>
                                 <select
+                                    id="max-players"
                                     className="w-full bg-surface-highest border-none rounded-lg p-4 text-white focus:ring-1 focus:ring-emerald-primary/30 transition-all font-body appearance-none outline-none"
                                     value={createData.maxPlayers}
                                     onChange={e => setCreateData({...createData, maxPlayers: parseInt(e.target.value)})}
@@ -176,7 +179,7 @@ export default function Lobby({ onAuth }: { onAuth: (data: AuthResponse) => void
                                 <h2 className="font-headline text-3xl font-bold text-white mb-2">Quick Join</h2>
                                 <p className="text-zinc-500 text-sm">Enter an existing arena.</p>
                             </div>
-                            <Key className="text-gold-secondary/20 w-10 h-10" />
+                            <Key aria-hidden="true" className="text-gold-secondary/20 w-10 h-10" />
                         </div>
 
                         <form onSubmit={handleJoin} className="space-y-6">
@@ -196,7 +199,7 @@ export default function Lobby({ onAuth }: { onAuth: (data: AuthResponse) => void
                             />
                             <Button size="xl" className="w-full" type="submit" disabled={loading}>
                                 {loading ? 'ENTERING...' : 'ENTER VAULT'}
-                                <ArrowRight className="w-5 h-5 ml-2" />
+                                <ArrowRight aria-hidden="true" className="w-5 h-5 ml-2" />
                             </Button>
                         </form>
                     </Card>

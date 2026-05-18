@@ -1060,6 +1060,7 @@ export default function GameView({ auth, onLeave }: GameViewProps) {
                 <AnimatePresence>
                     {notification && (
                         <motion.div
+                            role="alert"
                             initial={{ opacity: 0, scale: 0.9, x: "-50%" }}
                             animate={{ opacity: 1, scale: 1, x: "-50%" }}
                             exit={{ opacity: 0, scale: 0.9, x: "-50%" }}
@@ -1109,7 +1110,7 @@ export default function GameView({ auth, onLeave }: GameViewProps) {
                         <div className="space-y-6">
                             <Card className="bg-surface-high">
                                 <h3 className="font-headline font-bold mb-4 flex items-center gap-2">
-                                    <Info className="w-4 h-4 text-emerald-primary" /> Table Rules
+                                    <Info aria-hidden="true" className="w-4 h-4 text-emerald-primary" /> Table Rules
                                 </h3>
                                 <div className="space-y-4 text-sm">
                                     <div className="flex justify-between">
@@ -1136,7 +1137,7 @@ export default function GameView({ auth, onLeave }: GameViewProps) {
                                         onClick={handleStartGame}
                                         disabled={!roomState.canStart}
                                     >
-                                        <Play className="w-5 h-5 fill-current" />
+                                        <Play aria-hidden="true" className="w-5 h-5 fill-current" />
                                         START GAME
                                     </Button>
                                     <p className="text-center text-[10px] text-zinc-600 uppercase tracking-widest">Host controls only</p>
@@ -1247,6 +1248,8 @@ export default function GameView({ auth, onLeave }: GameViewProps) {
                     {showdownResult && (
                         <motion.div
                             ref={showdownModalRef}
+                            role="dialog"
+                            aria-label="Round Result"
                             initial={{ y: -50, opacity: 0 }}
                             animate={{ y: 0, opacity: 1 }}
                             exit={{ y: -50, opacity: 0 }}
@@ -1268,6 +1271,7 @@ export default function GameView({ auth, onLeave }: GameViewProps) {
                             } : undefined}
                         >
                             <div
+                                aria-label="Showdown Drag Handle"
                                 className="-mx-3 -mt-3 sm:-mx-4 sm:-mt-4 md:-mx-5 md:-mt-5 mb-2 md:mb-3 px-2 py-1.5 md:px-3 md:py-2 border-b border-white/10 bg-black/25 rounded-t-xl cursor-move select-none touch-none"
                                 onPointerDown={handleShowdownModalDragPointerDown}
                                 onPointerMove={handleShowdownModalPointerMove}
@@ -1282,7 +1286,7 @@ export default function GameView({ auth, onLeave }: GameViewProps) {
 
                             <div className={cn(showdownModalLayout && "h-full overflow-y-auto pr-1")}> 
                                 <div className="inline-flex items-center gap-1.5 px-2.5 md:px-3 py-1 rounded-full border border-gold-secondary/35 bg-gold-secondary/10 mb-2 md:mb-3">
-                                    <Trophy className="w-3.5 h-3.5 text-gold-secondary" />
+                                    <Trophy aria-hidden="true" className="w-3.5 h-3.5 text-gold-secondary" />
                                     <span className="text-[9px] md:text-[10px] font-headline font-extrabold uppercase tracking-[0.18em] text-gold-secondary">
                                         Round Result
                                     </span>
@@ -1342,6 +1346,7 @@ export default function GameView({ auth, onLeave }: GameViewProps) {
                             </div>
 
                             <div
+                                aria-label="Showdown Resize Handle"
                                 className="absolute bottom-1 right-1 h-4 w-4 rounded-sm border border-gold-secondary/40 bg-gold-secondary/20 cursor-se-resize touch-none"
                                 onPointerDown={handleShowdownModalResizePointerDown}
                                 onPointerMove={handleShowdownModalPointerMove}
@@ -1395,7 +1400,7 @@ export default function GameView({ auth, onLeave }: GameViewProps) {
                         {/* Community Cards */}
                         <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 md:gap-6">
                             <div className="bg-black/40 px-3 md:px-6 py-2 rounded-full border border-white/5 backdrop-blur-md flex items-center gap-2 md:gap-3">
-                                <Coins className="w-3 h-3 md:w-4 md:h-4 text-gold-secondary" />
+                                <Coins aria-hidden="true" className="w-3 h-3 md:w-4 md:h-4 text-gold-secondary" />
                                 <span className="font-headline font-bold text-lg md:text-2xl tracking-tight text-white">
                                     ${displayedPot.toLocaleString()}
                                 </span>
@@ -1654,6 +1659,7 @@ export default function GameView({ auth, onLeave }: GameViewProps) {
                                 </span>
                                 <input
                                     type="number"
+                                    aria-label="Raise amount"
                                     className={cn(
                                         "bg-transparent text-white font-bold outline-none placeholder:text-zinc-600",
                                         isMobileLandscape ? "w-16 text-xs" : isCompactTable ? "w-12 text-xs" : "w-24"

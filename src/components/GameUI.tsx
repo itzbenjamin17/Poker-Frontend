@@ -1,17 +1,25 @@
 import React from 'react';
 import { cn, type Player} from '../types';
 
-const SUITS: Record<string, { icon: string; color: string }> = {
-    'H': { icon: '♥', color: 'text-red-500' },
-    'D': { icon: '♦', color: 'text-red-500' },
-    'C': { icon: '♣', color: 'text-zinc-800' },
-    'S': { icon: '♠', color: 'text-zinc-800' },
+const SUITS: Record<string, { icon: string; color: string; name: string }> = {
+    'H': { icon: '♥', color: 'text-red-500', name: 'Hearts' },
+    'D': { icon: '♦', color: 'text-red-500', name: 'Diamonds' },
+    'C': { icon: '♣', color: 'text-zinc-800', name: 'Clubs' },
+    'S': { icon: '♠', color: 'text-zinc-800', name: 'Spades' },
+};
+
+const RANKS: Record<string, string> = {
+    'A': 'Ace', 'K': 'King', 'Q': 'Queen', 'J': 'Jack', 'T': 'Ten',
+    '9': '9', '8': '8', '7': '7', '6': '6', '5': '5', '4': '4', '3': '3', '2': '2'
 };
 
 export const CardUI: React.FC<{ card: string; hidden?: boolean; className?: string }> = ({ card, hidden, className }) => {
     if (hidden) {
         return (
-            <div className={cn("w-12 h-16 bg-emerald-container rounded-md border-2 border-white/20 flex items-center justify-center shadow-lg", className)}>
+            <div 
+                aria-label="Hidden Card"
+                className={cn("w-12 h-16 bg-emerald-container rounded-md border-2 border-white/20 flex items-center justify-center shadow-lg", className)}
+            >
                 <div className="w-8 h-12 border border-white/10 rounded-sm opacity-20" />
             </div>
         );
@@ -19,10 +27,16 @@ export const CardUI: React.FC<{ card: string; hidden?: boolean; className?: stri
 
     const value = card.slice(0, -1);
     const suitKey = card.slice(-1);
-    const suit = SUITS[suitKey] || { icon: '?', color: 'text-zinc-400' };
+    const suit = SUITS[suitKey] || { icon: '?', color: 'text-zinc-400', name: 'Unknown' };
+    const rankName = RANKS[value] || value;
+    const label = `${rankName} of ${suit.name}`;
 
     return (
-        <div className={cn("w-12 h-16 bg-white rounded-md flex flex-col items-center justify-between p-1 shadow-xl relative overflow-hidden", className)}>
+        <div 
+            role="img"
+            aria-label={label}
+            className={cn("w-12 h-16 bg-white rounded-md flex flex-col items-center justify-between p-1 shadow-xl relative overflow-hidden", className)}
+        >
             <div className={cn("text-xs font-bold self-start leading-none", suit.color)}>{value}</div>
             <div className={cn("text-xl leading-none", suit.color)}>{suit.icon}</div>
             <div className={cn("text-xs font-bold self-end rotate-180 leading-none", suit.color)}>{value}</div>
