@@ -97,73 +97,75 @@ export default function Lobby({ onAuth }: { onAuth: (data: AuthResponse) => void
                     transition={{ delay: 0.1 }}
                     className="lg:col-span-7"
                 >
-                    <Card>
-                        <div className="flex justify-between items-start mb-8">
-                            <div>
-                                <h2 className="font-headline text-3xl font-bold text-white mb-2">Create Table</h2>
-                                <p className="text-zinc-500 text-sm">Define the stakes and command the room.</p>
+                    <section aria-label="Create Table">
+                        <Card>
+                            <div className="flex justify-between items-start mb-8">
+                                <div>
+                                    <h2 className="font-headline text-3xl font-bold text-white mb-2">Create Table</h2>
+                                    <p className="text-zinc-500 text-sm">Define the stakes and command the room.</p>
+                                </div>
+                                <Rocket aria-hidden="true" className="text-emerald-primary/20 w-10 h-10" />
                             </div>
-                            <Rocket aria-hidden="true" className="text-emerald-primary/20 w-10 h-10" />
-                        </div>
 
-                        <form onSubmit={handleCreate} className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            <div className="col-span-full">
+                            <form onSubmit={handleCreate} className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div className="col-span-full">
+                                    <Input
+                                        label="Room Name"
+                                        placeholder="Emerald Vault 01"
+                                        value={createData.roomName}
+                                        onChange={e => setCreateData({...createData, roomName: e.target.value})}
+                                        required
+                                    />
+                                </div>
+                                <div className="col-span-full">
+                                    <Input
+                                        label="Player Alias"
+                                        placeholder="Viking_01"
+                                        value={createData.playerName}
+                                        onChange={e => setCreateData({...createData, playerName: e.target.value})}
+                                        required
+                                    />
+                                </div>
                                 <Input
-                                    label="Room Name"
-                                    placeholder="Emerald Vault 01"
-                                    value={createData.roomName}
-                                    onChange={e => setCreateData({...createData, roomName: e.target.value})}
-                                    required
+                                    label="Small Blind"
+                                    type="number"
+                                    value={createData.smallBlind}
+                                    onChange={e => setCreateData({...createData, smallBlind: parseInt(e.target.value)})}
                                 />
-                            </div>
-                            <div className="col-span-full">
                                 <Input
-                                    label="Player Alias"
-                                    placeholder="Viking_01"
-                                    value={createData.playerName}
-                                    onChange={e => setCreateData({...createData, playerName: e.target.value})}
-                                    required
+                                    label="Big Blind"
+                                    type="number"
+                                    value={createData.bigBlind}
+                                    onChange={e => setCreateData({...createData, bigBlind: parseInt(e.target.value)})}
                                 />
-                            </div>
-                            <Input
-                                label="Small Blind"
-                                type="number"
-                                value={createData.smallBlind}
-                                onChange={e => setCreateData({...createData, smallBlind: parseInt(e.target.value)})}
-                            />
-                            <Input
-                                label="Big Blind"
-                                type="number"
-                                value={createData.bigBlind}
-                                onChange={e => setCreateData({...createData, bigBlind: parseInt(e.target.value)})}
-                            />
-                            <div className="space-y-2">
-                                <label htmlFor="max-players" className="block font-headline text-[10px] font-bold tracking-widest text-zinc-500 uppercase">Max Players</label>
-                                <select
-                                    id="max-players"
-                                    className="w-full bg-surface-highest border-none rounded-lg p-4 text-white focus:ring-1 focus:ring-emerald-primary/30 transition-all font-body appearance-none outline-none"
-                                    value={createData.maxPlayers}
-                                    onChange={e => setCreateData({...createData, maxPlayers: parseInt(e.target.value)})}
-                                >
-                                    <option value={2}>2 Players</option>
-                                    <option value={6}>6 Players</option>
-                                    <option value={9}>9 Players</option>
-                                </select>
-                            </div>
-                            <Input
-                                label="Buy-in Amount"
-                                type="number"
-                                value={createData.buyIn}
-                                onChange={e => setCreateData({...createData, buyIn: parseInt(e.target.value)})}
-                            />
+                                <div className="space-y-2">
+                                    <label htmlFor="max-players" className="block font-headline text-[10px] font-bold tracking-widest text-zinc-500 uppercase">Max Players</label>
+                                    <select
+                                        id="max-players"
+                                        className="w-full bg-surface-highest border-none rounded-lg p-4 text-white focus:ring-1 focus:ring-emerald-primary/30 transition-all font-body appearance-none outline-none"
+                                        value={createData.maxPlayers}
+                                        onChange={e => setCreateData({...createData, maxPlayers: parseInt(e.target.value)})}
+                                    >
+                                        <option value={2}>2 Players</option>
+                                        <option value={6}>6 Players</option>
+                                        <option value={9}>9 Players</option>
+                                    </select>
+                                </div>
+                                <Input
+                                    label="Buy-in Amount"
+                                    type="number"
+                                    value={createData.buyIn}
+                                    onChange={e => setCreateData({...createData, buyIn: parseInt(e.target.value)})}
+                                />
 
-                            <div className="col-span-full mt-4">
-                                <Button variant="secondary" size="lg" className="w-full" type="submit" disabled={loading}>
-                                    {loading ? 'ESTABLISHING...' : 'ESTABLISH TABLE'}
-                                </Button>
-                            </div>
-                        </form>
-                    </Card>
+                                <div className="col-span-full mt-4">
+                                    <Button variant="secondary" size="lg" className="w-full" type="submit" disabled={loading}>
+                                        {loading ? 'ESTABLISHING...' : 'ESTABLISH TABLE'}
+                                    </Button>
+                                </div>
+                            </form>
+                        </Card>
+                    </section>
                 </motion.div>
 
                 {/* Join Table */}
@@ -173,36 +175,38 @@ export default function Lobby({ onAuth }: { onAuth: (data: AuthResponse) => void
                     transition={{ delay: 0.2 }}
                     className="lg:col-span-5"
                 >
-                    <Card className="h-full">
-                        <div className="flex justify-between items-start mb-8">
-                            <div>
-                                <h2 className="font-headline text-3xl font-bold text-white mb-2">Quick Join</h2>
-                                <p className="text-zinc-500 text-sm">Enter an existing arena.</p>
+                    <section aria-label="Quick Join">
+                        <Card className="h-full">
+                            <div className="flex justify-between items-start mb-8">
+                                <div>
+                                    <h2 className="font-headline text-3xl font-bold text-white mb-2">Quick Join</h2>
+                                    <p className="text-zinc-500 text-sm">Enter an existing arena.</p>
+                                </div>
+                                <Key aria-hidden="true" className="text-gold-secondary/20 w-10 h-10" />
                             </div>
-                            <Key aria-hidden="true" className="text-gold-secondary/20 w-10 h-10" />
-                        </div>
 
-                        <form onSubmit={handleJoin} className="space-y-6">
-                            <Input
-                                label="Room Name"
-                                placeholder="Enter Room Name"
-                                value={joinData.roomName}
-                                onChange={e => setJoinData({...joinData, roomName: e.target.value})}
-                                required
-                            />
-                            <Input
-                                label="Player Alias"
-                                placeholder="Enter Alias"
-                                value={joinData.playerName}
-                                onChange={e => setJoinData({...joinData, playerName: e.target.value})}
-                                required
-                            />
-                            <Button size="xl" className="w-full" type="submit" disabled={loading}>
-                                {loading ? 'ENTERING...' : 'ENTER VAULT'}
-                                <ArrowRight aria-hidden="true" className="w-5 h-5 ml-2" />
-                            </Button>
-                        </form>
-                    </Card>
+                            <form onSubmit={handleJoin} className="space-y-6">
+                                <Input
+                                    label="Room Name"
+                                    placeholder="Enter Room Name"
+                                    value={joinData.roomName}
+                                    onChange={e => setJoinData({...joinData, roomName: e.target.value})}
+                                    required
+                                />
+                                <Input
+                                    label="Player Alias"
+                                    placeholder="Enter Alias"
+                                    value={joinData.playerName}
+                                    onChange={e => setJoinData({...joinData, playerName: e.target.value})}
+                                    required
+                                />
+                                <Button size="xl" className="w-full" type="submit" disabled={loading}>
+                                    {loading ? 'ENTERING...' : 'ENTER VAULT'}
+                                    <ArrowRight aria-hidden="true" className="w-5 h-5 ml-2" />
+                                </Button>
+                            </form>
+                        </Card>
+                    </section>
                 </motion.div>
             </div>
         </div>

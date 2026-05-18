@@ -134,7 +134,7 @@ export const PlayerPod = ({
             </div>
 
             <div className="text-center">
-                <p className="text-[10px] font-headline font-bold uppercase tracking-widest text-white/80">{player.name}</p>
+                <h3 className="text-[10px] font-headline font-bold uppercase tracking-widest text-white/80">{player.name}</h3>
                 {player.currentBet > 0 && (
                     <p className="text-[9px] font-bold text-emerald-primary/60">BET: ${player.currentBet}</p>
                 )}
