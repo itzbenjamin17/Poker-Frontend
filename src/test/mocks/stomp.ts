@@ -22,7 +22,7 @@ export class MockStompClient {
   publish = vi.fn()
 
   // Helper for tests to simulate an incoming message
-  static simulateMessage(destination: string, body: any) {
+  static simulateMessage(destination: string, body: unknown) {
     const callback = activeSubscriptions.get(destination)
     if (callback) {
       callback({ body: JSON.stringify(body) })

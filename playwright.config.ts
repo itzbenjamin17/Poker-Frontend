@@ -18,11 +18,19 @@ export default defineConfig({
       use: { ...devices['Desktop Chrome'] },
     },
   ],
-  // Start local dev server before starting the tests
-  webServer: {
-    command: 'npm run dev',
-    url: 'http://localhost:5173',
-    reuseExistingServer: !process.env.CI,
-    timeout: 120 * 1000,
-  },
+  // Start local dev server and backend before starting the tests
+  webServer: [
+    {
+      command: 'npm run dev',
+      url: 'http://localhost:5173',
+      reuseExistingServer: !process.env.CI,
+      timeout: 120 * 1000,
+    },
+    {
+      command: 'cd ../Poker && mvnw.cmd spring-boot:run -Dspring-boot.run.profiles=test',
+      url: 'http://localhost:8080/actuator/health',
+      reuseExistingServer: !process.env.CI,
+      timeout: 120 * 1000,
+    }
+  ],
 });

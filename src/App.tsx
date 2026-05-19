@@ -2,6 +2,7 @@ import { useCallback, useState } from 'react';
 import Lobby from './Lobby';
 import GameView from './GameView';
 import type {AuthResponse} from './types';
+import { logger } from './security/logger';
 
 const AUTH_KEY = 'poker-auth';
 
@@ -12,7 +13,7 @@ export default function App() {
       try {
         return JSON.parse(saved);
       } catch (e) {
-        console.error('Failed to parse saved auth:', e);
+        logger.error('Failed to parse saved auth:', e);
         return null;
       }
     }

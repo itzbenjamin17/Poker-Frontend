@@ -7,6 +7,7 @@ import { Button, Card } from './components/UI';
 import { PlayerPod, CardUI } from './components/GameUI';
 import { Info, Play, Coins, Trophy } from 'lucide-react';
 import { useRelativeTime } from './hooks/useRelativeTime';
+import { logger } from './security/logger';
 
 type GameViewProps = {
     auth: AuthResponse;
@@ -354,10 +355,9 @@ export default function GameView({ auth, onLeave }: GameViewProps) {
             return;
         }
 
-        setNowMs(Date.now());
-        const intervalId = window.setInterval(() => {
-            setNowMs(Date.now());
-        }, 1000);
+        const updateNow = () => setNowMs(Date.now());
+        updateNow();
+        const intervalId = window.setInterval(updateNow, 1000);
 
         return () => window.clearInterval(intervalId);
     }, [gameState]);
@@ -566,7 +566,7 @@ export default function GameView({ auth, onLeave }: GameViewProps) {
                 if (statusCode === 403 || statusCode === 404) {
                     redirectToLobby('Session expired. Returning to lobby...');
                 } else {
-                    console.error('Room info fetch error:', err);
+                    logger.error('Room info fetch error:', err);
                     setLoadingStatus('Reconnecting...');
                 }
                 return;
@@ -591,7 +591,7 @@ export default function GameView({ auth, onLeave }: GameViewProps) {
                     } catch (privateErr) {
                         const privateStatusCode = getErrorStatusCode(privateErr);
                         if (privateStatusCode !== 404) {
-                            console.warn('Private snapshot fetch error during hydrate:', privateErr);
+                            logger.warn('Private snapshot fetch error during hydrate:', privateErr);
                         }
                     }
 
@@ -610,7 +610,7 @@ export default function GameView({ auth, onLeave }: GameViewProps) {
                 }
 
                 if (statusCode !== 404) {
-                    console.error('Game snapshot fetch error:', err);
+                    logger.error('Game snapshot fetch error:', err);
                     setLoadingStatus('Reconnecting to table...');
                     return;
                 }
@@ -622,14 +622,14 @@ export default function GameView({ auth, onLeave }: GameViewProps) {
         void hydrateSession();
 
         return () => { mounted = false; };
-    }, [auth.playerName, auth.roomId, auth.token, onLeave, applyIncomingGameState, applyIncomingPrivateState, getErrorStatusCode, isGameStatePayload, isPrivateStatePayload]);
+    }, [auth.playerName, auth.roomId, auth.token, onLeave, applyIncomingGameState, applyIncomingPrivateState, getErrorStatusCode, isGameStatePayload, isPrivateStatePayload, normalizeErrorMessage]);
 
     useEffect(() => {
         const client = createStompClient(auth.token);
         stompClientRef.current = client;
 
         client.onConnect = () => {
-            console.log('Connected to WebSocket');
+            logger.log('Connected to WebSocket');
 
             const subscribeToMany = (destinations: string[], handler: (body: string) => void) => {
                 destinations.forEach((destination) => {
@@ -672,7 +672,7 @@ export default function GameView({ auth, onLeave }: GameViewProps) {
                             applyIncomingPrivateState(parsed);
                         }
                     } catch (parseError) {
-                        console.warn('Ignoring malformed private payload:', privBody, parseError);
+                        logger.warn('Ignoring malformed private payload:', privBody, parseError);
                     }
                 });
             };
@@ -744,12 +744,12 @@ export default function GameView({ auth, onLeave }: GameViewProps) {
                 try {
                     parsed = JSON.parse(body);
                 } catch (parseError) {
-                    console.warn('Ignoring malformed game payload:', body, parseError);
+                    logger.warn('Ignoring malformed game payload:', body, parseError);
                     return;
                 }
 
                 if (!isObject(parsed)) {
-                    console.warn('Ignoring non-object game payload:', parsed);
+                    logger.warn('Ignoring non-object game payload:', parsed);
                     return;
                 }
 
@@ -779,10 +779,18 @@ export default function GameView({ auth, onLeave }: GameViewProps) {
                     if (winnerName && isForfeit) {
                         setShowdownModalLayout(null);
                         setShowdownResult({
+                            gameId: auth.roomId,
+                            maxPlayers: 0,
+                            pot: 0,
+                            phase: 'SHOWDOWN',
+                            currentBet: 0,
+                            communityCards: [],
+                            currentPlayerName: winnerName,
+                            currentPlayerId: '',
                             winners: [winnerName],
                             winningsPerPlayer: winnerChips,
-                            players: [{ name: winnerName }],
-                        } as any);
+                            players: [{ name: winnerName, id: '', chips: 0, status: 'ACTIVE', currentBet: 0, hasFolded: false }],
+                        } as GameState);
                     } else {
                         setNotification(endMsg);
                     }
@@ -820,7 +828,7 @@ export default function GameView({ auth, onLeave }: GameViewProps) {
                 }
 
                 if (!isGameStatePayload(parsed)) {
-                    console.warn('Ignoring non-game payload on game topic:', {
+                    logger.warn('Ignoring non-game payload on game topic:', {
                         keys: Object.keys(parsed),
                         claimWinAvailable: parsed.claimWinAvailable,
                         claimWinPlayerName: parsed.claimWinPlayerName,
@@ -854,7 +862,7 @@ export default function GameView({ auth, onLeave }: GameViewProps) {
 
 
                         if (statusCode !== 404) {
-                            console.warn('State re-sync failed after connect:', err);
+                            logger.warn('State re-sync failed after connect:', err);
                         }
                     });
 
@@ -867,7 +875,7 @@ export default function GameView({ auth, onLeave }: GameViewProps) {
                     .catch((err) => {
                         const statusCode = getErrorStatusCode(err);
                         if (statusCode !== 404) {
-                            console.warn('Private state re-sync failed after connect:', err);
+                            logger.warn('Private state re-sync failed after connect:', err);
                         }
                     });
 
@@ -879,13 +887,13 @@ export default function GameView({ auth, onLeave }: GameViewProps) {
             clearShowdownTimers();
             client.deactivate();
         };
-    }, [auth, applyIncomingGameState, applyIncomingPrivateState, clearShowdownTimers, getErrorStatusCode, isGameStatePayload, isObject, isPrivateStatePayload, onLeave]);
+    }, [auth, applyIncomingGameState, applyIncomingPrivateState, clearShowdownTimers, getErrorStatusCode, isGameStatePayload, isObject, isPrivateStatePayload, onLeave, normalizeErrorMessage]);
 
     const handleAction = (action: string, amount: number = 0) => {
         const targetGameId = gameState?.gameId ?? auth.roomId;
 
         if (!stompClientRef.current?.connected) {
-            console.warn('STOMP client not connected, action deferred');
+            logger.warn('STOMP client not connected, action deferred');
             setNotification(normalizeErrorMessage('Waiting for table connection...'));
             return;
         }
@@ -902,7 +910,7 @@ export default function GameView({ auth, onLeave }: GameViewProps) {
             setRaiseAmount('');
             setRaiseError(null);
         } catch (err) {
-            console.error('Failed to publish action:', err);
+            logger.error('Failed to publish action:', err);
             setNotification('System malfunction. Please refresh.');
         }
     };
@@ -921,7 +929,7 @@ export default function GameView({ auth, onLeave }: GameViewProps) {
                 body: '{}'
             });
         } catch (err) {
-            console.error('Failed to publish ready:', err);
+            logger.error('Failed to publish ready:', err);
             setNotification('System malfunction. Please refresh.');
         }
     };
@@ -930,7 +938,7 @@ export default function GameView({ auth, onLeave }: GameViewProps) {
         try {
             await pokerApi.startGame(auth.roomId, auth.token);
         } catch (err) {
-            console.error('Failed to start game:', err);
+            logger.error('Failed to start game:', err);
             const rawMsg = err instanceof Error ? err.message : 'Only the host can start the game.';
             setNotification(normalizeErrorMessage(rawMsg));
             setTimeout(() => setNotification(null), 4000);
@@ -1418,10 +1426,15 @@ export default function GameView({ auth, onLeave }: GameViewProps) {
 
                         {/* Community Cards */}
                         <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 md:gap-6">
-                            <div aria-label="Total Pot" className="bg-black/40 px-3 md:px-6 py-2 rounded-full border border-white/5 backdrop-blur-md flex items-center gap-2 md:gap-3">
-                                <Coins aria-hidden="true" className="w-3 h-3 md:w-4 md:h-4 text-gold-secondary" />
-                                <span className="font-headline font-bold text-lg md:text-2xl tracking-tight text-white">
-                                    ${displayedPot.toLocaleString()}
+                            <div className="flex flex-col items-center gap-1 md:gap-2">
+                                <div aria-label="Total Pot" className="bg-black/40 px-3 md:px-6 py-2 rounded-full border border-white/5 backdrop-blur-md flex items-center gap-2 md:gap-3">
+                                    <Coins aria-hidden="true" className="w-3 h-3 md:w-4 md:h-4 text-gold-secondary" />
+                                    <span className="font-headline font-bold text-lg md:text-2xl tracking-tight text-white">
+                                        ${displayedPot.toLocaleString()}
+                                    </span>
+                                </div>
+                                <span className="text-[9px] md:text-[10px] text-emerald-primary/60 font-bold uppercase tracking-[0.2em] animate-in fade-in duration-500">
+                                    {gameState.phase.replace(/_/g, ' ')}
                                 </span>
                             </div>
 

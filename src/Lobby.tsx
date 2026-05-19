@@ -4,6 +4,7 @@ import { pokerApi } from './services/api';
 import { motion, AnimatePresence } from 'motion/react';
 import { Rocket, Key, ArrowRight } from 'lucide-react';
 import type {AuthResponse} from './types';
+import { logger } from './security/logger';
 
 export default function Lobby({ onAuth }: { onAuth: (data: AuthResponse) => void }) {
     const [loading, setLoading] = useState(false);
@@ -37,7 +38,7 @@ export default function Lobby({ onAuth }: { onAuth: (data: AuthResponse) => void
             const res = await pokerApi.createRoom(submissionData);
             onAuth(res);
         } catch (err) {
-            console.error('Failed to create room:', err);
+            logger.error('Failed to create room:', err);
             setError(err instanceof Error ? err.message : 'Failed to establish table. Please check your connection.');
         } finally {
             setLoading(false);
@@ -59,7 +60,7 @@ export default function Lobby({ onAuth }: { onAuth: (data: AuthResponse) => void
             const res = await pokerApi.joinRoom(submissionData);
             onAuth(res);
         } catch (err) {
-            console.error('Failed to join room:', err);
+            logger.error('Failed to join room:', err);
             setError(err instanceof Error ? err.message : 'Failed to enter vault. Room may not exist or password incorrect.');
         } finally {
             setLoading(false);

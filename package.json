@@ -9,6 +9,7 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "vitest",
+    "backend:test": "cd ../Poker && mvnw.cmd spring-boot:run -Dspring-boot.run.profiles=test",
     "test:all": "npm test -- --run && npx playwright test"
   },
   "dependencies": {
