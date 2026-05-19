@@ -6,11 +6,20 @@ import { type GameState, type RoomUpdate, cn, type AuthResponse } from './types'
 import { Button, Card } from './components/UI';
 import { PlayerPod, CardUI } from './components/GameUI';
 import { Info, Play, Coins, Trophy } from 'lucide-react';
+import { useRelativeTime } from './hooks/useRelativeTime';
 
 type GameViewProps = {
     auth: AuthResponse;
     onLeave?: () => void;
 };
+
+/**
+ * Small sub-component to display relative join time.
+ */
+function PlayerJoinedAt({ timestamp }: { timestamp?: string }) {
+    const relativeTime = useRelativeTime(timestamp);
+    return <span>JOINED {relativeTime.toUpperCase()}</span>;
+}
 
 export default function GameView({ auth, onLeave }: GameViewProps) {
     const SHOWDOWN_FALLBACK_HIDE_MS = 45000;
@@ -528,7 +537,11 @@ export default function GameView({ auth, onLeave }: GameViewProps) {
                     ...prev,
                     roomId: roomData.roomId,
                     roomName: roomData.roomName,
-                    players: roomData.players.map((p: { name: string; isHost: boolean }) => ({ name: p.name, isHost: p.isHost })),
+                    players: roomData.players.map((p: { name: string; isHost: boolean; joinedAt?: string }) => ({ 
+                        name: p.name, 
+                        isHost: p.isHost,
+                        joinedAt: p.joinedAt 
+                    })),
                     maxPlayers: roomData.maxPlayers,
                     buyIn: roomData.buyIn,
                     smallBlind: roomData.smallBlind,
@@ -788,7 +801,11 @@ export default function GameView({ auth, onLeave }: GameViewProps) {
                             setRoomState({
                                 roomId: r.roomId,
                                 roomName: r.roomName,
-                                players: r.players.map((p: { name: string; isHost: boolean }) => ({ name: p.name, isHost: p.isHost })),
+                                players: r.players.map((p: { name: string; isHost: boolean; joinedAt?: string }) => ({ 
+                                    name: p.name, 
+                                    isHost: p.isHost,
+                                    joinedAt: p.joinedAt 
+                                })),
                                 maxPlayers: r.maxPlayers,
                                 buyIn: r.buyIn,
                                 smallBlind: r.smallBlind,
@@ -1093,7 +1110,7 @@ export default function GameView({ auth, onLeave }: GameViewProps) {
                                         <div>
                                             <h3 className="font-headline font-bold text-xl">{p.name}</h3>
                                             <p className="text-[10px] text-zinc-500 uppercase tracking-widest mt-1">
-                                                {p.isHost ? 'HOST' : 'CONNECTED'}
+                                                {p.isHost ? 'HOST' : <PlayerJoinedAt timestamp={p.joinedAt} />}
                                             </p>
                                         </div>
                                         <div className={cn("w-3 h-3 rounded-full", p.isHost ? "bg-gold-secondary" : "bg-emerald-primary")} />

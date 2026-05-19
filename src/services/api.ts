@@ -179,7 +179,11 @@ export function createStompClient(token: string) {
         connectHeaders: {
             Authorization: `Bearer ${token}`,
         },
-        debug: (str) => console.log(str),
+        debug: (str) => {
+            if (import.meta.env.DEV) {
+                console.log(str);
+            }
+        },
         reconnectDelay: 5000,
     });
 }

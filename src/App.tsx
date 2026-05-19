@@ -3,40 +3,8 @@ import Lobby from './Lobby';
 import GameView from './GameView';
 import type {AuthResponse} from './types';
 
-const AUTH_STORAGE_KEY = 'poker-auth';
-
-function readStoredAuth(): AuthResponse | null {
-  try {
-    const raw = localStorage.getItem(AUTH_STORAGE_KEY);
-    if (!raw) return null;
-
-    const parsed = JSON.parse(raw) as Partial<AuthResponse>;
-    if (parsed?.token && parsed?.roomId && parsed?.playerName) {
-      return {
-        message: typeof parsed.message === 'string' ? parsed.message : '',
-        token: parsed.token,
-        roomId: parsed.roomId,
-        playerName: parsed.playerName,
-        playerId: parsed.playerId,
-      };
-    }
-  } catch {
-    localStorage.removeItem(AUTH_STORAGE_KEY);
-  }
-
-  return null;
-}
-
 export default function App() {
-  const [auth, setAuth] = useState<AuthResponse | null>(() => readStoredAuth());
-
-  useEffect(() => {
-    if (!auth) {
-      localStorage.removeItem(AUTH_STORAGE_KEY);
-      return;
-    }
-    localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(auth));
-  }, [auth]);
+  const [auth, setAuth] = useState<AuthResponse | null>(null);
 
   const handleAuth = useCallback((data: AuthResponse) => {
     setAuth(data);
