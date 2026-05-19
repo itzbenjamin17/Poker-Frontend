@@ -27,7 +27,14 @@ export default function Lobby({ onAuth }: { onAuth: (data: AuthResponse) => void
         setLoading(true);
         setError(null);
         try {
-            const res = await pokerApi.createRoom(createData);
+            // Trim inputs before submission
+            const submissionData = {
+                ...createData,
+                roomName: createData.roomName.trim(),
+                playerName: createData.playerName.trim()
+            };
+
+            const res = await pokerApi.createRoom(submissionData);
             onAuth(res);
         } catch (err) {
             console.error('Failed to create room:', err);
@@ -42,7 +49,14 @@ export default function Lobby({ onAuth }: { onAuth: (data: AuthResponse) => void
         setLoading(true);
         setError(null);
         try {
-            const res = await pokerApi.joinRoom(joinData);
+            // Trim inputs before submission
+            const submissionData = {
+                ...joinData,
+                roomName: joinData.roomName.trim(),
+                playerName: joinData.playerName.trim()
+            };
+
+            const res = await pokerApi.joinRoom(submissionData);
             onAuth(res);
         } catch (err) {
             console.error('Failed to join room:', err);
@@ -115,6 +129,7 @@ export default function Lobby({ onAuth }: { onAuth: (data: AuthResponse) => void
                                         value={createData.roomName}
                                         onChange={e => setCreateData({...createData, roomName: e.target.value})}
                                         required
+                                        maxLength={50}
                                     />
                                 </div>
                                 <div className="col-span-full">
@@ -124,6 +139,7 @@ export default function Lobby({ onAuth }: { onAuth: (data: AuthResponse) => void
                                         value={createData.playerName}
                                         onChange={e => setCreateData({...createData, playerName: e.target.value})}
                                         required
+                                        maxLength={30}
                                     />
                                 </div>
                                 <Input
@@ -131,12 +147,16 @@ export default function Lobby({ onAuth }: { onAuth: (data: AuthResponse) => void
                                     type="number"
                                     value={createData.smallBlind}
                                     onChange={e => setCreateData({...createData, smallBlind: parseInt(e.target.value)})}
+                                    min={1}
+                                    max={10000}
                                 />
                                 <Input
                                     label="Big Blind"
                                     type="number"
                                     value={createData.bigBlind}
                                     onChange={e => setCreateData({...createData, bigBlind: parseInt(e.target.value)})}
+                                    min={2}
+                                    max={20000}
                                 />
                                 <div className="space-y-2">
                                     <label htmlFor="max-players" className="block font-headline text-[10px] font-bold tracking-widest text-zinc-500 uppercase">Max Players</label>
@@ -156,6 +176,8 @@ export default function Lobby({ onAuth }: { onAuth: (data: AuthResponse) => void
                                     type="number"
                                     value={createData.buyIn}
                                     onChange={e => setCreateData({...createData, buyIn: parseInt(e.target.value)})}
+                                    min={20}
+                                    max={1000000}
                                 />
 
                                 <div className="col-span-full mt-4">
@@ -192,6 +214,7 @@ export default function Lobby({ onAuth }: { onAuth: (data: AuthResponse) => void
                                     value={joinData.roomName}
                                     onChange={e => setJoinData({...joinData, roomName: e.target.value})}
                                     required
+                                    maxLength={50}
                                 />
                                 <Input
                                     label="Player Alias"
@@ -199,6 +222,7 @@ export default function Lobby({ onAuth }: { onAuth: (data: AuthResponse) => void
                                     value={joinData.playerName}
                                     onChange={e => setJoinData({...joinData, playerName: e.target.value})}
                                     required
+                                    maxLength={30}
                                 />
                                 <Button size="xl" className="w-full" type="submit" disabled={loading}>
                                     {loading ? 'ENTERING...' : 'ENTER VAULT'}

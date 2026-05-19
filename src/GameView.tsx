@@ -1231,6 +1231,8 @@ export default function GameView({ auth, onLeave }: GameViewProps) {
                 }
             } else if (parsedRaiseAmount > availableChips) {
                 computedRaiseError = `You only have ${availableChips.toLocaleString()} chips.`;
+            } else if (parsedRaiseAmount > 10000000) {
+                computedRaiseError = 'Amount cannot exceed 10,000,000 chips.';
             }
         }
 
