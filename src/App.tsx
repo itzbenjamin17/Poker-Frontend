@@ -1,17 +1,32 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import Lobby from './Lobby';
 import GameView from './GameView';
 import type {AuthResponse} from './types';
 
+const AUTH_KEY = 'poker-auth';
+
 export default function App() {
-  const [auth, setAuth] = useState<AuthResponse | null>(null);
+  const [auth, setAuth] = useState<AuthResponse | null>(() => {
+    const saved = localStorage.getItem(AUTH_KEY);
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        console.error('Failed to parse saved auth:', e);
+        return null;
+      }
+    }
+    return null;
+  });
 
   const handleAuth = useCallback((data: AuthResponse) => {
     setAuth(data);
+    localStorage.setItem(AUTH_KEY, JSON.stringify(data));
   }, []);
 
   const handleLeave = useCallback(() => {
     setAuth(null);
+    localStorage.removeItem(AUTH_KEY);
   }, []);
 
   return (

@@ -53,7 +53,7 @@ export interface RoomUpdate {
     data: {
         roomId: string;
         roomName?: string;
-        players?: { name: string; isHost: boolean }[];
+        players?: { name: string; isHost: boolean; joinedAt?: string }[];
         maxPlayers?: number;
         buyIn?: number;
         smallBlind?: number;

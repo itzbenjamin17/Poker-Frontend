@@ -8,7 +8,8 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "test": "vitest"
+    "test": "vitest",
+    "test:all": "npm test -- --run && npx playwright test"
   },
   "dependencies": {
     "@stomp/stompjs": "^7.3.0",
