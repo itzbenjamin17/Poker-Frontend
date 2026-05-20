@@ -48,11 +48,11 @@ describe('GameView - Game Table Integration', () => {
     render(<GameView auth={mockAuth} />)
 
     // Wait for the subscription to be active before simulating the message
-    await MockStompClient.waitForSubscription('/game/ROOM123/player-name/TestPlayer/private')
+    await MockStompClient.waitForSubscription('/user/queue/private')
 
     // Simulate private state update via STOMP (as the real app does)
     act(() => {
-      MockStompClient.simulateMessage(`/game/ROOM123/player-name/TestPlayer/private`, {
+      MockStompClient.simulateMessage('/user/queue/private', {
         holeCards: ['AS', 'KS']
       })
     })

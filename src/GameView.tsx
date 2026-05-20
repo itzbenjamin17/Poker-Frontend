@@ -637,16 +637,14 @@ export default function GameView({ auth, onLeave }: GameViewProps) {
                 });
             };
 
-            const subscribeToPrivateStateByName = (playerName: string) => {
-                const encodedName = encodeURIComponent(playerName);
-                if (privateSubscribedByName.current && privateSubscribedPlayerName.current === encodedName) {
+            const subscribeToPrivate = () => {
+                if (privateSubscribedByName.current) {
                     return;
                 }
 
                 privateSubscribedByName.current = true;
-                privateSubscribedPlayerName.current = encodedName;
                 subscribeToMany([
-                    `/game/${auth.roomId}/player-name/${encodedName}/private`,
+                    `/user/queue/private`,
                 ], (privBody) => {
                     try {
                         const parsed = JSON.parse(privBody);
@@ -677,8 +675,8 @@ export default function GameView({ auth, onLeave }: GameViewProps) {
                 });
             };
 
-            // Subscribe immediately by stable player name so the first hand's private cards are not missed.
-            subscribeToPrivateStateByName(auth.playerName);
+            // Subscribe immediately so the first hand's private cards are not missed.
+            subscribeToPrivate();
 
             if (auth.playerId) {
                 setMyPlayerId(auth.playerId);
