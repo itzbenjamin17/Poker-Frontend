@@ -1,4 +1,4 @@
-import { render, screen, waitFor, act, within } from '@testing-library/react'
+import { render, screen, waitFor, act } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import GameView from '../GameView'
 import { MockStompClient, activeSubscriptions } from '../test/mocks/stomp'

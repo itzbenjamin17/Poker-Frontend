@@ -1,3 +1,4 @@
+/* eslint-disable no-empty-pattern, react-hooks/rules-of-hooks */
 import { test as baseTest, expect, type Page } from '@playwright/test';
 
 export interface CreateRoomOptions {
