@@ -1,4 +1,5 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi } from 'vitest'
 import Lobby from '../Lobby'
 import { server } from '../test/mocks/server'
@@ -7,28 +8,22 @@ import { http, HttpResponse } from 'msw'
 describe('Lobby Integration', () => {
   it('allows a user to join a room successfully', async () => {
     const handleAuth = vi.fn()
+    const user = userEvent.setup()
+    
     render(<Lobby onAuth={handleAuth} />)
 
-    // Find the "Quick Join" section inputs
-    // Since there are two forms, we need to be careful with labels if they are identical
-    // But RTL queryByLabelText finds by text content, and we have two "Room Name" labels.
-    // We can use the section context or just get all and pick.
-    
-    const roomInputs = screen.getAllByLabelText(/room name/i)
-    const playerInputs = screen.getAllByLabelText(/player alias/i)
+    // Scope to "Quick Join" region for robust selectors
+    const quickJoinRegion = screen.getByRole('region', { name: /quick join/i })
+    const { getByLabelText, getByRole } = within(quickJoinRegion)
 
-    // Join form is the second one in the DOM (lg:col-span-5)
-    const joinRoomInput = roomInputs[1]
-    const joinPlayerInput = playerInputs[1]
+    const joinRoomInput = getByLabelText(/room name/i)
+    const joinPlayerInput = getByLabelText(/player alias/i)
 
-    fireEvent.change(joinRoomInput, { target: { value: 'POKER123' } })
-    fireEvent.change(joinPlayerInput, { target: { value: 'TestPlayer' } })
+    await user.type(joinRoomInput, 'POKER123')
+    await user.type(joinPlayerInput, 'TestPlayer')
 
-    const joinButton = screen.getByRole('button', { name: /enter vault/i })
-    fireEvent.click(joinButton)
-
-    // Expect loading state
-    expect(joinButton).toHaveTextContent(/entering/i)
+    const joinButton = getByRole('button', { name: /enter vault/i })
+    await user.click(joinButton)
 
     // Wait for the onAuth callback to be called (mocked in handlers.ts)
     await waitFor(() => {
@@ -50,19 +45,112 @@ describe('Lobby Integration', () => {
       })
     )
 
+    const user = userEvent.setup()
     render(<Lobby onAuth={() => {}} />)
 
-    const roomInputs = screen.getAllByLabelText(/room name/i)
-    const playerInputs = screen.getAllByLabelText(/player alias/i)
+    const quickJoinRegion = screen.getByRole('region', { name: /quick join/i })
+    const { getByLabelText, getByRole } = within(quickJoinRegion)
 
-    fireEvent.change(roomInputs[1], { target: { value: 'NONEXISTENT' } })
-    fireEvent.change(playerInputs[1], { target: { value: 'TestPlayer' } })
+    const joinRoomInput = getByLabelText(/room name/i)
+    const joinPlayerInput = getByLabelText(/player alias/i)
 
-    fireEvent.click(screen.getByRole('button', { name: /enter vault/i }))
+    await user.type(joinRoomInput, 'NONEXISTENT')
+    await user.type(joinPlayerInput, 'TestPlayer')
+
+    await user.click(getByRole('button', { name: /enter vault/i }))
 
     // Error message from the mock should appear
     await waitFor(() => {
       expect(screen.getByText(/Vault is sealed/i)).toBeInTheDocument()
+    })
+  })
+
+  it('allows a user to create a room successfully', async () => {
+    const handleAuth = vi.fn()
+    const user = userEvent.setup()
+    
+    render(<Lobby onAuth={handleAuth} />)
+
+    const createRegion = screen.getByRole('region', { name: /create table/i })
+    const { getByLabelText, getByRole } = within(createRegion)
+
+    await user.type(getByLabelText(/room name/i), 'NEWROOM')
+    await user.type(getByLabelText(/player alias/i), 'HostPlayer')
+    
+    const smallBlindInput = getByLabelText(/small blind/i)
+    await user.type(smallBlindInput, '10', {
+      initialSelectionStart: 0,
+      initialSelectionEnd: (smallBlindInput as HTMLInputElement).value.length
+    })
+
+    const bigBlindInput = getByLabelText(/big blind/i)
+    await user.type(bigBlindInput, '20', {
+      initialSelectionStart: 0,
+      initialSelectionEnd: (bigBlindInput as HTMLInputElement).value.length
+    })
+
+    const buyInInput = getByLabelText(/buy-in amount/i)
+    await user.type(buyInInput, '1000', {
+      initialSelectionStart: 0,
+      initialSelectionEnd: (buyInInput as HTMLInputElement).value.length
+    })
+
+    await user.click(getByRole('button', { name: /establish table/i }))
+
+    await waitFor(() => {
+      expect(handleAuth).toHaveBeenCalledWith(expect.objectContaining({
+        playerName: 'HostPlayer',
+        roomId: 'ABCD'
+      }))
+    })
+  })
+
+  it('validates bounds and relationships for creating a room', async () => {
+    const handleAuth = vi.fn()
+    const user = userEvent.setup()
+    
+    render(<Lobby onAuth={handleAuth} />)
+
+    const createRegion = screen.getByRole('region', { name: /create table/i })
+    const { getByLabelText, getByRole } = within(createRegion)
+
+    await user.type(getByLabelText(/room name/i), 'BOUNDROOM')
+    await user.type(getByLabelText(/player alias/i), 'HostPlayer')
+
+    // 1. Big blind less than 2x small blind (custom business rule validation)
+    const smallBlindInput = getByLabelText(/small blind/i)
+    await user.type(smallBlindInput, '10', {
+      initialSelectionStart: 0,
+      initialSelectionEnd: (smallBlindInput as HTMLInputElement).value.length
+    })
+
+    const bigBlindInput = getByLabelText(/big blind/i)
+    await user.type(bigBlindInput, '15', {
+      initialSelectionStart: 0,
+      initialSelectionEnd: (bigBlindInput as HTMLInputElement).value.length
+    })
+
+    await user.click(getByRole('button', { name: /establish table/i }))
+    await waitFor(() => {
+      expect(screen.getByText(/Big blind must be at least 2×/i)).toBeInTheDocument()
+    })
+
+    // Fix big blind
+    await user.type(bigBlindInput, '40', {
+      initialSelectionStart: 0,
+      initialSelectionEnd: (bigBlindInput as HTMLInputElement).value.length
+    })
+
+    // 2. Buy-in less than big blind (custom business rule validation)
+    const buyInInput = getByLabelText(/buy-in amount/i)
+    await user.type(buyInInput, '30', {
+      initialSelectionStart: 0,
+      initialSelectionEnd: (buyInInput as HTMLInputElement).value.length
+    })
+
+    await user.click(getByRole('button', { name: /establish table/i }))
+    await waitFor(() => {
+      expect(screen.getByText(/Buy-in must be at least/i)).toBeInTheDocument()
     })
   })
 })

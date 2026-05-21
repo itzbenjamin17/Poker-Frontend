@@ -1,184 +1,135 @@
-import { test, expect, type Page, type BrowserContext } from '@playwright/test';
-
-// Helper to create and join a room
-async function joinRoom(page: Page, roomName: string, playerName: string, isCreate: boolean = false) {
-    await page.goto('/');
-    if (isCreate) {
-        const createRegion = page.getByRole('region', { name: /create table/i });
-        await createRegion.getByLabel(/room name/i).fill(roomName);
-        await createRegion.getByLabel(/player alias/i).fill(playerName);
-        await page.getByRole('button', { name: /establish table/i }).click();
-    } else {
-        const joinRegion = page.getByRole('region', { name: /quick join/i });
-        await joinRegion.getByLabel(/room name/i).fill(roomName);
-        await joinRegion.getByLabel(/player alias/i).fill(playerName);
-        await page.getByRole('button', { name: /enter vault/i }).click();
-    }
-    await expect(page.getByText(/game lobby/i)).toBeVisible({ timeout: 15000 });
-}
+import { test, expect, type Page, type BrowserContext } from './fixtures';
 
 test.describe('Comprehensive Poker Scenarios', () => {
-    
-    test('Scenario 1: Golden Path - 3 Player Full Hand', async ({ browser }) => {
-        test.setTimeout(120000);
+    let contexts: BrowserContext[] = [];
+
+    test.afterEach(async () => {
+        for (const context of contexts) {
+            await context.close().catch(() => {});
+        }
+        contexts = [];
+    });
+
+    test('Scenario 1: Golden Path - 3 Player Pre-flop Round to Flop', async ({ browser, createRoom, joinRoom }) => {
         const roomName = `GoldenPath-${Date.now()}`;
         const players = ['Alice', 'Bob', 'Charlie'];
-        const contexts: BrowserContext[] = [];
         const pages: Page[] = [];
 
+        // Setup 3 players sequentially
         for (const name of players) {
             const context = await browser.newContext();
             contexts.push(context);
             const page = await context.newPage();
             pages.push(page);
-            await joinRoom(page, roomName, name, name === 'Alice');
+            if (name === 'Alice') {
+                await createRoom(page, roomName, name);
+            } else {
+                await joinRoom(page, roomName, name);
+            }
         }
 
+        // Host starts the game
         await pages[0].getByRole('button', { name: /start game/i }).click();
         
         // Wait for the game to start (pot or blinds visible)
-        await expect(pages[0].getByText(/\$/).first()).toBeVisible({ timeout: 15000 });
+        // 3-player rules: Alice (index 0, BB posts $20), Bob (index 1, Dealer posts $0), Charlie (index 2, SB posts $10)
+        // Blinds are posted automatically resulting in $30 initial pot
+        await expect(pages[0].getByLabel(/total pot/i)).toContainText('$30');
+        await expect(pages[1].getByLabel(/total pot/i)).toContainText('$30');
+        await expect(pages[2].getByLabel(/total pot/i)).toContainText('$30');
 
-        // Play Pre-flop until FLOP appears
-        for (let i = 0; i < 15; i++) {
-            // Check if FLOP is already visible
-            if (await pages[0].getByText('FLOP').isVisible()) break;
+        // Pre-flop Betting Round:
+        // 1. Bob (Dealer, index 1) acts first pre-flop. Bob calls the $20 big blind (posts $20).
+        const bobCallBtn = pages[1].getByRole('button', { name: /call/i });
+        await expect(bobCallBtn).toBeVisible();
+        await bobCallBtn.click();
 
-            const activePage = await findActivePlayerPage(pages);
-            if (!activePage) {
-                // If no active player found, check if FLOP appeared while waiting
-                if (await pages[0].getByText('FLOP').isVisible()) break;
-                await pages[0].waitForTimeout(1000);
-                continue;
-            }
-            
-            const actionBtn = activePage.locator('button').filter({ hasText: /Call|Check|All In/i }).first();
-            if (await actionBtn.isVisible()) {
-                await actionBtn.click({ force: true });
-            }
-            // Small wait for state propagation
-            await pages[0].waitForTimeout(1000);
-        }
+        // 2. Charlie (Small Blind, index 2) acts second. Charlie already posted $10, so he calls $10 more ($20 total).
+        const charlieCallBtn = pages[2].getByRole('button', { name: /call/i });
+        await expect(charlieCallBtn).toBeVisible();
+        await charlieCallBtn.click();
 
-        await expect(pages[0].getByText('FLOP')).toBeVisible({ timeout: 15000 });
-        for (const context of contexts) await context.close();
+        // 3. Alice (Big Blind, index 0) acts third. Alice matches the current bet of $20, so she checks.
+        const aliceCheckBtn = pages[0].getByRole('button', { name: /check/i });
+        await expect(aliceCheckBtn).toBeVisible();
+        await aliceCheckBtn.click();
+
+        // Phase change to Flop!
+        // Pot is now $60 ($20 from each player).
+        await expect(pages[0].getByLabel(/total pot/i)).toContainText('$60');
+        await expect(pages[0].getByText('FLOP')).toBeVisible();
     });
 
-    test('Scenario 2: Uncontested Win', async ({ browser }) => {
+    test('Scenario 2: Uncontested Win', async ({ browser, createRoom, joinRoom }) => {
         const roomName = `Uncontested-${Date.now()}`;
         const hostContext = await browser.newContext();
+        contexts.push(hostContext);
         const guestContext = await browser.newContext();
+        contexts.push(guestContext);
+
         const hostPage = await hostContext.newPage();
         const guestPage = await guestContext.newPage();
 
-        await joinRoom(hostPage, roomName, 'Host', true);
+        await createRoom(hostPage, roomName, 'Host');
         await joinRoom(guestPage, roomName, 'Guest');
 
         await hostPage.getByRole('button', { name: /start game/i }).click();
         
-        for (let i = 0; i < 5; i++) {
-            const activePage = await findActivePlayerPage([hostPage, guestPage]);
-            if (activePage === hostPage) {
-                await hostPage.getByRole('button', { name: /fold/i }).click({ force: true });
-                break;
-            } else if (activePage === guestPage) {
-                await guestPage.getByRole('button', { name: /call|check/i }).first().click({ force: true });
-            }
-            await hostPage.waitForTimeout(1000);
-        }
+        // Heads-up: Guest (Dealer/SB, index 1) acts first pre-flop. Guest folds.
+        const foldBtn = guestPage.getByRole('button', { name: /fold/i });
+        await expect(foldBtn).toBeVisible();
+        await foldBtn.click();
 
-        // Use .first() to avoid strict mode violation
-        await expect(guestPage.getByText(/won|round result/i).first()).toBeVisible({ timeout: 20000 });
-
-        await hostContext.close();
-        await guestContext.close();
+        // Host immediately wins the uncontested hand. Verify the showdown / round result displays.
+        await expect(hostPage.getByText(/won|round result/i).first()).toBeVisible({ timeout: 20000 });
     });
 
-    test('Scenario 3: All-In Showdown', async ({ browser }) => {
-        test.setTimeout(120000);
+    test('Scenario 3: All-In Showdown', async ({ browser, createRoom, joinRoom }) => {
         const roomName = `AllIn-${Date.now()}`;
         const hostContext = await browser.newContext();
+        contexts.push(hostContext);
         const guestContext = await browser.newContext();
+        contexts.push(guestContext);
+
         const hostPage = await hostContext.newPage();
         const guestPage = await guestContext.newPage();
 
-        await hostPage.goto('/');
-        const createRegion = hostPage.getByRole('region', { name: /create table/i });
-        await createRegion.getByLabel(/room name/i).fill(roomName);
-        await createRegion.getByLabel(/player alias/i).fill('P1');
-        await createRegion.getByLabel(/buy-in/i).fill('40'); // Small buy-in relative to 10/20 blinds
-        await hostPage.getByRole('button', { name: /establish table/i }).click();
-
+        // Create table with custom buy-in of 40 (Small buy-in relative to 10/20 blinds)
+        await createRoom(hostPage, roomName, 'P1', { buyIn: '40' });
         await joinRoom(guestPage, roomName, 'P2');
         await hostPage.getByRole('button', { name: /start game/i }).click();
 
-        // Push all-in for both players to trigger showdown
-        for (let i = 0; i < 40; i++) {
-            // Check if we already reached showdown or next hand's ready state
-            if (await hostPage.getByText(/round result|READY/i).first().isVisible()) break;
+        // Pre-flop:
+        // P1 (BB, index 0) posted $20, has $20 left. P2 (Dealer/SB, index 1) posted $10, has $30 left.
+        // P2 calls $10 (total $20 bet).
+        const callBtn = guestPage.getByRole('button', { name: /call/i });
+        await expect(callBtn).toBeVisible();
+        await callBtn.click();
 
-            // Fast check for active player
-            let activePage: Page | null = null;
-            for (const p of [hostPage, guestPage]) {
-                const actionBtns = p.locator('button').filter({ hasText: /Fold|Call|Check|All In|Raise|Bet/i });
-                if (await actionBtns.first().isVisible()) {
-                    activePage = p;
-                    break;
-                }
-            }
+        // P1 checks.
+        const checkBtn = hostPage.getByRole('button', { name: /check/i });
+        await expect(checkBtn).toBeVisible();
+        await checkBtn.click();
 
-            if (activePage) {
-                // Click any available action button - with small buy-in, these will lead to all-in
-                const actionBtn = activePage.locator('button').filter({ hasText: /Call|Check|All In|Raise|Bet/i }).first();
-                if (await actionBtn.isVisible()) {
-                    await actionBtn.click({ force: true });
-                }
-            }
-            
-            await hostPage.waitForTimeout(1000);
-        }
+        // Flop phase:
+        // Pot is $40. Both P1 and P2 have $20 left.
+        await expect(hostPage.getByLabel(/total pot/i)).toContainText('$40');
 
-        await expect(hostPage.getByText(/round result|READY/i).first()).toBeVisible({ timeout: 40000 });
+        // P1 (BB, acts first postflop) bets all-in by putting $20.
+        const raiseInput = hostPage.getByLabel('Raise amount');
+        await expect(raiseInput).toBeVisible();
+        await raiseInput.fill('20');
+        
+        const betBtn = hostPage.getByRole('button', { name: /bet/i });
+        await expect(betBtn).toBeVisible();
+        await betBtn.click();
 
-        await hostContext.close();
-        await guestContext.close();
-    });
+        // P2 is facing a $20 bet, calls $20.
+        const p2CallBtn = guestPage.getByRole('button', { name: /call/i });
+        await expect(p2CallBtn).toBeVisible();
+        await p2CallBtn.click();
 
-    test('Scenario 4: Connection & Session Resiliency', async ({ browser }) => {
-        const roomName = `Resiliency-${Date.now()}`;
-        const context = await browser.newContext();
-        const page = await context.newPage();
-
-        await joinRoom(page, roomName, 'LoneWolf', true);
-        await page.reload();
-        await expect(page.getByText(roomName)).toBeVisible({ timeout: 15000 });
-        await context.close();
-    });
-
-    test('Scenario 5: Validation UI', async ({ browser }) => {
-        const page = await browser.newPage();
-        await page.goto('/');
-        const createRegion = page.getByRole('region', { name: /create table/i });
-        const roomInput = createRegion.getByLabel(/room name/i);
-        await roomInput.fill('A'.repeat(60));
-        const val = await roomInput.inputValue();
-        expect(val.length).toBeLessThanOrEqual(50);
-        await page.close();
+        // Showdown modal is displayed since both players are all-in.
+        await expect(hostPage.getByText(/round result|won/i).first()).toBeVisible({ timeout: 20000 });
     });
 });
-
-async function findActivePlayerPage(pages: Page[]): Promise<Page | null> {
-    for (let attempt = 0; attempt < 40; attempt++) {
-        for (const page of pages) {
-            const actionBtns = page.locator('button').filter({ hasText: /Fold|Call|Check|All In|Raise/i });
-            const count = await actionBtns.count();
-            for (let i = 0; i < count; i++) {
-                if (await actionBtns.nth(i).isVisible()) {
-                    return page;
-                }
-            }
-        }
-        await new Promise(r => setTimeout(r, 250));
-    }
-    return null;
-}

@@ -40,5 +40,15 @@ export const handlers = [
       ],
       gameStarted: false
     })
+  }),
+
+  // Default game state handler (404 = not started)
+  http.get('/api/game/:gameId/state', () => {
+    return new HttpResponse(null, { status: 404 })
+  }),
+
+  // Default game private state handler (404 = not started)
+  http.get('/api/game/:gameId/private-state', () => {
+    return new HttpResponse(null, { status: 404 })
   })
 ]

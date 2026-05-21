@@ -1,16 +1,14 @@
-import { render, screen, waitFor, act } from '@testing-library/react'
+import { render, screen, waitFor, act, within } from '@testing-library/react'
 import { describe, it, expect, vi } from 'vitest'
 import GameView from '../GameView'
 import { MockStompClient } from '../test/mocks/stomp'
 import { http, HttpResponse } from 'msw'
 import { server } from '../test/mocks/server'
+import { mockAuth } from '../test/fixtures'
 
-const mockAuth = {
-  token: 'test-token',
-  roomId: 'ROOM123',
-  playerName: 'HostPlayer',
-  playerId: 'p-1',
-  message: 'Success'
+const auth = {
+  ...mockAuth,
+  playerName: 'HostPlayer'
 }
 
 describe('GameView - Room Lobby Integration', () => {
@@ -37,7 +35,7 @@ describe('GameView - Room Lobby Integration', () => {
       http.get('/api/game/ROOM123/private-state', () => new HttpResponse(null, { status: 404 }))
     )
 
-    render(<GameView auth={mockAuth} />)
+    render(<GameView auth={auth} />)
 
     // Check hydration
     await waitFor(() => {
@@ -46,8 +44,12 @@ describe('GameView - Room Lobby Integration', () => {
       expect(screen.getByText(/\$50 \/ \$100/i)).toBeInTheDocument()
     })
 
-    // Simulate another player joining via STOMP
-    act(() => {
+    // Verify Start Game button's "before" state is disabled
+    const startBtn = screen.getByRole('button', { name: /START GAME/i })
+    expect(startBtn).toBeDisabled()
+
+    // Simulate another player joining via STOMP using await act(async () => ...)
+    await act(async () => {
       MockStompClient.simulateMessage('/room/ROOM123', {
         message: 'PLAYER_JOINED',
         data: {
@@ -61,11 +63,11 @@ describe('GameView - Room Lobby Integration', () => {
       })
     })
 
-    // Verify UI updated
-    expect(screen.getByText('GuestPlayer')).toBeInTheDocument()
+    // Verify UI updated within player list layout
+    const playerList = screen.getByRole('list')
+    expect(within(playerList).getByText('GuestPlayer')).toBeInTheDocument()
     
     // As host, we should now see the START GAME button enabled
-    const startBtn = screen.getByRole('button', { name: /START GAME/i })
     expect(startBtn).toBeEnabled()
   })
 
@@ -83,12 +85,12 @@ describe('GameView - Room Lobby Integration', () => {
         http.get('/api/game/ROOM123/private-state', () => new HttpResponse(null, { status: 404 }))
     )
 
-    render(<GameView auth={mockAuth} onLeave={handleLeave} />)
+    render(<GameView auth={auth} onLeave={handleLeave} />)
 
     await waitFor(() => expect(screen.getByText(/GAME LOBBY/i)).toBeInTheDocument())
 
-    // Simulate ROOM_CLOSED
-    act(() => {
+    // Simulate ROOM_CLOSED using await act(async () => ...)
+    await act(async () => {
       MockStompClient.simulateMessage('/room/ROOM123', {
         message: 'ROOM_CLOSED'
       })
@@ -100,3 +102,4 @@ describe('GameView - Room Lobby Integration', () => {
     await waitFor(() => expect(handleLeave).toHaveBeenCalled(), { timeout: 4500 })
   })
 })
+

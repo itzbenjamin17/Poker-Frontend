@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "test": "vitest",
     "backend:test": "cd ../Poker && mvnw.cmd spring-boot:run -Dspring-boot.run.profiles=test",
-    "test:all": "npm test -- --run && npx playwright test"
+    "test:all": "npm test -- --run && npx playwright test",
+    "test::all": "npm test -- --run && npx playwright test"
   },
   "dependencies": {
     "@stomp/stompjs": "^7.3.0",
@@ -20,7 +21,6 @@
     "motion": "^12.38.0",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
-    "sockjs-client": "^1.6.1",
     "tailwind-merge": "^3.6.0",
     "tailwindcss": "^4.3.0"
   },
@@ -33,9 +33,9 @@
     "@types/node": "^24.12.0",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
-    "@types/sockjs-client": "^1.5.4",
     "@vitejs/plugin-react": "^6.0.1",
     "eslint": "^9.39.4",
+    "eslint-plugin-jsx-a11y": "^6.10.2",
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.2",
     "globals": "^17.4.0",

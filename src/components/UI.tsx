@@ -1,5 +1,5 @@
 import React, { useId } from 'react';
-import { cn } from '../types';
+import { cn } from '../lib/cn';
 
 export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
     variant?: 'primary' | 'secondary' | 'outline' | 'ghost';
@@ -7,12 +7,12 @@ export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElemen
 }
 
 export const Button = ({
-                           children,
-                           variant = 'primary',
-                           size = 'md',
-                           className,
-                           ...props
-                       }: ButtonProps) => {
+    children,
+    variant = 'primary',
+    size = 'md',
+    className,
+    ...props
+}: ButtonProps) => {
     const variants = {
         primary: 'bg-gold-secondary text-surface font-headline font-extrabold shadow-[0_12px_24px_rgba(252,192,37,0.2)] hover:shadow-gold-secondary/30 active:scale-95',
         secondary: 'bg-emerald-container text-surface font-headline font-bold shadow-lg hover:shadow-emerald-primary/10 active:scale-95',
@@ -32,6 +32,7 @@ export const Button = ({
         <button
             className={cn(
                 'rounded-xl transition-all duration-200 flex items-center justify-center gap-2 uppercase tracking-tight',
+                'disabled:opacity-50 disabled:cursor-not-allowed',
                 variants[variant],
                 sizes[size],
                 className
@@ -43,12 +44,16 @@ export const Button = ({
     );
 };
 
-export const Input = ({ label, error, ...props }: { label?: string; error?: string } & React.InputHTMLAttributes<HTMLInputElement>) => {
+export const Input = ({
+    label,
+    error,
+    ...props
+}: { label?: string; error?: string } & React.InputHTMLAttributes<HTMLInputElement>) => {
     const id = useId();
     return (
         <div className="space-y-2 w-full">
             {label && (
-                <label 
+                <label
                     htmlFor={id}
                     className="block font-headline text-[10px] font-bold tracking-widest text-zinc-500 uppercase"
                 >
@@ -59,8 +64,8 @@ export const Input = ({ label, error, ...props }: { label?: string; error?: stri
                 id={id}
                 aria-invalid={!!error}
                 className={cn(
-                    "w-full bg-surface-highest border-none rounded-lg p-4 text-white placeholder:text-white/20 focus:ring-1 focus:ring-emerald-primary/30 transition-all font-body outline-none",
-                    error && "ring-1 ring-red-500/50"
+                    'w-full bg-surface-highest border-none rounded-lg p-4 text-white placeholder:text-white/20 focus:ring-1 focus:ring-emerald-primary/30 transition-all font-body outline-none',
+                    error && 'ring-1 ring-red-500/50'
                 )}
                 {...props}
             />
@@ -69,8 +74,12 @@ export const Input = ({ label, error, ...props }: { label?: string; error?: stri
     );
 };
 
-export const Card: React.FC<{ children: React.ReactNode; className?: string; glint?: boolean }> = ({ children, className, glint = true }) => (
-    <div className={cn("glass-card rounded-2xl p-8 relative overflow-hidden group", className)}>
+export const Card: React.FC<{ children: React.ReactNode; className?: string; glint?: boolean }> = ({
+    children,
+    className,
+    glint = true,
+}) => (
+    <div className={cn('glass-card rounded-2xl p-8 relative overflow-hidden group', className)}>
         {glint && (
             <div className="absolute inset-0 bg-gradient-to-br from-emerald-primary/10 via-transparent to-transparent pointer-events-none" />
         )}

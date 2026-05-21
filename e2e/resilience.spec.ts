@@ -1,33 +1,37 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type BrowserContext } from './fixtures';
 
 test.describe('Connection Resilience', () => {
-  test('Player can reconnect and restore game state after refresh', async ({ browser }) => {
+  let contexts: BrowserContext[] = [];
+
+  test.afterEach(async () => {
+    for (const context of contexts) {
+      await context.close().catch(() => {});
+    }
+    contexts = [];
+  });
+
+  test('Player can reconnect and restore game state after refresh', async ({ browser, createRoom, joinRoom }) => {
     const roomName = `Resilience-E2E-${Math.floor(Math.random() * 1000)}`;
     const hostName = 'Host';
     const guestName = 'Guest';
 
     // 1. Initial Setup and Game Start
     const hostContext = await browser.newContext();
+    contexts.push(hostContext);
     const guestContext = await browser.newContext();
+    contexts.push(guestContext);
+
     const hostPage = await hostContext.newPage();
     const guestPage = await guestContext.newPage();
 
-    await hostPage.goto('/');
-    const createRegion = hostPage.getByRole('region', { name: /create table/i });
-    await createRegion.getByLabel(/room name/i).fill(roomName);
-    await createRegion.getByLabel(/player alias/i).fill(hostName);
-    await hostPage.getByRole('button', { name: /establish table/i }).click();
-
-    await guestPage.goto('/');
-    const joinRegion = guestPage.getByRole('region', { name: /quick join/i });
-    await joinRegion.getByLabel(/room name/i).fill(roomName);
-    await joinRegion.getByLabel(/player alias/i).fill(guestName);
-    await guestPage.getByRole('button', { name: /enter vault/i }).click();
+    await createRoom(hostPage, roomName, hostName);
+    await joinRoom(guestPage, roomName, guestName);
 
     await expect(hostPage.getByRole('heading', { name: guestName })).toBeVisible();
     await hostPage.getByRole('button', { name: /start game/i }).click();
 
     // Verify both are in the game
+    // Heads-up rules: Host (Dealer/SB) posts $10, Guest (BB) posts $20, resulting in a $30 initial pot.
     await expect(hostPage.getByLabel(/total pot/i)).toContainText('$30');
     await expect(guestPage.getByLabel(/total pot/i)).toContainText('$30');
 
@@ -46,14 +50,12 @@ test.describe('Connection Resilience', () => {
 
     // Re-open with same storage state
     const newGuestContext = await browser.newContext({ storageState });
+    contexts.push(newGuestContext);
     const newGuestPage = await newGuestContext.newPage();
     await newGuestPage.goto('/');
 
     // Verify Guest is back at the table
     await expect(newGuestPage.getByLabel(/total pot/i)).toContainText('$30');
     await expect(newGuestPage.getByRole('heading', { name: hostName })).toBeVisible();
-
-    await hostContext.close();
-    await newGuestContext.close();
   });
 });

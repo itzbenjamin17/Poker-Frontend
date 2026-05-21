@@ -124,21 +124,27 @@ The application incorporates several security best practices:
 
 ## Testing
 
-The project includes a multi-layered testing suite to ensure reliability and visual consistency.
+The project includes a comprehensive, multi-layered testing suite engineered under strict **User-Centric & Accessibility-First** testing principles:
+
+- **Test Behavior, Not Implementation:** We do not assert on internal state variables, hooks, or fragile styling layouts (e.g., CSS classes). Tests focus strictly on what the user sees, experiences, or can interact with on the screen.
+- **Query Like a User:** All tests utilize semantic, screen-reader friendly queries (`screen.getByRole`, `screen.getByText`, `screen.getByLabelText`) rather than non-semantic IDs (like `data-testid`) or DOM class selectors. If a user using assistive technology cannot access it, our tests will fail.
+- **Accessibility-First State Indicators:** Visual states (such as active turn highlights, folded states, and winners) are represented using hidden screen-reader labels (`sr-only`) so that they are fully accessible to screen readers and directly verifiable by semantic testing queries.
 
 ### Integration & Unit Tests (Vitest)
-Uses **Vitest** and **React Testing Library** for component and service layer validation.
-- **Mocking:** Employs **MSW (Mock Service Worker)** for REST API mocking and a custom STOMP mock for real-time message simulation.
+Uses **Vitest** and **React Testing Library** for component, hook, and service layer validation.
+- **Mocking:** Employs **MSW (Mock Service Worker)** to mock REST API requests and a custom STOMP mock for real-time message simulation.
+- **Asynchronous Hydration Safety:** Avoids raw async updates warnings (`act(...)`) by semantically waiting for DOM elements (e.g. `Total Pot` labels) before simulating STOMP frames.
 - **Run:** `npm test`
 
 ### End-to-End Tests (Playwright)
-Uses **Playwright** for full user-flow validation across multiple browsers.
-- **Coverage:** Lobby creation, joining, game actions, and resilience (reconnect) scenarios.
+Uses **Playwright** for full multi-browser end-to-end user flows.
+- **Coverage:** Lobby creation, player joins, full heads-up betting rounds, showdown outcomes, all-in side pots, and connection resilience.
 - **Run:** `npx playwright test`
 
 ### Running All Tests
+To run all tests sequentially (unit, integration, and E2E):
 ```bash
-npm run test:all
+npm run test::all
 ```
 
 ## Design System

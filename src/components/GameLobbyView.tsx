@@ -1,0 +1,153 @@
+import { useGameContext } from '../context/GameContext';
+import { cn } from '../lib/cn';
+import { Card } from './UI';
+import { Button } from './UI';
+import { Info, Play } from 'lucide-react';
+import { NotificationBanner } from './NotificationBanner';
+import { useRelativeTime } from '../hooks/useRelativeTime';
+import {
+    GAME_LOBBY_LABEL,
+    BTN_LEAVE_LOBBY, BTN_START_GAME, LABEL_HOST_CONTROLS, LABEL_WAITING_HOST,
+    LABEL_WAITING_PLAYERS, LABEL_BLINDS, LABEL_MIN_BUYIN, LABEL_FORMAT,
+    FORMAT_NLHE, LABEL_TABLE_RULES, LABEL_HOST,
+} from '../constants/strings';
+
+function PlayerJoinedAt({ timestamp }: { timestamp?: string }) {
+    const relativeTime = useRelativeTime(timestamp);
+    return <span>JOINED {relativeTime.toUpperCase()}</span>;
+}
+
+interface GameLobbyViewProps {
+    onStartGame: () => void;
+    onLeaveGame: () => void;
+}
+
+export function GameLobbyView({ onStartGame, onLeaveGame }: GameLobbyViewProps) {
+    const { auth, roomState, notification } = useGameContext();
+
+    if (!roomState) return null;
+
+    const blindsLabel =
+        typeof roomState.smallBlind === 'number' && typeof roomState.bigBlind === 'number'
+            ? `$${roomState.smallBlind.toLocaleString()} / $${roomState.bigBlind.toLocaleString()}`
+            : 'Waiting...';
+    const buyInLabel =
+        typeof roomState.buyIn === 'number'
+            ? `$${roomState.buyIn.toLocaleString()}`
+            : 'Waiting...';
+
+    const amHost = roomState.players?.find(p => p.name === auth.playerName)?.isHost ?? false;
+
+    return (
+        <div className="min-h-screen p-8 md:pt-28 flex flex-col items-center justify-center">
+            <NotificationBanner notification={notification} />
+
+            <div className="w-full max-w-5xl">
+                <div className="mb-4 flex justify-end">
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={onLeaveGame}
+                        className="border-red-500/50 text-red-500 hover:bg-red-500/10"
+                    >
+                        {BTN_LEAVE_LOBBY}
+                    </Button>
+                </div>
+
+                <div className="mb-12">
+                    <span className="text-emerald-primary text-[10px] font-bold tracking-[0.3em] uppercase">
+                        {GAME_LOBBY_LABEL}
+                    </span>
+                    <h1 className="text-5xl font-headline font-bold mt-2">
+                        <span className="text-white">GAME LOBBY </span>
+                        <span className="text-emerald-primary/60">
+                            {roomState.roomName || roomState.roomId || auth.roomId}
+                        </span>
+                    </h1>
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                    {/* Player list */}
+                    <ul className="lg:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4 list-none m-0 p-0">
+                        {roomState.players?.map((p, i) => (
+                            <li key={i}>
+                                <Card className={cn('p-6', p.isHost && 'ring-1 ring-gold-secondary/30')}>
+                                    <div className="flex justify-between items-center">
+                                        <div>
+                                            <h3 className="font-headline font-bold text-xl">{p.name}</h3>
+                                            <p className="text-[10px] text-zinc-500 uppercase tracking-widest mt-1">
+                                                {p.isHost ? LABEL_HOST : <PlayerJoinedAt timestamp={p.joinedAt} />}
+                                            </p>
+                                        </div>
+                                        <div
+                                            className={cn('w-3 h-3 rounded-full', p.isHost ? 'bg-gold-secondary' : 'bg-emerald-primary')}
+                                            aria-label={p.isHost ? 'Host' : 'Player'}
+                                        />
+                                    </div>
+                                </Card>
+                            </li>
+                        ))}
+                        {Array.from({ length: (roomState.maxPlayers || 6) - (roomState.players?.length || 0) }).map((_, i) => (
+                            <li key={`empty-${i}`}>
+                                <div className="border border-white/5 rounded-xl p-6 flex items-center justify-center border-dashed">
+                                    <p className="text-zinc-700 text-xs uppercase tracking-widest italic">
+                                        {LABEL_WAITING_PLAYERS}
+                                    </p>
+                                </div>
+                            </li>
+                        ))}
+                    </ul>
+
+                    {/* Sidebar */}
+                    <div className="space-y-6">
+                        <Card className="bg-surface-high">
+                            <h3 className="font-headline font-bold mb-4 flex items-center gap-2">
+                                <Info aria-hidden="true" className="w-4 h-4 text-emerald-primary" />
+                                {LABEL_TABLE_RULES}
+                            </h3>
+                            <div className="space-y-4 text-sm">
+                                <div className="flex justify-between">
+                                    <span className="text-zinc-500 uppercase text-[10px] font-bold">{LABEL_BLINDS}</span>
+                                    <span className="text-emerald-primary font-bold">{blindsLabel}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                    <span className="text-zinc-500 uppercase text-[10px] font-bold">{LABEL_MIN_BUYIN}</span>
+                                    <span className="text-emerald-primary font-bold">{buyInLabel}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                    <span className="text-zinc-500 uppercase text-[10px] font-bold">{LABEL_FORMAT}</span>
+                                    <span className="text-emerald-primary font-bold">{FORMAT_NLHE}</span>
+                                </div>
+                            </div>
+                        </Card>
+
+                        {amHost ? (
+                            <>
+                                <Button
+                                    variant="primary"
+                                    size="xl"
+                                    className="w-full"
+                                    onClick={onStartGame}
+                                    disabled={!roomState.canStartGame}
+                                >
+                                    <Play aria-hidden="true" className="w-5 h-5 fill-current" />
+                                    {BTN_START_GAME}
+                                </Button>
+                                <p className="text-center text-[10px] text-zinc-600 uppercase tracking-widest">
+                                    {LABEL_HOST_CONTROLS}
+                                </p>
+                            </>
+                        ) : (
+                            <div className="border border-white/5 rounded-xl p-6 flex flex-col items-center justify-center border-dashed gap-3">
+                                <div className="w-6 h-6 border-2 border-emerald-primary border-t-transparent rounded-full animate-spin" aria-hidden="true" />
+                                <p className="text-zinc-500 text-xs uppercase tracking-widest text-center">
+                                    {LABEL_WAITING_HOST}
+                                </p>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+}

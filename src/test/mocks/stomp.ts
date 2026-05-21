@@ -7,19 +7,19 @@ export class MockStompClient {
   onConnect: () => void = () => {}
   connected = true
 
-  activate = vi.fn(() => {
+  activate() {
     // Simulate connection
-    setTimeout(() => this.onConnect(), 0)
-  })
+    setTimeout(() => this.onConnect(), 0);
+  }
 
-  deactivate = vi.fn()
+  deactivate() {}
   
-  subscribe = vi.fn((destination: string, callback: (msg: { body: string }) => void) => {
-    activeSubscriptions.set(destination, callback)
-    return { unsubscribe: () => activeSubscriptions.delete(destination) }
-  })
+  subscribe(destination: string, callback: (msg: { body: string }) => void) {
+    activeSubscriptions.set(destination, callback);
+    return { unsubscribe: () => activeSubscriptions.delete(destination) };
+  }
 
-  publish = vi.fn()
+  publish() {}
 
   // Helper for tests to simulate an incoming message
   static simulateMessage(destination: string, body: unknown) {

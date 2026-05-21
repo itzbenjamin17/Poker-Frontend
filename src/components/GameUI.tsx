@@ -1,5 +1,6 @@
 import React from 'react';
-import { cn, type Player} from '../types';
+import { cn } from '../lib/cn';
+import type { Player } from '../types';
 
 const SUITS: Record<string, { icon: string; color: string; name: string }> = {
     'H': { icon: '♥', color: 'text-red-500', name: 'Hearts' },
@@ -10,15 +11,15 @@ const SUITS: Record<string, { icon: string; color: string; name: string }> = {
 
 const RANKS: Record<string, string> = {
     'A': 'Ace', 'K': 'King', 'Q': 'Queen', 'J': 'Jack', 'T': 'Ten',
-    '9': '9', '8': '8', '7': '7', '6': '6', '5': '5', '4': '4', '3': '3', '2': '2'
+    '9': '9', '8': '8', '7': '7', '6': '6', '5': '5', '4': '4', '3': '3', '2': '2',
 };
 
 export const CardUI: React.FC<{ card: string; hidden?: boolean; className?: string }> = ({ card, hidden, className }) => {
     if (hidden) {
         return (
-            <div 
+            <div
                 aria-label="Hidden Card"
-                className={cn("w-12 h-16 bg-emerald-container rounded-md border-2 border-white/20 flex items-center justify-center shadow-lg", className)}
+                className={cn('w-12 h-16 bg-emerald-container rounded-md border-2 border-white/20 flex items-center justify-center shadow-lg', className)}
             >
                 <div className="w-8 h-12 border border-white/10 rounded-sm opacity-20" />
             </div>
@@ -32,17 +33,17 @@ export const CardUI: React.FC<{ card: string; hidden?: boolean; className?: stri
     const label = `${rankName} of ${suit.name}`;
 
     return (
-        <div 
+        <div
             role="img"
             aria-label={label}
-            className={cn("w-12 h-16 bg-white rounded-md flex flex-col items-center justify-between p-1 shadow-xl relative overflow-hidden", className)}
+            className={cn('w-12 h-16 bg-white rounded-md flex flex-col items-center justify-between p-1 shadow-xl relative overflow-hidden', className)}
         >
-            <div className={cn("text-xs font-bold self-start leading-none", suit.color)}>{value}</div>
-            <div className={cn("text-xl leading-none", suit.color)}>{suit.icon}</div>
-            <div className={cn("text-xs font-bold self-end rotate-180 leading-none", suit.color)}>{value}</div>
+            <div className={cn('text-xs font-bold self-start leading-none', suit.color)}>{value}</div>
+            <div className={cn('text-xl leading-none', suit.color)}>{suit.icon}</div>
+            <div className={cn('text-xs font-bold self-end rotate-180 leading-none', suit.color)}>{value}</div>
 
             {/* Subtle watermark */}
-            <div className={cn("absolute inset-0 flex items-center justify-center opacity-5 pointer-events-none text-4xl", suit.color)}>
+            <div className={cn('absolute inset-0 flex items-center justify-center opacity-5 pointer-events-none text-4xl', suit.color)}>
                 {suit.icon}
             </div>
         </div>
@@ -50,20 +51,19 @@ export const CardUI: React.FC<{ card: string; hidden?: boolean; className?: stri
 };
 
 export const PlayerPod = ({
-                              player,
-                              isCurrent,
-                              isWinner,
-                              blindLabel,
-                              size = 'md',
-                              disconnectSecondsRemaining,
-                              className
-                          }: {
+    player,
+    isCurrent,
+    isWinner,
+    blindLabel,
+    size = 'md',
+    disconnectSecondsRemaining,
+    className,
+}: {
     player: Player;
     isCurrent?: boolean;
     isWinner?: boolean;
     blindLabel?: 'SB' | 'BB';
     size?: 'sm' | 'md';
-    isDealer?: boolean;
     disconnectSecondsRemaining?: number;
     className?: string;
 }) => {
@@ -71,6 +71,7 @@ export const PlayerPod = ({
     const initialsClass = size === 'sm' ? 'text-base' : 'text-xl';
     const chipsClass = size === 'sm' ? 'text-[9px]' : 'text-[10px]';
     const isDisconnected = player.status === 'DISCONNECTED';
+
     const formatDisconnectCountdown = (secondsRemaining: number) => {
         const clamped = Math.max(0, secondsRemaining);
         const minutes = Math.floor(clamped / 60).toString().padStart(2, '0');
@@ -79,38 +80,41 @@ export const PlayerPod = ({
     };
 
     return (
-        <div className={cn("flex flex-col items-center gap-2", className)}>
+        <div className={cn('flex flex-col items-center gap-2', className)}>
             <div className={cn(
-                "relative rounded-full flex items-center justify-center transition-all duration-500",
+                'relative rounded-full flex items-center justify-center transition-all duration-500',
                 podSizeClass,
                 isCurrent
-                    ? "ring-2 ring-emerald-primary ring-offset-4 ring-offset-surface scale-110"
+                    ? 'ring-2 ring-emerald-primary ring-offset-4 ring-offset-surface scale-110'
                     : isWinner
-                        ? "ring-2 ring-gold-secondary/90 shadow-[0_0_24px_rgba(252,192,37,0.42)]"
-                        : "ring-1 ring-white/10",
-                isWinner && "shadow-[0_0_18px_rgba(252,192,37,0.28)]",
-                player.status === 'FOLDED' ? "opacity-40 grayscale" : "opacity-100",
-                isDisconnected ? "ring-2 ring-amber-400/80 opacity-80" : ""
+                        ? 'ring-2 ring-gold-secondary/90 shadow-[0_0_24px_rgba(252,192,37,0.42)]'
+                        : 'ring-1 ring-white/10',
+                isWinner && 'shadow-[0_0_18px_rgba(252,192,37,0.28)]',
+                player.status === 'FOLDED' ? 'opacity-40 grayscale' : 'opacity-100',
+                isDisconnected ? 'ring-2 ring-amber-400/80 opacity-80' : ''
             )}>
                 <div className={cn(
-                    "w-full h-full rounded-full bg-surface-highest flex items-center justify-center overflow-hidden border",
-                    isWinner ? "border-gold-secondary/70 bg-gold-secondary/10" : "border-white/5"
+                    'w-full h-full rounded-full bg-surface-highest flex items-center justify-center overflow-hidden border',
+                    isWinner ? 'border-gold-secondary/70 bg-gold-secondary/10' : 'border-white/5'
                 )}>
-           <span className={cn(
-               "font-headline font-bold",
-               isWinner ? "text-gold-secondary/85" : "text-emerald-primary/40",
-               initialsClass
-           )}>
-             {player.name.slice(0, 2).toUpperCase()}
-           </span>
+                    <span className={cn(
+                        'font-headline font-bold',
+                        isWinner ? 'text-gold-secondary/85' : 'text-emerald-primary/40',
+                        initialsClass
+                    )}>
+                        {player.name.slice(0, 2).toUpperCase()}
+                    </span>
+                    {isCurrent && <span className="sr-only">Active turn</span>}
+                    {isWinner && <span className="sr-only">Winner</span>}
+                    {player.status === 'FOLDED' && <span className="sr-only">Folded</span>}
                 </div>
 
                 {blindLabel && (
                     <div className={cn(
-                        "absolute -left-2 -top-2 px-1.5 py-0.5 rounded-full border shadow-md",
+                        'absolute -left-2 -top-2 px-1.5 py-0.5 rounded-full border shadow-md',
                         blindLabel === 'BB'
-                            ? "bg-gold-secondary text-surface border-gold-dim"
-                            : "bg-emerald-primary text-surface border-emerald-dim"
+                            ? 'bg-gold-secondary text-surface border-gold-dim'
+                            : 'bg-emerald-primary text-surface border-emerald-dim'
                     )}>
                         <span className="text-[9px] font-headline font-extrabold tracking-wider">{blindLabel}</span>
                     </div>
@@ -118,7 +122,7 @@ export const PlayerPod = ({
 
                 {/* Chips Badge */}
                 <div className="absolute -bottom-2 bg-surface-high px-2 py-0.5 rounded-full border border-white/10 shadow-lg">
-                    <span className={cn("font-bold text-gold-secondary", chipsClass)}>${player.chips.toLocaleString()}</span>
+                    <span className={cn('font-bold text-gold-secondary', chipsClass)}>${player.chips.toLocaleString()}</span>
                 </div>
 
                 {/* Action Indicator */}
@@ -146,9 +150,7 @@ export const PlayerPod = ({
                     </p>
                 )}
                 {player.isReadyForNextHand && (
-                    <p className="text-[9px] font-bold text-emerald-primary uppercase tracking-wider">
-                        READY
-                    </p>
+                    <p className="text-[9px] font-bold text-emerald-primary uppercase tracking-wider">READY</p>
                 )}
             </div>
         </div>
