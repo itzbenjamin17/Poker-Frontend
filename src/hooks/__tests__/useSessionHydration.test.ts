@@ -13,6 +13,7 @@ describe('useSessionHydration', () => {
         token: 'test-token',
         roomId: 'ROOM123',
         playerName: 'TestPlayer',
+        message: 'Success',
     };
     const onLeave = vi.fn();
     const dispatch = vi.fn();
@@ -53,13 +54,16 @@ describe('useSessionHydration', () => {
         const getRoomInfoSpy = vi.spyOn(pokerApi, 'getRoomInfo').mockResolvedValue({
             roomId: 'ROOM123',
             roomName: 'Table 1',
-            players: [{ name: 'TestPlayer', isHost: true }],
+            players: [{ name: 'TestPlayer', isHost: true, joinedAt: '2026-05-22T00:00:00Z' }],
             maxPlayers: 6,
             buyIn: 2000,
             smallBlind: 10,
             bigBlind: 20,
             canStartGame: true,
             gameStarted: false,
+            createdAt: '2026-05-22T00:00:00Z',
+            hostName: 'TestPlayer',
+            currentPlayers: 1,
         });
 
         renderHook(() => useSessionHydration());
@@ -103,6 +107,37 @@ describe('useSessionHydration', () => {
             payload: expect.any(String),
         });
 
+        act(() => {
+            vi.advanceTimersByTime(3000);
+        });
+
+        expect(onLeave).toHaveBeenCalledTimes(1);
+    });
+
+    it('redirects to lobby if session hydration times out after 10 seconds', async () => {
+        // Mock getRoomInfo to hang indefinitely (never resolve)
+        const getRoomInfoSpy = vi.spyOn(pokerApi, 'getRoomInfo').mockReturnValue(new Promise(() => {}));
+
+        renderHook(() => useSessionHydration());
+
+        expect(getRoomInfoSpy).toHaveBeenCalled();
+        expect(dispatch).toHaveBeenCalledWith({
+            type: 'SET_LOADING_STATUS',
+            payload: 'Connecting...',
+        });
+
+        // Fast-forward 10 seconds to trigger the timeout
+        act(() => {
+            vi.advanceTimersByTime(10000);
+        });
+
+        // Should trigger redirect message
+        expect(dispatch).toHaveBeenCalledWith({
+            type: 'SET_NOTIFICATION',
+            payload: 'Session expired. Returning to lobby...',
+        });
+
+        // Fast-forward 3 seconds to complete redirection
         act(() => {
             vi.advanceTimersByTime(3000);
         });

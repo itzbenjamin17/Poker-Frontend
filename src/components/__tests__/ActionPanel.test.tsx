@@ -6,12 +6,14 @@ import type { GameState, Player } from '../../types'
 
 const mockGameState: GameState = {
     gameId: 'ROOM123',
-    phase: 'PRE_FLOP',
+    maxPlayers: 6,
     pot: 30,
     currentBet: 20,
     communityCards: [],
     currentPlayerId: 'p-1',
+    currentPlayerName: 'TestPlayer',
     players: [],
+    phase: 'PRE_FLOP',
 }
 
 const mockMe: Player = {
@@ -20,6 +22,7 @@ const mockMe: Player = {
     chips: 1000,
     currentBet: 10,
     status: 'ACTIVE',
+    hasFolded: false,
 }
 
 describe('ActionPanel', () => {

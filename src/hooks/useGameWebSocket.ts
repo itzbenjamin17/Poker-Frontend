@@ -85,36 +85,40 @@ export function useGameWebSocket(options: UseGameWebSocketOptions) {
 
             // ── Room updates ──────────────────────────────────────────────
             subscribeTo([`/room/${auth.roomId}`], (body) => {
-                const update = JSON.parse(body) as RoomUpdate;
+                try {
+                    const update = JSON.parse(body) as RoomUpdate;
 
-                if (update.message === 'ROOM_CLOSED') {
-                    dispatch({ type: 'SET_NOTIFICATION', payload: HOST_LEFT });
-                    dispatch({ type: 'SET_LOADING_STATUS', payload: HOST_LEFT });
-                    dispatch({ type: 'SET_ROOM', payload: null });
-                    if (redirectTimerRef.current !== null) clearTimeout(redirectTimerRef.current);
-                    redirectTimerRef.current = setTimeout(() => onLeave?.(), ROOM_CLOSED_REDIRECT_MS);
-                    return;
-                }
+                    if (update.message === 'ROOM_CLOSED') {
+                        dispatch({ type: 'SET_NOTIFICATION', payload: HOST_LEFT });
+                        dispatch({ type: 'SET_LOADING_STATUS', payload: HOST_LEFT });
+                        dispatch({ type: 'SET_ROOM', payload: null });
+                        if (redirectTimerRef.current !== null) clearTimeout(redirectTimerRef.current);
+                        redirectTimerRef.current = setTimeout(() => onLeave?.(), ROOM_CLOSED_REDIRECT_MS);
+                        return;
+                    }
 
-                if (
-                    update.message === 'ROOM_CREATED' ||
-                    update.message === 'PLAYER_JOINED' ||
-                    update.message === 'PLAYER_LEFT'
-                ) {
-                    dispatch({
-                        type: 'SET_ROOM',
-                        payload: {
-                            roomId: update.data.roomId ?? auth.roomId,
-                            roomName: update.data.roomName,
-                            players: update.data.players,
-                            maxPlayers: update.data.maxPlayers,
-                            buyIn: update.data.buyIn,
-                            smallBlind: update.data.smallBlind,
-                            bigBlind: update.data.bigBlind,
-                            canStartGame: update.data.canStartGame,
-                            gameStarted: update.data.gameStarted,
-                        },
-                    });
+                    if (
+                        update.message === 'ROOM_CREATED' ||
+                        update.message === 'PLAYER_JOINED' ||
+                        update.message === 'PLAYER_LEFT'
+                    ) {
+                        dispatch({
+                            type: 'SET_ROOM',
+                            payload: {
+                                roomId: update.data.roomId ?? auth.roomId,
+                                roomName: update.data.roomName,
+                                players: update.data.players,
+                                maxPlayers: update.data.maxPlayers,
+                                buyIn: update.data.buyIn,
+                                smallBlind: update.data.smallBlind,
+                                bigBlind: update.data.bigBlind,
+                                canStartGame: update.data.canStartGame,
+                                gameStarted: update.data.gameStarted,
+                            },
+                        });
+                    }
+                } catch (err) {
+                    logger.warn('Ignoring malformed room update payload:', body, err);
                 }
             });
 

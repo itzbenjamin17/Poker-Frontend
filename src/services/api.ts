@@ -24,6 +24,9 @@ function buildApiError(status: number, message: string): ApiError {
 }
 
 export async function getErrorMessage(res: Response, fallback: string): Promise<string> {
+    if (res.status === 429) {
+        return 'Too many requests. Please try again later.';
+    }
     try {
         const contentType = res.headers.get('content-type') ?? '';
         if (contentType.includes('application/json')) {

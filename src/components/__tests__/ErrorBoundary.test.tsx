@@ -1,4 +1,4 @@
-import React from 'react';
+
 import { render, screen, fireEvent } from '@testing-library/react';
 import { describe, test, expect, vi } from 'vitest';
 import { ErrorBoundary } from '../ErrorBoundary';
@@ -90,9 +90,11 @@ describe('ErrorBoundary', () => {
         
         // Mock window.location
         const originalLocation = window.location;
-        // @ts-expect-error - overriding read-only window.location
-        delete window.location;
-        window.location = { ...originalLocation, reload: reloadSpy } as typeof window.location;
+        Object.defineProperty(window, 'location', {
+            configurable: true,
+            writable: true,
+            value: { ...originalLocation, reload: reloadSpy }
+        });
 
         render(
             <ErrorBoundary>
@@ -106,7 +108,11 @@ describe('ErrorBoundary', () => {
         expect(reloadSpy).toHaveBeenCalledTimes(1);
 
         // Restore window.location
-        window.location = originalLocation;
+        Object.defineProperty(window, 'location', {
+            configurable: true,
+            writable: true,
+            value: originalLocation
+        });
         spyConsole.mockRestore();
     });
 });

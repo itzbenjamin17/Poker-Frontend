@@ -50,6 +50,7 @@ export const Input = ({
     ...props
 }: { label?: string; error?: string } & React.InputHTMLAttributes<HTMLInputElement>) => {
     const id = useId();
+    const errorId = `${id}-error`;
     return (
         <div className="space-y-2 w-full">
             {label && (
@@ -63,13 +64,14 @@ export const Input = ({
             <input
                 id={id}
                 aria-invalid={!!error}
+                aria-describedby={error ? errorId : undefined}
                 className={cn(
                     'w-full bg-surface-highest border-none rounded-lg p-4 text-white placeholder:text-white/20 focus:ring-1 focus:ring-emerald-primary/30 transition-all font-body outline-none',
                     error && 'ring-1 ring-red-500/50'
                 )}
                 {...props}
             />
-            {error && <p role="alert" className="text-[10px] text-red-500 uppercase tracking-wider">{error}</p>}
+            {error && <p id={errorId} role="alert" className="text-[10px] text-red-500 uppercase tracking-wider">{error}</p>}
         </div>
     );
 };

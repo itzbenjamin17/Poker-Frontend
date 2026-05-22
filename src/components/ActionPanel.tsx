@@ -117,6 +117,8 @@ export function ActionPanel({
                         <input
                             type="number"
                             aria-label={ARIA_RAISE_AMOUNT}
+                            aria-describedby={activeRaiseError ? 'raise-amount-error' : undefined}
+                            aria-invalid={!!activeRaiseError}
                             className={cn(
                                 'bg-transparent text-white font-bold outline-none placeholder:text-zinc-600',
                                 isMobileLandscape ? 'w-16 text-xs' : isCompactTable ? 'w-12 text-xs' : 'w-24',
@@ -145,7 +147,7 @@ export function ActionPanel({
                     </div>
 
                     {activeRaiseError && (
-                        <p className="w-full max-w-md mx-auto text-center text-[10px] md:text-[11px] text-red-400 font-bold uppercase tracking-wider line-clamp-2 md:line-clamp-3">
+                        <p id="raise-amount-error" role="alert" className="w-full max-w-md mx-auto text-center text-[10px] md:text-[11px] text-red-400 font-bold uppercase tracking-wider line-clamp-2 md:line-clamp-3">
                             {activeRaiseError}
                         </p>
                     )}

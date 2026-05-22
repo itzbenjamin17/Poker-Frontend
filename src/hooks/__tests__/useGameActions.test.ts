@@ -27,6 +27,7 @@ describe('useGameActions', () => {
         token: 'test-token',
         roomId: 'ROOM123',
         playerName: 'TestPlayer',
+        message: 'Success',
     };
     const onLeave = vi.fn();
     const dispatch = vi.fn();
@@ -56,6 +57,8 @@ describe('useGameActions', () => {
             scheduleShowdownHide: vi.fn(),
             latestGameStateRef: { current: null },
             notificationTimerRef: { current: null },
+            applyIncomingGameState: vi.fn(),
+            applyIncomingPrivateState: vi.fn(),
         });
     });
 
@@ -86,6 +89,37 @@ describe('useGameActions', () => {
         });
         expect(setRaiseAmount).toHaveBeenCalledWith('');
         expect(setRaiseError).toHaveBeenCalledWith(null);
+    });
+
+    it('handleAction blocks duplicate rapid calls until reset or timed out', () => {
+        const publishMock = vi.fn();
+        const stompClientRef = {
+            current: {
+                connected: true,
+                publish: publishMock,
+            } as any,
+        };
+
+        const { result } = renderHook(() =>
+            useGameActions(stompClientRef, setRaiseAmount, setRaiseError)
+        );
+
+        act(() => {
+            result.current.handleAction('CHECK');
+            result.current.handleAction('CHECK');
+        });
+
+        expect(publishMock).toHaveBeenCalledTimes(1);
+
+        act(() => {
+            vi.advanceTimersByTime(3000);
+        });
+
+        act(() => {
+            result.current.handleAction('CHECK');
+        });
+
+        expect(publishMock).toHaveBeenCalledTimes(2);
     });
 
     it('handleAction defers and sets notification when client is not connected', () => {

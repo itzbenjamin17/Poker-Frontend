@@ -13,6 +13,7 @@ describe('useGameWebSocket', () => {
         token: 'test-token',
         roomId: 'ROOM123',
         playerName: 'TestPlayer',
+        message: 'Success',
     };
     const onLeave = vi.fn();
     const dispatch = vi.fn();
