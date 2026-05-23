@@ -19,6 +19,7 @@ interface GameTableViewProps {
     tableTier: TableTier;
     isCompactTable: boolean;
     isMobileLandscape: boolean;
+    scale: number;
     nowMs: number;
     raiseAmount: string;
     raiseError: string | null;
@@ -37,25 +38,26 @@ interface GameTableViewProps {
 }
 
 export function GameTableView({
-    tableTier,
-    isCompactTable,
-    isMobileLandscape,
-    nowMs,
-    raiseAmount,
-    raiseError,
-    showdownLayout,
-    showdownModalRef,
-    getSeatPosition,
-    onAction,
-    onReady,
-    onClaimWin,
-    onLeaveGame,
-    onRaiseChange,
-    onShowdownDragPointerDown,
-    onShowdownResizePointerDown,
-    onShowdownPointerMove,
-    onShowdownPointerUp,
-}: GameTableViewProps) {
+                                  tableTier,
+                                  isCompactTable,
+                                  isMobileLandscape,
+                                  scale,
+                                  nowMs,
+                                  raiseAmount,
+                                  raiseError,
+                                  showdownLayout,
+                                  showdownModalRef,
+                                  getSeatPosition,
+                                  onAction,
+                                  onReady,
+                                  onClaimWin,
+                                  onLeaveGame,
+                                  onRaiseChange,
+                                  onShowdownDragPointerDown,
+                                  onShowdownResizePointerDown,
+                                  onShowdownPointerMove,
+                                  onShowdownPointerUp,
+                              }: GameTableViewProps) {
     const { auth, gameState, privateState, showdown, showdownResult, claimPending, myPlayerId, notification } = useGameContext();
 
     if (!gameState) return null;
@@ -92,7 +94,7 @@ export function GameTableView({
         : 0;
 
     const controlButtonSize: 'xs' | 'sm' | 'md' = isMobileLandscape ? 'xs' : isCompactTable ? 'sm' : 'md';
-    const bottomCanvasWidthClass = isMobileLandscape ? 'w-full min-w-0' : 'w-full min-w-[800px]';
+    const bottomCanvasWidthClass = 'w-full min-w-0';
 
     const uncalledAmount = gameState.uncalledAmount ?? 0;
     const potBreakdown = gameState.pots && gameState.pots.length > 0 ? gameState.pots : [gameState.pot];
@@ -101,7 +103,7 @@ export function GameTableView({
     const sidePots = potBreakdown.slice(1);
 
     return (
-        <div className={cn('h-dvh md:h-screen flex flex-col relative', 'overflow-auto')}>
+        <div className={cn('h-dvh md:h-screen flex flex-col relative', 'overflow-hidden')}>
             <NotificationBanner notification={notification} />
 
             {/* Showdown Modal */}
@@ -142,14 +144,14 @@ export function GameTableView({
                 'relative flex flex-1',
                 isMobileLandscape
                     ? 'min-w-0 min-h-0 items-center justify-center p-1.5'
-                    : 'min-w-[800px] min-h-[600px]',
+                    : 'min-w-0 min-h-0 items-center justify-center',
                 !isMobileLandscape &&
-                (isCompactTable ? 'items-center justify-center p-2' : 'items-center justify-center p-4 sm:p-6 md:p-8 lg:p-10'),
+                (isCompactTable ? 'p-2' : 'p-3 sm:p-4 md:p-6 lg:p-8'),
             )}>
                 <div className={cn(
                     'poker-table-gradient border-surface-high shadow-[0_0_100px_rgba(0,0,0,0.8)] relative transition-all duration-300 overflow-visible',
                     tableTier === 'compact' && cn(
-                        'w-full h-full aspect-[2.15/1] rounded-[72px] border-[8px] min-w-[800px] min-h-[600px]',
+                        'w-full h-full aspect-[2.15/1] rounded-[72px] border-[8px]',
                         isMobileLandscape && 'aspect-[2.35/1] rounded-[48px] border-[6px] min-w-0 min-h-0 max-h-[68dvh]',
                     ),
                     tableTier === 'standard' && 'w-full h-full aspect-[2.15/1] rounded-[170px] border-[10px]',
@@ -164,8 +166,9 @@ export function GameTableView({
                             uncalledAmount={uncalledAmount}
                             phase={gameState.phase}
                             isCompactTable={isCompactTable}
+                            scale={scale}
                         />
-                        <CommunityCardsArea communityCards={gameState.communityCards} />
+                        <CommunityCardsArea communityCards={gameState.communityCards} scale={scale} />
                     </div>
 
                     {/* Players */}
@@ -178,6 +181,7 @@ export function GameTableView({
                         getSeatPosition={getSeatPosition}
                         isCompactTable={isCompactTable}
                         nowMs={nowMs}
+                        scale={scale}
                     />
                 </div>
             </div>
@@ -222,6 +226,7 @@ export function GameTableView({
                 raiseError={raiseError}
                 onRaiseChange={onRaiseChange}
                 onAction={onAction}
+                scale={scale}
             />
         </div>
     );

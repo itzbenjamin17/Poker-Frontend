@@ -12,6 +12,7 @@ export interface SeatLayoutInfo {
     isWideTable: boolean;
     isMobileLandscape: boolean;
     getSeatPosition: (index: number, total: number) => SeatPosition;
+    scale: number;
 }
 
 export function useSeatLayout({ width, height }: WindowDimensions): SeatLayoutInfo {
@@ -20,6 +21,7 @@ export function useSeatLayout({ width, height }: WindowDimensions): SeatLayoutIn
     const isLandscapeOrientation = width > height;
     const isMobileLandscape = isCompactTable && isLandscapeOrientation && height <= 520;
     const tableTier: TableTier = isCompactTable ? 'compact' : isWideTable ? 'wide' : 'standard';
+    const scale = Math.min(1, Math.max(0.5, width / 1024));
 
     const getSeatPosition = useMemo(() => {
         return (index: number, total: number): SeatPosition => {
@@ -97,5 +99,5 @@ export function useSeatLayout({ width, height }: WindowDimensions): SeatLayoutIn
         };
     }, [tableTier]);
 
-    return { tableTier, isCompactTable, isWideTable, isMobileLandscape, getSeatPosition };
+    return { tableTier, isCompactTable, isWideTable, isMobileLandscape, getSeatPosition, scale };
 }

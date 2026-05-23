@@ -1,6 +1,6 @@
 # Poker - Real-time Multiplayer Game UI
 
-A polished **React 19 + TypeScript** frontend for a real-time multiplayer poker game. The app connects to a Spring Boot backend over **REST** and **STOMP/SockJS**, renders live room and table state, and uses **Tailwind CSS v4** plus **Motion** for the presentation layer.
+A polished **React 19 + TypeScript** frontend for a real-time multiplayer poker game. The app connects to a Spring Boot backend over **REST** and **STOMP/WebSockets**, renders live room and table state, and uses **Tailwind CSS v4** plus **Motion** for the presentation layer.
 
 **Purpose:** Showcase project demonstrating modern React patterns, real-time communication, and a branded multiplayer game UI.
 
@@ -43,7 +43,6 @@ npm run dev
 | **Tailwind CSS** | `^4.3.0` | Utility-first styling |
 | **@tailwindcss/vite** | `^4.3.0` | Tailwind Vite integration |
 | **@stomp/stompjs** | `^7.3.0` | STOMP client |
-| **sockjs-client** | `^1.6.1` | WebSocket fallback transport |
 | **Motion** | `^12.38.0` | UI animation |
 | **Lucide React** | `^0.577.0` | Icons |
 | **clsx + tailwind-merge** | `^2.1.1` / `^3.6.0` | Class composition helpers |

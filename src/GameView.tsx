@@ -28,7 +28,7 @@ function GameViewInner() {
     const [nowMs, setNowMs] = useState(() => Date.now());
 
     // ── Layout ──────────────────────────────────────────────────────────────────
-    const { tableTier, isCompactTable, isMobileLandscape, getSeatPosition } = useSeatLayout({
+    const { tableTier, isCompactTable, isMobileLandscape, getSeatPosition, scale } = useSeatLayout({
         width: windowWidth,
         height: windowHeight,
     });
@@ -100,6 +100,7 @@ function GameViewInner() {
             tableTier={tableTier}
             isCompactTable={isCompactTable}
             isMobileLandscape={isMobileLandscape}
+            scale={scale}
             nowMs={nowMs}
             raiseAmount={raiseAmount}
             raiseError={raiseError}

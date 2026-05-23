@@ -99,5 +99,10 @@ describe('GameUI Components', () => {
             render(<PlayerPod player={readyPlayer} />);
             expect(screen.getByText('READY')).toBeInTheDocument();
         });
+
+        test('renders hand rank badge when provided', () => {
+            render(<PlayerPod player={mockPlayer} handRank="TWO_PAIR" />);
+            expect(screen.getByText('TWO PAIR')).toBeInTheDocument();
+        });
     });
 });

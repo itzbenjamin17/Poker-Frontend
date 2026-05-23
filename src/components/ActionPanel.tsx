@@ -19,23 +19,25 @@ interface ActionPanelProps {
     raiseError: string | null;
     onRaiseChange: (val: string) => void;
     onAction: (action: string, amount?: number) => void;
+    scale: number;
 }
 
 export function ActionPanel({
-    gameState,
-    me,
-    isMyTurn,
-    isSelfDisconnected,
-    isReadyCountdownActive,
-    isMobileLandscape,
-    isCompactTable,
-    raiseAmount,
-    raiseError,
-    onRaiseChange,
-    onAction,
-}: ActionPanelProps) {
+                                gameState,
+                                me,
+                                isMyTurn,
+                                isSelfDisconnected,
+                                isReadyCountdownActive,
+                                isMobileLandscape,
+                                isCompactTable,
+                                raiseAmount,
+                                raiseError,
+                                onRaiseChange,
+                                onAction,
+                                scale,
+                            }: ActionPanelProps) {
     const controlButtonSize: 'xs' | 'sm' | 'md' = isMobileLandscape ? 'xs' : isCompactTable ? 'sm' : 'md';
-    const bottomWidthClass = isMobileLandscape ? 'w-full min-w-0' : 'w-full min-w-[800px]';
+    const bottomWidthClass = 'w-full min-w-0';
 
     const actionType = (gameState.currentBet || 0) === 0 ? 'BET' : 'RAISE';
     const minRaiseAmount = actionType === 'BET'
@@ -71,6 +73,7 @@ export function ActionPanel({
 
     const activeRaiseError = raiseError ?? computedRaiseError;
     const canSubmitRaise = rawRaise !== '' && !activeRaiseError;
+    const hasError = Boolean(activeRaiseError);
 
     const show = isMyTurn && !isSelfDisconnected && !isReadyCountdownActive;
 
@@ -108,49 +111,77 @@ export function ActionPanel({
 
                     {/* Custom Bet / Raise Input */}
                     <div className={cn(
-                        'flex items-center gap-2 bg-black/40 p-1 rounded-md border border-white/10',
-                        isMobileLandscape ? 'w-full justify-center' : isCompactTable ? '' : 'ml-4',
+                        'flex items-stretch rounded-xl overflow-hidden border transition-colors duration-150',
+                        hasError
+                            ? 'border-red-500/50 shadow-[0_0_0_1px_rgba(239,68,68,0.2)]'
+                            : 'border-white/10 focus-within:border-white/25',
+                        isMobileLandscape ? 'w-full' : isCompactTable ? '' : 'ml-2',
                     )}>
-                        <span className={cn('font-bold', isCompactTable ? 'text-zinc-400 text-xs pl-2' : 'text-zinc-400 pl-3')}>
-                            $
-                        </span>
+                        {/* Currency label */}
+                        <div className={cn(
+                            'flex items-center bg-white/5 border-r border-white/10 select-none',
+                            isCompactTable || isMobileLandscape ? 'px-2' : 'px-3',
+                        )}>
+                            <span className="text-zinc-400 font-bold text-sm">$</span>
+                        </div>
+
+                        {/* Number input */}
                         <input
                             type="number"
                             aria-label={ARIA_RAISE_AMOUNT}
                             aria-describedby={activeRaiseError ? 'raise-amount-error' : undefined}
-                            aria-invalid={!!activeRaiseError}
+                            aria-invalid={hasError}
                             className={cn(
-                                'bg-transparent text-white font-bold outline-none placeholder:text-zinc-600',
-                                isMobileLandscape ? 'w-16 text-xs' : isCompactTable ? 'w-12 text-xs' : 'w-24',
+                                'bg-black/30 text-white font-bold outline-none placeholder:text-zinc-600 tabular-nums',
+                                '[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none',
+                                isMobileLandscape ? 'w-20 text-xs px-2 py-1.5'
+                                    : isCompactTable ? 'w-14 text-xs px-2 py-1.5'
+                                        : 'w-24 text-sm px-3 py-2',
                             )}
                             placeholder={minRaiseAmount.toString()}
                             value={raiseAmount}
-                            onChange={e => {
-                                onRaiseChange(e.target.value);
-                            }}
+                            onChange={e => onRaiseChange(e.target.value)}
                             min={minRaiseAmount}
                             step={1}
                         />
-                        <Button
-                            variant="primary"
+
+                        {/* Raise / Bet submit button — flush inside the group */}
+                        <button
+                            type="button"
                             disabled={!canSubmitRaise}
-                            size={controlButtonSize}
                             onClick={() => {
                                 if (!canSubmitRaise) return;
                                 const amount = Number.parseInt(rawRaise, 10);
                                 onAction(actionType, amount);
                                 onRaiseChange('');
                             }}
+                            className={cn(
+                                'font-headline font-extrabold uppercase tracking-wider transition-all duration-150 select-none border-l border-white/10',
+                                isCompactTable || isMobileLandscape ? 'text-[10px] px-2.5 py-1.5' : 'text-xs px-4 py-2',
+                                canSubmitRaise
+                                    ? 'bg-gold-secondary text-black hover:brightness-110 active:brightness-95 cursor-pointer'
+                                    : 'bg-white/5 text-zinc-600 cursor-not-allowed',
+                            )}
                         >
                             {(gameState.currentBet || 0) === 0 ? BTN_BET : BTN_RAISE}
-                        </Button>
+                        </button>
                     </div>
 
-                    {activeRaiseError && (
-                        <p id="raise-amount-error" role="alert" className="w-full max-w-md mx-auto text-center text-[10px] md:text-[11px] text-red-400 font-bold uppercase tracking-wider line-clamp-2 md:line-clamp-3">
-                            {activeRaiseError}
-                        </p>
-                    )}
+                    {/* Error message */}
+                    <AnimatePresence>
+                        {activeRaiseError && (
+                            <motion.p
+                                id="raise-amount-error"
+                                role="alert"
+                                initial={{ opacity: 0, y: -4 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                exit={{ opacity: 0, y: -4 }}
+                                className="w-full max-w-md mx-auto text-center text-[10px] md:text-[11px] text-red-400 font-bold uppercase tracking-wider line-clamp-2 md:line-clamp-3"
+                            >
+                                {activeRaiseError}
+                            </motion.p>
+                        )}
+                    </AnimatePresence>
                 </motion.div>
             )}
         </AnimatePresence>

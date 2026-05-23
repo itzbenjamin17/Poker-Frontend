@@ -23,6 +23,26 @@ describe('useSeatLayout', () => {
         expect(wideRes.current.isWideTable).toBe(true)
     })
 
+    it('computes continuous scale correctly based on width', () => {
+        // 1. width >= 1024 -> scale = 1.0
+        const { result: fullRes } = renderHook(() => useSeatLayout({ width: 1200, height: 800 }))
+        expect(fullRes.current.scale).toBe(1.0)
+
+        const { result: edgeFullRes } = renderHook(() => useSeatLayout({ width: 1024, height: 800 }))
+        expect(edgeFullRes.current.scale).toBe(1.0)
+
+        // 2. 512 < width < 1024 -> scale = width / 1024
+        const { result: halfRes } = renderHook(() => useSeatLayout({ width: 768, height: 600 }))
+        expect(halfRes.current.scale).toBe(768 / 1024)
+
+        // 3. width <= 512 -> scale = 0.5
+        const { result: clampedRes } = renderHook(() => useSeatLayout({ width: 512, height: 400 }))
+        expect(clampedRes.current.scale).toBe(0.5)
+
+        const { result: smallRes } = renderHook(() => useSeatLayout({ width: 400, height: 300 }))
+        expect(smallRes.current.scale).toBe(0.5)
+    })
+
     it('identifies mobile landscape correctly', () => {
         // Landscape mobile: compact table width, width > height, height <= 520
         const { result } = renderHook(() => useSeatLayout({ width: 900, height: 400 }))

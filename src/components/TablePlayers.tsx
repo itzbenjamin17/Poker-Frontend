@@ -12,18 +12,20 @@ interface TablePlayersProps {
     getSeatPosition: (index: number, total: number) => SeatPosition;
     isCompactTable: boolean;
     nowMs: number;
+    scale: number;
 }
 
 export function TablePlayers({
-    orderedPlayers,
-    currentPlayerId,
-    myPlayerId,
-    showdown,
-    privateState,
-    getSeatPosition,
-    isCompactTable,
-    nowMs
-}: TablePlayersProps) {
+                                 orderedPlayers,
+                                 currentPlayerId,
+                                 myPlayerId,
+                                 showdown,
+                                 privateState,
+                                 getSeatPosition,
+                                 isCompactTable,
+                                 nowMs,
+                                 scale
+                             }: TablePlayersProps) {
 
     const getDisconnectSecondsRemaining = (player: Player) => {
         if (player.status !== 'DISCONNECTED') return undefined;
@@ -46,6 +48,9 @@ export function TablePlayers({
                 const playerPrivateCards = isSelf ? privateState?.holeCards ?? [] : [];
                 const displayCards = shouldReveal ? showdownPlayer!.holeCards! : playerPrivateCards;
 
+                const baseCardWidth = isSelf ? (isCompactTable ? 32 : 48) : (isCompactTable ? 20 : 32);
+                const baseCardHeight = isSelf ? (isCompactTable ? 48 : 64) : (isCompactTable ? 32 : 48);
+
                 return (
                     <div
                         key={p.id}
@@ -59,16 +64,31 @@ export function TablePlayers({
                             blindLabel={p.isBigBlind ? 'BB' : p.isSmallBlind ? 'SB' : undefined}
                             disconnectSecondsRemaining={getDisconnectSecondsRemaining(p)}
                             size={isCompactTable ? 'sm' : 'md'}
+                            scale={scale}
+                            handRank={showdownPlayer?.handRank}
                         />
 
                         {canRenderCards && (
-                            <div className={cn(
-                                'absolute z-10 flex flex-col items-center',
-                                seat.cardPlacement === 'left' && 'right-full top-1/2 -translate-y-1/2 mr-2',
-                                seat.cardPlacement === 'right' && 'left-full top-1/2 -translate-y-1/2 ml-2',
-                                seat.cardPlacement === 'below' && 'left-1/2 top-full -translate-x-1/2 mt-2',
-                            )}>
-                                <div className="flex gap-1 justify-center">
+                            <div
+                                className={cn(
+                                    'absolute z-10 flex flex-col items-center',
+                                    seat.cardPlacement === 'left' && 'right-full',
+                                    seat.cardPlacement === 'right' && 'left-full',
+                                    seat.cardPlacement === 'below' && 'left-1/2 top-full -translate-x-1/2',
+                                )}
+                                style={{
+                                    // For left/right: target the circle center, not the mid-point of the
+                                    // full pod height (which includes name + bet labels below the circle).
+                                    // ~35% from top approximates the circle center for a circle+text pod.
+                                    top: seat.cardPlacement !== 'below' ? '35%' : undefined,
+                                    transform: seat.cardPlacement !== 'below' ? 'translateY(-50%)' : undefined,
+                                    // Minimum gap of 12px so the timer ring / blind badge never clips into cards
+                                    marginRight: seat.cardPlacement === 'left' ? `${Math.max(12, scale * 16)}px` : undefined,
+                                    marginLeft: seat.cardPlacement === 'right' ? `${Math.max(12, scale * 16)}px` : undefined,
+                                    marginTop: seat.cardPlacement === 'below' ? `${Math.max(8, scale * 12)}px` : undefined,
+                                }}
+                            >
+                                <div className="flex justify-center" style={{ gap: `${scale * 4}px` }}>
                                     {displayCards.length > 0
                                         ? displayCards.map((c: string, ci: number) => (
                                             <motion.div
@@ -77,13 +97,18 @@ export function TablePlayers({
                                                 animate={{ scale: 1, opacity: 1 }}
                                                 transition={{ delay: ci * 0.08 }}
                                             >
-                                                <CardUI card={c} className={cn(
-                                                    isSelf
-                                                        ? isCompactTable ? 'w-8 h-12' : 'w-11 h-16 md:w-12 md:h-16'
-                                                        : isCompactTable ? 'w-5 h-8' : 'w-7 h-10 md:w-8 md:h-12',
-                                                    isShowdownWinner && shouldReveal && 'ring-2 ring-gold-secondary shadow-[0_0_18px_rgba(252,192,37,0.45)]',
-                                                    'shadow-md',
-                                                )} />
+                                                <CardUI
+                                                    card={c}
+                                                    scale={scale}
+                                                    className={cn(
+                                                        isShowdownWinner && shouldReveal && 'ring-2 ring-gold-secondary shadow-[0_0_18px_rgba(252,192,37,0.45)]',
+                                                        'shadow-md',
+                                                    )}
+                                                    style={{
+                                                        width: `${scale * baseCardWidth}px`,
+                                                        height: `${scale * baseCardHeight}px`
+                                                    }}
+                                                />
                                             </motion.div>
                                         ))
                                         : !isSelf
@@ -91,31 +116,19 @@ export function TablePlayers({
                                                 <CardUI
                                                     key={`hidden-${p.id}-${ci}`}
                                                     card=""
+                                                    scale={scale}
                                                     hidden
                                                     className={cn(
-                                                        isCompactTable ? 'w-5 h-8' : 'w-7 h-10 md:w-8 md:h-12',
                                                         'shadow-md opacity-90',
                                                     )}
+                                                    style={{
+                                                        width: `${scale * baseCardWidth}px`,
+                                                        height: `${scale * baseCardHeight}px`
+                                                    }}
                                                 />
                                             ))
                                             : null}
                                 </div>
-
-                                {showdownPlayer?.handRank && (
-                                    <motion.div
-                                        initial={{ opacity: 0, y: -5 }}
-                                        animate={{ opacity: 1, y: 0 }}
-                                        transition={{ delay: 0.25 }}
-                                        className={cn(
-                                            'mt-1 text-[9px] font-headline font-bold uppercase tracking-widest bg-black/80 px-2 py-0.5 rounded-full whitespace-nowrap border shadow-lg',
-                                            isShowdownWinner
-                                                ? 'text-gold-secondary border-gold-secondary/40'
-                                                : 'text-emerald-primary border-emerald-primary/30',
-                                        )}
-                                    >
-                                        {showdownPlayer.handRank.replace(/_/g, ' ')}
-                                    </motion.div>
-                                )}
                             </div>
                         )}
                     </div>

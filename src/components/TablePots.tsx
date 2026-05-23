@@ -8,6 +8,7 @@ interface TablePotsProps {
     uncalledAmount: number;
     phase: string;
     isCompactTable: boolean;
+    scale: number;
 }
 
 export function TablePots({
@@ -17,6 +18,7 @@ export function TablePots({
     uncalledAmount,
     phase,
     isCompactTable,
+    scale,
 }: TablePotsProps) {
     return (
         <>
