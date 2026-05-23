@@ -24,7 +24,7 @@ describe('GameUI Components', () => {
             render(<CardUI card="TS" />);
             const cardEl = screen.getByRole('img', { name: /ten of spades/i });
             expect(cardEl).toBeInTheDocument();
-            expect(cardEl).toHaveTextContent('T');
+            expect(cardEl).toHaveTextContent('10');
             expect(cardEl).toHaveTextContent('♠');
         });
 

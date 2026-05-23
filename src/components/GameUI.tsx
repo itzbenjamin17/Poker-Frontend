@@ -31,6 +31,8 @@ export const CardUI: React.FC<{ card: string; hidden?: boolean; className?: stri
     const suit = SUITS[suitKey] || { icon: '?', color: 'text-zinc-400', name: 'Unknown' };
     const rankName = RANKS[value] || value;
     const label = `${rankName} of ${suit.name}`;
+    
+    const displayValue = value === 'T' ? '10' : value;
 
     return (
         <div
@@ -38,9 +40,9 @@ export const CardUI: React.FC<{ card: string; hidden?: boolean; className?: stri
             aria-label={label}
             className={cn('w-12 h-16 bg-white rounded-md flex flex-col items-center justify-between p-1 shadow-xl relative overflow-hidden', className)}
         >
-            <div className={cn('text-xs font-bold self-start leading-none', suit.color)}>{value}</div>
+            <div className={cn('text-xs font-bold self-start leading-none', suit.color)}>{displayValue}</div>
             <div className={cn('text-xl leading-none', suit.color)}>{suit.icon}</div>
-            <div className={cn('text-xs font-bold self-end rotate-180 leading-none', suit.color)}>{value}</div>
+            <div className={cn('text-xs font-bold self-end rotate-180 leading-none', suit.color)}>{displayValue}</div>
 
             {/* Subtle watermark */}
             <div className={cn('absolute inset-0 flex items-center justify-center opacity-5 pointer-events-none text-4xl', suit.color)}>
