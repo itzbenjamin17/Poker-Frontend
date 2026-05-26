@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
 import { logger } from '../security/logger';
+import { isJwtValid } from '../services/api';
 import type { AuthResponse } from '../types';
 
 const AUTH_KEY = 'poker-auth';
@@ -15,20 +16,6 @@ function isValidAuth(obj: unknown): obj is AuthResponse {
     );
 }
 
-/** Decode JWT payload and check exp claim. Returns false if expired. */
-function isJwtValid(token: string): boolean {
-    try {
-        const parts = token.split('.');
-        if (parts.length !== 3) return false;
-        const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
-        if (typeof payload.exp === 'number') {
-            return payload.exp * 1000 > Date.now();
-        }
-        return true; // No exp claim — treat as valid
-    } catch {
-        return false;
-    }
-}
 
 function loadAuthFromStorage(): AuthResponse | null {
     const saved = localStorage.getItem(AUTH_KEY);
@@ -66,16 +53,24 @@ export function useAuthSession() {
         localStorage.removeItem(AUTH_KEY);
     }, []);
 
-    // Listen for cross-tab changes
+    // Listen for cross-tab changes and global expiry events
     useEffect(() => {
         const handleStorage = (e: StorageEvent) => {
             if (e.key === AUTH_KEY) {
                 setAuthState(loadAuthFromStorage());
             }
         };
+        const handleAuthExpired = () => {
+            clearAuth();
+        };
+
         window.addEventListener('storage', handleStorage);
-        return () => window.removeEventListener('storage', handleStorage);
-    }, []);
+        window.addEventListener('auth-expired', handleAuthExpired);
+        return () => {
+            window.removeEventListener('storage', handleStorage);
+            window.removeEventListener('auth-expired', handleAuthExpired);
+        };
+    }, [clearAuth]);
 
     return { auth, setAuth, clearAuth };
 }

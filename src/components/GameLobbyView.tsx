@@ -1,8 +1,9 @@
+import { useState } from 'react';
 import { useGameContext } from '../context/GameContext';
 import { cn } from '../lib/cn';
 import { Card } from './UI';
 import { Button } from './UI';
-import { Info, Play, Wifi, WifiOff } from 'lucide-react';
+import { Info, Play, Wifi, WifiOff, Copy, Check } from 'lucide-react';
 import { NotificationBanner } from './NotificationBanner';
 import { useRelativeTime } from '../hooks/useRelativeTime';
 import type { WsStatus } from '../types';
@@ -25,8 +26,18 @@ interface GameLobbyViewProps {
 
 export function GameLobbyView({ onStartGame, onLeaveGame }: GameLobbyViewProps) {
     const { auth, roomState, notification, wsStatus } = useGameContext();
+    const [copied, setCopied] = useState(false);
 
     if (!roomState) return null;
+
+    const handleCopyCode = () => {
+        const code = roomState.roomName || roomState.roomId || auth.roomId;
+        if (code) {
+            navigator.clipboard.writeText(code);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+        }
+    };
 
     const blindsLabel =
         typeof roomState.smallBlind === 'number' && typeof roomState.bigBlind === 'number'
@@ -60,11 +71,20 @@ export function GameLobbyView({ onStartGame, onLeaveGame }: GameLobbyViewProps) 
                     <span className="text-emerald-primary text-[10px] font-bold tracking-[0.3em] uppercase">
                         {GAME_LOBBY_LABEL}
                     </span>
-                    <h1 className="text-5xl font-headline font-bold mt-2">
+                    <h1 className="text-5xl font-headline font-bold mt-2 flex items-center flex-wrap gap-4">
                         <span className="text-white">GAME LOBBY </span>
-                        <span className="text-emerald-primary/60">
-                            {roomState.roomName || roomState.roomId || auth.roomId}
-                        </span>
+                        <div className="flex items-center gap-4 bg-white/5 px-6 py-2 rounded-2xl cursor-pointer hover:bg-white/10 transition-colors group" onClick={handleCopyCode} role="button" aria-label="Copy room code" tabIndex={0} onKeyDown={(e) => e.key === 'Enter' && handleCopyCode()}>
+                            <span className="text-emerald-primary/80 group-hover:text-emerald-primary transition-colors">
+                                {roomState.roomName || roomState.roomId || auth.roomId}
+                            </span>
+                            {copied ? (
+                                <span className="text-emerald-primary flex items-center gap-1 text-sm bg-emerald-primary/10 px-2 py-1 rounded-md ml-2">
+                                    <Check className="w-4 h-4" /> Copied!
+                                </span>
+                            ) : (
+                                <Copy className="w-6 h-6 text-emerald-primary/40 group-hover:text-emerald-primary/80 transition-colors ml-2" />
+                            )}
+                        </div>
                     </h1>
                 </div>
 

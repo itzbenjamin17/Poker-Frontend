@@ -19,7 +19,6 @@ interface ActionPanelProps {
     raiseError: string | null;
     onRaiseChange: (val: string) => void;
     onAction: (action: string, amount?: number) => void;
-    scale: number;
     isActionPending: boolean;
 }
 
@@ -35,7 +34,6 @@ export function ActionPanel({
                                 raiseError,
                                 onRaiseChange,
                                 onAction,
-                                scale,
                                 isActionPending,
                             }: ActionPanelProps) {
     const controlButtonSize: 'xs' | 'sm' | 'md' = isMobileLandscape ? 'xs' : isCompactTable ? 'sm' : 'md';

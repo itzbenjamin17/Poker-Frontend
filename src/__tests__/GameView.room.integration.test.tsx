@@ -96,7 +96,7 @@ describe('GameView - Room Lobby Integration', () => {
       })
     })
 
-    expect(screen.getByText(/Host left the lobby/i)).toBeInTheDocument()
+    await waitFor(() => expect(screen.getByText(/Host left the lobby/i)).toBeInTheDocument())
 
     // Wait for redirect timeout (ROOM_CLOSED_REDIRECT_MS = 3000)
     await waitFor(() => expect(handleLeave).toHaveBeenCalled(), { timeout: 4500 })

@@ -43,6 +43,7 @@ describe('ActionPanel', () => {
                 raiseError={null}
                 onRaiseChange={handleRaiseChange}
                 onAction={handleAction}
+                isActionPending={false}
             />
         )
 
@@ -66,6 +67,7 @@ describe('ActionPanel', () => {
                 raiseError={null}
                 onRaiseChange={vi.fn()}
                 onAction={handleAction}
+                isActionPending={false}
             />
         )
 
@@ -88,6 +90,7 @@ describe('ActionPanel', () => {
                 raiseError={null}
                 onRaiseChange={vi.fn()}
                 onAction={vi.fn()}
+                isActionPending={false}
             />
         )
 
@@ -109,6 +112,7 @@ describe('ActionPanel', () => {
                 raiseError={null}
                 onRaiseChange={vi.fn()}
                 onAction={vi.fn()}
+                isActionPending={false}
             />
         )
         expect(screen.getByText(/You only have 100 chips/i)).toBeInTheDocument()
@@ -127,6 +131,7 @@ describe('ActionPanel', () => {
                 raiseError={null}
                 onRaiseChange={vi.fn()}
                 onAction={vi.fn()}
+                isActionPending={false}
             />
         )
         expect(screen.getByText(/Minimum raise is 11 chips/i)).toBeInTheDocument()
@@ -149,6 +154,7 @@ describe('ActionPanel', () => {
                 raiseError={null}
                 onRaiseChange={vi.fn()}
                 onAction={handleAction}
+                isActionPending={false}
             />
         )
 

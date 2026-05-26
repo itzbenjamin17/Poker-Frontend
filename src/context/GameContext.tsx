@@ -31,6 +31,7 @@ export interface GameContextState {
     myPlayerId: string | null;
     claimPending: boolean;
     wsStatus: WsStatus;
+    isHydrated: boolean;
 }
 
 type Action =
@@ -44,6 +45,7 @@ type Action =
     | { type: 'SET_MY_PLAYER_ID'; payload: string | null }
     | { type: 'SET_CLAIM_PENDING'; payload: boolean }
     | { type: 'SET_WS_STATUS'; payload: WsStatus }
+    | { type: 'SET_HYDRATED'; payload: boolean }
     | { type: 'CLEAR_GAME_STATE' };
 
 function reducer(state: GameContextState, action: Action): GameContextState {
@@ -61,6 +63,7 @@ function reducer(state: GameContextState, action: Action): GameContextState {
         };
         case 'SET_CLAIM_PENDING': return { ...state, claimPending: action.payload };
         case 'SET_WS_STATUS': return { ...state, wsStatus: action.payload };
+        case 'SET_HYDRATED': return { ...state, isHydrated: action.payload };
         case 'CLEAR_GAME_STATE': return {
             ...state,
             gameState: null,
@@ -122,6 +125,7 @@ export function GameProvider({ auth, onLeave, children }: GameProviderProps) {
         myPlayerId: null,
         claimPending: false,
         wsStatus: 'disconnected' as WsStatus,
+        isHydrated: false,
     });
 
     // Stable refs to avoid stale closures in WebSocket callbacks
@@ -181,7 +185,6 @@ export function GameProvider({ auth, onLeave, children }: GameProviderProps) {
         }
 
         dispatch({ type: 'SET_GAME', payload: data });
-        dispatch({ type: 'SET_ROOM', payload: null });
         latestGameStateRef.current = data;
 
         if (data.winners && data.winners.length > 0) {

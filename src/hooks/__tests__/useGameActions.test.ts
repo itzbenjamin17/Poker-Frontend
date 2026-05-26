@@ -54,6 +54,8 @@ describe('useGameActions', () => {
             loadingStatus: 'Connected',
             myPlayerId: 'p-1',
             claimPending: false,
+            wsStatus: 'connected',
+            isHydrated: true,
             scheduleShowdownHide: vi.fn(),
             latestGameStateRef: { current: null },
             notificationTimerRef: { current: null },

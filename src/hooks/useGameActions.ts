@@ -158,12 +158,12 @@ export function useGameActions(
 
     const handleLeaveGame = useCallback(async () => {
         try {
-            clearShowdownTimers();
-            dispatch({ type: 'SET_PRIVATE', payload: null });
             if (gameState?.gameId) {
                 await pokerApi.leaveGame(gameState.gameId, auth.token);
             }
             await pokerApi.leaveRoom(auth.roomId, auth.token);
+            clearShowdownTimers();
+            dispatch({ type: 'SET_PRIVATE', payload: null });
             onLeave?.();
         } catch {
             dispatch({ type: 'SET_NOTIFICATION', payload: FAILED_LEAVE });

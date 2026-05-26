@@ -93,6 +93,7 @@ export function useSessionHydration() {
                     });
 
                     if (!roomData.gameStarted) {
+                        dispatch({ type: 'SET_HYDRATED', payload: true });
                         dispatch({ type: 'SET_LOADING_STATUS', payload: STATUS_CONNECTED });
                         return;
                     }
@@ -128,6 +129,7 @@ export function useSessionHydration() {
                             if (code !== 404) logger.warn('Private snapshot fetch error:', privateErr);
                         }
 
+                        dispatch({ type: 'SET_HYDRATED', payload: true });
                         dispatch({ type: 'SET_LOADING_STATUS', payload: STATUS_SEAT_RESTORED });
                         return;
                     }
@@ -146,6 +148,7 @@ export function useSessionHydration() {
                 }
 
                 if (!mounted || hasTimedOut) return;
+                dispatch({ type: 'SET_HYDRATED', payload: true });
                 dispatch({ type: 'SET_LOADING_STATUS', payload: STATUS_CONNECTED });
             } finally {
                 clearTimeout(timeoutId);

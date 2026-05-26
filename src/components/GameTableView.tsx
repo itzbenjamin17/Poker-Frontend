@@ -171,7 +171,6 @@ export function GameTableView({
                             uncalledAmount={uncalledAmount}
                             phase={gameState.phase}
                             isCompactTable={isCompactTable}
-                            scale={scale}
                         />
                         <CommunityCardsArea communityCards={gameState.communityCards} scale={scale} />
                     </div>
@@ -231,7 +230,6 @@ export function GameTableView({
                 raiseError={raiseError}
                 onRaiseChange={onRaiseChange}
                 onAction={onAction}
-                scale={scale}
                 isActionPending={isActionPending}
             />
         </div>

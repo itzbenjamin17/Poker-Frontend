@@ -31,7 +31,7 @@ export function useGameWebSocket(options: UseGameWebSocketOptions) {
     const {
         auth, onLeave, dispatch,
         applyIncomingGameState, applyIncomingPrivateState,
-        clearShowdownTimers,
+        clearShowdownTimers, isHydrated,
     } = useGameContext();
 
     const { onRaiseError } = options;
@@ -41,6 +41,8 @@ export function useGameWebSocket(options: UseGameWebSocketOptions) {
     const redirectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     useEffect(() => {
+        if (!isHydrated) return;
+
         // BUG FIX (§1.1): Reset on every new connection so reconnects always subscribe
         let privateSubscribed = false;
 
@@ -262,7 +264,12 @@ export function useGameWebSocket(options: UseGameWebSocketOptions) {
             dispatch({ type: 'SET_WS_STATUS', payload: 'disconnected' });
             client.deactivate();
         };
-    }, [auth, onLeave, dispatch, applyIncomingGameState, applyIncomingPrivateState, clearShowdownTimers, onRaiseError]);
+    }, [
+        auth.roomId, auth.playerName, auth.token,
+        isHydrated, onLeave, dispatch,
+        applyIncomingGameState, applyIncomingPrivateState,
+        clearShowdownTimers, onRaiseError,
+    ]);
 
     return { stompClientRef };
 }

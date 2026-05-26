@@ -56,27 +56,68 @@ function normalizeAuthResponse(raw: unknown): AuthResponse {
     };
 }
 
+/** Decode JWT payload and check exp claim. Returns false if expired. */
+export function isJwtValid(token: string): boolean {
+    try {
+        const parts = token.split('.');
+        if (parts.length !== 3) return false;
+        const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
+        if (typeof payload.exp === 'number') {
+            return payload.exp * 1000 > Date.now();
+        }
+        return true;
+    } catch {
+        return false;
+    }
+}
+
 /**
- * Shared fetch wrapper: injects auth header, ngrok bypass, and a request timeout.
+ * Shared fetch wrapper: injects headers, ngrok bypass (dev), handles network errors.
  */
-async function authFetch(
-    url: string,
-    options: RequestInit & { token: string }
-): Promise<Response> {
+async function fetchApi<T>(url: string, options: RequestInit & { token?: string }): Promise<T> {
     const { token, headers, ...rest } = options;
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
     try {
-        return await fetch(url, {
+        const mergedHeaders: Record<string, string> = {
+            'Content-Type': 'application/json',
+            ...(import.meta.env.DEV ? { 'ngrok-skip-browser-warning': 'true' } : {}),
+            ...(headers as Record<string, string>),
+        };
+        if (token) {
+            if (!isJwtValid(token)) {
+                window.dispatchEvent(new Event('auth-expired'));
+                throw buildApiError(401, 'Session expired');
+            }
+            mergedHeaders['Authorization'] = `Bearer ${token}`;
+        }
+
+        const response = await fetch(url, {
             ...rest,
             signal: controller.signal,
-            headers: {
-                ...headers,
-                Authorization: `Bearer ${token}`,
-                'ngrok-skip-browser-warning': 'true',
-            },
+            headers: mergedHeaders,
         });
+
+        if (!response.ok) {
+            if (response.status === 401 || response.status === 403) {
+                window.dispatchEvent(new Event('auth-expired'));
+            }
+            throw buildApiError(response.status, await getErrorMessage(response, 'Request failed'));
+        }
+
+        // Return empty object/null for 204 or responses without JSON
+        if (response.status === 204) return null as T;
+        const contentType = response.headers.get('content-type') ?? '';
+        if (contentType.includes('application/json')) {
+            return await response.json();
+        }
+        return null as T;
+    } catch (e) {
+        if (e instanceof TypeError) {
+            throw buildApiError(0, 'Unable to reach the server. Check your connection.');
+        }
+        throw e;
     } finally {
         clearTimeout(timeoutId);
     }
@@ -92,87 +133,48 @@ export const pokerApi = {
         buyIn: number;
         password?: string;
     }): Promise<AuthResponse> {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-        try {
-            const res = await fetch(`${API_BASE}/room/create`, {
-                method: 'POST',
-                signal: controller.signal,
-                headers: {
-                    'Content-Type': 'application/json',
-                    'ngrok-skip-browser-warning': 'true',
-                },
-                body: JSON.stringify(payload),
-            });
-            if (!res.ok) throw new Error(await getErrorMessage(res, 'Failed to create room'));
-            return normalizeAuthResponse(await res.json());
-        } finally {
-            clearTimeout(timeoutId);
-        }
+        const data = await fetchApi<unknown>(`${API_BASE}/room/create`, {
+            method: 'POST',
+            body: JSON.stringify(payload),
+        });
+        return normalizeAuthResponse(data);
     },
 
     async joinRoom(payload: { roomName: string; playerName: string; password?: string }): Promise<AuthResponse> {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-        try {
-            const res = await fetch(`${API_BASE}/room/join`, {
-                method: 'POST',
-                signal: controller.signal,
-                headers: {
-                    'Content-Type': 'application/json',
-                    'ngrok-skip-browser-warning': 'true',
-                },
-                body: JSON.stringify(payload),
-            });
-            if (!res.ok) throw new Error(await getErrorMessage(res, 'Failed to join room'));
-            return normalizeAuthResponse(await res.json());
-        } finally {
-            clearTimeout(timeoutId);
-        }
+        const data = await fetchApi<unknown>(`${API_BASE}/room/join`, {
+            method: 'POST',
+            body: JSON.stringify(payload),
+        });
+        return normalizeAuthResponse(data);
     },
 
     async getRoomInfo(roomId: string, token: string): Promise<RoomDataResponse> {
-        const res = await authFetch(`${API_BASE}/room/${roomId}`, { method: 'GET', token });
-        if (!res.ok) throw buildApiError(res.status, await getErrorMessage(res, 'Failed to get room info'));
-        return res.json() as Promise<RoomDataResponse>;
+        return fetchApi<RoomDataResponse>(`${API_BASE}/room/${roomId}`, { method: 'GET', token });
     },
 
     async getGameState(gameId: string, token: string): Promise<unknown> {
-        const res = await authFetch(`${API_BASE}/game/${gameId}/state`, { method: 'GET', token });
-        if (!res.ok) throw buildApiError(res.status, await getErrorMessage(res, 'Failed to get game state'));
-        return res.json();
+        return fetchApi<unknown>(`${API_BASE}/game/${gameId}/state`, { method: 'GET', token });
     },
 
     async getPrivateState(gameId: string, token: string): Promise<unknown> {
-        const res = await authFetch(`${API_BASE}/game/${gameId}/private-state`, { method: 'GET', token });
-        if (!res.ok) throw buildApiError(res.status, await getErrorMessage(res, 'Failed to get private state'));
-        return res.json();
+        return fetchApi<unknown>(`${API_BASE}/game/${gameId}/private-state`, { method: 'GET', token });
     },
 
-    async leaveRoom(roomId: string, token: string, keepalive = false): Promise<Response> {
-        const res = await authFetch(`${API_BASE}/room/${roomId}/leave`, { method: 'POST', token, keepalive });
-        if (!res.ok) throw buildApiError(res.status, await getErrorMessage(res, 'Failed to leave room'));
-        return res;
+    async leaveRoom(roomId: string, token: string, keepalive = false): Promise<void> {
+        await fetchApi<void>(`${API_BASE}/room/${roomId}/leave`, { method: 'POST', token, keepalive });
     },
 
-    async leaveGame(gameId: string, token: string, keepalive = false): Promise<Response> {
-        const res = await authFetch(`${API_BASE}/game/${gameId}/leave`, { method: 'POST', token, keepalive });
-        if (!res.ok) throw buildApiError(res.status, await getErrorMessage(res, 'Failed to leave game'));
-        return res;
+    async leaveGame(gameId: string, token: string, keepalive = false): Promise<void> {
+        await fetchApi<void>(`${API_BASE}/game/${gameId}/leave`, { method: 'POST', token, keepalive });
     },
 
     async startGame(roomId: string, token: string): Promise<unknown> {
-        const res = await authFetch(`${API_BASE}/room/${roomId}/start-game`, { method: 'POST', token });
-        if (!res.ok) throw new Error(await getErrorMessage(res, 'Failed to start game'));
-        const contentType = res.headers.get('content-type') ?? '';
-        if (contentType.includes('application/json')) return res.json();
-        return null;
+        return fetchApi<unknown>(`${API_BASE}/room/${roomId}/start-game`, { method: 'POST', token });
     },
 
     async claimWin(gameId: string, token: string): Promise<boolean> {
-        const res = await authFetch(`${API_BASE}/game/${gameId}/claim-win`, { method: 'POST', token });
-        if (!res.ok) throw new Error(await getErrorMessage(res, 'Failed to claim win'));
-        return res.ok;
+        await fetchApi<void>(`${API_BASE}/game/${gameId}/claim-win`, { method: 'POST', token });
+        return true;
     },
 };
 
