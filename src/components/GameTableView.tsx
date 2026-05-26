@@ -13,7 +13,7 @@ import {
     BTN_LEAVE_TABLE, BTN_CLAIM_WIN, BTN_CLAIMING,
     WAITING_RECONNECT_PREFIX, WAITING_RECONNECT_SUFFIX,
 } from '../constants/strings';
-import type { ShowdownModalLayout } from '../types';
+import type { ShowdownModalLayout, WsStatus } from '../types';
 
 interface GameTableViewProps {
     tableTier: TableTier;
@@ -31,6 +31,7 @@ interface GameTableViewProps {
     onClaimWin: () => void;
     onLeaveGame: () => void;
     onRaiseChange: (val: string) => void;
+    isActionPending: boolean;
     onShowdownDragPointerDown: (e: React.PointerEvent<HTMLDivElement>) => void;
     onShowdownResizePointerDown: (e: React.PointerEvent<HTMLDivElement>) => void;
     onShowdownPointerMove: (e: React.PointerEvent<HTMLElement>) => void;
@@ -53,12 +54,13 @@ export function GameTableView({
                                   onClaimWin,
                                   onLeaveGame,
                                   onRaiseChange,
+                                  isActionPending,
                                   onShowdownDragPointerDown,
                                   onShowdownResizePointerDown,
                                   onShowdownPointerMove,
                                   onShowdownPointerUp,
                               }: GameTableViewProps) {
-    const { auth, gameState, privateState, showdown, showdownResult, claimPending, myPlayerId, notification } = useGameContext();
+    const { auth, gameState, privateState, showdown, showdownResult, claimPending, myPlayerId, notification, wsStatus } = useGameContext();
 
     if (!gameState) return null;
 
@@ -124,6 +126,9 @@ export function GameTableView({
                     {BTN_LEAVE_TABLE}
                 </Button>
             </div>
+
+            {/* WebSocket connection status badge */}
+            <WsStatusBadge status={wsStatus} />
 
             {canClaimWin && (
                 <div className="absolute bottom-6 left-4 md:bottom-6 md:left-8 z-40">
@@ -227,6 +232,50 @@ export function GameTableView({
                 onRaiseChange={onRaiseChange}
                 onAction={onAction}
                 scale={scale}
+                isActionPending={isActionPending}
+            />
+        </div>
+    );
+}
+
+// ─── Connection Status Badge ──────────────────────────────────────────────────
+
+const WS_STATUS_CONFIG: Record<WsStatus, { dot: string; label: string; labelClass: string }> = {
+    connected: {
+        dot: 'bg-emerald-primary shadow-[0_0_8px_rgba(170,234,208,0.8)]',
+        label: 'Connected',
+        labelClass: 'text-emerald-primary/80',
+    },
+    reconnecting: {
+        dot: 'bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.8)] animate-pulse',
+        label: 'Reconnecting…',
+        labelClass: 'text-amber-300/90',
+    },
+    disconnected: {
+        dot: 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.8)] animate-pulse',
+        label: 'Disconnected',
+        labelClass: 'text-red-400/90',
+    },
+};
+
+function WsStatusBadge({ status }: { status: WsStatus }) {
+    const { dot, label, labelClass } = WS_STATUS_CONFIG[status];
+    // Only show the full label on non-connected states (don't clutter the UI when all is fine)
+    const showLabel = status !== 'connected';
+    return (
+        <div
+            className="absolute top-4 right-3 md:top-5 md:right-5 z-40 flex items-center gap-1.5"
+            role="status"
+            aria-label={`Connection status: ${label}`}
+        >
+            {showLabel && (
+                <span className={cn('text-[10px] font-bold uppercase tracking-wider hidden sm:inline', labelClass)}>
+                    {label}
+                </span>
+            )}
+            <span
+                className={cn('w-2 h-2 rounded-full inline-block flex-shrink-0', dot)}
+                aria-hidden="true"
             />
         </div>
     );

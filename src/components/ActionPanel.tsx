@@ -20,6 +20,7 @@ interface ActionPanelProps {
     onRaiseChange: (val: string) => void;
     onAction: (action: string, amount?: number) => void;
     scale: number;
+    isActionPending: boolean;
 }
 
 export function ActionPanel({
@@ -35,6 +36,7 @@ export function ActionPanel({
                                 onRaiseChange,
                                 onAction,
                                 scale,
+                                isActionPending,
                             }: ActionPanelProps) {
     const controlButtonSize: 'xs' | 'sm' | 'md' = isMobileLandscape ? 'xs' : isCompactTable ? 'sm' : 'md';
     const bottomWidthClass = 'w-full min-w-0';
@@ -91,20 +93,20 @@ export function ActionPanel({
                         !isMobileLandscape && (isCompactTable ? 'p-2' : 'p-4 md:p-6'),
                     )}
                 >
-                    <Button variant="outline" size={controlButtonSize} onClick={() => onAction('FOLD')}>
+                    <Button variant="outline" size={controlButtonSize} onClick={() => onAction('FOLD')} disabled={isActionPending}>
                         {BTN_FOLD}
                     </Button>
 
                     {(!me || (me.currentBet ?? 0) >= (gameState.currentBet || 0)) ? (
-                        <Button variant="outline" size={controlButtonSize} onClick={() => onAction('CHECK')}>
+                        <Button variant="outline" size={controlButtonSize} onClick={() => onAction('CHECK')} disabled={isActionPending}>
                             {BTN_CHECK}
                         </Button>
                     ) : callExceedsStack ? (
-                        <Button variant="outline" size={controlButtonSize} onClick={() => onAction('ALL_IN')}>
+                        <Button variant="outline" size={controlButtonSize} onClick={() => onAction('ALL_IN')} disabled={isActionPending}>
                             {BTN_ALL_IN_PREFIX}{availableChips.toLocaleString()}
                         </Button>
                     ) : (
-                        <Button variant="outline" size={controlButtonSize} onClick={() => onAction('CALL')}>
+                        <Button variant="outline" size={controlButtonSize} onClick={() => onAction('CALL')} disabled={isActionPending}>
                             {BTN_CALL_PREFIX}{callAmount.toLocaleString()}
                         </Button>
                     )}
@@ -148,9 +150,9 @@ export function ActionPanel({
                         {/* Raise / Bet submit button — flush inside the group */}
                         <button
                             type="button"
-                            disabled={!canSubmitRaise}
+                            disabled={!canSubmitRaise || isActionPending}
                             onClick={() => {
-                                if (!canSubmitRaise) return;
+                                if (!canSubmitRaise || isActionPending) return;
                                 const amount = Number.parseInt(rawRaise, 10);
                                 onAction(actionType, amount);
                                 onRaiseChange('');
@@ -158,7 +160,7 @@ export function ActionPanel({
                             className={cn(
                                 'font-headline font-extrabold uppercase tracking-wider transition-all duration-150 select-none border-l border-white/10',
                                 isCompactTable || isMobileLandscape ? 'text-[10px] px-2.5 py-1.5' : 'text-xs px-4 py-2',
-                                canSubmitRaise
+                                canSubmitRaise && !isActionPending
                                     ? 'bg-gold-secondary text-black hover:brightness-110 active:brightness-95 cursor-pointer'
                                     : 'bg-white/5 text-zinc-600 cursor-not-allowed',
                             )}

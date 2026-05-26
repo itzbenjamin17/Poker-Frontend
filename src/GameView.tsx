@@ -115,6 +115,7 @@ function GameViewInner() {
                 setRaiseAmount(val);
                 setRaiseError(null);
             }}
+            isActionPending={actions.isActionPending}
             onShowdownDragPointerDown={showdownModal.onDragPointerDown}
             onShowdownResizePointerDown={showdownModal.onResizePointerDown}
             onShowdownPointerMove={showdownModal.onPointerMove}

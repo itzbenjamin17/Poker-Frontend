@@ -57,6 +57,7 @@ export function useGameWebSocket(options: UseGameWebSocketOptions) {
 
         client.onConnect = () => {
             logger.log('Connected to WebSocket');
+            dispatch({ type: 'SET_WS_STATUS', payload: 'connected' });
 
             const subscribeTo = (destinations: string[], handler: (body: string) => void) => {
                 destinations.forEach((dest) => client.subscribe(dest, (msg) => handler(msg.body)));
@@ -243,11 +244,22 @@ export function useGameWebSocket(options: UseGameWebSocketOptions) {
                 });
         };
 
+        client.onStompError = (frame) => {
+            logger.warn('STOMP error:', frame.headers['message']);
+            dispatch({ type: 'SET_WS_STATUS', payload: 'reconnecting' });
+        };
+
+        client.onWebSocketClose = () => {
+            logger.warn('WebSocket closed — will reconnect automatically');
+            dispatch({ type: 'SET_WS_STATUS', payload: 'reconnecting' });
+        };
+
         client.activate();
 
         return () => {
             clearShowdownTimers();
             if (redirectTimerRef.current !== null) clearTimeout(redirectTimerRef.current);
+            dispatch({ type: 'SET_WS_STATUS', payload: 'disconnected' });
             client.deactivate();
         };
     }, [auth, onLeave, dispatch, applyIncomingGameState, applyIncomingPrivateState, clearShowdownTimers, onRaiseError]);

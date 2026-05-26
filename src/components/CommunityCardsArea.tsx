@@ -10,8 +10,8 @@ interface CommunityCardsAreaProps {
 export function CommunityCardsArea({ communityCards, scale }: CommunityCardsAreaProps) {
     return (
         <div className="flex gap-3" style={{ gap: `${scale * 12}px` }}>
-            {communityCards.map((card, i) => (
-                <motion.div key={i} initial={{ scale: 0, rotateY: 90 }} animate={{ scale: 1, rotateY: 0 }}>
+            {communityCards.map((card) => (
+                <motion.div key={card} initial={{ scale: 0, rotateY: 90 }} animate={{ scale: 1, rotateY: 0 }}>
                     <CardUI card={card} scale={scale} />
                 </motion.div>
             ))}
@@ -31,7 +31,7 @@ export function CommunityCardsArea({ communityCards, scale }: CommunityCardsArea
                     >
                         {i === 0 && communityCards.length === 3
                             ? CARD_PLACEHOLDER_TURN
-                            : i === 1 && communityCards.length === 4
+                            : i === 0 && communityCards.length === 4
                                 ? CARD_PLACEHOLDER_RIVER
                                 : ''}
                     </span>

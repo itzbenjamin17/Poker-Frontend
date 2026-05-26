@@ -3,6 +3,7 @@ import { cn } from './lib/cn';
 export { cn };
 
 export type PlayerStatus = 'ACTIVE' | 'FOLDED' | 'OUT' | 'ALL_IN' | 'DISCONNECTED';
+export type WsStatus = 'connected' | 'reconnecting' | 'disconnected';
 export type GamePhase = 'PRE_FLOP' | 'FLOP' | 'TURN' | 'RIVER' | 'SHOWDOWN';
 
 export interface Player {

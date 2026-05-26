@@ -14,6 +14,7 @@ import type {
     IncomingGameStatePayload,
     IncomingPrivateStatePayload,
     RoomState,
+    WsStatus,
 } from '../types';
 import { useShowdownTimers } from '../hooks/useShowdownTimers';
 
@@ -29,6 +30,7 @@ export interface GameContextState {
     loadingStatus: string;
     myPlayerId: string | null;
     claimPending: boolean;
+    wsStatus: WsStatus;
 }
 
 type Action =
@@ -41,6 +43,7 @@ type Action =
     | { type: 'SET_LOADING_STATUS'; payload: string }
     | { type: 'SET_MY_PLAYER_ID'; payload: string | null }
     | { type: 'SET_CLAIM_PENDING'; payload: boolean }
+    | { type: 'SET_WS_STATUS'; payload: WsStatus }
     | { type: 'CLEAR_GAME_STATE' };
 
 function reducer(state: GameContextState, action: Action): GameContextState {
@@ -57,6 +60,7 @@ function reducer(state: GameContextState, action: Action): GameContextState {
             myPlayerId: state.myPlayerId ?? action.payload,
         };
         case 'SET_CLAIM_PENDING': return { ...state, claimPending: action.payload };
+        case 'SET_WS_STATUS': return { ...state, wsStatus: action.payload };
         case 'CLEAR_GAME_STATE': return {
             ...state,
             gameState: null,
@@ -117,6 +121,7 @@ export function GameProvider({ auth, onLeave, children }: GameProviderProps) {
         loadingStatus: 'Connecting...',
         myPlayerId: null,
         claimPending: false,
+        wsStatus: 'disconnected' as WsStatus,
     });
 
     // Stable refs to avoid stale closures in WebSocket callbacks

@@ -2,9 +2,10 @@ import { useGameContext } from '../context/GameContext';
 import { cn } from '../lib/cn';
 import { Card } from './UI';
 import { Button } from './UI';
-import { Info, Play } from 'lucide-react';
+import { Info, Play, Wifi, WifiOff } from 'lucide-react';
 import { NotificationBanner } from './NotificationBanner';
 import { useRelativeTime } from '../hooks/useRelativeTime';
+import type { WsStatus } from '../types';
 import {
     GAME_LOBBY_LABEL,
     BTN_LEAVE_LOBBY, BTN_START_GAME, LABEL_HOST_CONTROLS, LABEL_WAITING_HOST,
@@ -23,7 +24,7 @@ interface GameLobbyViewProps {
 }
 
 export function GameLobbyView({ onStartGame, onLeaveGame }: GameLobbyViewProps) {
-    const { auth, roomState, notification } = useGameContext();
+    const { auth, roomState, notification, wsStatus } = useGameContext();
 
     if (!roomState) return null;
 
@@ -43,7 +44,8 @@ export function GameLobbyView({ onStartGame, onLeaveGame }: GameLobbyViewProps) 
             <NotificationBanner notification={notification} />
 
             <div className="w-full max-w-5xl">
-                <div className="mb-4 flex justify-end">
+                <div className="mb-4 flex justify-between items-center">
+                    <LobbyWsStatusBadge status={wsStatus} />
                     <Button
                         variant="outline"
                         size="sm"
@@ -148,6 +150,32 @@ export function GameLobbyView({ onStartGame, onLeaveGame }: GameLobbyViewProps) 
                     </div>
                 </div>
             </div>
+        </div>
+    );
+}
+
+// ─── Lobby Connection Status Badge ───────────────────────────────────────────
+
+function LobbyWsStatusBadge({ status }: { status: WsStatus }) {
+    const isConnected = status === 'connected';
+    const isReconnecting = status === 'reconnecting';
+
+    return (
+        <div
+            className={cn(
+                'flex items-center gap-2 px-3 py-1.5 rounded-full border text-[10px] font-bold uppercase tracking-wider transition-all duration-300',
+                isConnected && 'border-emerald-primary/20 text-emerald-primary/70',
+                isReconnecting && 'border-amber-400/30 text-amber-300/80 animate-pulse',
+                !isConnected && !isReconnecting && 'border-red-500/30 text-red-400/80 animate-pulse',
+            )}
+            role="status"
+            aria-label={`Connection status: ${status}`}
+        >
+            {isConnected
+                ? <Wifi aria-hidden="true" className="w-3 h-3" />
+                : <WifiOff aria-hidden="true" className="w-3 h-3" />
+            }
+            <span>{isConnected ? 'Connected' : isReconnecting ? 'Reconnecting\u2026' : 'Disconnected'}</span>
         </div>
     );
 }
