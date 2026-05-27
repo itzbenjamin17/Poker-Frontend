@@ -11,6 +11,7 @@ export const Button = ({
     variant = 'primary',
     size = 'md',
     className,
+    type = 'button',
     ...props
 }: ButtonProps) => {
     const variants = {
@@ -30,6 +31,7 @@ export const Button = ({
 
     return (
         <button
+            type={type}
             className={cn(
                 'rounded-xl transition-all duration-200 flex items-center justify-center gap-2 uppercase tracking-tight',
                 'disabled:opacity-50 disabled:cursor-not-allowed',

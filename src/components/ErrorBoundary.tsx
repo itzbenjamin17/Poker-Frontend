@@ -1,4 +1,5 @@
 import React, { type ReactNode } from 'react';
+import { logger } from '../security/logger';
 
 interface Props {
     children: ReactNode;
@@ -21,7 +22,7 @@ export class ErrorBoundary extends React.Component<Props, State> {
     }
 
     componentDidCatch(error: Error, info: React.ErrorInfo) {
-        console.error('[ErrorBoundary] Uncaught error:', error, info.componentStack);
+        logger.error('[ErrorBoundary] Uncaught error:', error, info.componentStack);
     }
 
     handleReset = () => {
@@ -38,7 +39,7 @@ export class ErrorBoundary extends React.Component<Props, State> {
                         <div className="text-5xl">♠</div>
                         <h1 className="font-headline text-2xl font-bold text-white">Something went wrong</h1>
                         <p className="text-zinc-500 text-sm">
-                            {this.state.error?.message || 'An unexpected error occurred.'}
+                            An unexpected application error occurred.
                         </p>
                         <div className="flex gap-3 justify-center">
                             <button

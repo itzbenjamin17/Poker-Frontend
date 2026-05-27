@@ -59,7 +59,7 @@ function reducer(state: GameContextState, action: Action): GameContextState {
         case 'SET_LOADING_STATUS': return { ...state, loadingStatus: action.payload };
         case 'SET_MY_PLAYER_ID': return {
             ...state,
-            myPlayerId: state.myPlayerId ?? action.payload,
+            myPlayerId: action.payload,
         };
         case 'SET_CLAIM_PENDING': return { ...state, claimPending: action.payload };
         case 'SET_WS_STATUS': return { ...state, wsStatus: action.payload };
@@ -71,6 +71,7 @@ function reducer(state: GameContextState, action: Action): GameContextState {
             showdown: null,
             showdownResult: null,
             claimPending: false,
+            myPlayerId: null,
         };
         default: return state;
     }

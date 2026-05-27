@@ -45,7 +45,7 @@ describe('ErrorBoundary', () => {
         );
 
         expect(screen.getByText('Something went wrong')).toBeInTheDocument();
-        expect(screen.getByText('Test boundary crash')).toBeInTheDocument();
+        expect(screen.getByText('An unexpected application error occurred.')).toBeInTheDocument();
 
         const tryAgainBtn = screen.getByRole('button', { name: /try again/i });
         const reloadBtn = screen.getByRole('button', { name: /reload/i });

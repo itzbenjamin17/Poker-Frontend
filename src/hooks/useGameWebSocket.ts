@@ -39,12 +39,11 @@ export function useGameWebSocket(options: UseGameWebSocketOptions) {
     const stompClientRef = useRef<Client | null>(null);
     const lastStateSyncTimeRef = useRef<number>(0);
     const redirectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const gameEndTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     useEffect(() => {
         if (!isHydrated) return;
 
-        // BUG FIX (§1.1): Reset on every new connection so reconnects always subscribe
-        let privateSubscribed = false;
 
         const client = createStompClient(auth.token);
         stompClientRef.current = client;
@@ -66,25 +65,22 @@ export function useGameWebSocket(options: UseGameWebSocketOptions) {
             };
 
             // ── Private channel ───────────────────────────────────────────
-            if (!privateSubscribed) {
-                privateSubscribed = true;
-                subscribeTo(['/user/queue/private'], (privBody) => {
-                    try {
-                        const parsed = JSON.parse(privBody);
+            subscribeTo(['/user/queue/private'], (privBody) => {
+                try {
+                    const parsed = JSON.parse(privBody);
 
-                        if (parsed.type === 'ACTION_ERROR' && typeof parsed.message === 'string') {
-                            onRaiseError(parsed.message);
-                            return;
-                        }
-
-                        if (isPrivateStatePayload(parsed)) {
-                            applyIncomingPrivateState(parsed);
-                        }
-                    } catch (err) {
-                        logger.warn('Ignoring malformed private payload:', privBody, err);
+                    if (parsed.type === 'ACTION_ERROR' && typeof parsed.message === 'string') {
+                        onRaiseError(parsed.message);
+                        return;
                     }
-                });
-            }
+
+                    if (isPrivateStatePayload(parsed)) {
+                        applyIncomingPrivateState(parsed);
+                    }
+                } catch (err) {
+                    logger.warn('Ignoring malformed private payload:', privBody, err);
+                }
+            });
 
             // ── Room updates ──────────────────────────────────────────────
             subscribeTo([`/room/${auth.roomId}`], (body) => {
@@ -179,7 +175,8 @@ export function useGameWebSocket(options: UseGameWebSocketOptions) {
                         dispatch({ type: 'SET_NOTIFICATION', payload: endMsg });
                     }
 
-                    setTimeout(() => {
+                    if (gameEndTimerRef.current !== null) clearTimeout(gameEndTimerRef.current);
+                    gameEndTimerRef.current = setTimeout(() => {
                         dispatch({ type: 'CLEAR_GAME_STATE' });
                         dispatch({ type: 'SET_NOTIFICATION', payload: null });
                         clearShowdownTimers();
@@ -261,6 +258,7 @@ export function useGameWebSocket(options: UseGameWebSocketOptions) {
         return () => {
             clearShowdownTimers();
             if (redirectTimerRef.current !== null) clearTimeout(redirectTimerRef.current);
+            if (gameEndTimerRef.current !== null) clearTimeout(gameEndTimerRef.current);
             dispatch({ type: 'SET_WS_STATUS', payload: 'disconnected' });
             client.deactivate();
         };

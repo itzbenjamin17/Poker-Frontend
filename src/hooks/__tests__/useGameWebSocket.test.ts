@@ -121,4 +121,38 @@ describe('useGameWebSocket', () => {
         });
         expect(applyIncomingPrivateState).toHaveBeenCalledWith(privatePayload);
     });
+
+    it('resubscribes to private channel after STOMP reconnect', async () => {
+        const { result } = renderHook(() => useGameWebSocket({ onRaiseError }));
+
+        await act(async () => {
+            vi.advanceTimersByTime(10);
+        });
+
+        // initial connection should subscribe
+        expect(activeSubscriptions.has('/user/queue/private')).toBe(true);
+
+        // simulate disconnect
+        act(() => {
+            activeSubscriptions.clear();
+            const client = result.current.stompClientRef.current;
+            if (client && client.onWebSocketClose) {
+                client.onWebSocketClose(new CloseEvent('close'));
+            }
+        });
+
+        expect(activeSubscriptions.has('/user/queue/private')).toBe(false);
+
+        // simulate reconnect
+        act(() => {
+            const client = result.current.stompClientRef.current;
+            if (client && client.onConnect) {
+                // @ts-expect-error MockStompClient expects 0 args but typing in tests might require frame
+                client.onConnect({});
+            }
+        });
+
+        // Should be resubscribed to private channel without the old let flag blocking it
+        expect(activeSubscriptions.has('/user/queue/private')).toBe(true);
+    });
 });

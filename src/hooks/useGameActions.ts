@@ -68,7 +68,7 @@ export function useGameActions(
             }, 3_000);
 
             stompClientRef.current.publish({
-                destination: `/app/${targetGameId}/action`,
+                destination: `/app/${encodeURIComponent(targetGameId)}/action`,
                 body: JSON.stringify({ action, amount }),
             });
             setRaiseAmount('');
@@ -104,7 +104,7 @@ export function useGameActions(
             }, 3_000);
 
             stompClientRef.current.publish({
-                destination: `/app/${targetGameId}/ready`,
+                destination: `/app/${encodeURIComponent(targetGameId)}/ready`,
                 body: '{}',
             });
         } catch (err) {

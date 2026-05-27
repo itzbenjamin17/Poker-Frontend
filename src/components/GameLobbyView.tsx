@@ -73,7 +73,7 @@ export function GameLobbyView({ onStartGame, onLeaveGame }: GameLobbyViewProps) 
                     </span>
                     <h1 className="text-5xl font-headline font-bold mt-2 flex items-center flex-wrap gap-4">
                         <span className="text-white">GAME LOBBY </span>
-                        <div className="flex items-center gap-4 bg-white/5 px-6 py-2 rounded-2xl cursor-pointer hover:bg-white/10 transition-colors group" onClick={handleCopyCode} role="button" aria-label="Copy room code" tabIndex={0} onKeyDown={(e) => e.key === 'Enter' && handleCopyCode()}>
+                        <button type="button" className="flex items-center gap-4 bg-white/5 px-6 py-2 rounded-2xl cursor-pointer hover:bg-white/10 transition-colors group" onClick={handleCopyCode} aria-label="Copy room code">
                             <span className="text-emerald-primary/80 group-hover:text-emerald-primary transition-colors">
                                 {roomState.roomName || roomState.roomId || auth.roomId}
                             </span>
@@ -84,7 +84,7 @@ export function GameLobbyView({ onStartGame, onLeaveGame }: GameLobbyViewProps) 
                             ) : (
                                 <Copy className="w-6 h-6 text-emerald-primary/40 group-hover:text-emerald-primary/80 transition-colors ml-2" />
                             )}
-                        </div>
+                        </button>
                     </h1>
                 </div>
 

@@ -48,6 +48,9 @@ describe('GameView - Room Lobby Integration', () => {
     const startBtn = screen.getByRole('button', { name: /START GAME/i })
     expect(startBtn).toBeDisabled()
 
+    // Ensure STOMP is connected and subscribed before sending messages
+    await MockStompClient.waitForSubscription('/room/ROOM123')
+
     // Simulate another player joining via STOMP using await act(async () => ...)
     await act(async () => {
       MockStompClient.simulateMessage('/room/ROOM123', {
@@ -88,6 +91,9 @@ describe('GameView - Room Lobby Integration', () => {
     render(<GameView auth={auth} onLeave={handleLeave} />)
 
     await waitFor(() => expect(screen.getByText(/GAME LOBBY/i)).toBeInTheDocument())
+
+    // Ensure STOMP is connected and subscribed before sending messages
+    await MockStompClient.waitForSubscription('/room/ROOM123')
 
     // Simulate ROOM_CLOSED using await act(async () => ...)
     await act(async () => {

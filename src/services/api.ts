@@ -149,31 +149,31 @@ export const pokerApi = {
     },
 
     async getRoomInfo(roomId: string, token: string): Promise<RoomDataResponse> {
-        return fetchApi<RoomDataResponse>(`${API_BASE}/room/${roomId}`, { method: 'GET', token });
+        return fetchApi<RoomDataResponse>(`${API_BASE}/room/${encodeURIComponent(roomId)}`, { method: 'GET', token });
     },
 
     async getGameState(gameId: string, token: string): Promise<unknown> {
-        return fetchApi<unknown>(`${API_BASE}/game/${gameId}/state`, { method: 'GET', token });
+        return fetchApi<unknown>(`${API_BASE}/game/${encodeURIComponent(gameId)}/state`, { method: 'GET', token });
     },
 
     async getPrivateState(gameId: string, token: string): Promise<unknown> {
-        return fetchApi<unknown>(`${API_BASE}/game/${gameId}/private-state`, { method: 'GET', token });
+        return fetchApi<unknown>(`${API_BASE}/game/${encodeURIComponent(gameId)}/private-state`, { method: 'GET', token });
     },
 
     async leaveRoom(roomId: string, token: string, keepalive = false): Promise<void> {
-        await fetchApi<void>(`${API_BASE}/room/${roomId}/leave`, { method: 'POST', token, keepalive });
+        await fetchApi<void>(`${API_BASE}/room/${encodeURIComponent(roomId)}/leave`, { method: 'POST', token, keepalive });
     },
 
     async leaveGame(gameId: string, token: string, keepalive = false): Promise<void> {
-        await fetchApi<void>(`${API_BASE}/game/${gameId}/leave`, { method: 'POST', token, keepalive });
+        await fetchApi<void>(`${API_BASE}/game/${encodeURIComponent(gameId)}/leave`, { method: 'POST', token, keepalive });
     },
 
     async startGame(roomId: string, token: string): Promise<unknown> {
-        return fetchApi<unknown>(`${API_BASE}/room/${roomId}/start-game`, { method: 'POST', token });
+        return fetchApi<unknown>(`${API_BASE}/room/${encodeURIComponent(roomId)}/start-game`, { method: 'POST', token });
     },
 
     async claimWin(gameId: string, token: string): Promise<boolean> {
-        await fetchApi<void>(`${API_BASE}/game/${gameId}/claim-win`, { method: 'POST', token });
+        await fetchApi<void>(`${API_BASE}/game/${encodeURIComponent(gameId)}/claim-win`, { method: 'POST', token });
         return true;
     },
 };
