@@ -73,7 +73,7 @@ src/
 **Live lobby and table synchronization**
 - Room updates over `/room/{roomId}`
 - Game snapshots and notifications over `/game/{gameId}`
-- Private hole-card and action-error messages over `/game/{gameId}/player-name/{encodedPlayerName}/private`
+- Private hole-card and action-error messages over `/user/queue/private`
 - Session hydration on load using REST snapshots before live subscriptions take over
 
 ### User Experience
@@ -143,7 +143,7 @@ Uses **Playwright** for full multi-browser end-to-end user flows.
 ### Running All Tests
 To run all tests sequentially (unit, integration, and E2E):
 ```bash
-npm run test::all
+npm run test:all
 ```
 
 ## Design System
@@ -177,7 +177,7 @@ Theme colors are defined in `src/index.css` using Tailwind CSS v4 `@theme` token
 ### WebSocket Channels (STOMP)
 - `/room/{roomId}` - Lobby updates (joins, leaves, starts)
 - `/game/{gameId}` - Public game state and server notifications
-- `/game/{gameId}/player-name/{playerName}/private` - Private cards and action feedback
+- `/user/queue/private` - Private cards and action feedback
 
 ## Portfolio Context
 
