@@ -1,0 +1,22 @@
+# Dependencies and build outputs
+
+node_modules
+/dist
+/playwright-report
+/test-results
+
+# VCS and editor files
+
+.git
+.gitignore
+.idea
+frontend-poker.iml
+
+# Local environment files
+
+.env
+.env.\*
+
+# Tests and tooling artifacts
+
+/e2e
