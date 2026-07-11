@@ -1,5 +1,5 @@
 import { renderHook, act } from '@testing-library/react';
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from 'vitest';
 import { useGameDispatcher, type PublisherAdapter } from '../useGameDispatcher';
 import { useGameContext } from '../../context/GameContext';
 import { pokerApi } from '../../services/api';
@@ -29,15 +29,15 @@ describe('useGameDispatcher', () => {
     const dispatch = vi.fn();
     const clearShowdownTimers = vi.fn();
     let publisherAdapter: PublisherAdapter;
-    let publishMock: ReturnType<typeof vi.fn>;
-    let isConnectedMock: ReturnType<typeof vi.fn>;
+    let publishMock: Mock<(destination: string, body: string) => void>;
+    let isConnectedMock: Mock<() => boolean>;
 
     beforeEach(() => {
         vi.clearAllMocks();
         vi.useFakeTimers();
 
-        publishMock = vi.fn();
-        isConnectedMock = vi.fn().mockReturnValue(true);
+        publishMock = vi.fn<(destination: string, body: string) => void>();
+        isConnectedMock = vi.fn<() => boolean>().mockReturnValue(true);
         publisherAdapter = {
             publish: publishMock,
             isConnected: isConnectedMock,
@@ -134,7 +134,7 @@ describe('useGameDispatcher', () => {
     });
 
     it('dispatch START_GAME calls pokerApi', async () => {
-        const startGameSpy = vi.mocked(pokerApi.startGame).mockResolvedValue();
+        const startGameSpy = vi.mocked(pokerApi.startGame).mockResolvedValue({});
         const { result } = renderHook(() => useGameDispatcher(publisherAdapter));
 
         await act(async () => {
@@ -159,7 +159,7 @@ describe('useGameDispatcher', () => {
     });
 
     it('dispatch CLAIM_WIN calls pokerApi', async () => {
-        const claimWinSpy = vi.mocked(pokerApi.claimWin).mockResolvedValue();
+        const claimWinSpy = vi.mocked(pokerApi.claimWin).mockResolvedValue(true);
         const { result } = renderHook(() => useGameDispatcher(publisherAdapter));
 
         await act(async () => {
