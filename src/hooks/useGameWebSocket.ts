@@ -19,7 +19,7 @@ const ROOM_CLOSED_REDIRECT_MS = 3_000;
 const GAME_END_DISPLAY_MS = 7_000;
 
 interface UseGameWebSocketOptions {
-    onRaiseError: (message: string) => void;
+    onSocketError: (message: string) => void;
 }
 
 /**
@@ -34,7 +34,7 @@ export function useGameWebSocket(options: UseGameWebSocketOptions) {
         clearShowdownTimers, isHydrated,
     } = useGameContext();
 
-    const { onRaiseError } = options;
+    const { onSocketError } = options;
 
     const stompClientRef = useRef<Client | null>(null);
     const lastStateSyncTimeRef = useRef<number>(0);
@@ -70,7 +70,7 @@ export function useGameWebSocket(options: UseGameWebSocketOptions) {
                     const parsed = JSON.parse(privBody);
 
                     if (parsed.type === 'ACTION_ERROR' && typeof parsed.message === 'string') {
-                        onRaiseError(parsed.message);
+                        onSocketError(parsed.message);
                         return;
                     }
 
@@ -266,7 +266,7 @@ export function useGameWebSocket(options: UseGameWebSocketOptions) {
         auth.roomId, auth.playerName, auth.token,
         isHydrated, onLeave, dispatch,
         applyIncomingGameState, applyIncomingPrivateState,
-        clearShowdownTimers, onRaiseError,
+        clearShowdownTimers, onSocketError,
     ]);
 
     return { stompClientRef };

@@ -1,9 +1,9 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import type { AuthResponse } from './types';
 import { GameProvider, useGameContext } from './context/GameContext';
 import { useSessionHydration } from './hooks/useSessionHydration';
 import { useGameWebSocket } from './hooks/useGameWebSocket';
-import { useGameActions } from './hooks/useGameActions';
+import { useGameDispatcher } from './hooks/useGameDispatcher';
 import { useSeatLayout } from './hooks/useSeatLayout';
 import { useShowdownModal } from './hooks/useShowdownModal';
 import { LoadingView } from './components/LoadingView';
@@ -24,7 +24,6 @@ function GameViewInner() {
     const [windowWidth, setWindowWidth] = useState(() => window.innerWidth);
     const [windowHeight, setWindowHeight] = useState(() => window.innerHeight);
     const [raiseAmount, setRaiseAmount] = useState('');
-    const [raiseError, setRaiseError] = useState<string | null>(null);
     const [nowMs, setNowMs] = useState(() => Date.now());
 
     // ── Layout ──────────────────────────────────────────────────────────────────
@@ -62,21 +61,26 @@ function GameViewInner() {
     // ── Session hydration ───────────────────────────────────────────────────────
     useSessionHydration();
 
-    // ── WebSocket ───────────────────────────────────────────────────────────────
-    // actionsRef + handleRaiseError breaks the circular dep between
-    // useGameWebSocket (needs onRaiseError) and useGameActions (needs stompClientRef).
-    const actionsRef = useRef<ReturnType<typeof useGameActions> | null>(null);
-    const handleRaiseError = useCallback((msg: string) => {
-        actionsRef.current?.handleRaiseError(msg);
+    // ── WebSocket & Dispatcher ──────────────────────────────────────────────────
+    const dispatcherRef = useRef<ReturnType<typeof useGameDispatcher> | null>(null);
+    const handleSocketError = useCallback((msg: string) => {
+        dispatcherRef.current?.onSocketError(msg);
     }, []);
 
-    const { stompClientRef } = useGameWebSocket({ onRaiseError: handleRaiseError });
+    const { stompClientRef } = useGameWebSocket({ onSocketError: handleSocketError });
 
-    // ── Actions ─────────────────────────────────────────────────────────────────
-    const actions = useGameActions(stompClientRef, setRaiseAmount, setRaiseError);
+    const publisherAdapter = useMemo(() => ({
+        publish: (dest: string, body: string) => {
+            stompClientRef.current?.publish({ destination: dest, body });
+        },
+        isConnected: () => stompClientRef.current?.connected ?? false
+    }), [stompClientRef]);
+
+    const dispatcher = useGameDispatcher(publisherAdapter);
+    
     useEffect(() => {
-        actionsRef.current = actions;
-    }, [actions]);
+        dispatcherRef.current = dispatcher;
+    }, [dispatcher]);
 
     // ── Routing (no hooks below this line) ──────────────────────────────────────
 
@@ -85,8 +89,8 @@ function GameViewInner() {
         if (roomState && !roomState.gameStarted) {
             return (
                 <GameLobbyView
-                    onStartGame={actions.handleStartGame}
-                    onLeaveGame={actions.handleLeaveGame}
+                    onStartGame={() => dispatcher.dispatch({ type: 'START_GAME' })}
+                    onLeaveGame={() => dispatcher.dispatch({ type: 'LEAVE_GAME' })}
                 />
             );
         }
@@ -103,19 +107,19 @@ function GameViewInner() {
             scale={scale}
             nowMs={nowMs}
             raiseAmount={raiseAmount}
-            raiseError={raiseError}
+            raiseError={dispatcher.error?.message ?? null}
             showdownLayout={showdownModal.layout}
             showdownModalRef={showdownModal.modalRef}
             getSeatPosition={getSeatPosition}
-            onAction={actions.handleAction}
-            onReady={actions.handleReady}
-            onClaimWin={actions.handleClaimWin}
-            onLeaveGame={actions.handleLeaveGame}
+            onAction={(action, amount) => dispatcher.dispatch({ type: 'PLAY_ACTION', action, amount })}
+            onReady={() => dispatcher.dispatch({ type: 'READY' })}
+            onClaimWin={() => dispatcher.dispatch({ type: 'CLAIM_WIN' })}
+            onLeaveGame={() => dispatcher.dispatch({ type: 'LEAVE_GAME' })}
             onRaiseChange={(val) => {
                 setRaiseAmount(val);
-                setRaiseError(null);
+                dispatcher.clearError();
             }}
-            isActionPending={actions.isActionPending}
+            isActionPending={dispatcher.isPending('PLAY_ACTION') || dispatcher.isPending('READY') || dispatcher.isPending('START_GAME') || dispatcher.isPending('CLAIM_WIN') || dispatcher.isPending('LEAVE_GAME')}
             onShowdownDragPointerDown={showdownModal.onDragPointerDown}
             onShowdownResizePointerDown={showdownModal.onResizePointerDown}
             onShowdownPointerMove={showdownModal.onPointerMove}
