@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import type { AuthResponse } from './types';
-import { GameProvider, useGameContext } from './context/GameContext';
+import { GameProvider } from './context/GameProvider';
+import { useGameContext } from './context/GameContext';
 import { useSessionHydration } from './hooks/useSessionHydration';
 import { useGameWebSocket } from './hooks/useGameWebSocket';
 import { useGameDispatcher } from './hooks/useGameDispatcher';

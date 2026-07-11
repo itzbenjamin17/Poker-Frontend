@@ -20,7 +20,7 @@ describe('useGameWebSocket', () => {
     const applyIncomingGameState = vi.fn();
     const applyIncomingPrivateState = vi.fn();
     const clearShowdownTimers = vi.fn();
-    const onRaiseError = vi.fn();
+    const onSocketError = vi.fn();
 
     beforeEach(() => {
         vi.clearAllMocks();
@@ -56,7 +56,7 @@ describe('useGameWebSocket', () => {
     });
 
     it('subscribes to channels on connection', async () => {
-        const { result } = renderHook(() => useGameWebSocket({ onRaiseError }));
+        const { result } = renderHook(() => useGameWebSocket({ onSocketError }));
 
         expect(result.current).toBeDefined();
 
@@ -69,7 +69,7 @@ describe('useGameWebSocket', () => {
     });
 
     it('handles ROOM_CLOSED updates by dispatching actions and scheduling redirect', async () => {
-        renderHook(() => useGameWebSocket({ onRaiseError }));
+        renderHook(() => useGameWebSocket({ onSocketError }));
 
         await act(async () => {
             vi.advanceTimersByTime(10);
@@ -98,7 +98,7 @@ describe('useGameWebSocket', () => {
     });
 
     it('handles incoming private state and action errors', async () => {
-        renderHook(() => useGameWebSocket({ onRaiseError }));
+        renderHook(() => useGameWebSocket({ onSocketError }));
 
         await act(async () => {
             vi.advanceTimersByTime(10);
@@ -110,7 +110,7 @@ describe('useGameWebSocket', () => {
                 message: 'Invalid Raise Amount',
             });
         });
-        expect(onRaiseError).toHaveBeenCalledWith('Invalid Raise Amount');
+        expect(onSocketError).toHaveBeenCalledWith('Invalid Raise Amount');
 
         const privatePayload = {
             playerId: 'p-1',
@@ -123,7 +123,7 @@ describe('useGameWebSocket', () => {
     });
 
     it('resubscribes to private channel after STOMP reconnect', async () => {
-        const { result } = renderHook(() => useGameWebSocket({ onRaiseError }));
+        const { result } = renderHook(() => useGameWebSocket({ onSocketError }));
 
         await act(async () => {
             vi.advanceTimersByTime(10);

@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { renderHook, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { useShowdownModal } from '../useShowdownModal';
@@ -67,7 +66,7 @@ describe('useShowdownModal', () => {
                 setPointerCapture: mockSetPointerCapture,
             },
             preventDefault: vi.fn(),
-        } as any;
+        } as unknown as import('react').PointerEvent<HTMLDivElement>;
 
         // Mock getBoundingClientRect on modalRef
         const mockModalDiv = {
@@ -77,7 +76,7 @@ describe('useShowdownModal', () => {
                 width: 300,
                 height: 200,
             }),
-        } as any;
+        } as unknown as HTMLDivElement;
 
         result.current.modalRef.current = mockModalDiv;
 

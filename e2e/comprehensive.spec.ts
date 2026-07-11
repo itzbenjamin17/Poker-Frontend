@@ -132,4 +132,59 @@ test.describe('Comprehensive Poker Scenarios', () => {
         // Showdown modal is displayed since both players are all-in.
         await expect(hostPage.getByText(/round result|won/i).first()).toBeVisible({ timeout: 20000 });
     });
+    test('Scenario 4: Full Hand to River (Checking it down)', async ({ browser, createRoom, joinRoom }) => {
+        const roomName = `FullHand-${Date.now()}`;
+        const hostContext = await browser.newContext();
+        contexts.push(hostContext);
+        const guestContext = await browser.newContext();
+        contexts.push(guestContext);
+
+        const hostPage = await hostContext.newPage();
+        const guestPage = await guestContext.newPage();
+
+        await createRoom(hostPage, roomName, 'Host');
+        await joinRoom(guestPage, roomName, 'Guest');
+
+        await hostPage.getByRole('button', { name: /start game/i }).click();
+
+        // Pre-flop: Host (BB, index 0, $20), Guest (Dealer/SB, index 1, $10). Guest acts first.
+        const guestCallBtn = guestPage.getByRole('button', { name: /call/i });
+        await expect(guestCallBtn).toBeVisible();
+        await guestCallBtn.click(); // Guest calls $10
+
+        const hostCheckBtn = hostPage.getByRole('button', { name: /check/i });
+        await expect(hostCheckBtn).toBeVisible();
+        await hostCheckBtn.click(); // Host checks
+
+        // Flop
+        await expect(hostPage.getByText('FLOP')).toBeVisible();
+        
+        // Post-flop, BB (Host) acts first
+        await expect(hostPage.getByRole('button', { name: /check/i })).toBeVisible();
+        await hostPage.getByRole('button', { name: /check/i }).click();
+
+        await expect(guestPage.getByRole('button', { name: /check/i })).toBeVisible();
+        await guestPage.getByRole('button', { name: /check/i }).click();
+
+        // Turn
+        await expect(hostPage.getByText('TURN', { exact: true })).toBeVisible();
+
+        await expect(hostPage.getByRole('button', { name: /check/i })).toBeVisible();
+        await hostPage.getByRole('button', { name: /check/i }).click();
+
+        await expect(guestPage.getByRole('button', { name: /check/i })).toBeVisible();
+        await guestPage.getByRole('button', { name: /check/i }).click();
+
+        // River
+        await expect(hostPage.getByText('RIVER', { exact: true })).toBeVisible();
+
+        await expect(hostPage.getByRole('button', { name: /check/i })).toBeVisible();
+        await hostPage.getByRole('button', { name: /check/i }).click();
+
+        await expect(guestPage.getByRole('button', { name: /check/i })).toBeVisible();
+        await guestPage.getByRole('button', { name: /check/i }).click();
+
+        // Showdown
+        await expect(hostPage.getByText(/round result|won/i).first()).toBeVisible({ timeout: 20000 });
+    });
 });

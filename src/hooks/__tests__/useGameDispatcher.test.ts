@@ -1,0 +1,218 @@
+import { renderHook, act } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { useGameDispatcher, type PublisherAdapter } from '../useGameDispatcher';
+import { useGameContext } from '../../context/GameContext';
+import { pokerApi } from '../../services/api';
+import { RAISE_ERROR_FORBIDDEN_BET } from '../../constants/strings';
+
+vi.mock('../../context/GameContext', () => ({
+    useGameContext: vi.fn(),
+}));
+
+vi.mock('../../services/api', () => ({
+    pokerApi: {
+        startGame: vi.fn(),
+        claimWin: vi.fn(),
+        leaveGame: vi.fn(),
+        leaveRoom: vi.fn(),
+    },
+}));
+
+describe('useGameDispatcher', () => {
+    const mockAuth = {
+        token: 'test-token',
+        roomId: 'ROOM123',
+        playerName: 'TestPlayer',
+        message: 'Success',
+    };
+    const onLeave = vi.fn();
+    const dispatch = vi.fn();
+    const clearShowdownTimers = vi.fn();
+    let publisherAdapter: PublisherAdapter;
+    let publishMock: ReturnType<typeof vi.fn>;
+    let isConnectedMock: ReturnType<typeof vi.fn>;
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+        vi.useFakeTimers();
+
+        publishMock = vi.fn();
+        isConnectedMock = vi.fn().mockReturnValue(true);
+        publisherAdapter = {
+            publish: publishMock,
+            isConnected: isConnectedMock,
+        };
+
+        vi.mocked(useGameContext).mockReturnValue({
+            auth: mockAuth,
+            onLeave,
+            dispatch,
+            clearShowdownTimers,
+            roomState: null,
+            gameState: { gameId: 'GAME123' } as unknown as import('../../types').GameState,
+            privateState: null,
+            showdown: null,
+            showdownResult: null,
+            notification: null,
+            loadingStatus: 'Connected',
+            myPlayerId: 'p-1',
+            claimPending: false,
+            wsStatus: 'connected',
+            isHydrated: true,
+            scheduleShowdownHide: vi.fn(),
+            latestGameStateRef: { current: null },
+            notificationTimerRef: { current: null },
+            applyIncomingGameState: vi.fn(),
+            applyIncomingPrivateState: vi.fn(),
+        });
+    });
+
+    afterEach(() => {
+        vi.restoreAllMocks();
+    });
+
+    it('dispatch PLAY_ACTION publishes STOMP message', async () => {
+        const { result } = renderHook(() => useGameDispatcher(publisherAdapter));
+
+        await act(async () => {
+            await result.current.dispatch({ type: 'PLAY_ACTION', action: 'RAISE', amount: 100 });
+        });
+
+        expect(publishMock).toHaveBeenCalledWith(
+            '/app/GAME123/action',
+            JSON.stringify({ action: 'RAISE', amount: 100 })
+        );
+        expect(result.current.isPending('PLAY_ACTION')).toBe(true);
+    });
+
+    it('blocks duplicate rapid calls until timeout', async () => {
+        const { result } = renderHook(() => useGameDispatcher(publisherAdapter));
+
+        await act(async () => {
+            await result.current.dispatch({ type: 'PLAY_ACTION', action: 'CHECK' });
+            await result.current.dispatch({ type: 'PLAY_ACTION', action: 'CHECK' });
+        });
+
+        expect(publishMock).toHaveBeenCalledTimes(1);
+
+        await act(async () => {
+            vi.advanceTimersByTime(3000);
+        });
+
+        await act(async () => {
+            await result.current.dispatch({ type: 'PLAY_ACTION', action: 'CHECK' });
+        });
+
+        expect(publishMock).toHaveBeenCalledTimes(2);
+    });
+
+    it('defers and sets notification when client is not connected', async () => {
+        isConnectedMock.mockReturnValue(false);
+        const { result } = renderHook(() => useGameDispatcher(publisherAdapter));
+
+        await act(async () => {
+            await result.current.dispatch({ type: 'PLAY_ACTION', action: 'RAISE', amount: 100 });
+        });
+
+        expect(dispatch).toHaveBeenCalledWith({
+            type: 'SET_NOTIFICATION',
+            payload: 'Waiting for connection...',
+        });
+    });
+
+    it('dispatch READY publishes STOMP message', async () => {
+        const { result } = renderHook(() => useGameDispatcher(publisherAdapter));
+
+        await act(async () => {
+            await result.current.dispatch({ type: 'READY' });
+        });
+
+        expect(publishMock).toHaveBeenCalledWith(
+            '/app/GAME123/ready',
+            '{}'
+        );
+    });
+
+    it('dispatch START_GAME calls pokerApi', async () => {
+        const startGameSpy = vi.mocked(pokerApi.startGame).mockResolvedValue();
+        const { result } = renderHook(() => useGameDispatcher(publisherAdapter));
+
+        await act(async () => {
+            await result.current.dispatch({ type: 'START_GAME' });
+        });
+
+        expect(startGameSpy).toHaveBeenCalledWith('ROOM123', 'test-token');
+    });
+
+    it('dispatch START_GAME handles error', async () => {
+        vi.mocked(pokerApi.startGame).mockRejectedValue(new Error('Start failed'));
+        const { result } = renderHook(() => useGameDispatcher(publisherAdapter));
+
+        await act(async () => {
+            await result.current.dispatch({ type: 'START_GAME' });
+        });
+
+        expect(dispatch).toHaveBeenCalledWith({
+            type: 'SET_NOTIFICATION',
+            payload: 'Start failed',
+        });
+    });
+
+    it('dispatch CLAIM_WIN calls pokerApi', async () => {
+        const claimWinSpy = vi.mocked(pokerApi.claimWin).mockResolvedValue();
+        const { result } = renderHook(() => useGameDispatcher(publisherAdapter));
+
+        await act(async () => {
+            await result.current.dispatch({ type: 'CLAIM_WIN' });
+        });
+
+        expect(dispatch).toHaveBeenCalledWith({
+            type: 'SET_CLAIM_PENDING',
+            payload: true,
+        });
+        expect(claimWinSpy).toHaveBeenCalledWith('GAME123', 'test-token');
+    });
+
+    it('dispatch LEAVE_GAME calls leaveGame and leaveRoom', async () => {
+        const leaveGameSpy = vi.mocked(pokerApi.leaveGame).mockResolvedValue();
+        const leaveRoomSpy = vi.mocked(pokerApi.leaveRoom).mockResolvedValue();
+
+        const { result } = renderHook(() => useGameDispatcher(publisherAdapter));
+
+        await act(async () => {
+            await result.current.dispatch({ type: 'LEAVE_GAME' });
+        });
+
+        expect(clearShowdownTimers).toHaveBeenCalled();
+        expect(dispatch).toHaveBeenCalledWith({
+            type: 'SET_PRIVATE',
+            payload: null,
+        });
+        expect(leaveGameSpy).toHaveBeenCalledWith('GAME123', 'test-token');
+        expect(leaveRoomSpy).toHaveBeenCalledWith('ROOM123', 'test-token');
+        expect(onLeave).toHaveBeenCalled();
+    });
+
+    it('onSocketError parses errors and updates error state', async () => {
+        const { result } = renderHook(() => useGameDispatcher(publisherAdapter));
+
+        act(() => {
+            result.current.onSocketError('INSUFFICIENT_CHIPS');
+        });
+
+        expect(result.current.error?.message).toBe('INSUFFICIENT_CHIPS');
+        expect(dispatch).toHaveBeenCalledWith({
+            type: 'SET_NOTIFICATION',
+            payload: RAISE_ERROR_FORBIDDEN_BET,
+        });
+
+        act(() => {
+            result.current.onSocketError('SOME_OTHER_ERROR');
+        });
+
+        expect(dispatch).toHaveBeenCalledWith({
+            type: 'SET_NOTIFICATION',
+            payload: 'SOME_OTHER_ERROR',
+        });
+    });
+});

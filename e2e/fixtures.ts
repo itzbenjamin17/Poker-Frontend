@@ -1,4 +1,3 @@
-/* eslint-disable no-empty-pattern, react-hooks/rules-of-hooks */
 import { test as baseTest, expect, type Page } from '@playwright/test';
 
 export interface CreateRoomOptions {
@@ -11,8 +10,8 @@ export const test = baseTest.extend<{
   createRoom: (page: Page, roomName: string, playerName: string, options?: CreateRoomOptions) => Promise<void>;
   joinRoom: (page: Page, roomName: string, playerName: string) => Promise<void>;
 }>({
-  createRoom: async ({}, use) => {
-    await use(async (page, roomName, playerName, options) => {
+  createRoom: async (_args, provide) => {
+    await provide(async (page, roomName, playerName, options) => {
       await page.goto('/');
       const createRegion = page.getByRole('region', { name: /create table/i });
       await createRegion.getByLabel(/room name/i).fill(roomName);
@@ -32,8 +31,8 @@ export const test = baseTest.extend<{
       await expect(page.getByText(/game lobby/i)).toBeVisible({ timeout: 15000 });
     });
   },
-  joinRoom: async ({}, use) => {
-    await use(async (page, roomName, playerName) => {
+  joinRoom: async (_args, provide) => {
+    await provide(async (page, roomName, playerName) => {
       await page.goto('/');
       const joinRegion = page.getByRole('region', { name: /quick join/i });
       await joinRegion.getByLabel(/room name/i).fill(roomName);

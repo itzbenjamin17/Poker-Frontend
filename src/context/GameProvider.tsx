@@ -1,8 +1,5 @@
-/* eslint-disable react-refresh/only-export-components */
 import {
-    createContext,
     useCallback,
-    useContext,
     useMemo,
     useReducer,
     useRef,
@@ -13,40 +10,15 @@ import type {
     GameState,
     IncomingGameStatePayload,
     IncomingPrivateStatePayload,
-    RoomState,
     WsStatus,
 } from '../types';
 import { useShowdownTimers } from '../hooks/useShowdownTimers';
-
-// ─── State ────────────────────────────────────────────────────────────────────
-
-export interface GameContextState {
-    roomState: RoomState | null;
-    gameState: GameState | null;
-    privateState: { holeCards: string[] } | null;
-    showdown: GameState | null;
-    showdownResult: GameState | null;
-    notification: string | null;
-    loadingStatus: string;
-    myPlayerId: string | null;
-    claimPending: boolean;
-    wsStatus: WsStatus;
-    isHydrated: boolean;
-}
-
-type Action =
-    | { type: 'SET_ROOM'; payload: RoomState | null }
-    | { type: 'SET_GAME'; payload: GameState | null }
-    | { type: 'SET_PRIVATE'; payload: { holeCards: string[] } | null }
-    | { type: 'SET_SHOWDOWN'; payload: GameState | null }
-    | { type: 'SET_SHOWDOWN_RESULT'; payload: GameState | null }
-    | { type: 'SET_NOTIFICATION'; payload: string | null }
-    | { type: 'SET_LOADING_STATUS'; payload: string }
-    | { type: 'SET_MY_PLAYER_ID'; payload: string | null }
-    | { type: 'SET_CLAIM_PENDING'; payload: boolean }
-    | { type: 'SET_WS_STATUS'; payload: WsStatus }
-    | { type: 'SET_HYDRATED'; payload: boolean }
-    | { type: 'CLEAR_GAME_STATE' };
+import {
+    GameContext,
+    type GameContextState,
+    type Action,
+    type GameContextValue,
+} from './GameContext';
 
 function reducer(state: GameContextState, action: Action): GameContextState {
     switch (action.type) {
@@ -77,32 +49,6 @@ function reducer(state: GameContextState, action: Action): GameContextState {
     }
 }
 
-// ─── Context ──────────────────────────────────────────────────────────────────
-
-export interface GameContextValue extends GameContextState {
-    auth: AuthResponse;
-    onLeave?: () => void;
-    dispatch: React.Dispatch<Action>;
-    // Stable callbacks (used by hooks)
-    applyIncomingGameState: (payload: IncomingGameStatePayload) => void;
-    applyIncomingPrivateState: (payload: IncomingPrivateStatePayload) => void;
-    clearShowdownTimers: () => void;
-    scheduleShowdownHide: (state: GameState) => void;
-    // Stable refs
-    latestGameStateRef: React.RefObject<GameState | null>;
-    notificationTimerRef: React.RefObject<ReturnType<typeof setTimeout> | null>;
-}
-
-const GameContext = createContext<GameContextValue | null>(null);
-
-export function useGameContext(): GameContextValue {
-    const ctx = useContext(GameContext);
-    if (!ctx) throw new Error('useGameContext must be used inside <GameProvider>');
-    return ctx;
-}
-
-// ─── Provider ─────────────────────────────────────────────────────────────────
-
 interface GameProviderProps {
     auth: AuthResponse;
     onLeave?: () => void;
@@ -129,11 +75,9 @@ export function GameProvider({ auth, onLeave, children }: GameProviderProps) {
         isHydrated: false,
     });
 
-    // Stable refs to avoid stale closures in WebSocket callbacks
     const latestGameStateRef = useRef<GameState | null>(null);
     const notificationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-    // --- Notification helper ---
     const setNotificationWithAutoDismiss = useCallback((msg: string | null, ms = 4000) => {
         if (notificationTimerRef.current !== null) clearTimeout(notificationTimerRef.current);
         dispatch({ type: 'SET_NOTIFICATION', payload: msg });
@@ -145,13 +89,11 @@ export function GameProvider({ auth, onLeave, children }: GameProviderProps) {
         }
     }, []);
 
-    // --- Showdown timers ---
     const setShowdown = useCallback((v: GameState | null) => dispatch({ type: 'SET_SHOWDOWN', payload: v }), []);
     const setShowdownResult = useCallback((v: GameState | null) => dispatch({ type: 'SET_SHOWDOWN_RESULT', payload: v }), []);
 
     const { clearShowdownTimers, scheduleShowdownHide } = useShowdownTimers(setShowdown, setShowdownResult);
 
-    // --- applyIncomingGameState ---
     const applyIncomingGameState = useCallback((payload: IncomingGameStatePayload) => {
         const incomingData: GameState = {
             ...payload,
@@ -168,7 +110,6 @@ export function GameProvider({ auth, onLeave, children }: GameProviderProps) {
         let data = incomingData;
         const hadWinnersBefore = Boolean(previousState?.winners && previousState.winners.length > 0);
 
-        // Preserve READY countdown state across stale payloads
         if (previousState?.phase === 'SHOWDOWN' && incomingData.phase === 'SHOWDOWN') {
             const prevReadyActive = Boolean(previousState.isReadyCountdownActive);
             const inReadyActive = Boolean(incomingData.isReadyCountdownActive);
@@ -189,7 +130,7 @@ export function GameProvider({ auth, onLeave, children }: GameProviderProps) {
         latestGameStateRef.current = data;
 
         if (data.winners && data.winners.length > 0) {
-            if (!hadWinnersBefore) dispatch({ type: 'SET_SHOWDOWN_RESULT', payload: null }); // Reset layout trigger
+            if (!hadWinnersBefore) dispatch({ type: 'SET_SHOWDOWN_RESULT', payload: null });
             dispatch({ type: 'SET_SHOWDOWN', payload: data });
             dispatch({ type: 'SET_SHOWDOWN_RESULT', payload: data });
             scheduleShowdownHide(data);
@@ -201,12 +142,10 @@ export function GameProvider({ auth, onLeave, children }: GameProviderProps) {
             clearShowdownTimers();
         }
 
-        // Discover myPlayerId from game state
         const myPlayer = data.players.find((p) => p.name === auth.playerName);
         if (myPlayer?.id) dispatch({ type: 'SET_MY_PLAYER_ID', payload: myPlayer.id });
     }, [auth.playerName, auth.roomId, clearShowdownTimers, scheduleShowdownHide]);
 
-    // --- applyIncomingPrivateState ---
     const applyIncomingPrivateState = useCallback((payload: IncomingPrivateStatePayload) => {
         const nextHoleCards = Array.isArray(payload.holeCards) ? payload.holeCards : [];
         dispatch({ type: 'SET_PRIVATE', payload: { holeCards: nextHoleCards } });
@@ -224,7 +163,6 @@ export function GameProvider({ auth, onLeave, children }: GameProviderProps) {
         scheduleShowdownHide,
         latestGameStateRef,
         notificationTimerRef,
-        // Expose notification setter for hooks
         setNotificationWithAutoDismiss,
     } as GameContextValue & { setNotificationWithAutoDismiss: typeof setNotificationWithAutoDismiss }), [
         state, auth, onLeave,
@@ -235,6 +173,3 @@ export function GameProvider({ auth, onLeave, children }: GameProviderProps) {
 
     return <GameContext.Provider value={value}>{children}</GameContext.Provider>;
 }
-
-// Export so hooks can access without going through context re-renders
-export { type Action };

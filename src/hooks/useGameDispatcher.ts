@@ -3,6 +3,7 @@ import { pokerApi } from '../services/api';
 import { useGameContext } from '../context/GameContext';
 import { normalizeErrorMessage } from '../lib/payloads';
 import { logger } from '../security/logger';
+import { RAISE_ERROR_FORBIDDEN_BET } from '../constants/strings';
 
 export type GameCommand = 
     | { type: 'PLAY_ACTION'; action: string; amount?: number }
@@ -29,16 +30,19 @@ export function useGameDispatcher(publisher: PublisherAdapter) {
 
     const [error, setError] = useState<DispatchError | null>(null);
 
-    // Reset pending state when gameState changes
-    useEffect(() => {
+    const clearPending = useCallback(() => {
         pendingRef.current = new Set();
-        // eslint-disable-next-line react-hooks/set-state-in-effect
-        setPendingCommands(new Set());
+        setTimeout(() => setPendingCommands(new Set()), 0);
         if (actionTimeoutRef.current !== null) {
             clearTimeout(actionTimeoutRef.current);
             actionTimeoutRef.current = null;
         }
-    }, [gameState]);
+    }, []);
+
+    // Reset pending state when gameState changes
+    useEffect(() => {
+        clearPending();
+    }, [gameState, clearPending]);
 
     useEffect(() => {
         return () => {
@@ -126,12 +130,12 @@ export function useGameDispatcher(publisher: PublisherAdapter) {
         setPending('READY', false);
         if (actionTimeoutRef.current) clearTimeout(actionTimeoutRef.current);
 
-        const normalized = normalizeErrorMessage(message);
+        const normalized = normalizeErrorMessage(message) || 'Error occurred';
         const isBetRaiseError = /bet|raise|insufficient|amount|chip/i.test(message);
         
         if (isBetRaiseError) {
             setError({ message: normalized });
-            contextDispatch({ type: 'SET_NOTIFICATION', payload: 'Invalid bet amount' });
+            contextDispatch({ type: 'SET_NOTIFICATION', payload: RAISE_ERROR_FORBIDDEN_BET });
         } else {
             contextDispatch({ type: 'SET_NOTIFICATION', payload: normalized });
         }
