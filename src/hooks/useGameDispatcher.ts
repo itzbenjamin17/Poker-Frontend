@@ -4,9 +4,10 @@ import { useGameContext } from '../context/GameContext';
 import { normalizeErrorMessage } from '../lib/payloads';
 import { logger } from '../security/logger';
 import { RAISE_ERROR_FORBIDDEN_BET } from '../constants/strings';
+import type { PokerAction } from '../types';
 
 export type GameCommand = 
-    | { type: 'PLAY_ACTION'; action: string; amount?: number }
+    | { type: 'PLAY_ACTION'; action: PokerAction; amount?: number }
     | { type: 'READY' }
     | { type: 'START_GAME' }
     | { type: 'CLAIM_WIN' }

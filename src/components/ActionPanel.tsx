@@ -1,11 +1,14 @@
-import { motion, AnimatePresence } from 'motion/react';
+import { useMemo, useState } from 'react';
+import { motion, AnimatePresence, useReducedMotion } from 'motion/react';
 import { cn } from '../lib/cn';
 import { Button } from './UI';
 import {
     BTN_FOLD, BTN_CHECK, BTN_CALL_PREFIX, BTN_ALL_IN_PREFIX,
     BTN_BET, BTN_RAISE, ARIA_RAISE_AMOUNT,
 } from '../constants/strings';
-import type { GameState, Player } from '../types';
+import type { GameState, Player, PokerAction } from '../types';
+
+type AmountAction = Extract<PokerAction, 'BET' | 'RAISE'>;
 
 interface ActionPanelProps {
     gameState: GameState;
@@ -13,33 +16,37 @@ interface ActionPanelProps {
     isMyTurn: boolean;
     isSelfDisconnected: boolean;
     isReadyCountdownActive: boolean;
+    currentTurnPlayerName?: string;
     isMobileLandscape: boolean;
     isCompactTable: boolean;
     raiseAmount: string;
     raiseError: string | null;
     onRaiseChange: (val: string) => void;
-    onAction: (action: string, amount?: number) => void;
+    onAction: (action: PokerAction, amount?: number) => void;
     isActionPending: boolean;
 }
 
 export function ActionPanel({
-                                gameState,
-                                me,
-                                isMyTurn,
-                                isSelfDisconnected,
-                                isReadyCountdownActive,
-                                isMobileLandscape,
-                                isCompactTable,
-                                raiseAmount,
-                                raiseError,
-                                onRaiseChange,
-                                onAction,
-                                isActionPending,
-                            }: ActionPanelProps) {
+    gameState,
+    me,
+    isMyTurn,
+    isSelfDisconnected,
+    isReadyCountdownActive,
+    currentTurnPlayerName,
+    isMobileLandscape,
+    isCompactTable,
+    raiseAmount,
+    raiseError,
+    onRaiseChange,
+    onAction,
+    isActionPending,
+}: ActionPanelProps) {
+    const prefersReducedMotion = useReducedMotion();
+    const [amountAction, setAmountAction] = useState<AmountAction | null>(null);
     const controlButtonSize: 'xs' | 'sm' | 'md' = isMobileLandscape ? 'xs' : isCompactTable ? 'sm' : 'md';
-    const bottomWidthClass = 'w-full min-w-0';
+    const legalActions = useMemo(() => new Set<PokerAction>(gameState.legalActions ?? []), [gameState.legalActions]);
 
-    const actionType = (gameState.currentBet || 0) === 0 ? 'BET' : 'RAISE';
+    const actionType: AmountAction = legalActions.has('BET') ? 'BET' : 'RAISE';
     const minRaiseAmount = actionType === 'BET'
         ? 1
         : Math.max(1, (gameState.currentBet || 0) - (me?.currentBet ?? 0) + 1);
@@ -75,115 +82,202 @@ export function ActionPanel({
     const canSubmitRaise = rawRaise !== '' && !activeRaiseError;
     const hasError = Boolean(activeRaiseError);
 
-    const show = isMyTurn && !isSelfDisconnected && !isReadyCountdownActive;
+    const showControls = isMyTurn && !isSelfDisconnected && !isReadyCountdownActive && legalActions.size > 0;
+    const waitingName = currentTurnPlayerName || gameState.currentPlayerName || 'another player';
+    const canCheck = legalActions.has('CHECK');
+    const canCall = legalActions.has('CALL');
+    const canAllIn = legalActions.has('ALL_IN');
+    const canBetOrRaise = legalActions.has(actionType);
+    const amountControlsOpen = showControls && canBetOrRaise && amountAction === actionType;
+
+    const sectionMotion = prefersReducedMotion
+        ? { initial: false as const, animate: { opacity: 1 }, exit: { opacity: 1 }, transition: { duration: 0 } }
+        : { initial: { opacity: 0 }, animate: { opacity: 1 }, exit: { opacity: 0 }, transition: { duration: 0.2, ease: 'easeOut' as const } };
+    const fadeMotion = prefersReducedMotion
+        ? { initial: false as const, animate: { opacity: 1 }, exit: { opacity: 1 }, transition: { duration: 0 } }
+        : { initial: { opacity: 0 }, animate: { opacity: 1 }, exit: { opacity: 0 }, transition: { duration: 0.18, ease: 'easeOut' as const } };
 
     return (
-        <AnimatePresence>
-            {show && (
-                <motion.div
-                    initial={{ y: 100 }}
-                    animate={{ y: 0 }}
-                    exit={{ y: 100 }}
-                    className={cn(
-                        'bg-surface-high border-t border-white/5 flex flex-wrap items-center justify-center',
-                        bottomWidthClass,
-                        isMobileLandscape ? 'gap-2 p-1.5' : 'gap-3 md:gap-4',
-                        !isMobileLandscape && (isCompactTable ? 'p-2' : 'p-4 md:p-6'),
-                    )}
-                >
-                    <Button variant="outline" size={controlButtonSize} onClick={() => onAction('FOLD')} disabled={isActionPending}>
-                        {BTN_FOLD}
-                    </Button>
-
-                    {(!me || (me.currentBet ?? 0) >= (gameState.currentBet || 0)) ? (
-                        <Button variant="outline" size={controlButtonSize} onClick={() => onAction('CHECK')} disabled={isActionPending}>
-                            {BTN_CHECK}
-                        </Button>
-                    ) : callExceedsStack ? (
-                        <Button variant="outline" size={controlButtonSize} onClick={() => onAction('ALL_IN')} disabled={isActionPending}>
-                            {BTN_ALL_IN_PREFIX}{availableChips.toLocaleString()}
-                        </Button>
-                    ) : (
-                        <Button variant="outline" size={controlButtonSize} onClick={() => onAction('CALL')} disabled={isActionPending}>
-                            {BTN_CALL_PREFIX}{callAmount.toLocaleString()}
-                        </Button>
-                    )}
-
-                    {/* Custom Bet / Raise Input */}
-                    <div className={cn(
-                        'flex items-stretch rounded-xl overflow-hidden border transition-colors duration-150',
-                        hasError
-                            ? 'border-red-500/50 shadow-[0_0_0_1px_rgba(239,68,68,0.2)]'
-                            : 'border-white/10 focus-within:border-white/25',
-                        isMobileLandscape ? 'w-full' : isCompactTable ? '' : 'ml-2',
-                    )}>
-                        {/* Currency label */}
-                        <div className={cn(
-                            'flex items-center bg-white/5 border-r border-white/10 select-none',
-                            isCompactTable || isMobileLandscape ? 'px-2' : 'px-3',
-                        )}>
-                            <span className="text-zinc-400 font-bold text-sm">$</span>
-                        </div>
-
-                        {/* Number input */}
-                        <input
-                            type="number"
-                            aria-label={ARIA_RAISE_AMOUNT}
-                            aria-describedby={activeRaiseError ? 'raise-amount-error' : undefined}
-                            aria-invalid={hasError}
-                            className={cn(
-                                'bg-black/30 text-white font-bold outline-none placeholder:text-zinc-600 tabular-nums',
-                                '[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none',
-                                isMobileLandscape ? 'w-20 text-xs px-2 py-1.5'
-                                    : isCompactTable ? 'w-14 text-xs px-2 py-1.5'
-                                        : 'w-24 text-sm px-3 py-2',
-                            )}
-                            placeholder={minRaiseAmount.toString()}
-                            value={raiseAmount}
-                            onChange={e => onRaiseChange(e.target.value)}
-                            min={minRaiseAmount}
-                            step={1}
-                        />
-
-                        {/* Raise / Bet submit button — flush inside the group */}
-                        <button
-                            type="button"
-                            disabled={!canSubmitRaise || isActionPending}
-                            onClick={() => {
-                                if (!canSubmitRaise || isActionPending) return;
-                                const amount = Number.parseInt(rawRaise, 10);
-                                onAction(actionType, amount);
-                                onRaiseChange('');
-                            }}
-                            className={cn(
-                                'font-headline font-extrabold uppercase tracking-wider transition-all duration-150 select-none border-l border-white/10',
-                                isCompactTable || isMobileLandscape ? 'text-[10px] px-2.5 py-1.5' : 'text-xs px-4 py-2',
-                                canSubmitRaise && !isActionPending
-                                    ? 'bg-gold-secondary text-black hover:brightness-110 active:brightness-95 cursor-pointer'
-                                    : 'bg-white/5 text-zinc-600 cursor-not-allowed',
-                            )}
-                        >
-                            {(gameState.currentBet || 0) === 0 ? BTN_BET : BTN_RAISE}
-                        </button>
-                    </div>
-
-                    {/* Error message */}
-                    <AnimatePresence>
-                        {activeRaiseError && (
-                            <motion.p
-                                id="raise-amount-error"
-                                role="alert"
-                                initial={{ opacity: 0, y: -4 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                exit={{ opacity: 0, y: -4 }}
-                                className="w-full max-w-md mx-auto text-center text-[10px] md:text-[11px] text-red-400 font-bold uppercase tracking-wider line-clamp-2 md:line-clamp-3"
-                            >
-                                {activeRaiseError}
-                            </motion.p>
-                        )}
-                    </AnimatePresence>
-                </motion.div>
+        <motion.section
+            role="region"
+            aria-label="Action dock"
+            {...sectionMotion}
+            className={cn(
+                'flex h-full w-full min-w-0 flex-wrap items-center justify-center border-t border-white/5 bg-surface-high',
+                isMobileLandscape ? 'gap-2 p-1.5' : 'gap-3 md:gap-4',
+                !isMobileLandscape && (isCompactTable ? 'p-2' : 'p-4 md:p-6'),
             )}
-        </AnimatePresence>
+        >
+            <AnimatePresence mode="wait">
+                {showControls ? (
+                    <motion.div
+                        key="turn-controls"
+                        {...fadeMotion}
+                        className={cn(
+                            'flex w-full flex-wrap items-center justify-center',
+                            isMobileLandscape ? 'gap-2' : 'gap-3 md:gap-4',
+                        )}
+                    >
+                        {legalActions.has('FOLD') && (
+                            <Button variant="outline" size={controlButtonSize} onClick={() => onAction('FOLD')} disabled={isActionPending}>
+                                {isActionPending ? 'Submitting...' : BTN_FOLD}
+                            </Button>
+                        )}
+
+                        {canCheck ? (
+                            <Button variant="primary" size={controlButtonSize} onClick={() => onAction('CHECK')} disabled={isActionPending}>
+                                {isActionPending ? 'Submitting...' : BTN_CHECK}
+                            </Button>
+                        ) : canCall ? (
+                            <Button variant="primary" size={controlButtonSize} onClick={() => onAction('CALL')} disabled={isActionPending}>
+                                {isActionPending ? 'Submitting...' : `${BTN_CALL_PREFIX}${callAmount.toLocaleString()}`}
+                            </Button>
+                        ) : null}
+
+                        {canAllIn && (
+                            <Button variant="outline" size={controlButtonSize} onClick={() => onAction('ALL_IN')} disabled={isActionPending}>
+                                {isActionPending ? 'Submitting...' : `${BTN_ALL_IN_PREFIX}${availableChips.toLocaleString()}`}
+                            </Button>
+                        )}
+
+                        {legalActions.has('BET') && !amountControlsOpen && (
+                            <Button
+                                variant="outline"
+                                size={controlButtonSize}
+                                aria-expanded="false"
+                                aria-controls="amount-action-controls"
+                                onClick={() => setAmountAction('BET')}
+                                disabled={isActionPending}
+                            >
+                                {BTN_BET}
+                            </Button>
+                        )}
+
+                        {legalActions.has('RAISE') && !amountControlsOpen && (
+                            <Button
+                                variant="outline"
+                                size={controlButtonSize}
+                                aria-expanded="false"
+                                aria-controls="amount-action-controls"
+                                onClick={() => setAmountAction('RAISE')}
+                                disabled={isActionPending}
+                            >
+                                {BTN_RAISE}
+                            </Button>
+                        )}
+
+                        <AnimatePresence>
+                            {amountControlsOpen && (
+                                <motion.div
+                                    id="amount-action-controls"
+                                    key="amount-controls"
+                                    {...fadeMotion}
+                                    className={cn(
+                                        'flex flex-wrap items-center justify-center gap-2',
+                                        isMobileLandscape ? 'w-full' : 'w-auto',
+                                    )}
+                                >
+                                    <div className={cn(
+                                        'flex items-stretch overflow-hidden rounded-xl border transition-colors duration-150',
+                                        hasError
+                                            ? 'border-red-500/50 shadow-[0_0_0_1px_rgba(239,68,68,0.2)]'
+                                            : 'border-white/10 focus-within:border-white/25',
+                                    )}>
+                                        <div className={cn(
+                                            'flex select-none items-center border-r border-white/10 bg-white/5',
+                                            isCompactTable || isMobileLandscape ? 'px-2' : 'px-3',
+                                        )}>
+                                            <span className="text-sm font-bold text-zinc-400">$</span>
+                                        </div>
+
+                                        <input
+                                            type="number"
+                                            aria-label={ARIA_RAISE_AMOUNT}
+                                            aria-describedby={activeRaiseError ? 'raise-amount-error' : undefined}
+                                            aria-invalid={hasError}
+                                            className={cn(
+                                                'bg-black/30 font-bold tabular-nums text-white outline-none placeholder:text-zinc-600',
+                                                '[appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none',
+                                                isMobileLandscape ? 'w-20 px-2 py-1.5 text-xs'
+                                                    : isCompactTable ? 'w-14 px-2 py-1.5 text-xs'
+                                                        : 'w-24 px-3 py-2 text-sm',
+                                            )}
+                                            placeholder={minRaiseAmount.toString()}
+                                            value={raiseAmount}
+                                            onChange={e => onRaiseChange(e.target.value)}
+                                            min={minRaiseAmount}
+                                            step={1}
+                                        />
+
+                                        <button
+                                            type="button"
+                                            disabled={!canSubmitRaise || isActionPending}
+                                            onClick={() => {
+                                                if (!canSubmitRaise || isActionPending) return;
+                                                const amount = Number.parseInt(rawRaise, 10);
+                                                onAction(actionType, amount);
+                                                onRaiseChange('');
+                                                setAmountAction(null);
+                                            }}
+                                            className={cn(
+                                                'select-none border-l border-white/10 font-headline font-extrabold uppercase tracking-wider transition-all duration-150',
+                                                isCompactTable || isMobileLandscape ? 'px-2.5 py-1.5 text-[10px]' : 'px-4 py-2 text-xs',
+                                                canSubmitRaise && !isActionPending
+                                                    ? 'cursor-pointer bg-gold-secondary text-black hover:brightness-110 active:brightness-95'
+                                                    : 'cursor-not-allowed bg-white/5 text-zinc-600',
+                                            )}
+                                        >
+                                            {isActionPending ? 'Submitting...' : actionType === 'BET' ? BTN_BET : BTN_RAISE}
+                                        </button>
+                                    </div>
+
+                                    <Button
+                                        variant="ghost"
+                                        size={controlButtonSize}
+                                        onClick={() => {
+                                            setAmountAction(null);
+                                            onRaiseChange('');
+                                        }}
+                                        disabled={isActionPending}
+                                    >
+                                        Cancel
+                                    </Button>
+
+                                    {activeRaiseError && (
+                                        <motion.p
+                                            id="raise-amount-error"
+                                            role="alert"
+                                            {...fadeMotion}
+                                            className="mx-auto line-clamp-2 w-full max-w-md text-center text-[10px] font-bold uppercase tracking-wider text-red-400 md:text-[11px] md:line-clamp-3"
+                                        >
+                                            {activeRaiseError}
+                                        </motion.p>
+                                    )}
+                                </motion.div>
+                            )}
+                        </AnimatePresence>
+                    </motion.div>
+                ) : isReadyCountdownActive ? (
+                    <motion.div
+                        key="round-transition-placeholder"
+                        aria-hidden="true"
+                        {...fadeMotion}
+                        className="min-h-11 w-full"
+                    />
+                ) : (
+                    <motion.div
+                        key="waiting-status"
+                        role="status"
+                        aria-live="polite"
+                        {...fadeMotion}
+                        className="flex min-h-11 w-full items-center justify-center px-3 text-center"
+                    >
+                        <p className="text-xs font-headline font-bold uppercase tracking-[0.16em] text-amber-200">
+                            {`Waiting for ${waitingName} to act`}
+                        </p>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+        </motion.section>
     );
 }

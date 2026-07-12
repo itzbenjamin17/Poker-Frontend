@@ -32,6 +32,8 @@ describe('GameView - Game Table Integration', () => {
         pot: 30,
         communityCards: [],
         currentPlayerId: 'p-1', // It's my turn
+        currentPlayerName: 'TestPlayer',
+        legalActions: ['FOLD', 'CHECK', 'RAISE'],
         players: [
           { id: 'p-1', name: 'TestPlayer', chips: 980, currentBet: 20, status: 'ACTIVE', isBigBlind: true },
           { id: 'p-2', name: 'Opponent', chips: 990, currentBet: 10, status: 'ACTIVE', isSmallBlind: true }
@@ -88,6 +90,7 @@ describe('GameView - Game Table Integration', () => {
         pot: 40,
         communityCards: ['QH', 'JH', 'TH'],
         currentPlayerId: 'p-2',
+        currentPlayerName: 'Opponent',
         players: [
           { id: 'p-1', name: 'TestPlayer', chips: 980, currentBet: 0, status: 'ACTIVE' },
           { id: 'p-2', name: 'Opponent', chips: 980, currentBet: 0, status: 'ACTIVE' }
@@ -102,10 +105,13 @@ describe('GameView - Game Table Integration', () => {
       expect(screen.getByLabelText('Ten of Hearts')).toBeInTheDocument()
     })
 
-    // Action buttons should disappear because it's p-2's turn
+    // Action controls collapse into the persistent waiting dock because it's p-2's turn
     await waitFor(() => {
       expect(screen.queryByRole('button', { name: /fold/i })).not.toBeInTheDocument()
     })
+    const actionDock = screen.getByRole('region', { name: /action dock/i })
+    expect(actionDock).toBeInTheDocument()
+    expect(within(actionDock).getByRole('status')).toHaveTextContent(/waiting for opponent to act/i)
   })
 
   it('keeps secondary pot details reachable in compact landscape', async () => {
@@ -131,6 +137,7 @@ describe('GameView - Game Table Integration', () => {
         uncalledAmount: 10,
         communityCards: ['AH', 'KD', 'QC', 'JS'],
         currentPlayerId: 'p-2',
+        currentPlayerName: 'Opponent',
         players: [
           { id: 'p-1', name: 'TestPlayer', chips: 900, currentBet: 0, status: 'ACTIVE' },
           { id: 'p-2', name: 'Opponent', chips: 900, currentBet: 0, status: 'ACTIVE' },

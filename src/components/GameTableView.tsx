@@ -8,7 +8,7 @@ import { CommunityCardsArea } from './CommunityCardsArea';
 import { TablePlayers } from './TablePlayers';
 import { ReadyCountdownOverlay } from './ReadyCountdownOverlay';
 import { useGameContext } from '../context/GameContext';
-import type { SeatPosition, TableTier } from '../types';
+import type { PokerAction, SeatPosition, TableTier } from '../types';
 import {
     BTN_LEAVE_TABLE, BTN_CLAIM_WIN, BTN_CLAIMING,
     WAITING_RECONNECT_PREFIX, WAITING_RECONNECT_SUFFIX,
@@ -26,7 +26,7 @@ interface GameTableViewProps {
     showdownLayout: ShowdownModalLayout | null;
     showdownModalRef: React.RefObject<HTMLDivElement | null>;
     getSeatPosition: (index: number, total: number) => SeatPosition;
-    onAction: (action: string, amount?: number) => void;
+    onAction: (action: PokerAction, amount?: number) => void;
     onReady: () => void;
     onClaimWin: () => void;
     onLeaveGame: () => void;
@@ -229,21 +229,27 @@ export function GameTableView({
                 onReady={onReady}
             />
 
-            {/* Action Panel */}
-            <ActionPanel
-                gameState={gameState}
-                me={me}
-                isMyTurn={isMyTurn}
-                isSelfDisconnected={isSelfDisconnected}
-                isReadyCountdownActive={isReadyCountdownActive}
-                isMobileLandscape={isMobileLandscape}
-                isCompactTable={isCompactTable}
-                raiseAmount={raiseAmount}
-                raiseError={raiseError}
-                onRaiseChange={onRaiseChange}
-                onAction={onAction}
-                isActionPending={isActionPending}
-            />
+            {/* Stable action slot - the table keeps the same height as turns change */}
+            <div className={cn(
+                'w-full shrink-0 overflow-hidden',
+                isMobileLandscape ? 'h-20' : isCompactTable ? 'h-24' : 'h-28',
+            )}>
+                <ActionPanel
+                    gameState={gameState}
+                    me={me}
+                    isMyTurn={isMyTurn}
+                    isSelfDisconnected={isSelfDisconnected}
+                    isReadyCountdownActive={isReadyCountdownActive}
+                    currentTurnPlayerName={currentTurnPlayer?.name}
+                    isMobileLandscape={isMobileLandscape}
+                    isCompactTable={isCompactTable}
+                    raiseAmount={raiseAmount}
+                    raiseError={raiseError}
+                    onRaiseChange={onRaiseChange}
+                    onAction={onAction}
+                    isActionPending={isActionPending}
+                />
+            </div>
         </div>
     );
 }

@@ -5,6 +5,7 @@ export { cn };
 export type PlayerStatus = 'ACTIVE' | 'FOLDED' | 'OUT' | 'ALL_IN' | 'DISCONNECTED';
 export type WsStatus = 'connected' | 'reconnecting' | 'disconnected';
 export type GamePhase = 'PRE_FLOP' | 'FLOP' | 'TURN' | 'RIVER' | 'SHOWDOWN';
+export type PokerAction = 'FOLD' | 'CHECK' | 'CALL' | 'BET' | 'RAISE' | 'ALL_IN';
 
 export interface Player {
     id: string;
@@ -38,6 +39,7 @@ export interface GameState {
     players: Player[];
     currentPlayerName: string;
     currentPlayerId: string;
+    legalActions?: PokerAction[];
     winners?: string[];
     winningsPerPlayer?: number;
     isAutoAdvancing?: boolean;

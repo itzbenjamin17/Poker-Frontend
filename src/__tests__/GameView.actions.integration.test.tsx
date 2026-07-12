@@ -34,6 +34,8 @@ describe('GameView - Actions & Flows Integration', () => {
                 currentBet: 20,
                 communityCards: [],
                 currentPlayerId: 'p-1', // My turn
+                currentPlayerName: 'TestPlayer',
+                legalActions: ['FOLD'],
                 players: [
                     { id: 'p-1', name: 'TestPlayer', chips: 980, currentBet: 20, status: 'ACTIVE', isBigBlind: true },
                     { id: 'p-2', name: 'Opponent', chips: 990, currentBet: 20, status: 'ACTIVE', isSmallBlind: true },
@@ -62,6 +64,7 @@ describe('GameView - Actions & Flows Integration', () => {
         // Check & Click Fold action
         const foldBtn = await screen.findByRole('button', { name: /fold/i });
         expect(foldBtn).toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: /check/i })).not.toBeInTheDocument();
         await user.click(foldBtn);
 
         expect(publishSpy).toHaveBeenCalledWith({
@@ -91,6 +94,8 @@ describe('GameView - Actions & Flows Integration', () => {
                 currentBet: 20,
                 communityCards: [],
                 currentPlayerId: 'p-1', // My turn
+                currentPlayerName: 'TestPlayer',
+                legalActions: ['CHECK'],
                 players: [
                     { id: 'p-1', name: 'TestPlayer', chips: 980, currentBet: 20, status: 'ACTIVE', isBigBlind: true },
                     { id: 'p-2', name: 'Opponent', chips: 990, currentBet: 20, status: 'ACTIVE', isSmallBlind: true },
@@ -144,6 +149,7 @@ describe('GameView - Actions & Flows Integration', () => {
                 pot: 30,
                 communityCards: [],
                 currentPlayerId: 'p-2',
+                currentPlayerName: 'Opponent',
                 players: [
                     { id: 'p-1', name: 'TestPlayer', chips: 980, currentBet: 20, status: 'ACTIVE' },
                     { id: 'p-2', name: 'Opponent', chips: 980, currentBet: 20, status: 'ACTIVE' },
@@ -170,6 +176,7 @@ describe('GameView - Actions & Flows Integration', () => {
                 pot: 1000,
                 communityCards: ['AH', 'KH', 'QD', 'JS', '2C'],
                 currentPlayerId: '',
+                currentPlayerName: '',
                 winners: ['TestPlayer'],
                 winningsPerPlayer: 1000,
                 players: [
