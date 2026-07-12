@@ -1,4 +1,4 @@
-import { render, screen, within, act } from '@testing-library/react';
+import { render, screen, within, act, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { http, HttpResponse } from 'msw';
@@ -155,7 +155,9 @@ describe('GameView - Collapsed Round Summary Integration', () => {
         expect(within(review).getByText(/in hand - pair/i)).toBeInTheDocument();
 
         await user.click(within(review).getByRole('button', { name: /close full result review/i }));
-        expect(screen.queryByRole('dialog', { name: /full result review/i })).not.toBeInTheDocument();
+        await waitFor(() => {
+            expect(screen.queryByRole('dialog', { name: /full result review/i })).not.toBeInTheDocument();
+        });
         expect(within(summary).getByRole('button', { name: /open full result review/i })).toHaveFocus();
         expect(within(summary).getByText(/side pot 1/i)).toBeInTheDocument();
     });

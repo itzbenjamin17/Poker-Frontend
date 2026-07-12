@@ -6,7 +6,7 @@ import { NotificationBanner } from './NotificationBanner';
 import { CompactPotDetails, PotBreakdown, TablePots } from './TablePots';
 import { CommunityCardsArea } from './CommunityCardsArea';
 import { TablePlayers } from './TablePlayers';
-import { ReadyCountdownOverlay } from './ReadyCountdownOverlay';
+import { getPotBreakdown } from '../lib/game';
 import { useGameContext } from '../context/GameContext';
 import type { PokerAction, SeatPosition, TableTier } from '../types';
 import {
@@ -87,7 +87,7 @@ export function GameTableView({
     const bottomCanvasWidthClass = 'w-full min-w-0';
 
     const uncalledAmount = gameState.uncalledAmount ?? 0;
-    const potBreakdown = gameState.pots && gameState.pots.length > 0 ? gameState.pots : [gameState.pot];
+    const potBreakdown = getPotBreakdown(gameState);
     const displayedPot = Math.max(0, gameState.pot - uncalledAmount);
     const mainPot = potBreakdown[0] ?? gameState.pot;
     const sidePots = potBreakdown.slice(1);
@@ -105,6 +105,7 @@ export function GameTableView({
             {/* Showdown Modal */}
             <ShowdownModal
                 showdownResult={showdownResult}
+                isReadyCountdownActive={isReadyCountdownActive}
             />
 
             {/* Leave Button */}
@@ -200,22 +201,6 @@ export function GameTableView({
                 </div>
             )}
 
-            {/* Ready Countdown Panel - fixed so it never resizes the table */}
-            <ReadyCountdownOverlay
-                isReadyCountdownActive={isReadyCountdownActive}
-                readyCountdownSecondsRemaining={readyCountdownSecondsRemaining}
-                readyCount={readyCount}
-                readyEligibleCount={readyEligibleCount}
-                readyEligiblePlayers={readyEligiblePlayers}
-                myPlayerId={myPlayerId}
-                isReadyEligible={isReadyEligible}
-                amReadyForNextHand={amReadyForNextHand}
-                isMobileLandscape={isMobileLandscape}
-                bottomCanvasWidthClass={bottomCanvasWidthClass}
-                controlButtonSize={controlButtonSize}
-                onReady={onReady}
-            />
-
             {/* Stable action slot - the table keeps the same height as turns change */}
             <div className={cn(
                 'w-full shrink-0 overflow-hidden',
@@ -235,6 +220,13 @@ export function GameTableView({
                     onRaiseChange={onRaiseChange}
                     onAction={onAction}
                     isActionPending={isActionPending}
+                    readyCountdownSecondsRemaining={readyCountdownSecondsRemaining}
+                    readyCount={readyCount}
+                    readyEligibleCount={readyEligibleCount}
+                    readyEligiblePlayers={readyEligiblePlayers}
+                    isReadyEligible={isReadyEligible}
+                    amReadyForNextHand={amReadyForNextHand}
+                    onReady={onReady}
                 />
             </div>
         </main>

@@ -5,6 +5,7 @@ import { Button } from './UI';
 import {
     BTN_FOLD, BTN_CHECK, BTN_CALL_PREFIX, BTN_ALL_IN_PREFIX,
     BTN_BET, BTN_RAISE, ARIA_RAISE_AMOUNT,
+    READY_PROMPT, BTN_READY, BTN_READY_CONFIRMED, LABEL_PLAYERS_READY_SUFFIX,
 } from '../constants/strings';
 import type { GameState, Player, PokerAction } from '../types';
 
@@ -24,6 +25,13 @@ interface ActionPanelProps {
     onRaiseChange: (val: string) => void;
     onAction: (action: PokerAction, amount?: number) => void;
     isActionPending: boolean;
+    readyCountdownSecondsRemaining?: number;
+    readyCount?: number;
+    readyEligibleCount?: number;
+    readyEligiblePlayers?: Player[];
+    isReadyEligible?: boolean;
+    amReadyForNextHand?: boolean;
+    onReady?: () => void;
 }
 
 export function ActionPanel({
@@ -40,11 +48,53 @@ export function ActionPanel({
     onRaiseChange,
     onAction,
     isActionPending,
+    readyCountdownSecondsRemaining = 0,
+    readyCount = 0,
+    readyEligibleCount = 0,
+    readyEligiblePlayers = [],
+    isReadyEligible = false,
+    amReadyForNextHand = false,
+    onReady,
 }: ActionPanelProps) {
     const prefersReducedMotion = useReducedMotion();
     const [amountAction, setAmountAction] = useState<AmountAction | null>(null);
     const controlButtonSize: 'xs' | 'sm' | 'md' = isMobileLandscape ? 'xs' : isCompactTable ? 'sm' : 'md';
-    const legalActions = useMemo(() => new Set<PokerAction>(gameState.legalActions ?? []), [gameState.legalActions]);
+    const legalActions = useMemo(() => {
+        if (gameState.legalActions !== undefined && gameState.legalActions !== null) {
+            return new Set<PokerAction>(gameState.legalActions);
+        }
+        const actions = new Set<PokerAction>();
+        if (!me) return actions;
+
+        actions.add('FOLD');
+
+        const callAmount = Math.max(0, (gameState.currentBet || 0) - (me.currentBet ?? 0));
+        const availableChips = me.chips ?? 0;
+
+        if (callAmount === 0) {
+            actions.add('CHECK');
+            if (availableChips > 0) {
+                if ((gameState.currentBet || 0) === 0) {
+                    actions.add('BET');
+                } else {
+                    actions.add('RAISE');
+                }
+            }
+        } else {
+            if (availableChips > 0) {
+                actions.add('CALL');
+                if (availableChips > callAmount) {
+                    actions.add('RAISE');
+                }
+            }
+        }
+
+        if (availableChips > 0) {
+            actions.add('ALL_IN');
+        }
+
+        return actions;
+    }, [gameState.legalActions, gameState.currentBet, me]);
 
     const actionType: AmountAction = legalActions.has('BET') ? 'BET' : 'RAISE';
     const minRaiseAmount = actionType === 'BET'
@@ -259,11 +309,58 @@ export function ActionPanel({
                     </motion.div>
                 ) : isReadyCountdownActive ? (
                     <motion.div
-                        key="round-transition-placeholder"
-                        aria-hidden="true"
+                        key="ready-controls"
                         {...fadeMotion}
-                        className="min-h-11 w-full"
-                    />
+                        className="flex w-full flex-col items-center justify-center gap-1.5 text-center px-4"
+                    >
+                        <div className="flex items-center gap-2 flex-wrap justify-center">
+                            <p className="text-emerald-primary font-headline font-bold uppercase tracking-wider text-[10px] sm:text-xs">
+                                {READY_PROMPT}
+                            </p>
+                            <span className="text-white font-headline font-bold text-sm sm:text-base">
+                                {readyCountdownSecondsRemaining}s
+                            </span>
+                            <span className="text-zinc-400 text-[9px] sm:text-[10px] uppercase tracking-widest">
+                                ({readyCount}/{readyEligibleCount} {LABEL_PLAYERS_READY_SUFFIX})
+                            </span>
+                        </div>
+
+                        <div className="flex flex-wrap justify-center gap-1 max-w-full">
+                            {readyEligiblePlayers.map((player) => {
+                                const isSelf = player.id === me?.id || player.name === me?.name;
+                                const isReady = Boolean(player.isReadyForNextHand);
+                                return (
+                                    <div
+                                        key={player.id}
+                                        className={cn(
+                                            'flex items-center gap-1 px-1.5 py-0.5 rounded-lg border text-[8px] sm:text-[9px] uppercase tracking-wider font-bold',
+                                            isReady
+                                                ? 'bg-emerald-primary/15 border-emerald-primary/35 text-emerald-primary'
+                                                : 'bg-amber-500/10 border-amber-300/35 text-amber-200',
+                                            isSelf && 'ring-1 ring-white/40',
+                                        )}
+                                    >
+                                        <span className={cn('w-1.5 h-1.5 rounded-full shrink-0', isReady ? 'bg-emerald-primary' : 'bg-amber-300')} />
+                                        <span className="truncate max-w-[4.5rem]">{player.name}</span>
+                                        <span className="ml-auto text-[7px] sm:text-[8px]">{isReady ? 'READY' : 'WAIT'}</span>
+                                    </div>
+                                );
+                            })}
+                        </div>
+
+                        {isReadyEligible && (
+                            <div className="pt-0.5">
+                                <Button
+                                    variant="primary"
+                                    size={controlButtonSize === 'xs' ? 'xs' : 'sm'}
+                                    onClick={onReady}
+                                    disabled={amReadyForNextHand || isActionPending}
+                                >
+                                    {amReadyForNextHand ? BTN_READY_CONFIRMED : BTN_READY}
+                                </Button>
+                            </div>
+                        )}
+                    </motion.div>
                 ) : (
                     <motion.div
                         key="waiting-status"

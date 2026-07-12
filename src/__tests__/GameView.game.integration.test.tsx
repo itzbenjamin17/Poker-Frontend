@@ -210,7 +210,7 @@ describe('GameView - Game Table Integration', () => {
     expect(opponent).toHaveAttribute('aria-expanded', 'true')
     const opponentSeat = screen.getByRole('group', { name: /opponent seat/i })
     expect(within(opponentSeat).getByText(/stack/i)).toBeInTheDocument()
-    const detailsPanel = opponentSeat.querySelector('[id^="opponent-seat-details-"]') as HTMLElement
+    const detailsPanel = screen.getByRole('region', { name: /opponent expanded details/i })
     expect(within(detailsPanel).getByText('$875')).toBeInTheDocument()
     expect(within(opponentSeat).getByText(/bet \$25/i)).toBeInTheDocument()
     expect(within(opponentSeat).getByText(/small blind/i)).toBeInTheDocument()
@@ -228,7 +228,7 @@ describe('GameView - Game Table Integration', () => {
     expect(opponent).toHaveAttribute('aria-expanded', 'false')
     expect(rival).toHaveAttribute('aria-expanded', 'true')
     const rivalSeat = screen.getByRole('group', { name: /rival seat/i })
-    const rivalDetailsPanel = rivalSeat.querySelector('[id^="opponent-seat-details-"]') as HTMLElement
+    const rivalDetailsPanel = screen.getByRole('region', { name: /rival expanded details/i })
     expect(within(rivalDetailsPanel).getByText(/folded/i)).toBeInTheDocument()
     expect(within(opponentSeat).queryByText(/small blind/i)).not.toBeInTheDocument()
   })

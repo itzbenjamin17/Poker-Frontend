@@ -175,6 +175,8 @@ export function TablePlayers({
                         {isExpanded && (
                             <motion.div
                                 id={`opponent-seat-details-${playerKey}`}
+                                role="region"
+                                aria-label={`${p.name} expanded details`}
                                 initial={{ opacity: 0, y: 6 }}
                                 animate={{ opacity: 1, y: 0 }}
                                 exit={{ opacity: 0, y: 4 }}

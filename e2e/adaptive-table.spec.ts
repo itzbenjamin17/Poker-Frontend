@@ -37,7 +37,7 @@ async function expectAdaptiveTable(page: Page, viewportWidth: number) {
   const visibleHoleCards = page.getByRole('img', { name: /ace of spades|king of spades/i });
   const hiddenHoleCards = page.getByLabel('Hidden Card');
   const foldAction = page.getByRole('button', { name: /fold/i });
-  const raiseAction = page.locator('button[aria-expanded="false"]').filter({ hasText: /^Raise$/ });
+  const raiseAction = page.getByRole('button', { name: /^Raise$/i, expanded: false });
 
   await expect(pokerTable).toBeVisible();
   await expect(actionDock).toBeVisible();

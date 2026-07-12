@@ -20,7 +20,10 @@ import {
 
 interface ShowdownModalProps {
     showdownResult: GameState | null;
+    isReadyCountdownActive?: boolean;
 }
+
+import { getPotBreakdown } from '../lib/game';
 
 type DetailState = 'collapsed' | 'expanded' | 'full';
 
@@ -33,9 +36,7 @@ function formatHandRank(handRank?: string) {
 }
 
 function getPotRows(showdownResult: GameState) {
-    const pots = showdownResult.pots && showdownResult.pots.length > 0
-        ? showdownResult.pots
-        : [showdownResult.pot];
+    const pots = getPotBreakdown(showdownResult);
     return pots.map((amount, index) => ({
         label: index === 0 ? LABEL_MAIN_POT : `${LABEL_SIDE_POT_PREFIX} ${index}`,
         amount,
@@ -51,13 +52,19 @@ function getPlayerOutcome(player: Player, winners: string[]) {
     return 'In hand';
 }
 
-export function ShowdownModal({ showdownResult }: ShowdownModalProps) {
+export function ShowdownModal({ showdownResult, isReadyCountdownActive = false }: ShowdownModalProps) {
     const [detailState, setDetailState] = useState<DetailState>('collapsed');
     const prefersReducedMotion = useReducedMotion();
     const fullReviewTriggerRef = useRef<HTMLButtonElement | null>(null);
     const fullReviewCloseRef = useRef<HTMLButtonElement | null>(null);
     const wasFullReviewOpenRef = useRef(false);
     const isFullReviewOpen = detailState === 'full';
+
+    useEffect(() => {
+        if (isReadyCountdownActive) {
+            setDetailState('collapsed');
+        }
+    }, [isReadyCountdownActive]);
 
     useEffect(() => {
         if (isFullReviewOpen) {
@@ -121,138 +128,140 @@ export function ShowdownModal({ showdownResult }: ShowdownModalProps) {
         }
     };
 
-    const fullReview = isFullReviewOpen && (
+    const fullReview = (
         <AnimatePresence>
-            <motion.div
-                className="fixed inset-0 z-[9999] flex items-end justify-center bg-black/45 px-3 pb-3 pt-20 backdrop-blur-[2px] sm:px-4 sm:pb-4"
-                initial={prefersReducedMotion ? false : { opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={motionTransition}
-            >
+            {isFullReviewOpen && (
                 <motion.div
-                    role="dialog"
-                    aria-modal="true"
-                    aria-label={SHOWDOWN_FULL_REVIEW}
-                    onKeyDown={onFullReviewKeyDown}
-                    className="max-h-[78dvh] w-full max-w-5xl overflow-y-auto rounded-t-2xl border border-white/10 bg-surface-high/98 p-4 shadow-[0_-24px_80px_rgba(0,0,0,0.48)] outline-none sm:max-h-[82dvh] sm:rounded-2xl sm:p-5"
-                    initial={prefersReducedMotion ? false : { y: 32, opacity: 0 }}
-                    animate={{ y: 0, opacity: 1 }}
-                    exit={prefersReducedMotion ? { opacity: 0 } : { y: 24, opacity: 0 }}
+                    className="fixed inset-0 z-[9999] flex items-end justify-center bg-black/45 px-3 pb-3 pt-20 backdrop-blur-[2px] sm:px-4 sm:pb-4"
+                    initial={prefersReducedMotion ? false : { opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
                     transition={motionTransition}
                 >
-                    <div className="flex items-start justify-between gap-4">
-                        <div>
-                            <p className="text-[10px] font-headline font-extrabold uppercase tracking-[0.18em] text-emerald-primary">
-                                {SHOWDOWN_FULL_REVIEW}
-                            </p>
-                            <h2 className="mt-1 font-headline text-2xl font-extrabold text-white">
-                                {outcomeText}
-                            </h2>
-                            {handText && (
-                                <p className="mt-1 text-xs uppercase tracking-[0.14em] text-zinc-500">
-                                    {SHOWDOWN_WON_WITH_PREFIX}<span className="font-semibold text-zinc-200">{handText}</span>
+                    <motion.div
+                        role="dialog"
+                        aria-modal="true"
+                        aria-label={SHOWDOWN_FULL_REVIEW}
+                        onKeyDown={onFullReviewKeyDown}
+                        className="max-h-[78dvh] w-full max-w-5xl overflow-y-auto rounded-t-2xl border border-white/10 bg-surface-high/98 p-4 shadow-[0_-24px_80px_rgba(0,0,0,0.48)] outline-none sm:max-h-[82dvh] sm:rounded-2xl sm:p-5"
+                        initial={prefersReducedMotion ? false : { y: 32, opacity: 0 }}
+                        animate={{ y: 0, opacity: 1 }}
+                        exit={prefersReducedMotion ? { opacity: 0 } : { y: 24, opacity: 0 }}
+                        transition={motionTransition}
+                    >
+                        <div className="flex items-start justify-between gap-4">
+                            <div>
+                                <p className="text-[10px] font-headline font-extrabold uppercase tracking-[0.18em] text-emerald-primary">
+                                    {SHOWDOWN_FULL_REVIEW}
                                 </p>
-                            )}
-                        </div>
-                        <button
-                            ref={fullReviewCloseRef}
-                            type="button"
-                            onClick={closeFullReview}
-                            className="flex min-h-11 min-w-11 items-center justify-center rounded-xl border border-white/10 text-emerald-primary hover:bg-emerald-primary/10"
-                        >
-                            <span className="sr-only">{SHOWDOWN_CLOSE_FULL_REVIEW}</span>
-                            <X aria-hidden="true" className="h-5 w-5" />
-                        </button>
-                    </div>
-
-                    <div className="mt-5 grid gap-4 lg:grid-cols-[1fr_1.1fr]">
-                        <section aria-label="Result totals" className="space-y-3 rounded-xl border border-white/10 p-3">
-                            <dl className="grid grid-cols-2 gap-3 text-xs uppercase tracking-[0.12em]">
-                                <div>
-                                    <dt className="text-zinc-500">State</dt>
-                                    <dd className="mt-1 font-bold text-zinc-200">{roundLabel}</dd>
-                                </div>
-                                {showdownResult.winningsPerPlayer != null && (
-                                    <div>
-                                        <dt className="text-zinc-500">Payout</dt>
-                                        <dd className="mt-1 font-bold text-gold-secondary">{formatMoney(showdownResult.winningsPerPlayer)}</dd>
-                                    </div>
+                                <h2 className="mt-1 font-headline text-2xl font-extrabold text-white">
+                                    {outcomeText}
+                                </h2>
+                                {handText && (
+                                    <p className="mt-1 text-xs uppercase tracking-[0.14em] text-zinc-500">
+                                        {SHOWDOWN_WON_WITH_PREFIX}<span className="font-semibold text-zinc-200">{handText}</span>
+                                    </p>
                                 )}
-                                {potRows.map((pot) => (
-                                    <div key={pot.label}>
-                                        <dt className="text-zinc-500">{pot.label}</dt>
-                                        <dd className="mt-1 font-bold text-gold-secondary">{formatMoney(pot.amount)}</dd>
-                                    </div>
-                                ))}
-                            </dl>
-                        </section>
-
-                        <section aria-label={SHOWDOWN_COMMUNITY_CARDS} className="rounded-xl border border-white/10 p-3">
-                            <h3 className="text-[10px] font-headline font-extrabold uppercase tracking-[0.16em] text-zinc-500">
-                                {SHOWDOWN_COMMUNITY_CARDS}
-                            </h3>
-                            <div className="mt-3 flex flex-wrap gap-2">
-                                {showdownResult.communityCards.map((card) => (
-                                    <CardUI key={card} card={card} scale={0.76} />
-                                ))}
                             </div>
-                        </section>
+                            <button
+                                ref={fullReviewCloseRef}
+                                type="button"
+                                onClick={closeFullReview}
+                                className="flex min-h-11 min-w-11 items-center justify-center rounded-xl border border-white/10 text-emerald-primary hover:bg-emerald-primary/10"
+                            >
+                                <span className="sr-only">{SHOWDOWN_CLOSE_FULL_REVIEW}</span>
+                                <X aria-hidden="true" className="h-5 w-5" />
+                            </button>
+                        </div>
 
-                        <section aria-label={SHOWDOWN_REVEALED_HOLE_CARDS} className="rounded-xl border border-white/10 p-3">
-                            <h3 className="text-[10px] font-headline font-extrabold uppercase tracking-[0.16em] text-zinc-500">
-                                {SHOWDOWN_REVEALED_HOLE_CARDS}
-                            </h3>
-                            {revealedPlayers.length > 0 ? (
-                                <div className="mt-3 space-y-3">
-                                    {revealedPlayers.map((player, index) => (
-                                        <div key={`${player.id || player.name || 'player'}-${index}`} className="flex items-center justify-between gap-3">
-                                            <span className="text-xs font-bold uppercase tracking-[0.12em] text-zinc-300">{player.name}</span>
-                                            <div className="flex gap-1.5">
-                                                {player.holeCards?.map((card) => (
-                                                    <CardUI key={`${player.id || player.name}-${card}`} card={card} scale={0.56} />
-                                                ))}
-                                            </div>
+                        <div className="mt-5 grid gap-4 lg:grid-cols-[1fr_1.1fr]">
+                            <section aria-label="Result totals" className="space-y-3 rounded-xl border border-white/10 p-3">
+                                <dl className="grid grid-cols-2 gap-3 text-xs uppercase tracking-[0.12em]">
+                                    <div>
+                                        <dt className="text-zinc-500">State</dt>
+                                        <dd className="mt-1 font-bold text-zinc-200">{roundLabel}</dd>
+                                    </div>
+                                    {showdownResult.winningsPerPlayer != null && (
+                                        <div>
+                                            <dt className="text-zinc-500">Payout</dt>
+                                            <dd className="mt-1 font-bold text-gold-secondary">{formatMoney(showdownResult.winningsPerPlayer)}</dd>
+                                        </div>
+                                    )}
+                                    {potRows.map((pot) => (
+                                        <div key={pot.label}>
+                                            <dt className="text-zinc-500">{pot.label}</dt>
+                                            <dd className="mt-1 font-bold text-gold-secondary">{formatMoney(pot.amount)}</dd>
                                         </div>
                                     ))}
-                                </div>
-                            ) : (
-                                <p className="mt-3 text-xs text-zinc-500">{SHOWDOWN_NO_REVEALED_HOLE_CARDS}</p>
-                            )}
-                        </section>
+                                </dl>
+                            </section>
 
-                        <section aria-label={SHOWDOWN_PLAYER_OUTCOMES} className="rounded-xl border border-white/10 p-3">
-                            <h3 className="text-[10px] font-headline font-extrabold uppercase tracking-[0.16em] text-zinc-500">
-                                {SHOWDOWN_PLAYER_OUTCOMES}
-                            </h3>
-                            <ul className="mt-3 space-y-2">
-                                {showdownResult.players.map((player, index) => (
-                                    <li
-                                        key={`${player.id || player.name || 'player'}-${index}`}
-                                        className="grid grid-cols-[1fr_auto] gap-3 rounded-lg bg-black/18 px-3 py-2 text-xs"
-                                    >
-                                        <div>
-                                            <p className="font-bold text-zinc-100">{player.name}</p>
-                                            <p className="mt-0.5 uppercase tracking-[0.12em] text-zinc-500">
-                                                {getPlayerOutcome(player, winners)}
-                                                {formatHandRank(player.handRank) ? ` - ${formatHandRank(player.handRank)}` : ''}
-                                            </p>
-                                        </div>
-                                        <div className="text-right">
-                                            <p className="font-bold text-gold-secondary">{formatMoney(player.chips)}</p>
-                                            {typeof player.chipsWon === 'number' && (
-                                                <p className="mt-0.5 text-[10px] font-bold uppercase tracking-[0.12em] text-gold-secondary">
-                                                    +{formatMoney(player.chipsWon)}
+                            <section aria-label={SHOWDOWN_COMMUNITY_CARDS} className="rounded-xl border border-white/10 p-3">
+                                <h3 className="text-[10px] font-headline font-extrabold uppercase tracking-[0.16em] text-zinc-500">
+                                    {SHOWDOWN_COMMUNITY_CARDS}
+                                </h3>
+                                <div className="mt-3 flex flex-wrap gap-2">
+                                    {showdownResult.communityCards.map((card) => (
+                                        <CardUI key={card} card={card} scale={0.76} />
+                                    ))}
+                                </div>
+                            </section>
+
+                            <section aria-label={SHOWDOWN_REVEALED_HOLE_CARDS} className="rounded-xl border border-white/10 p-3">
+                                <h3 className="text-[10px] font-headline font-extrabold uppercase tracking-[0.16em] text-zinc-500">
+                                    {SHOWDOWN_REVEALED_HOLE_CARDS}
+                                </h3>
+                                {revealedPlayers.length > 0 ? (
+                                    <div className="mt-3 space-y-3">
+                                        {revealedPlayers.map((player, index) => (
+                                            <div key={`${player.id || player.name || 'player'}-${index}`} className="flex items-center justify-between gap-3">
+                                                <span className="text-xs font-bold uppercase tracking-[0.12em] text-zinc-300">{player.name}</span>
+                                                <div className="flex gap-1.5">
+                                                    {player.holeCards?.map((card) => (
+                                                        <CardUI key={`${player.id || player.name}-${card}`} card={card} scale={0.56} />
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <p className="mt-3 text-xs text-zinc-500">{SHOWDOWN_NO_REVEALED_HOLE_CARDS}</p>
+                                )}
+                            </section>
+
+                            <section aria-label={SHOWDOWN_PLAYER_OUTCOMES} className="rounded-xl border border-white/10 p-3">
+                                <h3 className="text-[10px] font-headline font-extrabold uppercase tracking-[0.16em] text-zinc-500">
+                                    {SHOWDOWN_PLAYER_OUTCOMES}
+                                </h3>
+                                <ul className="mt-3 space-y-2">
+                                    {showdownResult.players.map((player, index) => (
+                                        <li
+                                            key={`${player.id || player.name || 'player'}-${index}`}
+                                            className="grid grid-cols-[1fr_auto] gap-3 rounded-lg bg-black/18 px-3 py-2 text-xs"
+                                        >
+                                            <div>
+                                                <p className="font-bold text-zinc-100">{player.name}</p>
+                                                <p className="mt-0.5 uppercase tracking-[0.12em] text-zinc-500">
+                                                    {getPlayerOutcome(player, winners)}
+                                                    {formatHandRank(player.handRank) ? ` - ${formatHandRank(player.handRank)}` : ''}
                                                 </p>
-                                            )}
-                                        </div>
-                                    </li>
-                                ))}
-                            </ul>
-                        </section>
-                    </div>
+                                            </div>
+                                            <div className="text-right">
+                                                <p className="font-bold text-gold-secondary">{formatMoney(player.chips)}</p>
+                                                {typeof player.chipsWon === 'number' && (
+                                                    <p className="mt-0.5 text-[10px] font-bold uppercase tracking-[0.12em] text-gold-secondary">
+                                                        +{formatMoney(player.chipsWon)}
+                                                    </p>
+                                                )}
+                                            </div>
+                                        </li>
+                                    ))}
+                                </ul>
+                            </section>
+                        </div>
+                    </motion.div>
                 </motion.div>
-            </motion.div>
+            )}
         </AnimatePresence>
     );
 
@@ -321,19 +330,21 @@ export function ShowdownModal({ showdownResult }: ShowdownModalProps) {
                             )}
                         </div>
 
-                        <button
-                            type="button"
-                            aria-expanded={isExpanded}
-                            aria-controls="round-result-details"
-                            onClick={() => setDetailState((state) => state === 'collapsed' ? 'expanded' : 'collapsed')}
-                            className="mt-3 flex min-h-11 min-w-11 items-center justify-center gap-2 rounded-xl border border-white/10 px-3 py-2 text-[10px] font-headline font-bold uppercase tracking-[0.14em] text-emerald-primary hover:bg-emerald-primary/10"
-                        >
-                            {isExpanded ? SHOWDOWN_HIDE_DETAILS : SHOWDOWN_SHOW_DETAILS}
-                            <ChevronDown
-                                aria-hidden="true"
-                                className={cn('h-4 w-4 transition-transform duration-200', isExpanded && 'rotate-180')}
-                            />
-                        </button>
+                        {!isReadyCountdownActive && (
+                            <button
+                                type="button"
+                                aria-expanded={isExpanded}
+                                aria-controls="round-result-details"
+                                onClick={() => setDetailState((state) => state === 'collapsed' ? 'expanded' : 'collapsed')}
+                                className="mt-3 flex min-h-11 min-w-11 items-center justify-center gap-2 rounded-xl border border-white/10 px-3 py-2 text-[10px] font-headline font-bold uppercase tracking-[0.14em] text-emerald-primary hover:bg-emerald-primary/10"
+                            >
+                                {isExpanded ? SHOWDOWN_HIDE_DETAILS : SHOWDOWN_SHOW_DETAILS}
+                                <ChevronDown
+                                    aria-hidden="true"
+                                    className={cn('h-4 w-4 transition-transform duration-200', isExpanded && 'rotate-180')}
+                                />
+                            </button>
+                        )}
 
                         <AnimatePresence>
                             {isExpanded && (
@@ -386,7 +397,7 @@ export function ShowdownModal({ showdownResult }: ShowdownModalProps) {
                 </section>
             </motion.div>
         </AnimatePresence>
-        {fullReview ? createPortal(fullReview, document.body) : null}
+        {createPortal(fullReview, document.body)}
         </>
     );
 }
