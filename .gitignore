@@ -26,5 +26,6 @@ dist-ssr
 
 test-results/
 playwright-report/
-
+/.scratch
+CONTEXT.md
 .env
