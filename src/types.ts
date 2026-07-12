@@ -124,21 +124,6 @@ export type IncomingPrivateStatePayload = {
     holeCards?: string[] | null;
 };
 
-export type ShowdownModalLayout = {
-    x: number;
-    y: number;
-    width: number;
-    height: number;
-};
-
-export type ShowdownModalInteractionState = {
-    mode: 'drag' | 'resize';
-    pointerId: number;
-    startClientX: number;
-    startClientY: number;
-    startLayout: ShowdownModalLayout;
-};
-
 export type SeatPosition = {
     left: number;
     top: number;

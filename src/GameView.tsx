@@ -6,7 +6,6 @@ import { useSessionHydration } from './hooks/useSessionHydration';
 import { useGameWebSocket } from './hooks/useGameWebSocket';
 import { useGameDispatcher } from './hooks/useGameDispatcher';
 import { useSeatLayout } from './hooks/useSeatLayout';
-import { useShowdownModal } from './hooks/useShowdownModal';
 import { LoadingView } from './components/LoadingView';
 import { GameLobbyView } from './components/GameLobbyView';
 import { GameTableView } from './components/GameTableView';
@@ -33,19 +32,15 @@ function GameViewInner() {
         height: windowHeight,
     });
 
-    // ── Showdown modal ──────────────────────────────────────────────────────────
-    const showdownModal = useShowdownModal();
-
     // ── Window resize ───────────────────────────────────────────────────────────
     useEffect(() => {
         const onResize = () => {
             setWindowWidth(window.innerWidth);
             setWindowHeight(window.innerHeight);
-            showdownModal.onWindowResize();
         };
         window.addEventListener('resize', onResize);
         return () => window.removeEventListener('resize', onResize);
-    }, [showdownModal]);
+    }, []);
 
     // ── Disconnect countdown clock ──────────────────────────────────────────────
     useEffect(() => {
@@ -109,8 +104,6 @@ function GameViewInner() {
             nowMs={nowMs}
             raiseAmount={raiseAmount}
             raiseError={dispatcher.error?.message ?? null}
-            showdownLayout={showdownModal.layout}
-            showdownModalRef={showdownModal.modalRef}
             getSeatPosition={getSeatPosition}
             onAction={(action, amount) => dispatcher.dispatch({ type: 'PLAY_ACTION', action, amount })}
             onReady={() => dispatcher.dispatch({ type: 'READY' })}
@@ -121,10 +114,6 @@ function GameViewInner() {
                 dispatcher.clearError();
             }}
             isActionPending={dispatcher.isPending('PLAY_ACTION') || dispatcher.isPending('READY') || dispatcher.isPending('START_GAME') || dispatcher.isPending('CLAIM_WIN') || dispatcher.isPending('LEAVE_GAME')}
-            onShowdownDragPointerDown={showdownModal.onDragPointerDown}
-            onShowdownResizePointerDown={showdownModal.onResizePointerDown}
-            onShowdownPointerMove={showdownModal.onPointerMove}
-            onShowdownPointerUp={showdownModal.onPointerUp}
         />
     );
 }

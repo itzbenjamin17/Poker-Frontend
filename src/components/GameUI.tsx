@@ -1,4 +1,5 @@
 import React from 'react';
+import { Check } from 'lucide-react';
 import { cn } from '../lib/cn';
 import type { Player } from '../types';
 
@@ -111,9 +112,9 @@ export const PlayerPod = ({
             <div className={cn(
                 'relative rounded-full flex items-center justify-center transition-all duration-500',
                 isWinner
-                    ? 'ring-2 ring-gold-secondary ring-offset-4 ring-offset-surface scale-110 shadow-[0_0_24px_rgba(252,192,37,0.4)] animate-pulse'
+                    ? 'ring-2 ring-emerald-primary/80 ring-offset-3 ring-offset-surface shadow-[0_0_18px_rgba(170,234,208,0.22)]'
                     : isCurrent
-                        ? 'ring-2 ring-emerald-primary ring-offset-4 ring-offset-surface scale-110'
+                        ? 'ring-2 ring-emerald-primary ring-offset-3 ring-offset-surface'
                         : 'ring-1 ring-white/10',
                 player.status === 'FOLDED' ? 'opacity-40 grayscale' : 'opacity-100',
                 isDisconnected ? 'ring-2 ring-amber-400/80 opacity-80' : ''
@@ -124,12 +125,12 @@ export const PlayerPod = ({
             }}>
                 <div className={cn(
                     'w-full h-full rounded-full bg-surface-highest flex items-center justify-center overflow-hidden border',
-                    isWinner ? 'border-gold-secondary/70 bg-gold-secondary/10' : 'border-white/5'
+                    isWinner ? 'border-emerald-primary/60 bg-emerald-primary/10' : 'border-white/5'
                 )}>
                     <span
                         className={cn(
                             'font-headline font-bold',
-                            isWinner ? 'text-gold-secondary/85' : 'text-emerald-primary/40'
+                            isWinner ? 'text-emerald-primary' : 'text-emerald-primary/40'
                         )}
                         style={{ fontSize: `${scale * baseInitialsFontSize}px` }}
                     >
@@ -139,6 +140,16 @@ export const PlayerPod = ({
                     {isWinner && <span className="sr-only">Winner</span>}
                     {player.status === 'FOLDED' && <span className="sr-only">Folded</span>}
                 </div>
+
+                {isWinner && (
+                    <span
+                        aria-hidden="true"
+                        className="absolute -right-1 -top-1 flex items-center justify-center rounded-full border border-surface bg-emerald-primary text-surface shadow-md"
+                        style={{ width: `${scale * 18}px`, height: `${scale * 18}px` }}
+                    >
+                        <Check size={scale * 11} strokeWidth={3} />
+                    </span>
+                )}
 
                 {blindLabel && (
                     <div
@@ -213,7 +224,7 @@ export const PlayerPod = ({
                     className={cn(
                         'font-headline font-bold uppercase tracking-widest bg-black/80 rounded-full whitespace-nowrap border shadow-lg',
                         isWinner
-                            ? 'text-gold-secondary border-gold-secondary/40'
+                            ? 'text-emerald-primary border-emerald-primary/40'
                             : 'text-emerald-primary border-emerald-primary/30',
                     )}
                     style={{

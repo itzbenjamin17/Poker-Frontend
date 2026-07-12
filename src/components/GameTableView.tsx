@@ -13,7 +13,7 @@ import {
     BTN_LEAVE_TABLE, BTN_CLAIM_WIN, BTN_CLAIMING,
     WAITING_RECONNECT_PREFIX, WAITING_RECONNECT_SUFFIX,
 } from '../constants/strings';
-import type { ShowdownModalLayout, WsStatus } from '../types';
+import type { WsStatus } from '../types';
 
 interface GameTableViewProps {
     tableTier: TableTier;
@@ -23,8 +23,6 @@ interface GameTableViewProps {
     nowMs: number;
     raiseAmount: string;
     raiseError: string | null;
-    showdownLayout: ShowdownModalLayout | null;
-    showdownModalRef: React.RefObject<HTMLDivElement | null>;
     getSeatPosition: (index: number, total: number) => SeatPosition;
     onAction: (action: PokerAction, amount?: number) => void;
     onReady: () => void;
@@ -32,10 +30,6 @@ interface GameTableViewProps {
     onLeaveGame: () => void;
     onRaiseChange: (val: string) => void;
     isActionPending: boolean;
-    onShowdownDragPointerDown: (e: React.PointerEvent<HTMLDivElement>) => void;
-    onShowdownResizePointerDown: (e: React.PointerEvent<HTMLDivElement>) => void;
-    onShowdownPointerMove: (e: React.PointerEvent<HTMLElement>) => void;
-    onShowdownPointerUp: (e: React.PointerEvent<HTMLElement>) => void;
 }
 
 export function GameTableView({
@@ -46,8 +40,6 @@ export function GameTableView({
                                   nowMs,
                                   raiseAmount,
                                   raiseError,
-                                  showdownLayout,
-                                  showdownModalRef,
                                   getSeatPosition,
                                   onAction,
                                   onReady,
@@ -55,10 +47,6 @@ export function GameTableView({
                                   onLeaveGame,
                                   onRaiseChange,
                                   isActionPending,
-                                  onShowdownDragPointerDown,
-                                  onShowdownResizePointerDown,
-                                  onShowdownPointerMove,
-                                  onShowdownPointerUp,
                               }: GameTableViewProps) {
     const { auth, gameState, privateState, showdown, showdownResult, claimPending, myPlayerId, notification, wsStatus } = useGameContext();
 
@@ -105,19 +93,18 @@ export function GameTableView({
     const sidePots = potBreakdown.slice(1);
 
     return (
-        <div className={cn('h-dvh md:h-screen flex flex-col relative', 'overflow-hidden')}>
+        <main
+            aria-label="Live poker table"
+            className={cn(
+            'isolate flex h-[100svh] min-h-0 w-full max-w-full flex-col relative overflow-hidden overscroll-none',
+            'md:h-screen',
+        )}
+        >
             <NotificationBanner notification={notification} />
 
             {/* Showdown Modal */}
             <ShowdownModal
                 showdownResult={showdownResult}
-                layout={showdownLayout}
-                modalRef={showdownModalRef}
-                isMobileLandscape={isMobileLandscape}
-                onDragPointerDown={onShowdownDragPointerDown}
-                onResizePointerDown={onShowdownResizePointerDown}
-                onPointerMove={onShowdownPointerMove}
-                onPointerUp={onShowdownPointerUp}
             />
 
             {/* Leave Button */}
@@ -213,7 +200,7 @@ export function GameTableView({
                 </div>
             )}
 
-            {/* Ready Countdown Panel */}
+            {/* Ready Countdown Panel - fixed so it never resizes the table */}
             <ReadyCountdownOverlay
                 isReadyCountdownActive={isReadyCountdownActive}
                 readyCountdownSecondsRemaining={readyCountdownSecondsRemaining}
@@ -250,7 +237,7 @@ export function GameTableView({
                     isActionPending={isActionPending}
                 />
             </div>
-        </div>
+        </main>
     );
 }
 

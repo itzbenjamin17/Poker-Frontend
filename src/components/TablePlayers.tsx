@@ -103,7 +103,7 @@ export function TablePlayers({
                                                     card={c}
                                                     scale={scale}
                                                     className={cn(
-                                                        isShowdownWinner && shouldReveal && 'ring-2 ring-gold-secondary shadow-[0_0_18px_rgba(252,192,37,0.45)]',
+                                                        isShowdownWinner && shouldReveal && 'ring-2 ring-emerald-primary/70 shadow-[0_0_16px_rgba(170,234,208,0.24)]',
                                                         'shadow-md',
                                                     )}
                                                     style={{

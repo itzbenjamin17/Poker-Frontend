@@ -132,7 +132,7 @@ describe('GameView - Actions & Flows Integration', () => {
         });
     });
 
-    it('handles the Showdown flow and displays the ShowdownModal', async () => {
+    it('handles the Showdown flow and displays the round summary', async () => {
         server.use(
             http.get('/api/room/ROOM123', () => HttpResponse.json({
                 roomId: 'ROOM123',
@@ -186,9 +186,11 @@ describe('GameView - Actions & Flows Integration', () => {
             });
         });
 
-        // Verify Showdown modal is shown
-        expect(await screen.findByRole('dialog', { name: /round result/i })).toBeInTheDocument();
+        const summary = await screen.findByRole('region', { name: /round result/i });
+        expect(summary).toBeInTheDocument();
+        expect(screen.queryByRole('dialog', { name: /round result/i })).not.toBeInTheDocument();
         expect(screen.getByText(/testplayer won/i)).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /show result details/i })).toBeInTheDocument();
     });
 
     it('redirects to lobby (calls onLeave) on hydration 403 error', async () => {

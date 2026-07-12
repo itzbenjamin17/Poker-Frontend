@@ -82,8 +82,6 @@ export const BTN_READY_CONFIRMED = 'READY CONFIRMED';
 export const LABEL_PLAYERS_READY_SUFFIX = 'players ready';
 
 // ─── Showdown ─────────────────────────────────────────────────────────────────
-export const SHOWDOWN_DRAG_LABEL = 'Drag';
-export const SHOWDOWN_RESIZE_LABEL = 'Resize from corner';
 export const SHOWDOWN_ROUND_RESULT = 'Round Result';
 export const SHOWDOWN_GAME_OVER = 'Game Over';
 export const SHOWDOWN_ROUND_OVER = 'Round Over';
@@ -94,8 +92,8 @@ export const SHOWDOWN_WIN_SUFFIX = ' won!';
 export const SHOWDOWN_POT_SPLIT = 'Pot split equally';
 export const SHOWDOWN_WON_WITH_PREFIX = 'Won with ';
 export const SHOWDOWN_WON_ROUND = 'Won the round';
-export const ARIA_DRAG_HANDLE = 'Showdown Drag Handle';
-export const ARIA_RESIZE_HANDLE = 'Showdown Resize Handle';
+export const SHOWDOWN_SHOW_DETAILS = 'Show result details';
+export const SHOWDOWN_HIDE_DETAILS = 'Hide result details';
 export const ARIA_ROUND_RESULT = 'Round Result';
 
 // ─── Notifications ────────────────────────────────────────────────────────────

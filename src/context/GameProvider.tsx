@@ -134,9 +134,11 @@ export function GameProvider({ auth, onLeave, children }: GameProviderProps) {
             dispatch({ type: 'SET_SHOWDOWN', payload: data });
             dispatch({ type: 'SET_SHOWDOWN_RESULT', payload: data });
             scheduleShowdownHide(data);
-        } else if (data.phase === 'SHOWDOWN' && data.isReadyCountdownActive) {
-            scheduleShowdownHide(data);
-        } else if (data.phase !== 'SHOWDOWN') {
+        } else if (data.phase === 'SHOWDOWN') {
+            dispatch({ type: 'SET_SHOWDOWN', payload: data });
+            dispatch({ type: 'SET_SHOWDOWN_RESULT', payload: data });
+            if (data.isReadyCountdownActive) scheduleShowdownHide(data);
+        } else {
             dispatch({ type: 'SET_SHOWDOWN', payload: null });
             dispatch({ type: 'SET_SHOWDOWN_RESULT', payload: null });
             clearShowdownTimers();

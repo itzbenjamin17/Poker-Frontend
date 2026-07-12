@@ -16,6 +16,17 @@ function expectInside(
   expect(inner.y + inner.height).toBeLessThanOrEqual(outer.y + outer.height + 1);
 }
 
+function expectNoOverlap(
+  a: { x: number; y: number; width: number; height: number },
+  b: { x: number; y: number; width: number; height: number },
+) {
+  const overlaps = a.x < b.x + b.width &&
+    a.x + a.width > b.x &&
+    a.y < b.y + b.height &&
+    a.y + a.height > b.y;
+  expect(overlaps).toBe(false);
+}
+
 async function expectAdaptiveTable(page: Page, viewportWidth: number) {
   const pokerTable = page.getByRole('region', { name: /^poker table$/i });
   const actionDock = page.getByRole('region', { name: /action dock/i });
@@ -248,6 +259,85 @@ test.describe('Adaptive table-first foundation', () => {
       expect(heroBox).not.toBeNull();
       expectInside(dockBox!, { x: 0, y: 0, width: viewport.width, height: viewport.height });
       expect(heroBox!.y + heroBox!.height).toBeLessThanOrEqual(dockBox!.y + 1);
+    }
+  });
+
+  test('keeps the collapsed round summary from covering the board cluster or hero seat', async ({
+    browser,
+  }) => {
+    const hostContext = await browser.newContext({ viewport: { width: 1100, height: 700 } });
+    contexts.push(hostContext);
+
+    const hostPage = await hostContext.newPage();
+    const token = `test.${Buffer.from(JSON.stringify({ exp: Math.floor(Date.now() / 1000) + 3600 })).toString('base64url')}.test`;
+    await hostPage.addInitScript(({ authToken }) => {
+      window.localStorage.setItem('poker-auth', JSON.stringify({
+        token: authToken,
+        roomId: 'ROOM123',
+        playerName: 'Host',
+        playerId: 'p-1',
+      }));
+    }, { authToken: token });
+    await hostPage.route('**/api/room/ROOM123', (route) => route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        roomId: 'ROOM123',
+        roomName: 'Adaptive Table',
+        players: [
+          { name: 'Host', isHost: true },
+          { name: 'Guest', isHost: false },
+        ],
+        gameStarted: true,
+      }),
+    }));
+    await hostPage.route('**/api/game/ROOM123/state', (route) => route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        gameId: 'ROOM123',
+        phase: 'SHOWDOWN',
+        pot: 1000,
+        currentBet: 0,
+        communityCards: ['AH', 'KH', 'QD', 'JS', '2C'],
+        currentPlayerId: '',
+        currentPlayerName: '',
+        winners: ['Host'],
+        winningsPerPlayer: 1000,
+        players: [
+          { id: 'p-1', name: 'Host', chips: 1980, currentBet: 0, status: 'ACTIVE', handRank: 'TWO_PAIR', isWinner: true },
+          { id: 'p-2', name: 'Player 2', chips: 990, currentBet: 0, status: 'ACTIVE' },
+          { id: 'p-3', name: 'Player 3', chips: 1000, currentBet: 0, status: 'ACTIVE' },
+          { id: 'p-4', name: 'Player 4', chips: 1000, currentBet: 0, status: 'ACTIVE' },
+          { id: 'p-5', name: 'Player 5', chips: 1000, currentBet: 0, status: 'ACTIVE' },
+          { id: 'p-6', name: 'Player 6', chips: 1000, currentBet: 0, status: 'ACTIVE' },
+        ],
+      }),
+    }));
+    await hostPage.route('**/api/game/ROOM123/private-state', (route) => route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({ playerId: 'p-1', holeCards: ['AS', 'KS'] }),
+    }));
+
+    await hostPage.goto('/');
+    await expect(hostPage.getByRole('region', { name: /round result/i })).toContainText(/host won/i);
+
+    for (const viewport of eligibleViewports) {
+      await hostPage.setViewportSize({ width: viewport.width, height: viewport.height });
+      const summary = hostPage.getByRole('region', { name: /round result/i });
+      const totalPot = hostPage.getByLabel(/main pot|total pot/i);
+      const heroSeat = hostPage.getByRole('group', { name: /host hero seat/i });
+
+      await expect(summary).toBeVisible();
+      await expect(summary.getByRole('button', { name: /show result details/i })).toBeVisible();
+
+      const summaryBox = await summary.boundingBox();
+      const potBox = await totalPot.boundingBox();
+      const heroBox = await heroSeat.boundingBox();
+      expect(summaryBox).not.toBeNull();
+      expect(potBox).not.toBeNull();
+      expect(heroBox).not.toBeNull();
+      expectInside(summaryBox!, { x: 0, y: 0, width: viewport.width, height: viewport.height });
+      expectNoOverlap(summaryBox!, potBox!);
+      expectNoOverlap(summaryBox!, heroBox!);
     }
   });
 });
