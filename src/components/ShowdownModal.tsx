@@ -58,13 +58,8 @@ export function ShowdownModal({ showdownResult, isReadyCountdownActive = false }
     const fullReviewTriggerRef = useRef<HTMLButtonElement | null>(null);
     const fullReviewCloseRef = useRef<HTMLButtonElement | null>(null);
     const wasFullReviewOpenRef = useRef(false);
-    const isFullReviewOpen = detailState === 'full';
-
-    useEffect(() => {
-        if (isReadyCountdownActive) {
-            setDetailState('collapsed');
-        }
-    }, [isReadyCountdownActive]);
+    const effectiveDetailState = isReadyCountdownActive ? 'collapsed' : detailState;
+    const isFullReviewOpen = effectiveDetailState === 'full';
 
     useEffect(() => {
         if (isFullReviewOpen) {
@@ -96,7 +91,7 @@ export function ShowdownModal({ showdownResult, isReadyCountdownActive = false }
                 ? `${winners[0]}${SHOWDOWN_FORFEIT_SUFFIX}`
                 : `${winners[0]}${SHOWDOWN_WIN_SUFFIX}`
             : SHOWDOWN_PROCESSING;
-    const isExpanded = detailState !== 'collapsed';
+    const isExpanded = effectiveDetailState !== 'collapsed';
     const potRows = getPotRows(showdownResult);
     const revealedPlayers = showdownResult.players.filter((player) => player.holeCards && player.holeCards.length > 0);
     const motionTransition = { duration: prefersReducedMotion ? 0 : 0.22, ease: 'easeOut' as const };

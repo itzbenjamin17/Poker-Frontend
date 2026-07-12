@@ -227,7 +227,7 @@ describe('GameView - Game Table Integration', () => {
     await user.click(rival)
     expect(opponent).toHaveAttribute('aria-expanded', 'false')
     expect(rival).toHaveAttribute('aria-expanded', 'true')
-    const rivalSeat = screen.getByRole('group', { name: /rival seat/i })
+    screen.getByRole('group', { name: /rival seat/i })
     const rivalDetailsPanel = screen.getByRole('region', { name: /rival expanded details/i })
     expect(within(rivalDetailsPanel).getByText(/folded/i)).toBeInTheDocument()
     expect(within(opponentSeat).queryByText(/small blind/i)).not.toBeInTheDocument()

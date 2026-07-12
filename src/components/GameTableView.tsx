@@ -83,7 +83,6 @@ export function GameTableView({
         ? Math.max(0, Math.ceil((gameState.readyCountdownDeadlineEpochMs - nowMs) / 1000))
         : 0;
 
-    const controlButtonSize: 'xs' | 'sm' | 'md' = isMobileLandscape ? 'xs' : isCompactTable ? 'sm' : 'md';
     const bottomCanvasWidthClass = 'w-full min-w-0';
 
     const uncalledAmount = gameState.uncalledAmount ?? 0;
