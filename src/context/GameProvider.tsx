@@ -136,7 +136,28 @@ export function GameProvider({ auth, onLeave, children }: GameProviderProps) {
             scheduleShowdownHide(data);
         } else if (data.phase === 'SHOWDOWN') {
             dispatch({ type: 'SET_SHOWDOWN', payload: data });
-            dispatch({ type: 'SET_SHOWDOWN_RESULT', payload: data });
+            const currentShowdownResult = previousState?.phase === 'SHOWDOWN' ? previousState : null;
+            if (currentShowdownResult && currentShowdownResult.winners && currentShowdownResult.winners.length > 0) {
+                const mergedShowdownResult = {
+                    ...currentShowdownResult,
+                    isReadyCountdownActive: data.isReadyCountdownActive,
+                    readyCountdownDeadlineEpochMs: data.readyCountdownDeadlineEpochMs,
+                    players: currentShowdownResult.players.map(p => {
+                        const updatedPlayer = data.players.find(up => up.id === p.id);
+                        if (!updatedPlayer) return p;
+                        return {
+                            ...p,
+                            chips: updatedPlayer.chips,
+                            status: updatedPlayer.status,
+                            isReadyForNextHand: updatedPlayer.isReadyForNextHand,
+                            disconnectDeadlineEpochMs: updatedPlayer.disconnectDeadlineEpochMs,
+                        };
+                    })
+                };
+                dispatch({ type: 'SET_SHOWDOWN_RESULT', payload: mergedShowdownResult });
+            } else {
+                dispatch({ type: 'SET_SHOWDOWN_RESULT', payload: data });
+            }
             if (data.isReadyCountdownActive) scheduleShowdownHide(data);
         } else {
             dispatch({ type: 'SET_SHOWDOWN', payload: null });
