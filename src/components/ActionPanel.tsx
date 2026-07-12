@@ -132,7 +132,8 @@ export function ActionPanel({
     const canSubmitRaise = rawRaise !== '' && !activeRaiseError;
     const hasError = Boolean(activeRaiseError);
 
-    const showControls = isMyTurn && !isSelfDisconnected && !isReadyCountdownActive && legalActions.size > 0;
+    const isAutoAdvancing = Boolean(gameState.isAutoAdvancing);
+    const showControls = isMyTurn && !isSelfDisconnected && !isReadyCountdownActive && !isAutoAdvancing && legalActions.size > 0;
     const waitingName = currentTurnPlayerName || gameState.currentPlayerName || 'another player';
     const canCheck = legalActions.has('CHECK');
     const canCall = legalActions.has('CALL');
@@ -184,12 +185,6 @@ export function ActionPanel({
                             </Button>
                         ) : null}
 
-                        {canAllIn && (
-                            <Button variant="outline" size={controlButtonSize} onClick={() => onAction('ALL_IN')} disabled={isActionPending}>
-                                {isActionPending ? 'Submitting...' : `${BTN_ALL_IN_PREFIX}${availableChips.toLocaleString()}`}
-                            </Button>
-                        )}
-
                         {legalActions.has('BET') && !amountControlsOpen && (
                             <Button
                                 variant="outline"
@@ -213,6 +208,12 @@ export function ActionPanel({
                                 disabled={isActionPending}
                             >
                                 {BTN_RAISE}
+                            </Button>
+                        )}
+
+                        {canAllIn && (
+                            <Button variant="outline" size={controlButtonSize} onClick={() => onAction('ALL_IN')} disabled={isActionPending}>
+                                {isActionPending ? 'Submitting...' : `${BTN_ALL_IN_PREFIX}${availableChips.toLocaleString()}`}
                             </Button>
                         )}
 
@@ -370,7 +371,9 @@ export function ActionPanel({
                         className="flex min-h-11 w-full items-center justify-center px-3 text-center"
                     >
                         <p className="text-xs font-headline font-bold uppercase tracking-[0.16em] text-amber-200">
-                            {`Waiting for ${waitingName} to act`}
+                            {isAutoAdvancing
+                                ? (gameState.autoAdvanceMessage || 'Auto-advancing...')
+                                : `Waiting for ${waitingName} to act`}
                         </p>
                     </motion.div>
                 )}
