@@ -8,6 +8,10 @@ GitHub — issues live in the repo's GitHub Issues. See `docs/agents/issue-track
 
 Default vocabulary (needs-triage, needs-info, ready-for-agent, ready-for-human, wontfix). See `docs/agents/triage-labels.md`.
 
+### Project context
+
+Detailed AI and project context lives in `docs/ai/PROJECT.md`.
+
 ### Domain docs
 
-Single-context layout using `GEMINI.md`. See `docs/agents/domain.md`.
+See `docs/agents/domain.md` for how engineering skills should use the project vocabulary.
