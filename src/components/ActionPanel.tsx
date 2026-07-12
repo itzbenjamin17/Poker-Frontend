@@ -225,7 +225,7 @@ export function ActionPanel({
                                     {...fadeMotion}
                                     className={cn(
                                         'flex flex-wrap items-center justify-center gap-2',
-                                        isMobileLandscape ? 'w-full' : 'w-auto',
+                                        'w-auto',
                                     )}
                                 >
                                     <div className={cn(

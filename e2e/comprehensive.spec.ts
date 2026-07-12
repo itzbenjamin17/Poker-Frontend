@@ -116,12 +116,15 @@ test.describe('Comprehensive Poker Scenarios', () => {
         await expect(hostPage.getByLabel(/total pot/i)).toContainText('$40');
 
         // P1 (BB, acts first postflop) bets all-in by putting $20.
+        // First click Bet to expand amount controls
+        const betBtn = hostPage.getByRole('button', { name: /^bet$/i });
+        await expect(betBtn).toBeVisible();
+        await betBtn.click();
+
+        // Now enter the amount and click Bet to submit
         const raiseInput = hostPage.getByLabel('Raise amount');
         await expect(raiseInput).toBeVisible();
         await raiseInput.fill('20');
-        
-        const betBtn = hostPage.getByRole('button', { name: /bet/i });
-        await expect(betBtn).toBeVisible();
         await betBtn.click();
 
         // P2 is facing a $20 bet, calls $20.
