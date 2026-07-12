@@ -94,6 +94,13 @@ export const SHOWDOWN_WON_WITH_PREFIX = 'Won with ';
 export const SHOWDOWN_WON_ROUND = 'Won the round';
 export const SHOWDOWN_SHOW_DETAILS = 'Show result details';
 export const SHOWDOWN_HIDE_DETAILS = 'Hide result details';
+export const SHOWDOWN_OPEN_FULL_REVIEW = 'Open full result review';
+export const SHOWDOWN_CLOSE_FULL_REVIEW = 'Close full result review';
+export const SHOWDOWN_FULL_REVIEW = 'Full Result Review';
+export const SHOWDOWN_COMMUNITY_CARDS = 'Community cards';
+export const SHOWDOWN_REVEALED_HOLE_CARDS = 'Revealed hole cards';
+export const SHOWDOWN_PLAYER_OUTCOMES = 'Player outcomes';
+export const SHOWDOWN_NO_REVEALED_HOLE_CARDS = 'No revealed hole cards';
 export const ARIA_ROUND_RESULT = 'Round Result';
 
 // ─── Notifications ────────────────────────────────────────────────────────────

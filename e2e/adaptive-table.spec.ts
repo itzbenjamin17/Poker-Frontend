@@ -296,6 +296,7 @@ test.describe('Adaptive table-first foundation', () => {
         gameId: 'ROOM123',
         phase: 'SHOWDOWN',
         pot: 1000,
+        pots: [700, 300],
         currentBet: 0,
         communityCards: ['AH', 'KH', 'QD', 'JS', '2C'],
         currentPlayerId: '',
@@ -303,7 +304,7 @@ test.describe('Adaptive table-first foundation', () => {
         winners: ['Host'],
         winningsPerPlayer: 1000,
         players: [
-          { id: 'p-1', name: 'Host', chips: 1980, currentBet: 0, status: 'ACTIVE', handRank: 'TWO_PAIR', isWinner: true },
+          { id: 'p-1', name: 'Host', chips: 1980, currentBet: 0, status: 'ACTIVE', handRank: 'TWO_PAIR', holeCards: ['AS', 'KS'], isWinner: true, chipsWon: 1000 },
           { id: 'p-2', name: 'Player 2', chips: 990, currentBet: 0, status: 'ACTIVE' },
           { id: 'p-3', name: 'Player 3', chips: 1000, currentBet: 0, status: 'ACTIVE' },
           { id: 'p-4', name: 'Player 4', chips: 1000, currentBet: 0, status: 'ACTIVE' },
@@ -327,17 +328,53 @@ test.describe('Adaptive table-first foundation', () => {
       const heroSeat = hostPage.getByRole('group', { name: /host hero seat/i });
 
       await expect(summary).toBeVisible();
-      await expect(summary.getByRole('button', { name: /show result details/i })).toBeVisible();
+      const detailsToggle = summary.getByRole('button', { name: /show result details/i });
+      await expect(detailsToggle).toBeVisible();
 
       const summaryBox = await summary.boundingBox();
       const potBox = await totalPot.boundingBox();
       const heroBox = await heroSeat.boundingBox();
+      const detailsToggleBox = await detailsToggle.boundingBox();
       expect(summaryBox).not.toBeNull();
       expect(potBox).not.toBeNull();
       expect(heroBox).not.toBeNull();
+      expect(detailsToggleBox).not.toBeNull();
+      expect(detailsToggleBox!.width).toBeGreaterThanOrEqual(44);
+      expect(detailsToggleBox!.height).toBeGreaterThanOrEqual(44);
       expectInside(summaryBox!, { x: 0, y: 0, width: viewport.width, height: viewport.height });
       expectNoOverlap(summaryBox!, potBox!);
       expectNoOverlap(summaryBox!, heroBox!);
+
+      await detailsToggle.click();
+      await expect(summary.getByText(/main pot/i)).toBeVisible();
+      await expect(summary.getByText(/side pot 1/i)).toBeVisible();
+      const expandedSummaryBox = await summary.boundingBox();
+      expect(expandedSummaryBox).not.toBeNull();
+      expectInside(expandedSummaryBox!, { x: 0, y: 0, width: viewport.width, height: viewport.height });
+      expectNoOverlap(expandedSummaryBox!, potBox!);
+      expectNoOverlap(expandedSummaryBox!, heroBox!);
+      await expect(hostPage.getByRole('region', { name: /board cluster/i })).toBeVisible();
+      const fullReviewTrigger = summary.getByRole('button', { name: /open full result review/i });
+      const fullReviewTriggerBox = await fullReviewTrigger.boundingBox();
+      expect(fullReviewTriggerBox).not.toBeNull();
+      expect(fullReviewTriggerBox!.width).toBeGreaterThanOrEqual(44);
+      expect(fullReviewTriggerBox!.height).toBeGreaterThanOrEqual(44);
+
+      await fullReviewTrigger.click();
+      const review = hostPage.getByRole('dialog', { name: /full result review/i });
+      await expect(review).toBeVisible();
+      await expect(review).toHaveCSS('transform', 'none');
+      await expect(review.getByRole('img', { name: /ace of hearts/i })).toBeVisible();
+      await expect(review.getByRole('img', { name: /ace of spades/i })).toBeVisible();
+      await expect(review.getByText(/player outcomes/i)).toBeVisible();
+      const reviewBox = await review.boundingBox();
+      expect(reviewBox).not.toBeNull();
+      expectInside(reviewBox!, { x: 0, y: 0, width: viewport.width, height: viewport.height });
+
+      await review.getByRole('button', { name: /close full result review/i }).click();
+      await expect(review).toHaveCount(0);
+      await expect(summary.getByRole('button', { name: /open full result review/i })).toBeFocused();
+      await summary.getByRole('button', { name: /hide result details/i }).click();
     }
   });
 });
