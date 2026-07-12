@@ -162,5 +162,75 @@ describe('GameView - Game Table Integration', () => {
     expect(screen.getByText('Side Pot 1')).toBeInTheDocument()
     expect(screen.getByText('Uncalled')).toBeInTheDocument()
   })
+
+  it('expands one anchored opponent seat at a time without exposing unrevealed cards', async () => {
+    const user = userEvent.setup()
+
+    server.use(
+      http.get('/api/room/ROOM123', () => HttpResponse.json({
+        roomId: 'ROOM123',
+        roomName: 'Poker Table',
+        players: [
+          { name: 'TestPlayer', isHost: true },
+          { name: 'Opponent', isHost: false },
+          { name: 'Rival', isHost: false },
+        ],
+        gameStarted: true,
+      })),
+      http.get('/api/game/ROOM123/state', () => HttpResponse.json({
+        gameId: 'ROOM123',
+        phase: 'FLOP',
+        pot: 120,
+        communityCards: ['AH', 'KD', 'QC'],
+        currentPlayerId: 'p-2',
+        currentPlayerName: 'Opponent',
+        players: [
+          { id: 'p-1', name: 'TestPlayer', chips: 900, currentBet: 0, status: 'ACTIVE' },
+          { id: 'p-2', name: 'Opponent', chips: 875, currentBet: 25, status: 'ACTIVE', isSmallBlind: true },
+          { id: 'p-3', name: 'Rival', chips: 1000, currentBet: 0, status: 'FOLDED', hasFolded: true },
+        ],
+      })),
+      http.get('/api/game/ROOM123/private-state', () => HttpResponse.json({
+        playerId: 'p-1',
+        holeCards: ['AS', 'KS'],
+      })),
+    )
+
+    render(<GameView auth={mockAuth} />)
+
+    expect(await screen.findByRole('region', { name: /poker table/i })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /testplayer hero seat details/i })).not.toBeInTheDocument()
+
+    const opponent = screen.getByRole('button', { name: /opponent seat details/i })
+    const rival = screen.getByRole('button', { name: /rival seat details/i })
+    expect(opponent).toHaveAttribute('aria-expanded', 'false')
+    expect(rival).toHaveAttribute('aria-expanded', 'false')
+
+    await user.click(opponent)
+    expect(opponent).toHaveAttribute('aria-expanded', 'true')
+    const opponentSeat = screen.getByRole('group', { name: /opponent seat/i })
+    expect(within(opponentSeat).getByText(/stack/i)).toBeInTheDocument()
+    const detailsPanel = opponentSeat.querySelector('[id^="opponent-seat-details-"]') as HTMLElement
+    expect(within(detailsPanel).getByText('$875')).toBeInTheDocument()
+    expect(within(opponentSeat).getByText(/bet \$25/i)).toBeInTheDocument()
+    expect(within(opponentSeat).getByText(/small blind/i)).toBeInTheDocument()
+    expect(within(opponentSeat).queryByRole('img', { name: /of/i })).not.toBeInTheDocument()
+
+    await user.keyboard('{Enter}')
+    expect(opponent).toHaveAttribute('aria-expanded', 'false')
+    expect(within(opponentSeat).queryByText(/stack/i)).not.toBeInTheDocument()
+
+    opponent.focus()
+    await user.keyboard(' ')
+    expect(opponent).toHaveAttribute('aria-expanded', 'true')
+
+    await user.click(rival)
+    expect(opponent).toHaveAttribute('aria-expanded', 'false')
+    expect(rival).toHaveAttribute('aria-expanded', 'true')
+    const rivalSeat = screen.getByRole('group', { name: /rival seat/i })
+    const rivalDetailsPanel = rivalSeat.querySelector('[id^="opponent-seat-details-"]') as HTMLElement
+    expect(within(rivalDetailsPanel).getByText(/folded/i)).toBeInTheDocument()
+    expect(within(opponentSeat).queryByText(/small blind/i)).not.toBeInTheDocument()
+  })
 })
 

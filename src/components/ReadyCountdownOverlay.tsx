@@ -36,12 +36,13 @@ export function ReadyCountdownOverlay({
 
     return (
         <div className={cn(
-            'pb-2 md:pb-3',
-            bottomCanvasWidthClass,
-            isMobileLandscape ? 'px-2' : 'px-3 sm:px-4 md:px-8',
+            'pointer-events-none fixed inset-x-0 bottom-0 z-[100] flex justify-center',
+            'px-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)]',
+            isMobileLandscape ? 'px-2' : 'sm:px-4 md:px-8',
         )}>
             <div className={cn(
-                'mx-auto bg-emerald-primary/15 border border-emerald-primary/40 rounded-lg text-center backdrop-blur-md',
+                'pointer-events-auto mx-auto w-full bg-emerald-primary/15 border border-emerald-primary/40 rounded-lg text-center backdrop-blur-md shadow-[0_14px_45px_rgba(0,0,0,0.25)]',
+                bottomCanvasWidthClass,
                 isMobileLandscape
                     ? 'max-w-full px-2.5 py-2 space-y-1.5'
                     : 'max-w-3xl px-3 py-2 sm:px-4 sm:py-3 space-y-2',
