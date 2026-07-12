@@ -24,9 +24,7 @@ dist-ssr
 *.sw?
 *.code-workspace
 
-SECURITY_TODO.md
-GEMINI.md
 test-results/
 playwright-report/
-docs/
-AGENTS.md
+
+.env

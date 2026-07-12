@@ -27,7 +27,8 @@ export default defineConfig({
       timeout: 120 * 1000,
     },
     {
-      command: 'cd ../Poker && mvnw.cmd spring-boot:run -Dspring-boot.run.profiles=test',
+      command: `node -e "require('child_process').spawn(process.platform === 'win32' ? 'mvnw.cmd' : './mvnw', ['spring-boot:run', '-Dspring-boot.run.profiles=test'], {stdio: 'inherit', shell: true})"`,
+      cwd: '../Poker',
       url: 'http://localhost:8080/actuator/health',
       reuseExistingServer: !process.env.CI,
       timeout: 120 * 1000,
