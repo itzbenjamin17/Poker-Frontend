@@ -1,10 +1,11 @@
-import { render, screen, waitFor, act } from '@testing-library/react'
+import { render, screen, waitFor, act, within } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import GameView from '../GameView'
 import { MockStompClient, activeSubscriptions } from '../test/mocks/stomp'
 import { http, HttpResponse } from 'msw'
 import { server } from '../test/mocks/server'
 import { mockAuth } from '../test/fixtures'
+import userEvent from '@testing-library/user-event'
 
 describe('GameView - Game Table Integration', () => {
   beforeEach(() => {
@@ -47,6 +48,16 @@ describe('GameView - Game Table Integration', () => {
 
     // Wait for initial REST hydration to settle and game table to render
     expect(await screen.findByLabelText('Total Pot')).toBeInTheDocument();
+
+    expect(screen.getByRole('region', { name: /board cluster/i })).toContainElement(
+      screen.getByLabelText('Total Pot'),
+    )
+    const heroSeat = screen.getByRole('group', { name: /testplayer hero seat/i })
+    expect(within(heroSeat).getByRole('heading', { name: 'TestPlayer' })).toBeInTheDocument()
+    expect(within(heroSeat).getByText('$980')).toBeInTheDocument()
+    expect(within(heroSeat).getByText('BET: $20')).toBeInTheDocument()
+    expect(within(heroSeat).getByText('Active turn')).toBeInTheDocument()
+    expect(screen.getByRole('group', { name: /opponent seat/i })).toBeInTheDocument()
 
     // Wait for the subscription to be active before simulating the message
     await MockStompClient.waitForSubscription('/user/queue/private')
@@ -95,6 +106,54 @@ describe('GameView - Game Table Integration', () => {
     await waitFor(() => {
       expect(screen.queryByRole('button', { name: /fold/i })).not.toBeInTheDocument()
     })
+  })
+
+  it('keeps secondary pot details reachable in compact landscape', async () => {
+    const user = userEvent.setup()
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 900 })
+    Object.defineProperty(window, 'innerHeight', { configurable: true, value: 400 })
+
+    server.use(
+      http.get('/api/room/ROOM123', () => HttpResponse.json({
+        roomId: 'ROOM123',
+        roomName: 'Poker Table',
+        players: [
+          { name: 'TestPlayer', isHost: true },
+          { name: 'Opponent', isHost: false },
+        ],
+        gameStarted: true,
+      })),
+      http.get('/api/game/ROOM123/state', () => HttpResponse.json({
+        gameId: 'ROOM123',
+        phase: 'TURN',
+        pot: 100,
+        pots: [70, 30],
+        uncalledAmount: 10,
+        communityCards: ['AH', 'KD', 'QC', 'JS'],
+        currentPlayerId: 'p-2',
+        players: [
+          { id: 'p-1', name: 'TestPlayer', chips: 900, currentBet: 0, status: 'ACTIVE' },
+          { id: 'p-2', name: 'Opponent', chips: 900, currentBet: 0, status: 'ACTIVE' },
+        ],
+      })),
+      http.get('/api/game/ROOM123/private-state', () => HttpResponse.json({
+        playerId: 'p-1',
+        holeCards: ['AS', 'KS'],
+      })),
+    )
+
+    render(<GameView auth={mockAuth} />)
+
+    expect(await screen.findByLabelText('Main Pot')).toHaveTextContent('$70')
+    expect(screen.getByRole('region', { name: /poker table/i })).toBeInTheDocument()
+
+    const potDetails = screen.getByRole('button', { name: /show pot details/i })
+    expect(screen.queryByText('Side Pot 1')).not.toBeInTheDocument()
+    await user.click(potDetails)
+
+    expect(screen.getByText('Main Pot')).toBeInTheDocument()
+    expect(screen.getByText('Side Pot 1')).toBeInTheDocument()
+    expect(screen.getByText('Uncalled')).toBeInTheDocument()
   })
 })
 

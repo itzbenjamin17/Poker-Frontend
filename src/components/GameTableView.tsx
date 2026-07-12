@@ -3,7 +3,7 @@ import { Button } from './UI';
 import { ActionPanel } from './ActionPanel';
 import { ShowdownModal } from './ShowdownModal';
 import { NotificationBanner } from './NotificationBanner';
-import { TablePots } from './TablePots';
+import { CompactPotDetails, PotBreakdown, TablePots } from './TablePots';
 import { CommunityCardsArea } from './CommunityCardsArea';
 import { TablePlayers } from './TablePlayers';
 import { ReadyCountdownOverlay } from './ReadyCountdownOverlay';
@@ -146,7 +146,7 @@ export function GameTableView({
 
             {/* Table Area */}
             <div className={cn(
-                'relative flex flex-1',
+                'relative flex min-h-0 min-w-0 flex-1 overflow-hidden',
                 isMobileLandscape
                     ? 'min-w-0 min-h-0 items-center justify-center p-1.5'
                     : 'min-w-0 min-h-0 items-center justify-center',
@@ -154,26 +154,38 @@ export function GameTableView({
                 (isCompactTable ? 'p-2' : 'p-3 sm:p-4 md:p-6 lg:p-8'),
             )}>
                 <div className={cn(
-                    'poker-table-gradient border-surface-high shadow-[0_0_100px_rgba(0,0,0,0.8)] relative transition-all duration-300 overflow-visible',
+                    'poker-table-gradient border-surface-high relative transition-all duration-300 overflow-visible',
                     tableTier === 'compact' && cn(
-                        'w-full h-full aspect-[2.15/1] rounded-[72px] border-[8px]',
+                        'w-full h-full aspect-[2.15/1] rounded-[72px] border-[8px] shadow-[0_0_48px_rgba(0,0,0,0.62)]',
                         isMobileLandscape && 'aspect-[2.35/1] rounded-[48px] border-[6px] min-w-0 min-h-0 max-h-[68dvh]',
                     ),
-                    tableTier === 'standard' && 'w-full h-full aspect-[2.15/1] rounded-[170px] border-[10px]',
-                    tableTier === 'wide' && 'w-full h-full aspect-[2.35/1] rounded-[220px] border-[12px]',
-                )}>
+                    tableTier === 'standard' && 'w-full h-full aspect-[2.15/1] rounded-[170px] border-[10px] shadow-[0_0_76px_rgba(0,0,0,0.72)]',
+                    tableTier === 'wide' && 'w-full h-full aspect-[2.35/1] rounded-[220px] border-[12px] shadow-[0_0_100px_rgba(0,0,0,0.8)]',
+                )}
+                    role="region"
+                    aria-label="Poker table"
+                >
                     {/* Community Cards & Pots */}
-                    <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 md:gap-6">
+                    <section
+                        aria-label="Board cluster"
+                        className="absolute inset-0 flex flex-col items-center justify-center gap-2 md:gap-6"
+                    >
                         <TablePots
                             displayedPot={displayedPot}
                             mainPot={mainPot}
                             sidePots={sidePots}
                             uncalledAmount={uncalledAmount}
                             phase={gameState.phase}
-                            isCompactTable={isCompactTable}
                         />
                         <CommunityCardsArea communityCards={gameState.communityCards} scale={scale} />
-                    </div>
+                        {isCompactTable ? (
+                            (sidePots.length > 0 || uncalledAmount > 0) && (
+                                <CompactPotDetails mainPot={mainPot} sidePots={sidePots} uncalledAmount={uncalledAmount} />
+                            )
+                        ) : (
+                            <PotBreakdown mainPot={mainPot} sidePots={sidePots} uncalledAmount={uncalledAmount} />
+                        )}
+                    </section>
 
                     {/* Players */}
                     <TablePlayers

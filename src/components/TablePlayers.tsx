@@ -54,6 +54,8 @@ export function TablePlayers({
                 return (
                     <div
                         key={p.id}
+                        role="group"
+                        aria-label={isSelf ? `${p.name} hero seat` : `${p.name} seat`}
                         className="absolute -translate-x-1/2 -translate-y-1/2 flex flex-col items-center z-20"
                         style={{ left: `${seat.left}%`, top: `${seat.top}%` }}
                     >
