@@ -32,6 +32,9 @@ export default defineConfig({
       url: 'http://localhost:8080/actuator/health',
       reuseExistingServer: !process.env.CI,
       timeout: 120 * 1000,
+      env: {
+        SPRING_PROFILES_ACTIVE: 'test',
+      },
     }
   ],
 });

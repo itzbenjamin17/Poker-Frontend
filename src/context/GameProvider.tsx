@@ -135,7 +135,6 @@ export function GameProvider({ auth, onLeave, children }: GameProviderProps) {
             dispatch({ type: 'SET_SHOWDOWN_RESULT', payload: data });
             scheduleShowdownHide(data);
         } else if (data.phase === 'SHOWDOWN') {
-            dispatch({ type: 'SET_SHOWDOWN', payload: data });
             const currentShowdownResult = previousState?.phase === 'SHOWDOWN' ? previousState : null;
             if (currentShowdownResult && currentShowdownResult.winners && currentShowdownResult.winners.length > 0) {
                 const mergedShowdownResult = {
@@ -154,8 +153,10 @@ export function GameProvider({ auth, onLeave, children }: GameProviderProps) {
                         };
                     })
                 };
+                dispatch({ type: 'SET_SHOWDOWN', payload: mergedShowdownResult });
                 dispatch({ type: 'SET_SHOWDOWN_RESULT', payload: mergedShowdownResult });
             } else {
+                dispatch({ type: 'SET_SHOWDOWN', payload: data });
                 dispatch({ type: 'SET_SHOWDOWN_RESULT', payload: data });
             }
             if (data.isReadyCountdownActive) scheduleShowdownHide(data);
