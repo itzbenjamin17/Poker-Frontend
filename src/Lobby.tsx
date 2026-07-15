@@ -38,8 +38,11 @@ export default function Lobby({
 
     useEffect(() => {
         if (initialError) {
-            setError(initialError);
-            onClearInitialError?.();
+            const timer = setTimeout(() => {
+                setError(initialError);
+                onClearInitialError?.();
+            }, 0);
+            return () => clearTimeout(timer);
         }
     }, [initialError, onClearInitialError]);
 

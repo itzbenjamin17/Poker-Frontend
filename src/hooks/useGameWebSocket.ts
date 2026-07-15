@@ -38,7 +38,6 @@ export function useGameWebSocket(options: UseGameWebSocketOptions) {
     const stompClientRef = useRef<Client | null>(null);
     const lastStateSyncTimeRef = useRef<number>(0);
     const redirectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const gameEndTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     useEffect(() => {
         if (!isHydrated) return;
@@ -222,7 +221,6 @@ export function useGameWebSocket(options: UseGameWebSocketOptions) {
         return () => {
             clearShowdownTimers();
             if (redirectTimerRef.current !== null) clearTimeout(redirectTimerRef.current);
-            if (gameEndTimerRef.current !== null) clearTimeout(gameEndTimerRef.current);
             dispatch({ type: 'SET_WS_STATUS', payload: 'disconnected' });
             client.deactivate();
         };
