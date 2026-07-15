@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import type { AuthResponse } from './types';
 import {
@@ -12,7 +12,29 @@ import { JoinRoomForm } from './components/lobby/JoinRoomForm';
 export default function Lobby({ onAuth }: { onAuth: (data: AuthResponse) => void }) {
     const [isCreating, setIsCreating] = useState(false);
     const [isJoining, setIsJoining] = useState(false);
-    const [error, setError] = useState<string | null>(null);
+    const [error, setErrorState] = useState<string | null>(null);
+    const errorTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    const setError = (msg: string | null) => {
+        setErrorState(msg);
+        if (errorTimeoutRef.current) {
+            clearTimeout(errorTimeoutRef.current);
+            errorTimeoutRef.current = null;
+        }
+        if (msg) {
+            errorTimeoutRef.current = setTimeout(() => {
+                setErrorState(null);
+            }, 5000);
+        }
+    };
+
+    useEffect(() => {
+        return () => {
+            if (errorTimeoutRef.current) {
+                clearTimeout(errorTimeoutRef.current);
+            }
+        };
+    }, []);
 
     const loading = isCreating || isJoining;
 

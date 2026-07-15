@@ -5,26 +5,21 @@ import { Card } from './UI';
 import { Button } from './UI';
 import { Info, Play, Wifi, WifiOff, Copy, Check } from 'lucide-react';
 import { NotificationBanner } from './NotificationBanner';
-import { useRelativeTime } from '../hooks/useRelativeTime';
 import type { WsStatus } from '../types';
 import {
     GAME_LOBBY_LABEL,
-    BTN_LEAVE_LOBBY, BTN_START_GAME, LABEL_HOST_CONTROLS, LABEL_WAITING_HOST,
+    BTN_LEAVE_LOBBY, BTN_START_GAME, BTN_STARTING_GAME, LABEL_HOST_CONTROLS, LABEL_WAITING_HOST,
     LABEL_WAITING_PLAYERS, LABEL_BLINDS, LABEL_MIN_BUYIN, LABEL_FORMAT,
     FORMAT_NLHE, LABEL_TABLE_RULES, LABEL_HOST,
 } from '../constants/strings';
 
-function PlayerJoinedAt({ timestamp }: { timestamp?: string }) {
-    const relativeTime = useRelativeTime(timestamp);
-    return <span>JOINED {relativeTime.toUpperCase()}</span>;
-}
-
 interface GameLobbyViewProps {
     onStartGame: () => void;
     onLeaveGame: () => void;
+    isStartingGame?: boolean;
 }
 
-export function GameLobbyView({ onStartGame, onLeaveGame }: GameLobbyViewProps) {
+export function GameLobbyView({ onStartGame, onLeaveGame, isStartingGame = false }: GameLobbyViewProps) {
     const { auth, roomState, notification, wsStatus } = useGameContext();
     const [copied, setCopied] = useState(false);
 
@@ -97,9 +92,11 @@ export function GameLobbyView({ onStartGame, onLeaveGame }: GameLobbyViewProps) 
                                     <div className="flex justify-between items-center">
                                         <div>
                                             <h3 className="font-headline font-bold text-xl">{p.name}</h3>
-                                            <p className="text-[10px] text-zinc-500 uppercase tracking-widest mt-1">
-                                                {p.isHost ? LABEL_HOST : <PlayerJoinedAt timestamp={p.joinedAt} />}
-                                            </p>
+                                            {p.isHost && (
+                                                <p className="text-[10px] text-zinc-500 uppercase tracking-widest mt-1">
+                                                    {LABEL_HOST}
+                                                </p>
+                                            )}
                                         </div>
                                         <div
                                             className={cn('w-3 h-3 rounded-full', p.isHost ? 'bg-gold-secondary' : 'bg-emerald-primary')}
@@ -150,10 +147,19 @@ export function GameLobbyView({ onStartGame, onLeaveGame }: GameLobbyViewProps) 
                                     size="xl"
                                     className="w-full"
                                     onClick={onStartGame}
-                                    disabled={!roomState.canStartGame}
+                                    disabled={!roomState.canStartGame || isStartingGame}
                                 >
-                                    <Play aria-hidden="true" className="w-5 h-5 fill-current" />
-                                    {BTN_START_GAME}
+                                    {isStartingGame ? (
+                                        <>
+                                            <div className="w-5 h-5 border-2 border-surface border-t-transparent rounded-full animate-spin" aria-hidden="true" />
+                                            {BTN_STARTING_GAME}
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Play aria-hidden="true" className="w-5 h-5 fill-current" />
+                                            {BTN_START_GAME}
+                                        </>
+                                    )}
                                 </Button>
                                 <p className="text-center text-[10px] text-zinc-600 uppercase tracking-widest">
                                     {LABEL_HOST_CONTROLS}

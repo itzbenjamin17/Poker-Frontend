@@ -25,8 +25,8 @@ export function CreateRoomForm({ onAuth, onError, loading, setLoading }: CreateR
         roomName: '',
         playerName: '',
         maxPlayers: 6,
-        smallBlind: 10,
-        bigBlind: 20,
+        smallBlind: 25,
+        bigBlind: 50,
         buyIn: 1000,
     });
 

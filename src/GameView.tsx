@@ -87,6 +87,7 @@ function GameViewInner() {
                 <GameLobbyView
                     onStartGame={() => dispatcher.dispatch({ type: 'START_GAME' })}
                     onLeaveGame={() => dispatcher.dispatch({ type: 'LEAVE_GAME' })}
+                    isStartingGame={dispatcher.isPending('START_GAME')}
                 />
             );
         }
