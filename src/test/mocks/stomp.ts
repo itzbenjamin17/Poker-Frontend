@@ -4,15 +4,22 @@ import { vi } from 'vitest'
 export const activeSubscriptions = new Map<string, (msg: { body: string }) => void>()
 
 export class MockStompClient {
+  static activeInstance: MockStompClient | null = null;
   onConnect: () => void = () => {}
+  onWebSocketClose: () => void = () => {}
+  onStompError: (frame: { headers: Record<string, string> }) => void = () => {}
   connected = true
 
   activate() {
-    // Simulate connection
+    MockStompClient.activeInstance = this;
     setTimeout(() => this.onConnect(), 0);
   }
 
-  deactivate() {}
+  deactivate() {
+    if (MockStompClient.activeInstance === this) {
+      MockStompClient.activeInstance = null;
+    }
+  }
   
   subscribe(destination: string, callback: (msg: { body: string }) => void) {
     activeSubscriptions.set(destination, callback);
@@ -20,6 +27,20 @@ export class MockStompClient {
   }
 
   publish() {}
+
+  static simulateDisconnect() {
+    if (MockStompClient.activeInstance) {
+      MockStompClient.activeInstance.connected = false;
+      MockStompClient.activeInstance.onWebSocketClose();
+    }
+  }
+
+  static simulateConnect() {
+    if (MockStompClient.activeInstance) {
+      MockStompClient.activeInstance.connected = true;
+      MockStompClient.activeInstance.onConnect();
+    }
+  }
 
   // Helper for tests to simulate an incoming message
   static simulateMessage(destination: string, body: unknown) {

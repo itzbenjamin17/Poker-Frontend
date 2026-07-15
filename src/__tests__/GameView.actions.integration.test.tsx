@@ -210,5 +210,142 @@ describe('GameView - Actions & Flows Integration', () => {
             expect(onLeaveSpy).toHaveBeenCalledTimes(1);
         }, { timeout: 4000 });
     });
+
+    it('prompts confirmation when leaving the table', async () => {
+        const user = userEvent.setup();
+        const confirmSpy = vi.spyOn(window, 'confirm').mockImplementation(() => false);
+
+        server.use(
+            http.get('/api/room/ROOM123', () => HttpResponse.json({
+                roomId: 'ROOM123',
+                roomName: 'Poker Table',
+                players: [{ name: 'TestPlayer', isHost: true }],
+                gameStarted: true,
+            })),
+            http.get('/api/game/ROOM123/state', () => HttpResponse.json({
+                gameId: 'ROOM123',
+                phase: 'PRE_FLOP',
+                pot: 0,
+                currentBet: 0,
+                communityCards: [],
+                currentPlayerId: 'p-1',
+                currentPlayerName: 'TestPlayer',
+                players: [{ id: 'p-1', name: 'TestPlayer', chips: 1000, currentBet: 0, status: 'ACTIVE' }],
+            }))
+        );
+
+        render(<GameView auth={mockAuth} />);
+        expect(await screen.findByLabelText('Total Pot')).toBeInTheDocument();
+
+        const leaveBtn = await screen.findByRole('button', { name: /leave table/i });
+        await user.click(leaveBtn);
+
+        expect(confirmSpy).toHaveBeenCalledWith(expect.stringContaining('leave the table'));
+    });
+
+    it('displays Connection Lost overlay when WebSocket is disconnected', async () => {
+        server.use(
+            http.get('/api/room/ROOM123', () => HttpResponse.json({
+                roomId: 'ROOM123',
+                roomName: 'Poker Table',
+                players: [{ name: 'TestPlayer', isHost: true }],
+                gameStarted: true,
+            })),
+            http.get('/api/game/ROOM123/state', () => HttpResponse.json({
+                gameId: 'ROOM123',
+                phase: 'PRE_FLOP',
+                pot: 0,
+                currentBet: 0,
+                communityCards: [],
+                currentPlayerId: 'p-1',
+                currentPlayerName: 'TestPlayer',
+                players: [{ id: 'p-1', name: 'TestPlayer', chips: 1000, currentBet: 0, status: 'ACTIVE' }],
+            }))
+        );
+
+        render(<GameView auth={mockAuth} />);
+        expect(await screen.findByLabelText('Total Pot')).toBeInTheDocument();
+
+        // Initially connected, no overlay (wait for connection to complete)
+        await waitFor(() => {
+            expect(screen.queryByText(/Connection lost/i)).not.toBeInTheDocument();
+        });
+
+        // Simulate WS disconnect event
+        await act(async () => {
+            MockStompClient.simulateDisconnect();
+        });
+
+        // Overlay should appear
+        expect(await screen.findByRole('alert')).toHaveTextContent(/Connection lost/i);
+    });
+
+    it('renders dedicated Game Over modal upon GAME_END event', async () => {
+        const user = userEvent.setup();
+        const onLeaveSpy = vi.fn();
+
+        let roomInfoCalls = 0;
+        server.use(
+            http.get('/api/room/ROOM123', () => {
+                roomInfoCalls++;
+                if (roomInfoCalls === 1) {
+                    return HttpResponse.json({
+                        roomId: 'ROOM123',
+                        roomName: 'Poker Table',
+                        players: [
+                            { name: 'TestPlayer', isHost: true },
+                            { name: 'Opponent', isHost: false },
+                        ],
+                        gameStarted: true,
+                    });
+                }
+                return new HttpResponse(null, { status: 404 });
+            }),
+            http.get('/api/game/ROOM123/state', () => HttpResponse.json({
+                gameId: 'ROOM123',
+                phase: 'PRE_FLOP',
+                pot: 30,
+                currentBet: 20,
+                communityCards: [],
+                currentPlayerId: 'p-1',
+                currentPlayerName: 'TestPlayer',
+                players: [
+                    { id: 'p-1', name: 'TestPlayer', chips: 980, currentBet: 20, status: 'ACTIVE' },
+                    { id: 'p-2', name: 'Opponent', chips: 990, currentBet: 20, status: 'ACTIVE' },
+                ],
+            }))
+        );
+
+        render(<GameView auth={mockAuth} onLeave={onLeaveSpy} />);
+        expect(await screen.findByLabelText('Total Pot')).toBeInTheDocument();
+
+        await MockStompClient.waitForSubscription('/game/ROOM123');
+
+        // Simulate Game Over WebSocket event
+        await act(async () => {
+            MockStompClient.simulateMessage('/game/ROOM123', {
+                type: 'GAME_END',
+                message: 'TestPlayer won the game!',
+                winner: 'TestPlayer',
+                winnerChips: 2000,
+                isForfeit: false,
+            });
+        });
+
+        // Dedicated Game Over modal should render
+        const gameOverTitle = await screen.findByRole('heading', { name: /game over/i });
+        expect(gameOverTitle).toBeInTheDocument();
+        expect(screen.getByText(/winner: testplayer/i)).toBeInTheDocument();
+        expect(screen.getByText(/winnings: \$2,000 chips/i)).toBeInTheDocument();
+
+        // Return button should exit to main menu
+        const returnBtn = screen.getByRole('button', { name: /return to menu/i });
+        await user.click(returnBtn);
+
+        // Verification of redirect trigger
+        await waitFor(() => {
+            expect(onLeaveSpy).toHaveBeenCalledTimes(1);
+        });
+    });
 });
 

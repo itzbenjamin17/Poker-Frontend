@@ -139,6 +139,7 @@ describe('ActionPanel', () => {
                 onRaiseChange={vi.fn()}
                 onAction={vi.fn()}
                 isActionPending={false}
+                bigBlind={10}
             />,
         );
         await user.click(screen.getByRole('button', { name: /^raise$/i }));

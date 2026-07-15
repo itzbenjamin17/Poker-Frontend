@@ -32,7 +32,7 @@ interface ActionPanelProps {
     isReadyEligible?: boolean;
     amReadyForNextHand?: boolean;
     onReady?: () => void;
-    smallBlind?: number;
+    bigBlind?: number;
 }
 
 export function ActionPanel({
@@ -56,7 +56,7 @@ export function ActionPanel({
     isReadyEligible = false,
     amReadyForNextHand = false,
     onReady,
-    smallBlind = 10,
+    bigBlind = 20,
 }: ActionPanelProps) {
     const prefersReducedMotion = useReducedMotion();
     const [amountAction, setAmountAction] = useState<AmountAction | null>(null);
@@ -99,7 +99,7 @@ export function ActionPanel({
     }, [gameState.legalActions, gameState.currentBet, me]);
 
     const actionType: AmountAction = legalActions.has('BET') ? 'BET' : 'RAISE';
-    const minBetAmount = smallBlind;
+    const minBetAmount = bigBlind;
     const minRaiseAmount = actionType === 'BET'
         ? minBetAmount
         : Math.max(minBetAmount, (gameState.currentBet || 0) - (me?.currentBet ?? 0) + 1);

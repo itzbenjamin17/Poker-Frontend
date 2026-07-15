@@ -154,55 +154,15 @@ export function useGameWebSocket(options: UseGameWebSocketOptions) {
                     const winnerChips = typeof p.winnerChips === 'number' ? p.winnerChips : undefined;
                     const isForfeit = p.isForfeit === true;
 
-                    if (winnerName && isForfeit) {
-                        dispatch({
-                            type: 'SET_SHOWDOWN_RESULT',
-                            payload: {
-                                gameId: auth.roomId,
-                                maxPlayers: 0,
-                                pot: 0,
-                                phase: 'SHOWDOWN',
-                                currentBet: 0,
-                                communityCards: [],
-                                currentPlayerName: winnerName,
-                                currentPlayerId: '',
-                                winners: [winnerName],
-                                winningsPerPlayer: winnerChips,
-                                players: [{ name: winnerName, id: '', chips: 0, status: 'ACTIVE', currentBet: 0, hasFolded: false }],
-                            },
-                        });
-                    } else {
-                        dispatch({ type: 'SET_NOTIFICATION', payload: endMsg });
-                    }
-
-                    if (gameEndTimerRef.current !== null) clearTimeout(gameEndTimerRef.current);
-                    gameEndTimerRef.current = setTimeout(() => {
-                        dispatch({ type: 'CLEAR_GAME_STATE' });
-                        dispatch({ type: 'SET_NOTIFICATION', payload: null });
-                        clearShowdownTimers();
-
-                        pokerApi.getRoomInfo(auth.roomId, auth.token)
-                            .then((r) => {
-                                dispatch({
-                                    type: 'SET_ROOM',
-                                    payload: {
-                                        roomId: r.roomId,
-                                        roomName: r.roomName,
-                                        players: r.players.map((pl: { name: string; isHost: boolean; joinedAt?: string }) => ({
-                                            name: pl.name,
-                                            isHost: pl.isHost,
-                                            joinedAt: pl.joinedAt,
-                                        })),
-                                        maxPlayers: r.maxPlayers,
-                                        buyIn: r.buyIn,
-                                        smallBlind: r.smallBlind,
-                                        bigBlind: r.bigBlind,
-                                        canStartGame: r.canStartGame,
-                                    },
-                                });
-                            })
-                            .catch(() => onLeave?.());
-                    }, GAME_END_DISPLAY_MS);
+                    dispatch({
+                        type: 'SET_GAME_END_RESULT',
+                        payload: {
+                            winnerName,
+                            winnerChips,
+                            isForfeit,
+                            message: endMsg,
+                        },
+                    });
                     return;
                 }
 

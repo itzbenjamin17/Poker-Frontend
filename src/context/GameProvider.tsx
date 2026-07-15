@@ -36,6 +36,7 @@ function reducer(state: GameContextState, action: Action): GameContextState {
         case 'SET_CLAIM_PENDING': return { ...state, claimPending: action.payload };
         case 'SET_WS_STATUS': return { ...state, wsStatus: action.payload };
         case 'SET_HYDRATED': return { ...state, isHydrated: action.payload };
+        case 'SET_GAME_END_RESULT': return { ...state, gameEndResult: action.payload };
         case 'CLEAR_GAME_STATE': return {
             ...state,
             gameState: null,
@@ -44,6 +45,7 @@ function reducer(state: GameContextState, action: Action): GameContextState {
             showdownResult: null,
             claimPending: false,
             myPlayerId: null,
+            gameEndResult: null,
         };
         default: return state;
     }
@@ -73,6 +75,7 @@ export function GameProvider({ auth, onLeave, children }: GameProviderProps) {
         claimPending: false,
         wsStatus: 'disconnected' as WsStatus,
         isHydrated: false,
+        gameEndResult: null,
     });
 
     const latestGameStateRef = useRef<GameState | null>(null);

@@ -20,6 +20,7 @@ export interface GameContextState {
     claimPending: boolean;
     wsStatus: WsStatus;
     isHydrated: boolean;
+    gameEndResult: { winnerName: string | null; winnerChips?: number; isForfeit: boolean; message: string } | null;
 }
 
 export type Action =
@@ -34,6 +35,7 @@ export type Action =
     | { type: 'SET_CLAIM_PENDING'; payload: boolean }
     | { type: 'SET_WS_STATUS'; payload: WsStatus }
     | { type: 'SET_HYDRATED'; payload: boolean }
+    | { type: 'SET_GAME_END_RESULT'; payload: { winnerName: string | null; winnerChips?: number; isForfeit: boolean; message: string } | null }
     | { type: 'CLEAR_GAME_STATE' };
 
 export interface GameContextValue extends GameContextState {
