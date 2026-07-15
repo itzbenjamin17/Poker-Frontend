@@ -56,7 +56,7 @@ export function ActionPanel({
     isReadyEligible = false,
     amReadyForNextHand = false,
     onReady,
-    bigBlind = 20,
+    bigBlind = 50,
 }: ActionPanelProps) {
     const prefersReducedMotion = useReducedMotion();
     const [amountAction, setAmountAction] = useState<AmountAction | null>(null);

@@ -311,7 +311,7 @@ export function GameTableView({
                     isReadyEligible={isReadyEligible}
                     amReadyForNextHand={amReadyForNextHand}
                     onReady={onReady}
-                    bigBlind={roomState?.bigBlind ?? 20}
+                    bigBlind={roomState?.bigBlind ?? 50}
                 />
             </div>
         </main>
