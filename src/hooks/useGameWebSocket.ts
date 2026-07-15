@@ -44,7 +44,8 @@ export function useGameWebSocket(options: UseGameWebSocketOptions) {
     useEffect(() => {
         if (!isHydrated) return;
 
-        if (auth.token.startsWith('test.')) {
+        const isE2EMock = typeof window !== 'undefined' && window.localStorage.getItem('poker-e2e-mock') === 'true';
+        if (isE2EMock) {
             dispatch({ type: 'SET_WS_STATUS', payload: 'connected' });
             return;
         }

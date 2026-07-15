@@ -138,6 +138,7 @@ test.describe('Adaptive table-first foundation', () => {
         playerName: 'Host',
         playerId: 'p-1',
       }));
+      window.localStorage.setItem('poker-e2e-mock', 'true');
     }, { authToken: token });
     await hostPage.route('**/api/room/ROOM123', (route) => route.fulfill({
       contentType: 'application/json',
@@ -201,6 +202,7 @@ test.describe('Adaptive table-first foundation', () => {
         playerName: 'Host',
         playerId: 'p-1',
       }));
+      window.localStorage.setItem('poker-e2e-mock', 'true');
     }, { authToken: token });
     await hostPage.route('**/api/room/ROOM123', (route) => route.fulfill({
       contentType: 'application/json',
@@ -277,6 +279,7 @@ test.describe('Adaptive table-first foundation', () => {
         playerName: 'Host',
         playerId: 'p-1',
       }));
+      window.localStorage.setItem('poker-e2e-mock', 'true');
     }, { authToken: token });
     await hostPage.route('**/api/room/ROOM123', (route) => route.fulfill({
       contentType: 'application/json',
