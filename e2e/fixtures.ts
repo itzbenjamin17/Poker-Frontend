@@ -18,15 +18,13 @@ export const test = baseTest.extend<{
       await createRegion.getByLabel(/room name/i).fill(roomName);
       await createRegion.getByLabel(/player alias/i).fill(playerName);
       
-      if (options?.smallBlind) {
-        await createRegion.getByLabel(/small blind/i).fill(options.smallBlind);
-      }
-      if (options?.bigBlind) {
-        await createRegion.getByLabel(/big blind/i).fill(options.bigBlind);
-      }
-      if (options?.buyIn) {
-        await createRegion.getByLabel(/buy-in/i).fill(options.buyIn);
-      }
+      const smallBlind = options?.smallBlind ?? '10';
+      const bigBlind = options?.bigBlind ?? '20';
+      const buyIn = options?.buyIn ?? '1000';
+
+      await createRegion.getByLabel(/small blind/i).fill(smallBlind);
+      await createRegion.getByLabel(/big blind/i).fill(bigBlind);
+      await createRegion.getByLabel(/buy-in/i).fill(buyIn);
 
       await pageArg.getByRole('button', { name: /establish table/i }).click();
       await expect(pageArg.getByText(/game lobby/i)).toBeVisible({ timeout: 15000 });

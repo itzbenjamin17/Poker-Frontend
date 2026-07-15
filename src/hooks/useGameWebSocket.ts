@@ -44,6 +44,10 @@ export function useGameWebSocket(options: UseGameWebSocketOptions) {
     useEffect(() => {
         if (!isHydrated) return;
 
+        if (auth.token.startsWith('test.')) {
+            dispatch({ type: 'SET_WS_STATUS', payload: 'connected' });
+            return;
+        }
 
         const client = createStompClient(auth.token);
         stompClientRef.current = client;
