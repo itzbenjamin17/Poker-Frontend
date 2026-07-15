@@ -109,7 +109,16 @@ export function GameTableView({
 
             {/* Leave Button */}
             <div className="absolute top-4 left-3 md:top-24 md:left-8 z-40">
-                <Button variant="outline" size="sm" onClick={onLeaveGame} className="border-red-500/50 text-red-500 hover:bg-red-500/10">
+                <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                        if (window.confirm('Are you sure you want to leave the table? This will abandon your seat.')) {
+                            onLeaveGame();
+                        }
+                    }}
+                    className="border-red-500/50 text-red-500 hover:bg-red-500/10"
+                >
                     {BTN_LEAVE_TABLE}
                 </Button>
             </div>

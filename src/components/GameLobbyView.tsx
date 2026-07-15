@@ -55,7 +55,11 @@ export function GameLobbyView({ onStartGame, onLeaveGame, isStartingGame = false
                     <Button
                         variant="outline"
                         size="sm"
-                        onClick={onLeaveGame}
+                        onClick={() => {
+                            if (window.confirm('Are you sure you want to leave the lobby?')) {
+                                onLeaveGame();
+                            }
+                        }}
                         className="border-red-500/50 text-red-500 hover:bg-red-500/10"
                     >
                         {BTN_LEAVE_LOBBY}
