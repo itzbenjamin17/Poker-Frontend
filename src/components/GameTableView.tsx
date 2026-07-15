@@ -52,7 +52,7 @@ export function GameTableView({
                               }: GameTableViewProps) {
     const { auth, roomState, gameState, privateState, showdown, showdownResult, claimPending, myPlayerId, notification, wsStatus, gameEndResult, dispatch, clearShowdownTimers, onLeave } = useGameContext();
 
-    if (!gameState) return null;
+    if (!gameState || !roomState) return null;
 
     const me = gameState.players.find((p) => p.id === myPlayerId);
     const orderedPlayers = (() => {
@@ -180,7 +180,6 @@ export function GameTableView({
             {/* Showdown Modal */}
             <ShowdownModal
                 showdownResult={showdownResult}
-                isReadyCountdownActive={isReadyCountdownActive}
             />
 
             {/* Leave Button */}
@@ -311,7 +310,7 @@ export function GameTableView({
                     isReadyEligible={isReadyEligible}
                     amReadyForNextHand={amReadyForNextHand}
                     onReady={onReady}
-                    bigBlind={roomState?.bigBlind ?? 50}
+                    bigBlind={roomState.bigBlind ?? 50}
                 />
             </div>
         </main>

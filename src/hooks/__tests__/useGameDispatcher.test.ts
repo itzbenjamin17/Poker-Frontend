@@ -59,6 +59,7 @@ describe('useGameDispatcher', () => {
             claimPending: false,
             wsStatus: 'connected',
             isHydrated: true,
+            gameEndResult: null,
             scheduleShowdownHide: vi.fn(),
             latestGameStateRef: { current: null },
             notificationTimerRef: { current: null },

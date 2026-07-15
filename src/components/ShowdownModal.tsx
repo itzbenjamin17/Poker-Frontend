@@ -7,7 +7,7 @@ import type { GameState, Player } from '../types';
 import { CardUI } from './GameUI';
 import {
     SHOWDOWN_ROUND_RESULT,
-    SHOWDOWN_GAME_OVER, SHOWDOWN_ROUND_OVER, SHOWDOWN_PROCESSING,
+    SHOWDOWN_ROUND_OVER, SHOWDOWN_PROCESSING,
     SHOWDOWN_TIE_PREFIX, SHOWDOWN_FORFEIT_SUFFIX, SHOWDOWN_WIN_SUFFIX,
     SHOWDOWN_POT_SPLIT, SHOWDOWN_WON_WITH_PREFIX, SHOWDOWN_WON_ROUND,
     SHOWDOWN_SHOW_DETAILS, SHOWDOWN_HIDE_DETAILS,
@@ -20,7 +20,6 @@ import {
 
 interface ShowdownModalProps {
     showdownResult: GameState | null;
-    isReadyCountdownActive?: boolean;
 }
 
 import { getPotBreakdown } from '../lib/game';
@@ -52,7 +51,7 @@ function getPlayerOutcome(player: Player, winners: string[]) {
     return 'In hand';
 }
 
-export function ShowdownModal({ showdownResult, isReadyCountdownActive = false }: ShowdownModalProps) {
+export function ShowdownModal({ showdownResult }: ShowdownModalProps) {
     const [detailState, setDetailState] = useState<DetailState>('collapsed');
     const prefersReducedMotion = useReducedMotion();
     const fullReviewTriggerRef = useRef<HTMLButtonElement | null>(null);

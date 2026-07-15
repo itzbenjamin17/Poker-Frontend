@@ -40,6 +40,7 @@ function renderActionPanel({
     onRaiseChange = vi.fn(),
     onAction = vi.fn(),
     isActionPending = false,
+    bigBlind = 20,
 }: Partial<Parameters<typeof ActionPanel>[0]> = {}) {
     return {
         onAction,
@@ -59,6 +60,7 @@ function renderActionPanel({
                 onRaiseChange={onRaiseChange}
                 onAction={onAction}
                 isActionPending={isActionPending}
+                bigBlind={bigBlind}
             />,
         ),
     };

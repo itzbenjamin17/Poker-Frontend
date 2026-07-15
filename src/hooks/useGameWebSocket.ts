@@ -16,7 +16,6 @@ import {
 import type { Client } from '@stomp/stompjs';
 
 const ROOM_CLOSED_REDIRECT_MS = 3_000;
-const GAME_END_DISPLAY_MS = 7_000;
 
 interface UseGameWebSocketOptions {
     onSocketError: (message: string) => void;
@@ -165,7 +164,7 @@ export function useGameWebSocket(options: UseGameWebSocketOptions) {
                             winnerName,
                             winnerChips,
                             isForfeit,
-                            message: endMsg,
+                            message: endMsg || GAME_FINISHED_FALLBACK,
                         },
                     });
                     return;
