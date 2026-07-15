@@ -101,6 +101,14 @@ export function GameTableView({
         >
             <NotificationBanner notification={notification} />
 
+            {wsStatus !== 'connected' && (
+                <div className="absolute inset-0 bg-surface/80 backdrop-blur-sm z-50 flex flex-col items-center justify-center gap-4 text-center select-none pointer-events-auto" role="alert" aria-live="assertive">
+                    <div className="w-12 h-12 border-4 border-emerald-primary border-t-transparent rounded-full animate-spin" aria-hidden="true" />
+                    <h2 className="font-headline text-2xl font-bold text-white tracking-tight">Connection lost</h2>
+                    <p className="text-zinc-400 text-sm uppercase tracking-widest animate-pulse">Reconnecting&hellip;</p>
+                </div>
+            )}
+
             {/* Showdown Modal */}
             <ShowdownModal
                 showdownResult={showdownResult}
