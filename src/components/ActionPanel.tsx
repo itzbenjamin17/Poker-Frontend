@@ -32,6 +32,7 @@ interface ActionPanelProps {
     isReadyEligible?: boolean;
     amReadyForNextHand?: boolean;
     onReady?: () => void;
+    smallBlind?: number;
 }
 
 export function ActionPanel({
@@ -55,6 +56,7 @@ export function ActionPanel({
     isReadyEligible = false,
     amReadyForNextHand = false,
     onReady,
+    smallBlind = 10,
 }: ActionPanelProps) {
     const prefersReducedMotion = useReducedMotion();
     const [amountAction, setAmountAction] = useState<AmountAction | null>(null);
@@ -97,9 +99,10 @@ export function ActionPanel({
     }, [gameState.legalActions, gameState.currentBet, me]);
 
     const actionType: AmountAction = legalActions.has('BET') ? 'BET' : 'RAISE';
+    const minBetAmount = smallBlind;
     const minRaiseAmount = actionType === 'BET'
-        ? 1
-        : Math.max(1, (gameState.currentBet || 0) - (me?.currentBet ?? 0) + 1);
+        ? minBetAmount
+        : Math.max(minBetAmount, (gameState.currentBet || 0) - (me?.currentBet ?? 0) + 1);
     const availableChips = me?.chips ?? 0;
     const callAmount = Math.max(0, (gameState.currentBet || 0) - (me?.currentBet ?? 0));
     const callExceedsStack = callAmount > availableChips;
@@ -118,7 +121,7 @@ export function ActionPanel({
                 computedRaiseError = `Minimum raise is ${minRaiseAmount.toLocaleString()} chips. Your full stack is smaller, use All In${callExceedsStack ? '' : ' or Call'}.`;
             } else {
                 computedRaiseError = actionType === 'BET'
-                    ? 'Bet amount must be at least 1 chip.'
+                    ? `Bet amount must be at least ${minBetAmount.toLocaleString()} chips.`
                     : `Minimum raise is ${minRaiseAmount.toLocaleString()} chips.`;
             }
         } else if (parsedRaiseAmount > availableChips) {

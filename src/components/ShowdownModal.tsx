@@ -58,7 +58,7 @@ export function ShowdownModal({ showdownResult, isReadyCountdownActive = false }
     const fullReviewTriggerRef = useRef<HTMLButtonElement | null>(null);
     const fullReviewCloseRef = useRef<HTMLButtonElement | null>(null);
     const wasFullReviewOpenRef = useRef(false);
-    const effectiveDetailState = isReadyCountdownActive ? 'collapsed' : detailState;
+    const effectiveDetailState = detailState;
     const isFullReviewOpen = effectiveDetailState === 'full';
 
     useEffect(() => {
@@ -83,7 +83,7 @@ export function ShowdownModal({ showdownResult, isReadyCountdownActive = false }
     const handText = !isUncontested && winningPlayer?.handRank && winningPlayer.handRank !== 'NO_HAND'
         ? winningPlayer.handRank.replace(/_/g, ' ')
         : null;
-    const roundLabel = isUncontested ? SHOWDOWN_GAME_OVER : SHOWDOWN_ROUND_OVER;
+    const roundLabel = SHOWDOWN_ROUND_OVER;
     const outcomeText = winners.length > 1
         ? `${SHOWDOWN_TIE_PREFIX}${winners.join(', ')}`
         : winners.length === 1
@@ -325,21 +325,19 @@ export function ShowdownModal({ showdownResult, isReadyCountdownActive = false }
                             )}
                         </div>
 
-                        {!isReadyCountdownActive && (
-                            <button
-                                type="button"
-                                aria-expanded={isExpanded}
-                                aria-controls="round-result-details"
-                                onClick={() => setDetailState((state) => state === 'collapsed' ? 'expanded' : 'collapsed')}
-                                className="mt-3 flex min-h-11 min-w-11 items-center justify-center gap-2 rounded-xl border border-white/10 px-3 py-2 text-[10px] font-headline font-bold uppercase tracking-[0.14em] text-emerald-primary hover:bg-emerald-primary/10"
-                            >
-                                {isExpanded ? SHOWDOWN_HIDE_DETAILS : SHOWDOWN_SHOW_DETAILS}
-                                <ChevronDown
-                                    aria-hidden="true"
-                                    className={cn('h-4 w-4 transition-transform duration-200', isExpanded && 'rotate-180')}
-                                />
-                            </button>
-                        )}
+                        <button
+                            type="button"
+                            aria-expanded={isExpanded}
+                            aria-controls="round-result-details"
+                            onClick={() => setDetailState((state) => state === 'collapsed' ? 'expanded' : 'collapsed')}
+                            className="mt-3 flex min-h-11 min-w-11 items-center justify-center gap-2 rounded-xl border border-white/10 px-3 py-2 text-[10px] font-headline font-bold uppercase tracking-[0.14em] text-emerald-primary hover:bg-emerald-primary/10"
+                        >
+                            {isExpanded ? SHOWDOWN_HIDE_DETAILS : SHOWDOWN_SHOW_DETAILS}
+                            <ChevronDown
+                                aria-hidden="true"
+                                className={cn('h-4 w-4 transition-transform duration-200', isExpanded && 'rotate-180')}
+                            />
+                        </button>
 
                         <AnimatePresence>
                             {isExpanded && (

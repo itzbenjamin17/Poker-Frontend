@@ -48,7 +48,7 @@ export function GameTableView({
                                   onRaiseChange,
                                   isActionPending,
                               }: GameTableViewProps) {
-    const { auth, gameState, privateState, showdown, showdownResult, claimPending, myPlayerId, notification, wsStatus } = useGameContext();
+    const { auth, roomState, gameState, privateState, showdown, showdownResult, claimPending, myPlayerId, notification, wsStatus } = useGameContext();
 
     if (!gameState) return null;
 
@@ -226,6 +226,7 @@ export function GameTableView({
                     isReadyEligible={isReadyEligible}
                     amReadyForNextHand={amReadyForNextHand}
                     onReady={onReady}
+                    smallBlind={roomState?.smallBlind ?? 10}
                 />
             </div>
         </main>
