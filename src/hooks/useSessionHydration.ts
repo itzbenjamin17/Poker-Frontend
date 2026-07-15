@@ -60,94 +60,105 @@ export function useSessionHydration() {
                 dispatch({ type: 'SET_LOADING_STATUS', payload: STATUS_CONNECTING });
 
                 // ── Room info ────────────────────────────────────────────────────
-                try {
-                    const roomData = await pokerApi.getRoomInfo(auth.roomId, auth.token);
-                    if (!mounted || hasTimedOut) return;
-
-                    const playerStillInRoom =
-                        Array.isArray(roomData.players) &&
-                        roomData.players.some((p: { name?: string }) => p.name === auth.playerName);
-
-                    if (!playerStillInRoom) {
-                        redirectToLobby(SESSION_SEAT_GONE);
-                        return;
+                let roomData = null;
+                while (!roomData && !hasTimedOut && mounted) {
+                    try {
+                        roomData = await pokerApi.getRoomInfo(auth.roomId, auth.token);
+                    } catch (err) {
+                        if (!mounted || hasTimedOut) return;
+                        const statusCode = getErrorStatusCode(err);
+                        if (statusCode === 403 || statusCode === 404) {
+                            redirectToLobby(SESSION_EXPIRED);
+                            return;
+                        } else {
+                            logger.error('Room info fetch error, retrying:', err);
+                            dispatch({ type: 'SET_LOADING_STATUS', payload: STATUS_RECONNECTING });
+                            await new Promise(resolve => setTimeout(resolve, 1500));
+                        }
                     }
+                }
 
-                    dispatch({
-                        type: 'SET_ROOM',
-                        payload: {
-                            roomId: roomData.roomId,
-                            roomName: roomData.roomName,
-                            players: roomData.players.map((p: { name: string; isHost: boolean; joinedAt?: string }) => ({
-                                name: p.name,
-                                isHost: p.isHost,
-                                joinedAt: p.joinedAt,
-                            })),
-                            maxPlayers: roomData.maxPlayers,
-                            buyIn: roomData.buyIn,
-                            smallBlind: roomData.smallBlind,
-                            bigBlind: roomData.bigBlind,
-                            canStartGame: roomData.canStartGame,
-                            gameStarted: roomData.gameStarted,
-                        },
-                    });
+                if (!mounted || hasTimedOut || !roomData) return;
 
-                    if (!roomData.gameStarted) {
-                        dispatch({ type: 'SET_HYDRATED', payload: true });
-                        dispatch({ type: 'SET_LOADING_STATUS', payload: STATUS_CONNECTED });
-                        return;
-                    }
-                } catch (err) {
-                    if (!mounted || hasTimedOut) return;
-                    const statusCode = getErrorStatusCode(err);
-                    if (statusCode === 403 || statusCode === 404) {
-                        redirectToLobby(SESSION_EXPIRED);
-                    } else {
-                        logger.error('Room info fetch error:', err);
-                        dispatch({ type: 'SET_LOADING_STATUS', payload: STATUS_RECONNECTING });
-                    }
+                const playerStillInRoom =
+                    Array.isArray(roomData.players) &&
+                    roomData.players.some((p: { name?: string }) => p.name === auth.playerName);
+
+                if (!playerStillInRoom) {
+                    redirectToLobby(SESSION_SEAT_GONE);
+                    return;
+                }
+
+                dispatch({
+                    type: 'SET_ROOM',
+                    payload: {
+                        roomId: roomData.roomId,
+                        roomName: roomData.roomName,
+                        players: roomData.players.map((p: { name: string; isHost: boolean; joinedAt?: string }) => ({
+                            name: p.name,
+                            isHost: p.isHost,
+                            joinedAt: p.joinedAt,
+                        })),
+                        maxPlayers: roomData.maxPlayers,
+                        buyIn: roomData.buyIn,
+                        smallBlind: roomData.smallBlind,
+                        bigBlind: roomData.bigBlind,
+                        canStartGame: roomData.canStartGame,
+                        gameStarted: roomData.gameStarted,
+                    },
+                });
+
+                if (!roomData.gameStarted) {
+                    dispatch({ type: 'SET_HYDRATED', payload: true });
+                    dispatch({ type: 'SET_LOADING_STATUS', payload: STATUS_CONNECTED });
                     return;
                 }
 
                 // ── Game state ───────────────────────────────────────────────────
-                try {
-                    const fetchTime = Date.now();
-                    const snapshot = await pokerApi.getGameState(auth.roomId, auth.token);
-                    if (!mounted || hasTimedOut) return;
-
-                    if (isGameStatePayload(snapshot) && fetchTime >= lastStateSyncTimeRef.current) {
-                        lastStateSyncTimeRef.current = fetchTime;
-                        applyIncomingGameState(snapshot);
-
-                        try {
-                            const privateSnapshot = await pokerApi.getPrivateState(auth.roomId, auth.token);
-                            if (mounted && !hasTimedOut && isPrivateStatePayload(privateSnapshot)) {
-                                applyIncomingPrivateState(privateSnapshot);
-                            }
-                        } catch (privateErr) {
-                            const code = getErrorStatusCode(privateErr);
-                            if (code !== 404) logger.warn('Private snapshot fetch error:', privateErr);
+                let snapshot = null;
+                let fetchTime = 0;
+                while (!snapshot && !hasTimedOut && mounted) {
+                    try {
+                        fetchTime = Date.now();
+                        snapshot = await pokerApi.getGameState(auth.roomId, auth.token);
+                    } catch (err) {
+                        if (!mounted || hasTimedOut) return;
+                        const statusCode = getErrorStatusCode(err);
+                        if (statusCode === 403) {
+                            redirectToLobby(SESSION_SEAT_GONE);
+                            return;
                         }
-
-                        dispatch({ type: 'SET_HYDRATED', payload: true });
-                        dispatch({ type: 'SET_LOADING_STATUS', payload: STATUS_SEAT_RESTORED });
-                        return;
-                    }
-                } catch (err) {
-                    if (!mounted || hasTimedOut) return;
-                    const statusCode = getErrorStatusCode(err);
-                    if (statusCode === 403) {
-                        redirectToLobby(SESSION_SEAT_GONE);
-                        return;
-                    }
-                    if (statusCode !== 404) {
-                        logger.error('Game snapshot fetch error:', err);
-                        dispatch({ type: 'SET_LOADING_STATUS', payload: STATUS_RECONNECTING_TABLE });
-                        return;
+                        if (statusCode === 404) {
+                            break;
+                        } else {
+                            logger.error('Game snapshot fetch error, retrying:', err);
+                            dispatch({ type: 'SET_LOADING_STATUS', payload: STATUS_RECONNECTING_TABLE });
+                            await new Promise(resolve => setTimeout(resolve, 1500));
+                        }
                     }
                 }
 
                 if (!mounted || hasTimedOut) return;
+
+                if (snapshot && isGameStatePayload(snapshot) && fetchTime >= lastStateSyncTimeRef.current) {
+                    lastStateSyncTimeRef.current = fetchTime;
+                    applyIncomingGameState(snapshot);
+
+                    try {
+                        const privateSnapshot = await pokerApi.getPrivateState(auth.roomId, auth.token);
+                        if (mounted && !hasTimedOut && isPrivateStatePayload(privateSnapshot)) {
+                            applyIncomingPrivateState(privateSnapshot);
+                        }
+                    } catch (privateErr) {
+                        const code = getErrorStatusCode(privateErr);
+                        if (code !== 404) logger.warn('Private snapshot fetch error:', privateErr);
+                    }
+
+                    dispatch({ type: 'SET_HYDRATED', payload: true });
+                    dispatch({ type: 'SET_LOADING_STATUS', payload: STATUS_SEAT_RESTORED });
+                    return;
+                }
+
                 dispatch({ type: 'SET_HYDRATED', payload: true });
                 dispatch({ type: 'SET_LOADING_STATUS', payload: STATUS_CONNECTED });
             } finally {

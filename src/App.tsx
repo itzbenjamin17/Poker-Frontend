@@ -32,7 +32,7 @@ function WindowSizeGuard({ children }: { children: React.ReactNode }) {
 }
 
 export default function App() {
-    const { auth, setAuth, clearAuth } = useAuthSession();
+    const { auth, setAuth, clearAuth, authError, clearAuthError } = useAuthSession();
 
     return (
         <div className="min-h-screen bg-surface selection:bg-emerald-primary selection:text-surface">
@@ -51,7 +51,11 @@ export default function App() {
             <ErrorBoundary>
                 <WindowSizeGuard>
                     {!auth ? (
-                        <Lobby onAuth={setAuth} />
+                        <Lobby
+                            onAuth={setAuth}
+                            initialError={authError}
+                            onClearInitialError={clearAuthError}
+                        />
                     ) : (
                         <GameView auth={auth} onLeave={clearAuth} />
                     )}

@@ -9,7 +9,15 @@ import {
 import { CreateRoomForm } from './components/lobby/CreateRoomForm';
 import { JoinRoomForm } from './components/lobby/JoinRoomForm';
 
-export default function Lobby({ onAuth }: { onAuth: (data: AuthResponse) => void }) {
+export default function Lobby({
+    onAuth,
+    initialError,
+    onClearInitialError,
+}: {
+    onAuth: (data: AuthResponse) => void;
+    initialError?: string | null;
+    onClearInitialError?: () => void;
+}) {
     const [isCreating, setIsCreating] = useState(false);
     const [isJoining, setIsJoining] = useState(false);
     const [error, setErrorState] = useState<string | null>(null);
@@ -27,6 +35,13 @@ export default function Lobby({ onAuth }: { onAuth: (data: AuthResponse) => void
             }, 5000);
         }
     };
+
+    useEffect(() => {
+        if (initialError) {
+            setError(initialError);
+            onClearInitialError?.();
+        }
+    }, [initialError, onClearInitialError]);
 
     useEffect(() => {
         return () => {

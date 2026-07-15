@@ -17,6 +17,8 @@ function isValidAuth(obj: unknown): obj is AuthResponse {
 }
 
 
+let initialAuthError: string | null = null;
+
 function loadAuthFromStorage(): AuthResponse | null {
     const saved = localStorage.getItem(AUTH_KEY);
     if (!saved) return null;
@@ -25,23 +27,27 @@ function loadAuthFromStorage(): AuthResponse | null {
         if (!isValidAuth(parsed)) {
             logger.warn('Invalid auth shape in localStorage — clearing.');
             localStorage.removeItem(AUTH_KEY);
+            initialAuthError = "Your session couldn't be restored.";
             return null;
         }
         if (!isJwtValid(parsed.token)) {
             logger.warn('Stored JWT is expired — clearing session.');
             localStorage.removeItem(AUTH_KEY);
+            initialAuthError = "Your session couldn't be restored.";
             return null;
         }
         return parsed;
     } catch (e) {
         logger.error('Failed to parse saved auth:', e);
         localStorage.removeItem(AUTH_KEY);
+        initialAuthError = "Your session couldn't be restored.";
         return null;
     }
 }
 
 export function useAuthSession() {
     const [auth, setAuthState] = useState<AuthResponse | null>(loadAuthFromStorage);
+    const [authError, setAuthError] = useState<string | null>(initialAuthError);
 
     const setAuth = useCallback((data: AuthResponse) => {
         setAuthState(data);
@@ -72,5 +78,5 @@ export function useAuthSession() {
         };
     }, [clearAuth]);
 
-    return { auth, setAuth, clearAuth };
+    return { auth, setAuth, clearAuth, authError, clearAuthError: () => setAuthError(null) };
 }
