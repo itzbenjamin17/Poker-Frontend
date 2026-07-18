@@ -53,7 +53,7 @@ export function useSessionHydration() {
                 hasTimedOut = true;
                 redirectToLobby(SESSION_EXPIRED);
             }
-        }, 10_000);
+        }, 120_000);
 
         const hydrateSession = async () => {
             try {

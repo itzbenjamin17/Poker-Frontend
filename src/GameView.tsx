@@ -19,7 +19,7 @@ type GameViewProps = {
 
 function GameViewInner() {
     // ALL hooks must be called unconditionally at the top — no hooks after returns.
-    const { gameState, loadingStatus, roomState, isHydrated } = useGameContext();
+    const { gameState, loadingStatus, roomState, isHydrated, onLeave } = useGameContext();
 
     const [windowWidth, setWindowWidth] = useState(() => window.innerWidth);
     const [windowHeight, setWindowHeight] = useState(() => window.innerHeight);
@@ -81,7 +81,7 @@ function GameViewInner() {
     // ── Routing (no hooks below this line) ──────────────────────────────────────
 
     if (!isHydrated) {
-        return <LoadingView status={loadingStatus} />;
+        return <LoadingView status={loadingStatus} onLeave={onLeave} />;
     }
 
     if (!gameState) {
@@ -96,7 +96,7 @@ function GameViewInner() {
             );
         }
         // Show loading spinner while connecting / hydrating
-        return <LoadingView status={loadingStatus} />;
+        return <LoadingView status={loadingStatus} onLeave={onLeave} />;
     }
 
     // ── Active game table ───────────────────────────────────────────────────────

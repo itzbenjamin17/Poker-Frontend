@@ -117,7 +117,7 @@ describe('useSessionHydration', () => {
         expect(onLeave).toHaveBeenCalledTimes(1);
     });
 
-    it('redirects to lobby if session hydration times out after 10 seconds', async () => {
+    it('redirects to lobby if session hydration times out after 120 seconds', async () => {
         // Mock getRoomInfo to hang indefinitely (never resolve)
         const getRoomInfoSpy = vi.spyOn(pokerApi, 'getRoomInfo').mockReturnValue(new Promise(() => {}));
 
@@ -129,9 +129,9 @@ describe('useSessionHydration', () => {
             payload: 'Connecting...',
         });
 
-        // Fast-forward 10 seconds to trigger the timeout
+        // Fast-forward 120 seconds to trigger the timeout
         act(() => {
-            vi.advanceTimersByTime(10000);
+            vi.advanceTimersByTime(120000);
         });
 
         // Should trigger redirect message
