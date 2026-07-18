@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { motion, AnimatePresence, useReducedMotion } from 'motion/react';
+import { motion, AnimatePresence, useReducedMotion, useMotionValue } from 'motion/react';
 import { ChevronDown, Maximize2, Trophy, X } from 'lucide-react';
 import { cn } from '../lib/cn';
 import type { GameState, Player } from '../types';
@@ -59,6 +59,24 @@ export function ShowdownModal({ showdownResult }: ShowdownModalProps) {
     const wasFullReviewOpenRef = useRef(false);
     const effectiveDetailState = detailState;
     const isFullReviewOpen = effectiveDetailState === 'full';
+
+    // Unconditionally instantiate motion values at the top to satisfy hook rules
+    const savedPos = (() => {
+        try {
+            const saved = localStorage.getItem('poker-showdown-modal-position');
+            return saved ? JSON.parse(saved) : { x: 0, y: 0 };
+        } catch {
+            return { x: 0, y: 0 };
+        }
+    })();
+    const x = useMotionValue(savedPos.x);
+    const y = useMotionValue(savedPos.y);
+
+    const [prevGameId, setPrevGameId] = useState(showdownResult?.gameId);
+    if (showdownResult?.gameId !== prevGameId) {
+        setPrevGameId(showdownResult?.gameId);
+        setDetailState('collapsed');
+    }
 
     useEffect(() => {
         if (isFullReviewOpen) {
@@ -269,10 +287,21 @@ export function ShowdownModal({ showdownResult }: ShowdownModalProps) {
                 transition={motionTransition}
                 className="pointer-events-none fixed inset-x-0 top-2 z-[110] flex justify-end px-3 md:top-16 md:px-5"
             >
-                <section
+                <motion.section
+                    drag
+                    dragMomentum={false}
+                    dragElastic={0.1}
+                    style={{ x, y }}
+                    onDragEnd={() => {
+                        try {
+                            localStorage.setItem('poker-showdown-modal-position', JSON.stringify({ x: x.get(), y: y.get() }));
+                        } catch {
+                            // ignore
+                        }
+                    }}
                     aria-label={ARIA_ROUND_RESULT}
                     aria-live="polite"
-                    className="pointer-events-auto w-[min(13rem,calc(100vw-1rem))] overflow-hidden rounded-xl border border-white/10 bg-surface-high/95 shadow-[0_18px_60px_rgba(0,0,0,0.38)] backdrop-blur-xl sm:w-[19rem] sm:rounded-2xl"
+                    className="pointer-events-auto w-[min(13rem,calc(100vw-1rem))] overflow-hidden rounded-xl border border-white/10 bg-surface-high/95 shadow-[0_18px_60px_rgba(0,0,0,0.38)] backdrop-blur-xl sm:w-[19rem] sm:rounded-2xl cursor-grab active:cursor-grabbing select-none"
                 >
                     <div className="h-1 bg-gradient-to-r from-transparent via-emerald-primary/70 to-transparent" />
 
@@ -386,7 +415,7 @@ export function ShowdownModal({ showdownResult }: ShowdownModalProps) {
                             )}
                         </AnimatePresence>
                     </div>
-                </section>
+                </motion.section>
             </motion.div>
         </AnimatePresence>
         {createPortal(fullReview, document.body)}
