@@ -26,7 +26,7 @@ export function GameLobbyView({ onStartGame, onLeaveGame, isStartingGame = false
     if (!roomState) return null;
 
     const handleCopyCode = () => {
-        const code = roomState.roomName || roomState.roomId || auth.roomId;
+        const code = roomState.roomName || '';
         if (code) {
             navigator.clipboard.writeText(code);
             setCopied(true);
@@ -74,7 +74,7 @@ export function GameLobbyView({ onStartGame, onLeaveGame, isStartingGame = false
                         <span className="text-white">GAME LOBBY </span>
                         <button type="button" className="flex items-center gap-4 bg-white/5 px-6 py-2 rounded-2xl cursor-pointer hover:bg-white/10 transition-colors group" onClick={handleCopyCode} aria-label="Copy room code">
                             <span className="text-emerald-primary/80 group-hover:text-emerald-primary transition-colors">
-                                {roomState.roomName || roomState.roomId || auth.roomId}
+                                {roomState.roomName || ''}
                             </span>
                             {copied ? (
                                 <span className="text-emerald-primary flex items-center gap-1 text-sm bg-emerald-primary/10 px-2 py-1 rounded-md ml-2">

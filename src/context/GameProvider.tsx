@@ -61,7 +61,7 @@ export function GameProvider({ auth, onLeave, children }: GameProviderProps) {
     const [state, dispatch] = useReducer(reducer, {
         roomState: {
             roomId: auth.roomId,
-            roomName: auth.roomId,
+            roomName: '',
             players: [{ name: auth.playerName, isHost: false }],
             gameStarted: false,
         },
