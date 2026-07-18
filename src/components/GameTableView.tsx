@@ -8,7 +8,7 @@ import { CommunityCardsArea } from './CommunityCardsArea';
 import { TablePlayers } from './TablePlayers';
 import { getPotBreakdown } from '../lib/game';
 import { useGameContext } from '../context/GameContext';
-import { pokerApi } from '../services/api';
+
 import { Trophy } from 'lucide-react';
 import type { PokerAction, SeatPosition, TableTier } from '../types';
 import {
@@ -50,7 +50,7 @@ export function GameTableView({
                                   onRaiseChange,
                                   isActionPending,
                               }: GameTableViewProps) {
-    const { auth, roomState, gameState, privateState, showdown, showdownResult, claimPending, myPlayerId, notification, wsStatus, gameEndResult, dispatch, clearShowdownTimers, onLeave } = useGameContext();
+    const { auth, roomState, gameState, privateState, showdown, showdownResult, claimPending, myPlayerId, notification, wsStatus, gameEndResult, clearShowdownTimers, onLeave } = useGameContext();
 
     if (!gameState || !roomState) return null;
 
@@ -94,33 +94,8 @@ export function GameTableView({
     const sidePots = potBreakdown.slice(1);
 
     const handleReturnToLobby = () => {
-        dispatch({ type: 'CLEAR_GAME_STATE' });
-        dispatch({ type: 'SET_NOTIFICATION', payload: null });
-        dispatch({ type: 'SET_GAME_END_RESULT', payload: null });
         clearShowdownTimers();
-
-        pokerApi.getRoomInfo(auth.roomId, auth.token)
-            .then((r) => {
-                dispatch({
-                    type: 'SET_ROOM',
-                    payload: {
-                        roomId: r.roomId,
-                        roomName: r.roomName,
-                        players: r.players.map((pl: { name: string; isHost: boolean; joinedAt?: string }) => ({
-                            name: pl.name,
-                            isHost: pl.isHost,
-                            joinedAt: pl.joinedAt,
-                        })),
-                        maxPlayers: r.maxPlayers,
-                        buyIn: r.buyIn,
-                        smallBlind: r.smallBlind,
-                        bigBlind: r.bigBlind,
-                        canStartGame: r.canStartGame,
-                        gameStarted: r.gameStarted,
-                    },
-                });
-            })
-            .catch(() => onLeave?.());
+        onLeave?.();
     };
 
     return (
