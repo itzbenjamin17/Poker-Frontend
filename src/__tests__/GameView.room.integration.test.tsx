@@ -107,5 +107,22 @@ describe('GameView - Room Lobby Integration', () => {
     // Wait for redirect timeout (ROOM_CLOSED_REDIRECT_MS = 3000)
     await waitFor(() => expect(handleLeave).toHaveBeenCalled(), { timeout: 4500 })
   })
+
+  it('does not render the lobby or raw room code during session hydration or connection failure', async () => {
+    // Mock hydration to keep loading (never resolves)
+    server.use(
+      http.get('/api/room/ROOM123', () => new Promise(() => {}))
+    )
+
+    render(<GameView auth={auth} />)
+
+    // Verify we see the loading view
+    expect(screen.getByRole('status')).toBeInTheDocument()
+    expect(screen.getByText(/Connecting\.\.\./i)).toBeInTheDocument()
+
+    // Lobby title should NOT be present (verifying we are not showing the lobby/raw room code prematurely)
+    expect(screen.queryByText(/GAME LOBBY/i)).not.toBeInTheDocument()
+  })
 })
+
 

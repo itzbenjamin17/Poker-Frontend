@@ -19,7 +19,7 @@ type GameViewProps = {
 
 function GameViewInner() {
     // ALL hooks must be called unconditionally at the top — no hooks after returns.
-    const { gameState, loadingStatus, roomState } = useGameContext();
+    const { gameState, loadingStatus, roomState, isHydrated } = useGameContext();
 
     const [windowWidth, setWindowWidth] = useState(() => window.innerWidth);
     const [windowHeight, setWindowHeight] = useState(() => window.innerHeight);
@@ -79,6 +79,10 @@ function GameViewInner() {
     }, [dispatcher]);
 
     // ── Routing (no hooks below this line) ──────────────────────────────────────
+
+    if (!isHydrated) {
+        return <LoadingView status={loadingStatus} />;
+    }
 
     if (!gameState) {
         // Show lobby if room is known but game hasn't started yet
