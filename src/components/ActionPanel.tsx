@@ -376,6 +376,8 @@ export function ActionPanel({
                         <p className="text-xs font-headline font-bold uppercase tracking-[0.16em] text-amber-200">
                             {isAutoAdvancing
                                 ? (gameState.autoAdvanceMessage || 'Auto-advancing...')
+                                : gameState.phase === 'SHOWDOWN'
+                                ? 'Final hand complete — reviewing board'
                                 : `Waiting for ${waitingName} to act`}
                         </p>
                     </motion.div>

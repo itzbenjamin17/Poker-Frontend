@@ -338,6 +338,19 @@ describe('GameView - Actions & Flows Integration', () => {
         expect(screen.getByText(/winner: testplayer/i)).toBeInTheDocument();
         expect(screen.getByText(/winnings: \$2,000 chips/i)).toBeInTheDocument();
 
+        // Clicking Review Final Board should minimize the modal
+        const reviewBoardBtn = screen.getByRole('button', { name: /review final board/i });
+        await user.click(reviewBoardBtn);
+
+        expect(screen.queryByRole('heading', { name: /game over/i })).not.toBeInTheDocument();
+        expect(screen.getByText(/final board review/i)).toBeInTheDocument();
+
+        // Clicking View Game Over restores the full modal
+        const viewGameOverBtn = screen.getByRole('button', { name: /view game over/i });
+        await user.click(viewGameOverBtn);
+
+        expect(await screen.findByRole('heading', { name: /game over/i })).toBeInTheDocument();
+
         // Return button should exit to main menu
         const returnBtn = screen.getByRole('button', { name: /return to menu/i });
         await user.click(returnBtn);
