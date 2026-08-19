@@ -136,7 +136,9 @@ export function ActionPanel({
     const hasError = Boolean(activeRaiseError);
 
     const isAutoAdvancing = Boolean(gameState.isAutoAdvancing);
-    const showControls = isMyTurn && !isSelfDisconnected && !isReadyCountdownActive && !isAutoAdvancing && legalActions.size > 0;
+    const isShowdown = gameState.phase === 'SHOWDOWN';
+    const showControls = isMyTurn && !isSelfDisconnected && !isReadyCountdownActive
+        && !isAutoAdvancing && !isShowdown && legalActions.size > 0;
     const waitingName = currentTurnPlayerName || gameState.currentPlayerName || 'another player';
     const canCheck = legalActions.has('CHECK');
     const canCall = legalActions.has('CALL');

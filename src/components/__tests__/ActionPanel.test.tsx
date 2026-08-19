@@ -201,4 +201,16 @@ describe('ActionPanel', () => {
         expect(screen.queryByRole('button', { name: /call/i })).not.toBeInTheDocument();
         expect(screen.queryByRole('button', { name: /raise/i })).not.toBeInTheDocument();
     });
+
+    it('does not render action buttons when phase is SHOWDOWN even if it is my turn with legal actions', () => {
+        renderActionPanel({
+            gameState: { ...mockGameState, phase: 'SHOWDOWN', legalActions: ['FOLD', 'CHECK', 'CALL'] },
+            me: { ...mockMe, currentBet: 10 },
+            isMyTurn: true,
+        });
+
+        expect(screen.queryByRole('button', { name: /fold/i })).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: /check/i })).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: /call/i })).not.toBeInTheDocument();
+    });
 });

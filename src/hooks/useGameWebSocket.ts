@@ -33,6 +33,7 @@ export function useGameWebSocket(options: UseGameWebSocketOptions) {
         applyIncomingGameState, applyIncomingPrivateState,
         clearShowdownTimers, isHydrated,
         gameEndResult,
+        roomState,
     } = useGameContext();
 
     const { onSocketError } = options;
@@ -41,12 +42,17 @@ export function useGameWebSocket(options: UseGameWebSocketOptions) {
     const lastStateSyncTimeRef = useRef<number>(0);
     const redirectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const gameEndedRef = useRef(Boolean(gameEndResult));
+    const roomStateRef = useRef(roomState);
 
     // Keep refs in sync without re-triggering the main effect
     useEffect(() => {
         if (gameEndResult) gameEndedRef.current = true;
         else if (!gameEndResult) gameEndedRef.current = false;
     }, [gameEndResult]);
+
+    useEffect(() => {
+        roomStateRef.current = roomState;
+    }, [roomState]);
 
     useEffect(() => {
         if (!isHydrated) return;
@@ -209,6 +215,7 @@ export function useGameWebSocket(options: UseGameWebSocketOptions) {
 
             // ── Sync on connect (catch missed updates during reconnect) ───
             if (gameEndedRef.current) return;
+            if (!roomStateRef.current?.gameStarted) return;
 
             const syncTime = Date.now();
             void pokerApi.getGameState(auth.roomId, auth.token)
