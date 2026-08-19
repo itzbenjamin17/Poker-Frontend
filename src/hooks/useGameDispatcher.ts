@@ -1,7 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { pokerApi } from '../services/api';
 import { useGameContext } from '../context/GameContext';
-import { normalizeErrorMessage } from '../lib/payloads';
+import { normalizeErrorMessage, getErrorStatusCode } from '../lib/payloads';
 import { logger } from '../security/logger';
 import { RAISE_ERROR_FORBIDDEN_BET } from '../constants/strings';
 import type { PokerAction } from '../types';
@@ -11,7 +11,8 @@ export type GameCommand =
     | { type: 'READY' }
     | { type: 'START_GAME' }
     | { type: 'CLAIM_WIN' }
-    | { type: 'LEAVE_GAME' };
+    | { type: 'LEAVE_GAME' }
+    | { type: 'LEAVE_REVIEW' };
 
 export interface PublisherAdapter {
     publish: (destination: string, body: string) => void;
@@ -110,13 +111,31 @@ export function useGameDispatcher(publisher: PublisherAdapter) {
                 contextDispatch({ type: 'SET_CLAIM_PENDING', payload: true });
                 await pokerApi.claimWin(targetGameId, auth.token);
             } else if (command.type === 'LEAVE_GAME') {
-                if (gameState?.gameId) {
-                    await pokerApi.leaveGame(gameState.gameId, auth.token);
+                try {
+                    if (gameState?.gameId) {
+                        await pokerApi.leaveGame(gameState.gameId, auth.token);
+                    }
+                    await pokerApi.leaveRoom(auth.roomId, auth.token);
+                } catch (err) {
+                    const code = getErrorStatusCode(err);
+                    if (code !== 404 && code !== 403) {
+                        throw err;
+                    }
                 }
-                await pokerApi.leaveRoom(auth.roomId, auth.token);
                 clearShowdownTimers();
                 contextDispatch({ type: 'SET_PRIVATE', payload: null });
                 onLeave?.();
+            } else if (command.type === 'LEAVE_REVIEW') {
+                // Fire and forget REST calls, ignore failures
+                void pokerApi.leaveGame(targetGameId, auth.token)
+                    .catch((err) => logger.warn('LEAVE_REVIEW leaveGame failed:', err));
+                void pokerApi.leaveRoom(auth.roomId, auth.token)
+                    .catch((err) => logger.warn('LEAVE_REVIEW leaveRoom failed:', err));
+
+                clearShowdownTimers();
+                contextDispatch({ type: 'CLEAR_GAME_STATE' });
+                onLeave?.();
+                return;
             }
         } catch (err) {
             setPending(command.type, false);

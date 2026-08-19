@@ -2,6 +2,7 @@ import { createContext, useContext } from 'react';
 import type {
     AuthResponse,
     GameState,
+    GameEndResult,
     IncomingGameStatePayload,
     IncomingPrivateStatePayload,
     RoomState,
@@ -20,7 +21,8 @@ export interface GameContextState {
     claimPending: boolean;
     wsStatus: WsStatus;
     isHydrated: boolean;
-    gameEndResult: { winnerName: string | null; winnerChips?: number; isForfeit: boolean; message: string } | null;
+    isGameOver: boolean;
+    gameEndResult: GameEndResult | null;
 }
 
 export type Action =
@@ -35,7 +37,7 @@ export type Action =
     | { type: 'SET_CLAIM_PENDING'; payload: boolean }
     | { type: 'SET_WS_STATUS'; payload: WsStatus }
     | { type: 'SET_HYDRATED'; payload: boolean }
-    | { type: 'SET_GAME_END_RESULT'; payload: { winnerName: string | null; winnerChips?: number; isForfeit: boolean; message: string } | null }
+    | { type: 'SET_GAME_END_RESULT'; payload: GameEndResult | null }
     | { type: 'CLEAR_GAME_STATE' };
 
 export interface GameContextValue extends GameContextState {

@@ -132,3 +132,9 @@ export const WAITING_RECONNECT_SUFFIX = ' to reconnect...';
 // ─── Card placeholders ────────────────────────────────────────────────────────
 export const CARD_PLACEHOLDER_TURN = 'TURN';
 export const CARD_PLACEHOLDER_RIVER = 'RIVER';
+
+// ─── Game Review ─────────────────────────────────────────────────────────────
+export const BTN_LEAVE_REVIEW = 'LEAVE';
+export const REVIEW_TITLE = 'GAME OVER';
+export const REVIEW_FORFEIT_NOTE = '(Won by forfeit)';
+export const REVIEW_FINAL_BOARD_LABEL = 'Final Community Board';

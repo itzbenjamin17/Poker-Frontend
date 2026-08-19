@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { cn } from '../lib/cn';
 import { Button } from './UI';
 import { ActionPanel } from './ActionPanel';
@@ -10,11 +9,9 @@ import { TablePlayers } from './TablePlayers';
 import { getPotBreakdown } from '../lib/game';
 import { useGameContext } from '../context/GameContext';
 
-import { Trophy } from 'lucide-react';
 import type { PokerAction, SeatPosition, TableTier } from '../types';
 import {
     BTN_LEAVE_TABLE, BTN_CLAIM_WIN, BTN_CLAIMING,
-    BTN_REVIEW_FINAL_BOARD, BTN_VIEW_GAME_OVER,
     WAITING_RECONNECT_PREFIX, WAITING_RECONNECT_SUFFIX,
 } from '../constants/strings';
 import type { WsStatus } from '../types';
@@ -52,8 +49,7 @@ export function GameTableView({
                                   onRaiseChange,
                                   isActionPending,
                               }: GameTableViewProps) {
-    const { auth, roomState, gameState, privateState, showdown, showdownResult, claimPending, myPlayerId, notification, wsStatus, gameEndResult, clearShowdownTimers, onLeave } = useGameContext();
-    const [isGameOverMinimized, setIsGameOverMinimized] = useState(false);
+    const { auth, roomState, gameState, privateState, showdown, showdownResult, claimPending, myPlayerId, notification, wsStatus } = useGameContext();
 
     if (!gameState || !roomState) return null;
 
@@ -96,10 +92,6 @@ export function GameTableView({
     const mainPot = potBreakdown[0] ?? gameState.pot;
     const sidePots = potBreakdown.slice(1);
 
-    const handleReturnToLobby = () => {
-        clearShowdownTimers();
-        onLeave?.();
-    };
 
     return (
         <main
@@ -111,79 +103,6 @@ export function GameTableView({
         >
             <NotificationBanner notification={notification} />
 
-            {gameEndResult && !isGameOverMinimized && (
-                <div className="absolute inset-0 bg-surface/90 backdrop-blur-md z-[100] flex flex-col items-center justify-center p-6 text-center select-none pointer-events-auto" role="dialog" aria-modal="true" aria-labelledby="game-over-title">
-                    <div className="w-full max-w-md bg-surface-high border border-white/10 rounded-3xl p-8 shadow-2xl flex flex-col items-center gap-6 animate-in fade-in zoom-in-95 duration-200">
-                        <div className="w-20 h-20 rounded-full bg-gold-secondary/10 flex items-center justify-center border border-gold-secondary/20 shadow-[0_0_24px_rgba(234,179,8,0.2)]">
-                            <Trophy className="w-10 h-10 text-gold-secondary" />
-                        </div>
-                        <h2 id="game-over-title" className="font-headline text-4xl font-bold text-white tracking-tight uppercase">
-                            Game Over
-                        </h2>
-                        <div className="space-y-2">
-                            <p className="text-zinc-200 text-lg font-body">
-                                {gameEndResult.message}
-                            </p>
-                            {gameEndResult.winnerName && (
-                                <p className="text-emerald-primary font-headline text-sm font-bold tracking-widest uppercase">
-                                    Winner: {gameEndResult.winnerName}
-                                </p>
-                            )}
-                            {typeof gameEndResult.winnerChips === 'number' && (
-                                <p className="text-zinc-400 text-xs uppercase tracking-widest">
-                                    Winnings: ${gameEndResult.winnerChips.toLocaleString()} chips
-                                </p>
-                            )}
-                        </div>
-                        <div className="w-full flex flex-col gap-2.5 mt-2">
-                            <Button
-                                variant="primary"
-                                size="lg"
-                                className="w-full"
-                                onClick={handleReturnToLobby}
-                            >
-                                Return to Menu
-                            </Button>
-                            <Button
-                                variant="outline"
-                                size="md"
-                                className="w-full border-white/20 text-zinc-300 hover:text-white hover:bg-white/5"
-                                onClick={() => setIsGameOverMinimized(true)}
-                            >
-                                {BTN_REVIEW_FINAL_BOARD}
-                            </Button>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {gameEndResult && isGameOverMinimized && (
-                <div className="absolute top-4 right-4 z-[90] flex items-center gap-2.5 bg-surface-high/95 backdrop-blur-md border border-gold-secondary/30 rounded-2xl px-4 py-2.5 shadow-2xl animate-in fade-in slide-in-from-top-2 duration-200">
-                    <div className="w-7 h-7 rounded-full bg-gold-secondary/15 flex items-center justify-center border border-gold-secondary/30 shrink-0">
-                        <Trophy className="w-4 h-4 text-gold-secondary" />
-                    </div>
-                    <div className="text-left pr-1">
-                        <p className="text-xs font-headline font-bold text-white uppercase tracking-wide">
-                            {gameEndResult.winnerName ? `Winner: ${gameEndResult.winnerName}` : 'Game Over'}
-                        </p>
-                        <p className="text-[10px] text-zinc-400">Final board review</p>
-                    </div>
-                    <Button
-                        variant="secondary"
-                        size="xs"
-                        onClick={() => setIsGameOverMinimized(false)}
-                    >
-                        {BTN_VIEW_GAME_OVER}
-                    </Button>
-                    <Button
-                        variant="primary"
-                        size="xs"
-                        onClick={handleReturnToLobby}
-                    >
-                        Exit
-                    </Button>
-                </div>
-            )}
 
             {wsStatus !== 'connected' && (
                 <div className="absolute inset-0 bg-surface/80 backdrop-blur-sm z-50 flex flex-col items-center justify-center gap-4 text-center select-none pointer-events-auto" role="alert" aria-live="assertive">

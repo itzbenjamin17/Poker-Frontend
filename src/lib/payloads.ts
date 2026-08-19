@@ -26,6 +26,27 @@ export function isGameStatePayload(value: unknown): value is IncomingGameStatePa
     );
 }
 
+export function isGameEndPayload(value: unknown): value is {
+    type: string;
+    winner?: string;
+    winnerChips?: number;
+    isForfeit?: boolean;
+    message?: string;
+    gameId?: string;
+    finalState?: unknown;
+} {
+    if (!isObject(value)) return false;
+    return (
+        typeof value.type === 'string' &&
+        value.type === 'GAME_END' &&
+        (value.winner == null || typeof value.winner === 'string') &&
+        (value.winnerChips == null || typeof value.winnerChips === 'number') &&
+        (value.isForfeit == null || typeof value.isForfeit === 'boolean') &&
+        (value.message == null || typeof value.message === 'string') &&
+        (value.gameId == null || typeof value.gameId === 'string')
+    );
+}
+
 export function isPrivateStatePayload(value: unknown): value is IncomingPrivateStatePayload {
     if (!isObject(value)) return false;
     return (

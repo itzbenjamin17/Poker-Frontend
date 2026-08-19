@@ -131,3 +131,11 @@ export type SeatPosition = {
 };
 
 export type TableTier = 'compact' | 'standard' | 'wide';
+
+export interface GameEndResult {
+    winnerName: string | null;
+    winnerChips?: number;
+    isForfeit: boolean;
+    message: string;
+    finalState?: GameState;
+}

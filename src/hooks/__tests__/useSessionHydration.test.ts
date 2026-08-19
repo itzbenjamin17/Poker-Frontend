@@ -41,6 +41,7 @@ describe('useSessionHydration', () => {
             claimPending: false,
             wsStatus: 'connected',
             isHydrated: true,
+            isGameOver: false,
             gameEndResult: null,
             scheduleShowdownHide: vi.fn(),
             latestGameStateRef: { current: null },

@@ -28,6 +28,7 @@ export function useSessionHydration() {
     const {
         auth, onLeave, dispatch,
         applyIncomingGameState, applyIncomingPrivateState,
+        gameEndResult,
     } = useGameContext();
 
     const lastStateSyncTimeRef = useRef<number>(0);
@@ -36,6 +37,18 @@ export function useSessionHydration() {
     useEffect(() => {
         let mounted = true;
         let hasTimedOut = false;
+
+        // A game-end result already present (e.g. restored from localStorage
+        // after a refresh during the post-game review) means there is nothing
+        // left to hydrate, and the room/game may already be gone server-side.
+        // Skip REST hydration entirely so we never 404/403 our way back to
+        // the lobby out from under the reviewing player.
+        if (gameEndResult) {
+            dispatch({ type: 'SET_HYDRATED', payload: true });
+            return () => {
+                mounted = false;
+            };
+        }
 
         const redirectToLobby = (message: string) => {
             const cleanMsg = normalizeErrorMessage(message);
@@ -173,5 +186,5 @@ export function useSessionHydration() {
             clearTimeout(timeoutId);
             if (redirectTimerRef.current !== null) clearTimeout(redirectTimerRef.current);
         };
-    }, [auth.playerName, auth.roomId, auth.token, onLeave, dispatch, applyIncomingGameState, applyIncomingPrivateState]);
+    }, [auth.playerName, auth.roomId, auth.token, onLeave, dispatch, applyIncomingGameState, applyIncomingPrivateState, gameEndResult]);
 }

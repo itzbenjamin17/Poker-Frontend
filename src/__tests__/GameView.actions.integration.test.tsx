@@ -280,7 +280,7 @@ describe('GameView - Actions & Flows Integration', () => {
         expect(await screen.findByRole('alert')).toHaveTextContent(/Connection lost/i);
     });
 
-    it('renders dedicated Game Over modal upon GAME_END event', async () => {
+    it('renders dedicated Game Over screen upon GAME_END event', async () => {
         const user = userEvent.setup();
         const onLeaveSpy = vi.fn();
 
@@ -313,7 +313,9 @@ describe('GameView - Actions & Flows Integration', () => {
                     { id: 'p-1', name: 'TestPlayer', chips: 980, currentBet: 20, status: 'ACTIVE' },
                     { id: 'p-2', name: 'Opponent', chips: 990, currentBet: 20, status: 'ACTIVE' },
                 ],
-            }))
+            })),
+            http.post('/api/game/ROOM123/leave', () => new HttpResponse(null, { status: 200 })),
+            http.post('/api/room/ROOM123/leave', () => new HttpResponse(null, { status: 200 }))
         );
 
         render(<GameView auth={mockAuth} onLeave={onLeaveSpy} />);
@@ -329,36 +331,77 @@ describe('GameView - Actions & Flows Integration', () => {
                 winner: 'TestPlayer',
                 winnerChips: 2000,
                 isForfeit: false,
+                finalState: {
+                    phase: 'SHOWDOWN',
+                    pot: 30,
+                    players: [
+                        { id: 'p-1', name: 'TestPlayer', chips: 2000, currentBet: 0, status: 'ACTIVE', isWinner: true },
+                        { id: 'p-2', name: 'Opponent', chips: 0, currentBet: 0, status: 'ACTIVE' },
+                    ],
+                    communityCards: ['AH', 'KH', 'QD', 'JS', '2C'],
+                }
             });
         });
 
-        // Dedicated Game Over modal should render
+        // Dedicated Game Over screen should render
         const gameOverTitle = await screen.findByRole('heading', { name: /game over/i });
         expect(gameOverTitle).toBeInTheDocument();
-        expect(screen.getByText(/winner: testplayer/i)).toBeInTheDocument();
-        expect(screen.getByText(/winnings: \$2,000 chips/i)).toBeInTheDocument();
+        expect(screen.getByText(/TestPlayer wins!/i)).toBeInTheDocument();
+        expect(screen.getByText(/Collected 2000 chips/i)).toBeInTheDocument();
 
-        // Clicking Review Final Board should minimize the modal
-        const reviewBoardBtn = screen.getByRole('button', { name: /review final board/i });
-        await user.click(reviewBoardBtn);
+        // Check if player standings are rendered (GameReviewView feature)
+        expect(screen.getByText('Opponent')).toBeInTheDocument();
 
-        expect(screen.queryByRole('heading', { name: /game over/i })).not.toBeInTheDocument();
-        expect(screen.getByText(/final board review/i)).toBeInTheDocument();
-
-        // Clicking View Game Over restores the full modal
-        const viewGameOverBtn = screen.getByRole('button', { name: /view game over/i });
-        await user.click(viewGameOverBtn);
-
-        expect(await screen.findByRole('heading', { name: /game over/i })).toBeInTheDocument();
-
-        // Return button should exit to main menu
-        const returnBtn = screen.getByRole('button', { name: /return to menu/i });
-        await user.click(returnBtn);
+        // Leave button should exit to main menu
+        const leaveBtn = screen.getByRole('button', { name: /LEAVE/i });
+        await user.click(leaveBtn);
 
         // Verification of redirect trigger
         await waitFor(() => {
             expect(onLeaveSpy).toHaveBeenCalledTimes(1);
         });
+    });
+
+    it('restores the review screen after a page refresh, even when the room is already gone', async () => {
+        const onLeaveSpy = vi.fn();
+
+        // Simulate a previous session having already recorded a game end - this
+        // is what GameProvider persists to localStorage when GAME_END arrives.
+        localStorage.setItem('poker-game-end:ROOM123', JSON.stringify({
+            winnerName: 'TestPlayer',
+            winnerChips: 2000,
+            isForfeit: false,
+            message: 'TestPlayer won the game!',
+            finalState: {
+                phase: 'SHOWDOWN',
+                pot: 30,
+                players: [
+                    { id: 'p-1', name: 'TestPlayer', chips: 2000, currentBet: 0, status: 'ACTIVE', isWinner: true },
+                    { id: 'p-2', name: 'Opponent', chips: 0, currentBet: 0, status: 'ACTIVE' },
+                ],
+                communityCards: ['AH', 'KH', 'QD', 'JS', '2C'],
+            },
+        }));
+
+        // The room/game no longer exist server-side (already cleaned up) - if
+        // hydration were attempted it would 404 and redirect to the lobby.
+        server.use(
+            http.get('/api/room/ROOM123', () => new HttpResponse(null, { status: 404 })),
+            http.get('/api/game/ROOM123/state', () => new HttpResponse(null, { status: 404 })),
+        );
+
+        render(<GameView auth={mockAuth} onLeave={onLeaveSpy} />);
+
+        const gameOverTitle = await screen.findByRole('heading', { name: /game over/i });
+        expect(gameOverTitle).toBeInTheDocument();
+        expect(screen.getByText(/TestPlayer wins!/i)).toBeInTheDocument();
+
+        // Give any (incorrectly) in-flight hydration/redirect logic a chance to
+        // fire, then confirm the player was never kicked back to the lobby.
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        expect(onLeaveSpy).not.toHaveBeenCalled();
+
+        localStorage.removeItem('poker-game-end:ROOM123');
     });
 });
 

@@ -59,6 +59,7 @@ describe('useGameDispatcher', () => {
             claimPending: false,
             wsStatus: 'connected',
             isHydrated: true,
+            isGameOver: false,
             gameEndResult: null,
             scheduleShowdownHide: vi.fn(),
             latestGameStateRef: { current: null },
@@ -192,6 +193,39 @@ describe('useGameDispatcher', () => {
         expect(leaveGameSpy).toHaveBeenCalledWith('GAME123', 'test-token');
         expect(leaveRoomSpy).toHaveBeenCalledWith('ROOM123', 'test-token');
         expect(onLeave).toHaveBeenCalled();
+    });
+
+    it('dispatch LEAVE_REVIEW calls onLeave even if REST fails', async () => {
+        vi.mocked(pokerApi.leaveGame).mockRejectedValue(new Error('404 Not Found'));
+        vi.mocked(pokerApi.leaveRoom).mockRejectedValue(new Error('404 Not Found'));
+
+        const { result } = renderHook(() => useGameDispatcher(publisherAdapter));
+
+        await act(async () => {
+            await result.current.dispatch({ type: 'LEAVE_REVIEW' });
+        });
+
+        expect(clearShowdownTimers).toHaveBeenCalled();
+        expect(dispatch).toHaveBeenCalledWith({ type: 'CLEAR_GAME_STATE' });
+        expect(onLeave).toHaveBeenCalled();
+        // No notification on LEAVE_REVIEW failure
+        expect(dispatch).not.toHaveBeenCalledWith({ type: 'SET_NOTIFICATION', payload: expect.any(String) });
+    });
+
+    it('dispatch LEAVE_GAME calls onLeave even on 404 error', async () => {
+        const error = new Error('Not Found') as any;
+        error.status = 404;
+        vi.mocked(pokerApi.leaveGame).mockRejectedValue(error);
+
+        const { result } = renderHook(() => useGameDispatcher(publisherAdapter));
+
+        await act(async () => {
+            await result.current.dispatch({ type: 'LEAVE_GAME' });
+        });
+
+        expect(onLeave).toHaveBeenCalled();
+        // Should NOT have called setNotification via the outer catch because we handled 404
+        expect(dispatch).not.toHaveBeenCalledWith({ type: 'SET_NOTIFICATION', payload: expect.any(String) });
     });
 
     it('onSocketError parses errors and updates error state', async () => {

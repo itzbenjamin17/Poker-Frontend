@@ -9,6 +9,7 @@ import { useSeatLayout } from './hooks/useSeatLayout';
 import { LoadingView } from './components/LoadingView';
 import { GameLobbyView } from './components/GameLobbyView';
 import { GameTableView } from './components/GameTableView';
+import { GameReviewView } from './components/GameReviewView';
 
 type GameViewProps = {
     auth: AuthResponse;
@@ -19,7 +20,7 @@ type GameViewProps = {
 
 function GameViewInner() {
     // ALL hooks must be called unconditionally at the top — no hooks after returns.
-    const { gameState, loadingStatus, roomState, isHydrated, onLeave } = useGameContext();
+    const { gameState, loadingStatus, roomState, isHydrated, onLeave, gameEndResult } = useGameContext();
 
     const [windowWidth, setWindowWidth] = useState(() => window.innerWidth);
     const [windowHeight, setWindowHeight] = useState(() => window.innerHeight);
@@ -79,6 +80,10 @@ function GameViewInner() {
     }, [dispatcher]);
 
     // ── Routing (no hooks below this line) ──────────────────────────────────────
+
+    if (gameEndResult) {
+        return <GameReviewView onLeave={() => dispatcher.dispatch({ type: 'LEAVE_REVIEW' })} />;
+    }
 
     if (!isHydrated) {
         return <LoadingView status={loadingStatus} onLeave={onLeave} />;

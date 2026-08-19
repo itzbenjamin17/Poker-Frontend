@@ -4,6 +4,7 @@ import { logger } from '../security/logger';
 import { useGameContext } from '../context/GameContext';
 import {
     isGameStatePayload,
+    isGameEndPayload,
     isPrivateStatePayload,
     getErrorStatusCode,
     normalizeErrorMessage,
@@ -31,6 +32,7 @@ export function useGameWebSocket(options: UseGameWebSocketOptions) {
         auth, onLeave, dispatch,
         applyIncomingGameState, applyIncomingPrivateState,
         clearShowdownTimers, isHydrated,
+        gameEndResult,
     } = useGameContext();
 
     const { onSocketError } = options;
@@ -38,9 +40,19 @@ export function useGameWebSocket(options: UseGameWebSocketOptions) {
     const stompClientRef = useRef<Client | null>(null);
     const lastStateSyncTimeRef = useRef<number>(0);
     const redirectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const gameEndedRef = useRef(Boolean(gameEndResult));
+
+    // Keep refs in sync without re-triggering the main effect
+    useEffect(() => {
+        if (gameEndResult) gameEndedRef.current = true;
+        else if (!gameEndResult) gameEndedRef.current = false;
+    }, [gameEndResult]);
 
     useEffect(() => {
         if (!isHydrated) return;
+        // Nothing to connect for - a restored review (e.g. after a page refresh
+        // past server cleanup) has no live game to subscribe to.
+        if (gameEndedRef.current) return;
 
         const isE2EMock = typeof window !== 'undefined' && window.localStorage.getItem('poker-e2e-mock') === 'true';
         if (isE2EMock) {
@@ -52,6 +64,7 @@ export function useGameWebSocket(options: UseGameWebSocketOptions) {
         stompClientRef.current = client;
 
         const scheduleRedirect = (message: string) => {
+            if (gameEndedRef.current) return;
             const cleanMsg = normalizeErrorMessage(message);
             dispatch({ type: 'SET_NOTIFICATION', payload: cleanMsg });
             dispatch({ type: 'SET_LOADING_STATUS', payload: cleanMsg || 'Returning...' });
@@ -91,6 +104,7 @@ export function useGameWebSocket(options: UseGameWebSocketOptions) {
                     const update = JSON.parse(body) as RoomUpdate;
 
                     if (update.message === 'ROOM_CLOSED') {
+                        if (gameEndedRef.current) return;
                         dispatch({ type: 'SET_NOTIFICATION', payload: HOST_LEFT });
                         dispatch({ type: 'SET_LOADING_STATUS', payload: HOST_LEFT });
                         dispatch({ type: 'SET_ROOM', payload: null });
@@ -140,6 +154,39 @@ export function useGameWebSocket(options: UseGameWebSocketOptions) {
                 const messageType = typeof p.type === 'string' ? p.type : null;
                 const messageText = typeof p.message === 'string' ? p.message : null;
 
+                if (isGameEndPayload(parsed)) {
+                    if (gameEndedRef.current) return;
+                    gameEndedRef.current = true;
+                    if (redirectTimerRef.current !== null) {
+                        clearTimeout(redirectTimerRef.current);
+                        redirectTimerRef.current = null;
+                    }
+
+                    dispatch({ type: 'SET_NOTIFICATION', payload: null });
+
+                    const endMsg = normalizeErrorMessage(parsed.message ?? GAME_FINISHED_FALLBACK);
+                    const winnerName = typeof parsed.winner === 'string' ? parsed.winner : null;
+                    const winnerChips = typeof parsed.winnerChips === 'number' ? parsed.winnerChips : undefined;
+                    const isForfeit = parsed.isForfeit === true;
+
+                    let finalGameState: any = undefined;
+                    if (parsed.finalState && isGameStatePayload(parsed.finalState)) {
+                        finalGameState = parsed.finalState;
+                    }
+
+                    dispatch({
+                        type: 'SET_GAME_END_RESULT',
+                        payload: {
+                            winnerName,
+                            winnerChips,
+                            isForfeit,
+                            message: endMsg || GAME_FINISHED_FALLBACK,
+                            finalState: finalGameState,
+                        },
+                    });
+                    return;
+                }
+
                 if (
                     messageType === 'PLAYER_NOTIFICATION' ||
                     messageType === 'AUTO_ADVANCE_START' ||
@@ -149,45 +196,31 @@ export function useGameWebSocket(options: UseGameWebSocketOptions) {
                     return;
                 }
 
-                if (messageType === 'GAME_END') {
-                    dispatch({ type: 'SET_NOTIFICATION', payload: null });
-
-                    const endMsg = normalizeErrorMessage(messageText ?? GAME_FINISHED_FALLBACK);
-                    const winnerName = typeof p.winner === 'string' ? p.winner : null;
-                    const winnerChips = typeof p.winnerChips === 'number' ? p.winnerChips : undefined;
-                    const isForfeit = p.isForfeit === true;
-
-                    dispatch({
-                        type: 'SET_GAME_END_RESULT',
-                        payload: {
-                            winnerName,
-                            winnerChips,
-                            isForfeit,
-                            message: endMsg || GAME_FINISHED_FALLBACK,
-                        },
-                    });
-                    return;
-                }
-
                 if (!isGameStatePayload(parsed)) {
                     logger.warn('Ignoring non-game payload on game topic:', { keys: Object.keys(p) });
                     return;
                 }
+
+                if (gameEndedRef.current) return;
 
                 lastStateSyncTimeRef.current = Date.now();
                 applyIncomingGameState(parsed);
             });
 
             // ── Sync on connect (catch missed updates during reconnect) ───
+            if (gameEndedRef.current) return;
+
             const syncTime = Date.now();
             void pokerApi.getGameState(auth.roomId, auth.token)
                 .then((snapshot) => {
+                    if (gameEndedRef.current) return;
                     if (isGameStatePayload(snapshot) && syncTime >= lastStateSyncTimeRef.current) {
                         lastStateSyncTimeRef.current = syncTime;
                         applyIncomingGameState(snapshot);
                     }
                 })
                 .catch((err) => {
+                    if (gameEndedRef.current) return;
                     const code = getErrorStatusCode(err);
                     if (code === 403) {
                         scheduleRedirect('Your seat is no longer active. Returning to lobby...');
@@ -198,9 +231,11 @@ export function useGameWebSocket(options: UseGameWebSocketOptions) {
 
             void pokerApi.getPrivateState(auth.roomId, auth.token)
                 .then((privateSnapshot) => {
+                    if (gameEndedRef.current) return;
                     if (isPrivateStatePayload(privateSnapshot)) applyIncomingPrivateState(privateSnapshot);
                 })
                 .catch((err) => {
+                    if (gameEndedRef.current) return;
                     const code = getErrorStatusCode(err);
                     if (code !== 404) logger.warn('Private state re-sync failed after connect:', err);
                 });

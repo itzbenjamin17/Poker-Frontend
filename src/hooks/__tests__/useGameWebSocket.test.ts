@@ -2,11 +2,25 @@ import { renderHook, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { useGameWebSocket } from '../useGameWebSocket';
 import { useGameContext } from '../../context/GameContext';
+import { pokerApi } from '../../services/api';
 import { MockStompClient, activeSubscriptions } from '../../test/mocks/stomp';
 
 vi.mock('../../context/GameContext', () => ({
     useGameContext: vi.fn(),
 }));
+
+vi.mock('../../services/api', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('../../services/api')>();
+    return {
+        ...actual,
+        pokerApi: {
+            getGameState: vi.fn(),
+            getPrivateState: vi.fn(),
+            leaveRoom: vi.fn(),
+            leaveGame: vi.fn(),
+        },
+    };
+});
 
 describe('useGameWebSocket', () => {
     const mockAuth = {
@@ -27,6 +41,9 @@ describe('useGameWebSocket', () => {
         activeSubscriptions.clear();
         vi.useFakeTimers();
 
+        vi.mocked(pokerApi.getGameState).mockResolvedValue({});
+        vi.mocked(pokerApi.getPrivateState).mockResolvedValue({});
+
         vi.mocked(useGameContext).mockReturnValue({
             auth: mockAuth,
             onLeave,
@@ -45,6 +62,7 @@ describe('useGameWebSocket', () => {
             claimPending: false,
             wsStatus: 'connected',
             isHydrated: true,
+            isGameOver: false,
             gameEndResult: null,
             scheduleShowdownHide: vi.fn(),
             latestGameStateRef: { current: null },
@@ -155,5 +173,100 @@ describe('useGameWebSocket', () => {
 
         // Should be resubscribed to private channel without the old let flag blocking it
         expect(activeSubscriptions.has('/user/queue/private')).toBe(true);
+    });
+
+    it('dispatches SET_GAME_END_RESULT with snapshot on GAME_END frame', async () => {
+        renderHook(() => useGameWebSocket({ onSocketError }));
+        await act(async () => { vi.advanceTimersByTime(10); });
+
+        const gameEndPayload = {
+            type: 'GAME_END',
+            winner: 'Player1',
+            winnerChips: 500,
+            isForfeit: false,
+            message: 'Player1 wins!',
+            finalState: {
+                phase: 'SHOWDOWN',
+                pot: 1000,
+                players: [{ id: 'p-1', name: 'Player1', chips: 500 }],
+                communityCards: ['AS', 'KS', 'QS', 'JS', 'TS'],
+            }
+        };
+
+        act(() => {
+            MockStompClient.simulateMessage('/game/ROOM123', gameEndPayload);
+        });
+
+        expect(dispatch).toHaveBeenCalledWith({
+            type: 'SET_GAME_END_RESULT',
+            payload: {
+                winnerName: 'Player1',
+                winnerChips: 500,
+                isForfeit: false,
+                message: 'Player1 wins!',
+                finalState: expect.objectContaining({ phase: 'SHOWDOWN' }),
+            }
+        });
+    });
+
+    it('ignores subsequent game updates after game end', async () => {
+        vi.mocked(useGameContext).mockReturnValue({
+            ...vi.mocked(useGameContext)(),
+            gameEndResult: { winnerName: 'Player1', isForfeit: false, message: 'Done' }
+        } as any);
+
+        renderHook(() => useGameWebSocket({ onSocketError }));
+        await act(async () => { vi.advanceTimersByTime(10); });
+
+        act(() => {
+            MockStompClient.simulateMessage('/game/ROOM123', {
+                phase: 'PRE_FLOP',
+                pot: 0,
+                players: [],
+                communityCards: []
+            });
+        });
+
+        expect(applyIncomingGameState).not.toHaveBeenCalled();
+    });
+
+    it('does not schedule redirect on 403 after game end', async () => {
+        vi.mocked(useGameContext).mockReturnValue({
+            ...vi.mocked(useGameContext)(),
+            gameEndResult: { winnerName: 'Player1', isForfeit: false, message: 'Done' }
+        } as any);
+
+        // Mock pokerApi.getGameState to reject with 403
+        vi.mocked(pokerApi.getGameState).mockRejectedValue({ status: 403 });
+
+        renderHook(() => useGameWebSocket({ onSocketError }));
+
+        // Advance timers to trigger onConnect
+        await act(async () => {
+            vi.advanceTimersByTime(10);
+        });
+
+        // getGameState should not be called because gameEndedRef is true
+        expect(pokerApi.getGameState).not.toHaveBeenCalled();
+        expect(onLeave).not.toHaveBeenCalled();
+    });
+
+    it('ignores ROOM_CLOSED after game end', async () => {
+        vi.mocked(useGameContext).mockReturnValue({
+            ...vi.mocked(useGameContext)(),
+            gameEndResult: { winnerName: 'Player1', isForfeit: false, message: 'Done' }
+        } as any);
+
+        renderHook(() => useGameWebSocket({ onSocketError }));
+        await act(async () => { vi.advanceTimersByTime(10); });
+
+        act(() => {
+            MockStompClient.simulateMessage('/room/ROOM123', {
+                message: 'ROOM_CLOSED',
+            });
+        });
+
+        expect(dispatch).not.toHaveBeenCalledWith({ type: 'SET_ROOM', payload: null });
+        expect(onLeave).not.toHaveBeenCalled();
     });
 });
