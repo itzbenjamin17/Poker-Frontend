@@ -6,6 +6,16 @@ export interface CreateRoomOptions {
   bigBlind?: string;
 }
 
+async function expectGameLobbyOrThrowAlert(page: Page) {
+  const gameLobby = page.getByText(/game lobby/i);
+  const alert = page.getByRole('alert');
+  await expect(gameLobby.or(alert).first()).toBeVisible({ timeout: 15000 });
+  if (await alert.isVisible()) {
+    const message = (await alert.innerText()).trim() || 'Unknown lobby error';
+    throw new Error(message);
+  }
+}
+
 export const test = baseTest.extend<{
   createRoom: (page: Page, roomName: string, playerName: string, options?: CreateRoomOptions) => Promise<void>;
   joinRoom: (page: Page, roomName: string, playerName: string) => Promise<void>;
@@ -27,7 +37,7 @@ export const test = baseTest.extend<{
       await createRegion.getByLabel(/buy-in/i).fill(buyIn);
 
       await pageArg.getByRole('button', { name: /establish table/i }).click();
-      await expect(pageArg.getByText(/game lobby/i)).toBeVisible({ timeout: 15000 });
+      await expectGameLobbyOrThrowAlert(pageArg);
     });
   },
   joinRoom: async ({ page }, provide) => {
@@ -38,7 +48,7 @@ export const test = baseTest.extend<{
       await joinRegion.getByLabel(/room name/i).fill(roomName);
       await joinRegion.getByLabel(/player alias/i).fill(playerName);
       await pageArg.getByRole('button', { name: /enter vault/i }).click();
-      await expect(pageArg.getByText(/game lobby/i)).toBeVisible({ timeout: 15000 });
+      await expectGameLobbyOrThrowAlert(pageArg);
     });
   },
 });

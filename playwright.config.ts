@@ -27,14 +27,11 @@ export default defineConfig({
       timeout: 120 * 1000,
     },
     {
-      command: `node -e "require('child_process').spawn(process.platform === 'win32' ? 'mvnw.cmd' : './mvnw', ['spring-boot:run', '-Dspring-boot.run.profiles=test'], {stdio: 'inherit', shell: true})"`,
+      command: `${process.platform === 'win32' ? 'mvnw.cmd' : './mvnw'} spring-boot:run -Dspring-boot.run.profiles=e2e -Dspring-boot.run.arguments=--poker.rate-limiting.enabled=false`,
       cwd: '../Poker',
       url: 'http://localhost:8080/actuator/health',
       reuseExistingServer: !process.env.CI,
       timeout: 120 * 1000,
-      env: {
-        SPRING_PROFILES_ACTIVE: 'test',
-      },
     }
   ],
 });
