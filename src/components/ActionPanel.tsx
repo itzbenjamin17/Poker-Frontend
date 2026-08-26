@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence, useReducedMotion } from 'motion/react';
 import { cn } from '../lib/cn';
 import { Button } from './UI';
@@ -60,7 +60,21 @@ export function ActionPanel({
 }: ActionPanelProps) {
     const prefersReducedMotion = useReducedMotion();
     const [amountAction, setAmountAction] = useState<AmountAction | null>(null);
+    const [pendingAction, setPendingAction] = useState<PokerAction | null>(null);
     const controlButtonSize: 'xs' | 'sm' | 'md' = isMobileLandscape ? 'xs' : isCompactTable ? 'sm' : 'md';
+
+    const handleAction = (action: PokerAction, amount?: number) => {
+        setPendingAction(action);
+        onAction(action, amount);
+    };
+
+    // Reset local pending state if isActionPending becomes false (e.g. state synced or errored out)
+    useEffect(() => {
+        if (!isActionPending) {
+            setPendingAction(null);
+        }
+    }, [isActionPending]);
+
     const legalActions = useMemo(() => {
         if (gameState.legalActions !== undefined && gameState.legalActions !== null) {
             return new Set<PokerAction>(gameState.legalActions);
@@ -175,18 +189,18 @@ export function ActionPanel({
                         )}
                     >
                         {legalActions.has('FOLD') && (
-                            <Button variant="outline" size={controlButtonSize} onClick={() => onAction('FOLD')} disabled={isActionPending}>
-                                {isActionPending ? 'Submitting...' : BTN_FOLD}
+                            <Button variant="outline" size={controlButtonSize} onClick={() => handleAction('FOLD')} disabled={isActionPending}>
+                                {isActionPending && pendingAction === 'FOLD' ? 'Submitting...' : BTN_FOLD}
                             </Button>
                         )}
 
                         {canCheck ? (
-                            <Button variant="primary" size={controlButtonSize} onClick={() => onAction('CHECK')} disabled={isActionPending}>
-                                {isActionPending ? 'Submitting...' : BTN_CHECK}
+                            <Button variant="primary" size={controlButtonSize} onClick={() => handleAction('CHECK')} disabled={isActionPending}>
+                                {isActionPending && pendingAction === 'CHECK' ? 'Submitting...' : BTN_CHECK}
                             </Button>
                         ) : canCall ? (
-                            <Button variant="primary" size={controlButtonSize} onClick={() => onAction('CALL')} disabled={isActionPending}>
-                                {isActionPending ? 'Submitting...' : `${BTN_CALL_PREFIX}${callAmount.toLocaleString()}`}
+                            <Button variant="primary" size={controlButtonSize} onClick={() => handleAction('CALL')} disabled={isActionPending}>
+                                {isActionPending && pendingAction === 'CALL' ? 'Submitting...' : `${BTN_CALL_PREFIX}${callAmount.toLocaleString()}`}
                             </Button>
                         ) : null}
 
@@ -217,8 +231,8 @@ export function ActionPanel({
                         )}
 
                         {canAllIn && (
-                            <Button variant="outline" size={controlButtonSize} onClick={() => onAction('ALL_IN')} disabled={isActionPending}>
-                                {isActionPending ? 'Submitting...' : `${BTN_ALL_IN_PREFIX}${availableChips.toLocaleString()}`}
+                            <Button variant="outline" size={controlButtonSize} onClick={() => handleAction('ALL_IN')} disabled={isActionPending}>
+                                {isActionPending && pendingAction === 'ALL_IN' ? 'Submitting...' : `${BTN_ALL_IN_PREFIX}${availableChips.toLocaleString()}`}
                             </Button>
                         )}
 
@@ -271,7 +285,7 @@ export function ActionPanel({
                                             onClick={() => {
                                                 if (!canSubmitRaise || isActionPending) return;
                                                 const amount = Number.parseInt(rawRaise, 10);
-                                                onAction(actionType, amount);
+                                                handleAction(actionType, amount);
                                                 onRaiseChange('');
                                                 setAmountAction(null);
                                             }}
@@ -283,7 +297,7 @@ export function ActionPanel({
                                                     : 'cursor-not-allowed bg-white/5 text-zinc-600',
                                             )}
                                         >
-                                            {isActionPending ? 'Submitting...' : actionType === 'BET' ? BTN_BET : BTN_RAISE}
+                                            {isActionPending && pendingAction === actionType ? 'Submitting...' : actionType === 'BET' ? BTN_BET : BTN_RAISE}
                                         </button>
                                     </div>
 

@@ -103,8 +103,6 @@ export const SHOWDOWN_REVEALED_HOLE_CARDS = 'Revealed hole cards';
 export const SHOWDOWN_PLAYER_OUTCOMES = 'Player outcomes';
 export const SHOWDOWN_NO_REVEALED_HOLE_CARDS = 'No revealed hole cards';
 export const ARIA_ROUND_RESULT = 'Round Result';
-export const BTN_REVIEW_FINAL_BOARD = 'REVIEW FINAL BOARD';
-export const BTN_VIEW_GAME_OVER = 'VIEW GAME OVER';
 
 // ─── Notifications ────────────────────────────────────────────────────────────
 export const HOST_LEFT = 'Host left the lobby. Returning to main lobby...';

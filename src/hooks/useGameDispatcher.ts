@@ -34,7 +34,7 @@ export function useGameDispatcher(publisher: PublisherAdapter) {
 
     const clearPending = useCallback(() => {
         pendingRef.current = new Set();
-        setTimeout(() => setPendingCommands(new Set()), 0);
+        setPendingCommands(new Set());
         if (actionTimeoutRef.current !== null) {
             clearTimeout(actionTimeoutRef.current);
             actionTimeoutRef.current = null;
