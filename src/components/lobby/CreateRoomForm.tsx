@@ -112,23 +112,34 @@ export function CreateRoomForm({ onAuth, onError, loading, setLoading }: CreateR
                         min={VALIDATION.bigBlind.min}
                         max={VALIDATION.bigBlind.max}
                     />
-                    <div className="space-y-2">
-                        <label htmlFor="max-players" className="block font-headline text-[10px] font-bold tracking-widest text-zinc-500 uppercase">
-                            Max Players
-                        </label>
-                        <select
+                    <div className="space-y-3">
+                        <div className="flex items-baseline justify-between">
+                            <label htmlFor="max-players" className="block font-headline text-[10px] font-bold tracking-widest text-zinc-500 uppercase">
+                                Max Players
+                            </label>
+                            <span className="font-headline text-lg font-bold text-emerald-primary tabular-nums">
+                                {createData.maxPlayers}
+                                <span className="text-zinc-500 text-xs font-body font-normal ml-1">/ {VALIDATION.maxPlayers.max}</span>
+                            </span>
+                        </div>
+                        <input
                             id="max-players"
-                            className="w-full bg-surface-highest border-none rounded-lg p-4 text-white focus:ring-1 focus:ring-emerald-primary/30 transition-all font-body appearance-none outline-none"
+                            type="range"
+                            min={VALIDATION.maxPlayers.min}
+                            max={VALIDATION.maxPlayers.max}
+                            step={1}
                             value={createData.maxPlayers}
                             onChange={e => {
                                 const v = Number.parseInt(e.target.value, 10);
                                 setCreateData({ ...createData, maxPlayers: Number.isNaN(v) ? createData.maxPlayers : v });
                             }}
-                        >
-                            <option value={2}>2 Players</option>
-                            <option value={6}>6 Players</option>
-                            <option value={9}>9 Players</option>
-                        </select>
+                            className="w-full h-2 rounded-full appearance-none cursor-pointer bg-surface-highest accent-emerald-primary focus:outline-none focus:ring-1 focus:ring-emerald-primary/30"
+                        />
+                        <div className="flex justify-between text-[10px] text-zinc-600 font-headline select-none">
+                            {Array.from({ length: VALIDATION.maxPlayers.max - VALIDATION.maxPlayers.min + 1 }, (_, i) => (
+                                <span key={i + VALIDATION.maxPlayers.min}>{i + VALIDATION.maxPlayers.min}</span>
+                            ))}
+                        </div>
                     </div>
                     <Input
                         label="Buy-in Amount"
