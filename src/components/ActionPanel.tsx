@@ -65,7 +65,11 @@ export function ActionPanel({
 
     const handleAction = (action: PokerAction, amount?: number) => {
         setPendingAction(action);
-        onAction(action, amount);
+        if (amount !== undefined) {
+            onAction(action, amount);
+        } else {
+            onAction(action);
+        }
     };
 
     // Reset local pending state if isActionPending becomes false (e.g. state synced or errored out)
