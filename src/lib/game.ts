@@ -7,3 +7,7 @@ import type { GameState } from '../types';
 export function getPotBreakdown(gameState: Pick<GameState, 'pot' | 'pots'>): number[] {
     return gameState.pots && gameState.pots.length > 0 ? gameState.pots : [gameState.pot];
 }
+
+export function formatHandRank(handRank?: string): string | null {
+    return handRank && handRank !== 'NO_HAND' ? handRank.replace(/_/g, ' ') : null;
+}

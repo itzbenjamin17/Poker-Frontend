@@ -51,7 +51,7 @@ describe('GameReviewView', () => {
         // Check final standings
         expect(screen.getByText('WinnerPlayer')).toBeInTheDocument();
         expect(screen.getByText('LoserPlayer')).toBeInTheDocument();
-        expect(screen.getByText(/ROYAL_FLUSH/i)).toBeInTheDocument();
+        expect(screen.getByText(/• ROYAL FLUSH/i)).toBeInTheDocument();
 
         // Leave button
         expect(screen.getByRole('button', { name: /LEAVE/i })).toBeInTheDocument();

@@ -22,16 +22,12 @@ interface ShowdownModalProps {
     showdownResult: GameState | null;
 }
 
-import { getPotBreakdown } from '../lib/game';
+import { formatHandRank, getPotBreakdown } from '../lib/game';
 
 type DetailState = 'collapsed' | 'expanded' | 'full';
 
 function formatMoney(amount: number) {
     return `$${amount.toLocaleString()}`;
-}
-
-function formatHandRank(handRank?: string) {
-    return handRank && handRank !== 'NO_HAND' ? handRank.replace(/_/g, ' ') : null;
 }
 
 function getPotRows(showdownResult: GameState) {
@@ -97,9 +93,7 @@ export function ShowdownModal({ showdownResult }: ShowdownModalProps) {
             .filter((player) => player.name !== winners[0])
             .every((player) => player.status === 'FOLDED' || player.status === 'OUT' || player.hasFolded)
     );
-    const handText = !isUncontested && winningPlayer?.handRank && winningPlayer.handRank !== 'NO_HAND'
-        ? winningPlayer.handRank.replace(/_/g, ' ')
-        : null;
+    const handText = !isUncontested ? formatHandRank(winningPlayer?.handRank) : null;
     const roundLabel = SHOWDOWN_ROUND_OVER;
     const outcomeText = winners.length > 1
         ? `${SHOWDOWN_TIE_PREFIX}${winners.join(', ')}`

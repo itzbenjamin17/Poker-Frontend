@@ -2,6 +2,7 @@ import { useGameContext } from '../context/GameContext';
 import { CommunityCardsArea } from './CommunityCardsArea';
 import { Button } from './UI';
 import { CardUI } from './GameUI';
+import { formatHandRank } from '../lib/game';
 import { Trophy } from 'lucide-react';
 import {
     BTN_LEAVE_REVIEW,
@@ -102,9 +103,9 @@ export function GameReviewView({ onLeave }: GameReviewViewProps) {
                                             </div>
                                             <div className="text-sm text-neutral-400">
                                                 {player.chips} chips
-                                                {player.handRank && (
-                                                    <span className="ml-2 text-yellow-500/70">
-                                                        • {player.handRank}
+                                                {formatHandRank(player.handRank) && (
+                                                    <span className="text-zinc-400 capitalize">
+                                                        • {formatHandRank(player.handRank)}
                                                     </span>
                                                 )}
                                             </div>

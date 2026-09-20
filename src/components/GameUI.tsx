@@ -1,6 +1,7 @@
 import React from 'react';
 import { Check } from 'lucide-react';
 import { cn } from '../lib/cn';
+import { formatHandRank } from '../lib/game';
 import type { Player } from '../types';
 
 const SUITS: Record<string, { icon: string; color: string; name: string }> = {
@@ -219,23 +220,11 @@ export const PlayerPod = ({
                 )}
             </div>
 
-            {handRank && (
-                <div
-                    className={cn(
-                        'font-headline font-bold uppercase tracking-widest bg-black/80 rounded-full whitespace-nowrap border shadow-lg',
-                        isWinner
-                            ? 'text-emerald-primary border-emerald-primary/40'
-                            : 'text-emerald-primary border-emerald-primary/30',
-                    )}
-                    style={{
-                        fontSize: `${scale * 9}px`,
-                        paddingLeft: `${scale * 8}px`,
-                        paddingRight: `${scale * 8}px`,
-                        paddingTop: `${scale * 2}px`,
-                        paddingBottom: `${scale * 2}px`,
-                    }}
-                >
-                    {handRank.replace(/_/g, ' ')}
+            {formatHandRank(handRank) && (
+                <div className="absolute -bottom-2.5 left-1/2 -translate-x-1/2 bg-surface-higher/90 backdrop-blur-md px-2 py-0.5 rounded border border-emerald-primary/30 z-20 whitespace-nowrap">
+                    <span className="text-[9px] font-bold text-emerald-primary/90 uppercase tracking-widest">
+                        {formatHandRank(handRank)}
+                    </span>
                 </div>
             )}
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { getPotBreakdown } from '../game';
+import { getPotBreakdown, formatHandRank } from '../game';
 
 describe('lib/game - getPotBreakdown', () => {
     it('returns pots array when pots is non-empty', () => {
@@ -55,3 +55,21 @@ describe('lib/game - getPotBreakdown', () => {
         expect(result).toHaveLength(4);
     });
 });
+
+describe('lib/game - formatHandRank', () => {
+    it('formats hand rank by replacing underscores with spaces', () => {
+        expect(formatHandRank('ROYAL_FLUSH')).toBe('ROYAL FLUSH');
+        expect(formatHandRank('TWO_PAIR')).toBe('TWO PAIR');
+        expect(formatHandRank('HIGH_CARD')).toBe('HIGH CARD');
+    });
+
+    it('returns null for NO_HAND', () => {
+        expect(formatHandRank('NO_HAND')).toBeNull();
+    });
+
+    it('returns null for undefined or empty strings', () => {
+        expect(formatHandRank(undefined)).toBeNull();
+        expect(formatHandRank('')).toBeNull();
+    });
+});
+
