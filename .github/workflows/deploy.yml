@@ -21,22 +21,25 @@ jobs:
           token: ${{ secrets.GH_PAT || secrets.GITHUB_TOKEN }}
           path: Poker-Backend
 
-      - name: Link Backend directory for Playwright
-        run: |
-          ln -s "$GITHUB_WORKSPACE/Poker-Backend" "$GITHUB_WORKSPACE/../Poker"
-          chmod +x "$GITHUB_WORKSPACE/../Poker/mvnw"
-
       - name: Setup Java 25 for Backend
         uses: actions/setup-java@v4
         with:
           java-version: '25'
           distribution: 'temurin'
           cache: 'maven'
+          cache-dependency-path: 'Poker-Backend/pom.xml'
+
+      - name: Setup Backend for Playwright E2E
+        run: |
+          cp "$GITHUB_WORKSPACE/Poker-Backend/.env.example" "$GITHUB_WORKSPACE/Poker-Backend/.env"
+          chmod +x "$GITHUB_WORKSPACE/Poker-Backend/mvnw"
+          cd "$GITHUB_WORKSPACE/Poker-Backend"
+          ./mvnw test-compile -DskipTests
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: 'npm'
 
       - name: Install dependencies
@@ -53,6 +56,16 @@ jobs:
 
       - name: Run Playwright E2E Tests (with Live Backend)
         run: npx playwright test
+        env:
+          CI: true
+          BACKEND_DIR: ${{ github.workspace }}/Poker-Backend
+          SERVER_PORT: 8080
+          JWT_SECRET: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+          JWT_EXPIRATION_MILLIS: 14400000
+          CORS_ALLOWED_ORIGINS: http://localhost:5173,https://production-ui.com
+          TRUST_PROXY: false
+          POKER_RATE_LIMITING_ENABLED: false
+          POKER_PERSISTENCE_ENABLED: false
 
       - name: Verify TypeScript & Production Build
         run: npm run build

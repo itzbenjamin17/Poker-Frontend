@@ -9,7 +9,7 @@ import {
     getErrorStatusCode,
     normalizeErrorMessage,
 } from '../lib/payloads';
-import type { RoomUpdate } from '../types';
+import type { RoomUpdate, GameState } from '../types';
 import {
     HOST_LEFT,
     GAME_FINISHED_FALLBACK,
@@ -177,7 +177,16 @@ export function useGameWebSocket(options: UseGameWebSocketOptions) {
 
                     let finalGameState: GameState | undefined = undefined;
                     if (parsed.finalState && isGameStatePayload(parsed.finalState)) {
-                        finalGameState = parsed.finalState;
+                        finalGameState = {
+                            ...parsed.finalState,
+                            gameId: parsed.finalState.gameId ?? auth.roomId,
+                            claimWinAvailable: parsed.finalState.claimWinAvailable ?? undefined,
+                            claimWinPlayerName: parsed.finalState.claimWinPlayerName ?? undefined,
+                            uncalledAmount: parsed.finalState.uncalledAmount ?? undefined,
+                            pots: parsed.finalState.pots ?? undefined,
+                            isReadyCountdownActive: parsed.finalState.isReadyCountdownActive ?? undefined,
+                            readyCountdownDeadlineEpochMs: parsed.finalState.readyCountdownDeadlineEpochMs ?? undefined,
+                        };
                     }
 
                     dispatch({

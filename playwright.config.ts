@@ -1,5 +1,7 @@
 import { defineConfig, devices } from '@playwright/test';
 
+const backendDir = process.env.BACKEND_DIR || '../Poker';
+
 export default defineConfig({
   testDir: './e2e',
   fullyParallel: false,
@@ -25,13 +27,17 @@ export default defineConfig({
       url: 'http://localhost:5173',
       reuseExistingServer: !process.env.CI,
       timeout: 120 * 1000,
+      stdout: 'pipe',
+      stderr: 'pipe',
     },
     {
       command: `${process.platform === 'win32' ? 'mvnw.cmd' : './mvnw'} spring-boot:run -Dspring-boot.run.profiles=e2e -Dspring-boot.run.arguments=--poker.rate-limiting.enabled=false`,
-      cwd: '../Poker',
+      cwd: backendDir,
       url: 'http://localhost:8080/actuator/health',
       reuseExistingServer: !process.env.CI,
       timeout: 120 * 1000,
+      stdout: 'pipe',
+      stderr: 'pipe',
     }
   ],
 });
