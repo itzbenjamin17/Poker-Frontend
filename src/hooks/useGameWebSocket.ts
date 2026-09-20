@@ -175,7 +175,7 @@ export function useGameWebSocket(options: UseGameWebSocketOptions) {
                     const winnerChips = typeof parsed.winnerChips === 'number' ? parsed.winnerChips : undefined;
                     const isForfeit = parsed.isForfeit === true;
 
-                    let finalGameState: any = undefined;
+                    let finalGameState: GameState | undefined = undefined;
                     if (parsed.finalState && isGameStatePayload(parsed.finalState)) {
                         finalGameState = parsed.finalState;
                     }

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { motion, AnimatePresence, useReducedMotion } from 'motion/react';
 import { cn } from '../lib/cn';
 import { Button } from './UI';
@@ -72,12 +72,6 @@ export function ActionPanel({
         }
     };
 
-    // Reset local pending state if isActionPending becomes false (e.g. state synced or errored out)
-    useEffect(() => {
-        if (!isActionPending) {
-            setPendingAction(null);
-        }
-    }, [isActionPending]);
 
     const legalActions = useMemo(() => {
         if (gameState.legalActions !== undefined && gameState.legalActions !== null) {

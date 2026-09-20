@@ -133,9 +133,9 @@ export function GameProvider({ auth, onLeave, children }: GameProviderProps) {
     const gameOverRef = useRef(state.isGameOver);
 
     // Sync gameOverRef with state
-    if (state.isGameOver !== gameOverRef.current) {
+    useEffect(() => {
         gameOverRef.current = state.isGameOver;
-    }
+    }, [state.isGameOver]);
 
     // Freeze the final snapshot in localStorage so a page refresh during the
     // post-game review restores it instead of falling through to REST
