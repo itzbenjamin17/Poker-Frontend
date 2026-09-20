@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { describe, test, expect } from 'vitest';
 import { TablePlayers } from '../TablePlayers';
 import type { Player, GameState } from '../../types';
@@ -124,6 +125,67 @@ describe('TablePlayers', () => {
 
             expect(screen.getByText('OFF')).toBeInTheDocument();
             expect(screen.getByText('Reconnect in 01:35')).toBeInTheDocument();
+        });
+    });
+
+    describe('Item 32: Opponent expanded state', () => {
+        const player3: Player = {
+            id: 'p-3',
+            name: 'Charlie',
+            chips: 800,
+            status: 'ACTIVE',
+            currentBet: 50,
+            hasFolded: false,
+            isReadyForNextHand: false,
+        };
+
+        test('clicking opponent pod expands detail view, clicking again collapses it, and clicking another switches expansion', async () => {
+            const user = userEvent.setup();
+            render(
+                <TablePlayers
+                    orderedPlayers={[player1, player2, player3]}
+                    currentPlayerId="p-1"
+                    myPlayerId="p-1" // Alice is hero, Bob and Charlie are opponents
+                    showdown={null}
+                    privateState={{ holeCards: ['AS', 'KS'] }}
+                    getSeatPosition={mockGetSeatPosition}
+                    isCompactTable={false}
+                    nowMs={100000}
+                    scale={1}
+                />
+            );
+
+            // Hero (Alice) should NOT have an expandable button
+            expect(screen.queryByRole('button', { name: /Alice seat details/i })).not.toBeInTheDocument();
+
+            const bobButton = screen.getByRole('button', { name: /Bob seat details/i });
+            const charlieButton = screen.getByRole('button', { name: /Charlie seat details/i });
+
+            expect(bobButton).toHaveAttribute('aria-expanded', 'false');
+            expect(charlieButton).toHaveAttribute('aria-expanded', 'false');
+            expect(screen.queryByLabelText(/Bob expanded details/i)).not.toBeInTheDocument();
+            expect(screen.queryByLabelText(/Charlie expanded details/i)).not.toBeInTheDocument();
+
+            // 1. Clicking Bob expands Bob's detail view
+            await user.click(bobButton);
+            expect(bobButton).toHaveAttribute('aria-expanded', 'true');
+            expect(screen.getByLabelText(/Bob expanded details/i)).toBeInTheDocument();
+
+            // 2. Clicking Bob again collapses it
+            await user.click(bobButton);
+            expect(bobButton).toHaveAttribute('aria-expanded', 'false');
+            expect(screen.queryByLabelText(/Bob expanded details/i)).not.toBeInTheDocument();
+
+            // 3. Clicking Bob expands Bob, then clicking Charlie collapses Bob and expands Charlie
+            await user.click(bobButton);
+            expect(bobButton).toHaveAttribute('aria-expanded', 'true');
+            expect(screen.getByLabelText(/Bob expanded details/i)).toBeInTheDocument();
+
+            await user.click(charlieButton);
+            expect(bobButton).toHaveAttribute('aria-expanded', 'false');
+            expect(screen.queryByLabelText(/Bob expanded details/i)).not.toBeInTheDocument();
+            expect(charlieButton).toHaveAttribute('aria-expanded', 'true');
+            expect(screen.getByLabelText(/Charlie expanded details/i)).toBeInTheDocument();
         });
     });
 });
