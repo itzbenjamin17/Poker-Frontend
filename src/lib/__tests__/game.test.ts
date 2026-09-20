@@ -63,8 +63,10 @@ describe('lib/game - formatHandRank', () => {
         expect(formatHandRank('HIGH_CARD')).toBe('HIGH CARD');
     });
 
-    it('returns null for NO_HAND', () => {
+    it('returns null for NO_HAND in any casing', () => {
         expect(formatHandRank('NO_HAND')).toBeNull();
+        expect(formatHandRank('no_hand')).toBeNull();
+        expect(formatHandRank('No_Hand')).toBeNull();
     });
 
     it('returns null for undefined or empty strings', () => {
