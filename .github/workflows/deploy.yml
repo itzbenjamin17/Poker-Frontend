@@ -1,0 +1,93 @@
+name: Test & Push Frontend Docker Image
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    name: Run Frontend Tests & E2E
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Frontend repository
+        uses: actions/checkout@v4
+
+      - name: Checkout Backend repository
+        uses: actions/checkout@v4
+        with:
+          repository: itzbenjamin17/Poker-Backend
+          token: ${{ secrets.GH_PAT || secrets.GITHUB_TOKEN }}
+          path: Poker-Backend
+
+      - name: Link Backend directory for Playwright
+        run: |
+          ln -s "$GITHUB_WORKSPACE/Poker-Backend" "$GITHUB_WORKSPACE/../Poker"
+          chmod +x "$GITHUB_WORKSPACE/../Poker/mvnw"
+
+      - name: Setup Java 25 for Backend
+        uses: actions/setup-java@v4
+        with:
+          java-version: '25'
+          distribution: 'temurin'
+          cache: 'maven'
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright Chromium with system dependencies
+        run: npx playwright install --with-deps chromium
+
+      - name: Run ESLint
+        run: npm run lint
+
+      - name: Run Unit & Component Tests
+        run: npx vitest run
+
+      - name: Run Playwright E2E Tests (with Live Backend)
+        run: npx playwright test
+
+      - name: Verify TypeScript & Production Build
+        run: npm run build
+
+      - name: Upload Playwright Report on Failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
+
+  build-and-push:
+    name: Build & Push Docker Image
+    needs: test
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and Push Docker Image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            suame/poker-frontend:latest
+            suame/poker-frontend:${{ github.sha }}
