@@ -76,6 +76,7 @@ describe('App', () => {
                 roomId: 'room-123',
                 playerName: 'CardMaster',
                 token: 'valid-jwt',
+                message: 'Success',
             },
             setAuth: mockSetAuth,
             clearAuth: mockClearAuth,

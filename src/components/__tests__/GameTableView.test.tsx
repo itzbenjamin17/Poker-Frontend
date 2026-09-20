@@ -32,10 +32,9 @@ describe('GameTableView', () => {
     };
 
     const mockRoomState: RoomState = {
-        id: 'room-1',
+        roomId: 'room-1',
         roomName: 'High Roller Room',
-        players: [defaultPlayer, opponentPlayer],
-        hostPlayerName: 'Hero',
+        players: [{ name: 'Hero', isHost: true }, { name: 'Villain', isHost: false }],
         gameStarted: true,
         maxPlayers: 6,
         smallBlind: 10,
@@ -44,16 +43,14 @@ describe('GameTableView', () => {
     };
 
     const mockGameState: GameState = {
-        id: 'game-1',
         gameId: 'game-1',
-        roomId: 'room-1',
-        handNumber: 1,
         phase: 'FLOP',
         pot: 100,
         communityCards: ['AS', 'KH', '2D'],
-        currentTurnPlayerId: 'p-1',
         currentPlayerId: 'p-1',
-        isHandInProgress: true,
+        currentPlayerName: 'Hero',
+        currentBet: 0,
+        maxPlayers: 6,
         players: [defaultPlayer, opponentPlayer],
     };
 
@@ -128,7 +125,6 @@ describe('GameTableView', () => {
             const stateWithDisconnectedTurn: GameState = {
                 ...mockGameState,
                 currentPlayerId: 'p-2',
-                currentTurnPlayerId: 'p-2',
                 players: [defaultPlayer, disconnectedOpponent],
             };
 

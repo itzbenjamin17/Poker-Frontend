@@ -45,6 +45,10 @@ function TestConsumer() {
                         pot: 1200,
                         communityCards: ['Ah', 'Kh', 'Qh'],
                         players: [],
+                        maxPlayers: 6,
+                        currentBet: 0,
+                        currentPlayerName: 'Player1',
+                        currentPlayerId: 'p-1',
                     } as IncomingGameStatePayload)
                 }
             >
@@ -106,6 +110,7 @@ describe('GameProvider and useGameContext', () => {
         roomId: 'test-room',
         playerName: 'Player1',
         token: 'token-123',
+        message: 'Success',
     };
 
     it('throws error when useGameContext is used outside GameProvider', () => {

@@ -64,6 +64,7 @@ describe('CreateRoomForm', () => {
             token: 'test-jwt-token',
             playerName: 'CardShark',
             roomId: 'room-xyz',
+            message: 'Success',
         };
         vi.mocked(pokerApi.createRoom).mockResolvedValueOnce(fakeAuthResponse);
 

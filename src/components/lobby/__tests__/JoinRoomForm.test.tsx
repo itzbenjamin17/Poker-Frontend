@@ -63,6 +63,7 @@ describe('JoinRoomForm', () => {
             token: 'test-jwt-token',
             playerName: 'CardShark',
             roomId: 'room-xyz',
+            message: 'Success',
         };
         vi.mocked(pokerApi.joinRoom).mockResolvedValueOnce(fakeAuthResponse);
 

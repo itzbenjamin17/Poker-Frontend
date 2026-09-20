@@ -54,15 +54,14 @@ describe('TablePlayers', () => {
 
         test('renders winning player hole cards face up during showdown', () => {
             const showdownState: GameState = {
-                id: 'game-1',
                 gameId: 'game-1',
-                roomId: 'room-1',
-                handNumber: 1,
                 phase: 'SHOWDOWN',
                 pot: 200,
                 communityCards: ['2C', '7D', '9H', 'JC', 'KD'],
-                currentTurnPlayerId: null,
-                isHandInProgress: false,
+                currentPlayerId: 'p-2',
+                currentPlayerName: 'Villain',
+                currentBet: 0,
+                maxPlayers: 6,
                 players: [
                     {
                         ...player1,

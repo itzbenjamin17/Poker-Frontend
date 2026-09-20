@@ -40,20 +40,14 @@ describe('GameLobbyView', () => {
 
     it('renders room name, blinds, buy-in, player list with host indicator', () => {
         vi.mocked(useGameContext).mockReturnValue({
-            auth: { playerName: 'HostPlayer', token: 'token', roomId: 'room-1' },
+            auth: { playerName: 'HostPlayer', token: 'token', roomId: 'room-1', message: 'Success' },
             roomState: baseRoomState,
             gameState: null,
             privateState: null,
             notification: null,
             wsStatus: 'connected',
-            actionPending: false,
-            lastSettledChips: null,
-            setNotificationWithAutoDismiss: vi.fn(),
-            clearNotification: vi.fn(),
-            applyIncomingGameState: vi.fn(),
-            resetSessionState: vi.fn(),
             dispatch: vi.fn(),
-        });
+        } as any);
 
         render(<GameLobbyView onStartGame={mockOnStartGame} onLeaveGame={mockOnLeaveGame} />);
 
@@ -68,20 +62,14 @@ describe('GameLobbyView', () => {
     it('host sees Start Game button enabled when canStartGame is true and clicking invokes onStartGame', async () => {
         const user = userEvent.setup();
         vi.mocked(useGameContext).mockReturnValue({
-            auth: { playerName: 'HostPlayer', token: 'token', roomId: 'room-1' },
+            auth: { playerName: 'HostPlayer', token: 'token', roomId: 'room-1', message: 'Success' },
             roomState: baseRoomState,
             gameState: null,
             privateState: null,
             notification: null,
             wsStatus: 'connected',
-            actionPending: false,
-            lastSettledChips: null,
-            setNotificationWithAutoDismiss: vi.fn(),
-            clearNotification: vi.fn(),
-            applyIncomingGameState: vi.fn(),
-            resetSessionState: vi.fn(),
             dispatch: vi.fn(),
-        });
+        } as any);
 
         render(<GameLobbyView onStartGame={mockOnStartGame} onLeaveGame={mockOnLeaveGame} />);
 
@@ -94,20 +82,14 @@ describe('GameLobbyView', () => {
 
     it('host sees Start Game button disabled when canStartGame is false or isStartingGame is true', () => {
         vi.mocked(useGameContext).mockReturnValue({
-            auth: { playerName: 'HostPlayer', token: 'token', roomId: 'room-1' },
+            auth: { playerName: 'HostPlayer', token: 'token', roomId: 'room-1', message: 'Success' },
             roomState: { ...baseRoomState, canStartGame: false },
             gameState: null,
             privateState: null,
             notification: null,
             wsStatus: 'connected',
-            actionPending: false,
-            lastSettledChips: null,
-            setNotificationWithAutoDismiss: vi.fn(),
-            clearNotification: vi.fn(),
-            applyIncomingGameState: vi.fn(),
-            resetSessionState: vi.fn(),
             dispatch: vi.fn(),
-        });
+        } as any);
 
         const { rerender } = render(
             <GameLobbyView onStartGame={mockOnStartGame} onLeaveGame={mockOnLeaveGame} />
@@ -130,20 +112,14 @@ describe('GameLobbyView', () => {
 
     it('non-host sees waiting for host message instead of start button', () => {
         vi.mocked(useGameContext).mockReturnValue({
-            auth: { playerName: 'GuestPlayer', token: 'token', roomId: 'room-1' },
+            auth: { playerName: 'GuestPlayer', token: 'token', roomId: 'room-1', message: 'Success' },
             roomState: baseRoomState,
             gameState: null,
             privateState: null,
             notification: null,
             wsStatus: 'connected',
-            actionPending: false,
-            lastSettledChips: null,
-            setNotificationWithAutoDismiss: vi.fn(),
-            clearNotification: vi.fn(),
-            applyIncomingGameState: vi.fn(),
-            resetSessionState: vi.fn(),
             dispatch: vi.fn(),
-        });
+        } as any);
 
         render(<GameLobbyView onStartGame={mockOnStartGame} onLeaveGame={mockOnLeaveGame} />);
 
@@ -156,20 +132,14 @@ describe('GameLobbyView', () => {
         const confirmSpy = vi.spyOn(window, 'confirm');
 
         vi.mocked(useGameContext).mockReturnValue({
-            auth: { playerName: 'GuestPlayer', token: 'token', roomId: 'room-1' },
+            auth: { playerName: 'GuestPlayer', token: 'token', roomId: 'room-1', message: 'Success' },
             roomState: baseRoomState,
             gameState: null,
             privateState: null,
             notification: null,
             wsStatus: 'connected',
-            actionPending: false,
-            lastSettledChips: null,
-            setNotificationWithAutoDismiss: vi.fn(),
-            clearNotification: vi.fn(),
-            applyIncomingGameState: vi.fn(),
-            resetSessionState: vi.fn(),
             dispatch: vi.fn(),
-        });
+        } as any);
 
         render(<GameLobbyView onStartGame={mockOnStartGame} onLeaveGame={mockOnLeaveGame} />);
 
@@ -198,20 +168,14 @@ describe('GameLobbyView', () => {
         });
 
         vi.mocked(useGameContext).mockReturnValue({
-            auth: { playerName: 'HostPlayer', token: 'token', roomId: 'room-1' },
+            auth: { playerName: 'HostPlayer', token: 'token', roomId: 'room-1', message: 'Success' },
             roomState: baseRoomState,
             gameState: null,
             privateState: null,
             notification: null,
             wsStatus: 'connected',
-            actionPending: false,
-            lastSettledChips: null,
-            setNotificationWithAutoDismiss: vi.fn(),
-            clearNotification: vi.fn(),
-            applyIncomingGameState: vi.fn(),
-            resetSessionState: vi.fn(),
             dispatch: vi.fn(),
-        });
+        } as any);
 
         render(<GameLobbyView onStartGame={mockOnStartGame} onLeaveGame={mockOnLeaveGame} />);
 
