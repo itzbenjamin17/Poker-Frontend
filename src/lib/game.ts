@@ -11,3 +11,8 @@ export function getPotBreakdown(gameState: Pick<GameState, 'pot' | 'pots'>): num
 export function formatHandRank(handRank?: string): string | null {
     return handRank && handRank !== 'NO_HAND' ? handRank.replace(/_/g, ' ') : null;
 }
+
+/** Returns null for backend sentinel values (e.g. 'NO_HAND') that should not be displayed. */
+export function formatEndMessage(message?: string): string | null {
+    return message && message !== 'NO_HAND' ? message : null;
+}

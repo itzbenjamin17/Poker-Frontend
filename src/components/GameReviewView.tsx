@@ -2,7 +2,7 @@ import { useGameContext } from '../context/GameContext';
 import { CommunityCardsArea } from './CommunityCardsArea';
 import { Button } from './UI';
 import { CardUI } from './GameUI';
-import { formatHandRank } from '../lib/game';
+import { formatHandRank, formatEndMessage } from '../lib/game';
 import { Trophy } from 'lucide-react';
 import {
     BTN_LEAVE_REVIEW,
@@ -23,7 +23,7 @@ export function GameReviewView({ onLeave }: GameReviewViewProps) {
     const winnerName = gameEndResult.winnerName;
     const isForfeit = gameEndResult.isForfeit;
     const winnerChips = gameEndResult.winnerChips;
-    const message = gameEndResult.message;
+    const message = formatEndMessage(gameEndResult.message);
 
     return (
         <main
@@ -56,9 +56,11 @@ export function GameReviewView({ onLeave }: GameReviewViewProps) {
                             </p>
                         )}
                     </div>
-                    <div className="max-w-md mx-auto p-4 bg-white/5 border border-white/10 rounded-lg">
-                        <p className="text-neutral-300 italic">{message}</p>
-                    </div>
+                    {message && (
+                        <div className="max-w-md mx-auto p-4 bg-white/5 border border-white/10 rounded-lg">
+                            <p className="text-neutral-300 italic">{message}</p>
+                        </div>
+                    )}
                 </div>
 
                 {/* Final Board */}
