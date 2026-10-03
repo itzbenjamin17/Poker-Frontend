@@ -3,14 +3,14 @@ import { useGameContext } from '../context/GameContext';
 import { cn } from '../lib/cn';
 import { Card } from './UI';
 import { Button } from './UI';
-import { Info, Play, Wifi, WifiOff, Copy, Check } from 'lucide-react';
+import { Info, Play, Wifi, WifiOff, Copy, Check, Crown } from 'lucide-react';
 import { NotificationBanner } from './NotificationBanner';
 import type { WsStatus } from '../types';
 import {
     GAME_LOBBY_LABEL,
-    BTN_LEAVE_LOBBY, BTN_START_GAME, BTN_STARTING_GAME, LABEL_HOST_CONTROLS, LABEL_WAITING_HOST,
-    LABEL_WAITING_PLAYERS, LABEL_BLINDS, LABEL_MIN_BUYIN, LABEL_FORMAT,
-    FORMAT_NLHE, LABEL_TABLE_RULES, LABEL_HOST,
+    BTN_LEAVE_LOBBY, BTN_START_GAME, BTN_STARTING_GAME, LABEL_WAITING_HOST,
+    LABEL_WAITING_PLAYERS, LABEL_BLINDS, LABEL_MIN_BUYIN,
+    LABEL_TABLE_RULES, LABEL_HOST,
 } from '../constants/strings';
 
 interface GameLobbyViewProps {
@@ -92,19 +92,21 @@ export function GameLobbyView({ onStartGame, onLeaveGame, isStartingGame = false
                     <ul className="lg:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4 list-none m-0 p-0">
                         {roomState.players?.map((p, i) => (
                             <li key={i}>
-                                <Card className={cn('p-6', p.isHost && 'ring-1 ring-gold-secondary/30')}>
+                                <Card className="p-6">
                                     <div className="flex justify-between items-center">
-                                        <div>
+                                        <div className="flex items-center gap-2">
                                             <h3 className="font-headline font-bold text-xl">{p.name}</h3>
                                             {p.isHost && (
-                                                <p className="text-[10px] text-zinc-500 uppercase tracking-widest mt-1">
-                                                    {LABEL_HOST}
-                                                </p>
+                                                <Crown
+                                                    role="img"
+                                                    aria-label={LABEL_HOST}
+                                                    className="w-4 h-4 text-gold-secondary"
+                                                />
                                             )}
                                         </div>
                                         <div
                                             className={cn('w-3 h-3 rounded-full', p.isHost ? 'bg-gold-secondary' : 'bg-emerald-primary')}
-                                            aria-label={p.isHost ? 'Host' : 'Player'}
+                                            aria-hidden="true"
                                         />
                                     </div>
                                 </Card>
@@ -137,38 +139,29 @@ export function GameLobbyView({ onStartGame, onLeaveGame, isStartingGame = false
                                     <span className="text-zinc-500 uppercase text-[10px] font-bold">{LABEL_MIN_BUYIN}</span>
                                     <span className="text-emerald-primary font-bold">{buyInLabel}</span>
                                 </div>
-                                <div className="flex justify-between">
-                                    <span className="text-zinc-500 uppercase text-[10px] font-bold">{LABEL_FORMAT}</span>
-                                    <span className="text-emerald-primary font-bold">{FORMAT_NLHE}</span>
-                                </div>
                             </div>
                         </Card>
 
                         {amHost ? (
-                            <>
-                                <Button
-                                    variant="primary"
-                                    size="xl"
-                                    className="w-full"
-                                    onClick={onStartGame}
-                                    disabled={!roomState.canStartGame || isStartingGame}
-                                >
-                                    {isStartingGame ? (
-                                        <>
-                                            <div className="w-5 h-5 border-2 border-surface border-t-transparent rounded-full animate-spin" aria-hidden="true" />
-                                            {BTN_STARTING_GAME}
-                                        </>
-                                    ) : (
-                                        <>
-                                            <Play aria-hidden="true" className="w-5 h-5 fill-current" />
-                                            {BTN_START_GAME}
-                                        </>
-                                    )}
-                                </Button>
-                                <p className="text-center text-[10px] text-zinc-600 uppercase tracking-widest">
-                                    {LABEL_HOST_CONTROLS}
-                                </p>
-                            </>
+                            <Button
+                                variant="primary"
+                                size="xl"
+                                className="w-full"
+                                onClick={onStartGame}
+                                disabled={!roomState.canStartGame || isStartingGame}
+                            >
+                                {isStartingGame ? (
+                                    <>
+                                        <div className="w-5 h-5 border-2 border-surface border-t-transparent rounded-full animate-spin" aria-hidden="true" />
+                                        {BTN_STARTING_GAME}
+                                    </>
+                                ) : (
+                                    <>
+                                        <Play aria-hidden="true" className="w-5 h-5 fill-current" />
+                                        {BTN_START_GAME}
+                                    </>
+                                )}
+                            </Button>
                         ) : (
                             <div className="border border-white/5 rounded-xl p-6 flex flex-col items-center justify-center border-dashed gap-3">
                                 <div className="w-6 h-6 border-2 border-emerald-primary border-t-transparent rounded-full animate-spin" aria-hidden="true" />

@@ -56,7 +56,7 @@ describe('GameLobbyView', () => {
         expect(screen.getByText('$1,000')).toBeInTheDocument();
         expect(screen.getByText('HostPlayer')).toBeInTheDocument();
         expect(screen.getByText('GuestPlayer')).toBeInTheDocument();
-        expect(screen.getByText('HOST')).toBeInTheDocument();
+        expect(screen.getByLabelText('HOST')).toBeInTheDocument();
     });
 
     it('host sees Start Game button enabled when canStartGame is true and clicking invokes onStartGame', async () => {

@@ -48,13 +48,10 @@ export const GAME_LOBBY_HEADING_PREFIX = 'GAME LOBBY:';
 export const BTN_LEAVE_LOBBY = 'LEAVE LOBBY';
 export const BTN_START_GAME = 'START GAME';
 export const BTN_STARTING_GAME = 'STARTING...';
-export const LABEL_HOST_CONTROLS = 'Host controls only';
 export const LABEL_WAITING_HOST = 'Waiting for host to start...';
 export const LABEL_WAITING_PLAYERS = 'Waiting for more...';
 export const LABEL_BLINDS = 'Blinds';
 export const LABEL_MIN_BUYIN = 'Min Buy-in';
-export const LABEL_FORMAT = 'Format';
-export const FORMAT_NLHE = "No Limit Hold'em";
 export const LABEL_TABLE_RULES = 'Table Rules';
 export const LABEL_HOST = 'HOST';
 
