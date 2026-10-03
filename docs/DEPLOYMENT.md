@@ -1,4 +1,4 @@
-# Deployment Guide - Vault Poker
+# Deployment Guide - Poker
 
 ## Prerequisites
 - **Java 25+** (for the backend)
@@ -22,7 +22,7 @@ java -jar target/Poker-0.0.1-SNAPSHOT.jar
 
 ### 1. Configuration
 The frontend is configured to use relative paths for API and WebSocket by default. If your API is on a different domain, set:
-- `VITE_API_BASE_URL`: e.g., `https://api.vaultpoker.com`
+- `VITE_API_BASE_URL`: e.g., `https://api.example.com`
 
 ### 2. Build
 ```bash

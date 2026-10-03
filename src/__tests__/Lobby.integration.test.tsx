@@ -22,7 +22,7 @@ describe('Lobby Integration', () => {
     await user.type(joinRoomInput, 'POKER123')
     await user.type(joinPlayerInput, 'TestPlayer')
 
-    const joinButton = getByRole('button', { name: /enter vault/i })
+    const joinButton = getByRole('button', { name: /join game/i })
     await user.click(joinButton)
 
     // Wait for the onAuth callback to be called (mocked in handlers.ts)
@@ -39,7 +39,7 @@ describe('Lobby Integration', () => {
     server.use(
       http.post('/api/room/join', () => {
         return HttpResponse.json(
-          { message: 'Vault is sealed. Invalid room name.' },
+          { message: 'Invalid room name.' },
           { status: 404 }
         )
       })
@@ -57,11 +57,11 @@ describe('Lobby Integration', () => {
     await user.type(joinRoomInput, 'NONEXISTENT')
     await user.type(joinPlayerInput, 'TestPlayer')
 
-    await user.click(getByRole('button', { name: /enter vault/i }))
+    await user.click(getByRole('button', { name: /join game/i }))
 
     // Error message from the mock should appear
     await waitFor(() => {
-      expect(screen.getByText(/Vault is sealed/i)).toBeInTheDocument()
+      expect(screen.getByText(/Invalid room name/i)).toBeInTheDocument()
     })
   })
 
@@ -95,7 +95,7 @@ describe('Lobby Integration', () => {
       initialSelectionEnd: (buyInInput as HTMLInputElement).value.length
     })
 
-    await user.click(getByRole('button', { name: /establish table/i }))
+    await user.click(getByRole('button', { name: /create game/i }))
 
     await waitFor(() => {
       expect(handleAuth).toHaveBeenCalledWith(expect.objectContaining({
@@ -130,7 +130,7 @@ describe('Lobby Integration', () => {
       initialSelectionEnd: (bigBlindInput as HTMLInputElement).value.length
     })
 
-    await user.click(getByRole('button', { name: /establish table/i }))
+    await user.click(getByRole('button', { name: /create game/i }))
     await waitFor(() => {
       expect(screen.getByText(/Big blind must be at least 2×/i)).toBeInTheDocument()
     })
@@ -148,7 +148,7 @@ describe('Lobby Integration', () => {
       initialSelectionEnd: (buyInInput as HTMLInputElement).value.length
     })
 
-    await user.click(getByRole('button', { name: /establish table/i }))
+    await user.click(getByRole('button', { name: /create game/i }))
     await waitFor(() => {
       expect(screen.getByText(/Buy-in must be at least/i)).toBeInTheDocument()
     })

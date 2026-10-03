@@ -36,7 +36,7 @@ export const test = baseTest.extend<{
       await createRegion.getByLabel(/big blind/i).fill(bigBlind);
       await createRegion.getByLabel(/buy-in/i).fill(buyIn);
 
-      await pageArg.getByRole('button', { name: /establish table/i }).click();
+      await pageArg.getByRole('button', { name: /create game/i }).click();
       await expectGameLobbyOrThrowAlert(pageArg);
     });
   },
@@ -47,7 +47,7 @@ export const test = baseTest.extend<{
       const joinRegion = pageArg.getByRole('region', { name: /quick join/i });
       await joinRegion.getByLabel(/room name/i).fill(roomName);
       await joinRegion.getByLabel(/player alias/i).fill(playerName);
-      await pageArg.getByRole('button', { name: /enter vault/i }).click();
+      await pageArg.getByRole('button', { name: /join game/i }).click();
       await expectGameLobbyOrThrowAlert(pageArg);
     });
   },

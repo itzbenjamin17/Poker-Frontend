@@ -50,7 +50,7 @@ describe('CreateRoomForm', () => {
             initialSelectionEnd: bigBlindInput.value.length,
         });
 
-        const submitButton = screen.getByRole('button', { name: /establish/i });
+        const submitButton = screen.getByRole('button', { name: /create game/i });
         await user.click(submitButton);
 
         expect(mockOnError).toHaveBeenCalledWith('Big blind must be at least 2× the small blind.');
@@ -98,7 +98,7 @@ describe('CreateRoomForm', () => {
             initialSelectionEnd: buyInInput.value.length,
         });
 
-        const submitButton = screen.getByRole('button', { name: /establish/i });
+        const submitButton = screen.getByRole('button', { name: /create game/i });
         await user.click(submitButton);
 
         await waitFor(() => {
@@ -135,7 +135,7 @@ describe('CreateRoomForm', () => {
         await user.type(roomInput, 'Duplicate Room');
         await user.type(playerInput, 'Alice');
 
-        const submitButton = screen.getByRole('button', { name: /establish/i });
+        const submitButton = screen.getByRole('button', { name: /create game/i });
         await user.click(submitButton);
 
         await waitFor(() => {

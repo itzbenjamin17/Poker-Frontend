@@ -1,10 +1,10 @@
 /**
- * All user-facing string constants for Vault Poker.
+ * All user-facing string constants for Poker.
  * Grouped by feature area for future i18n support.
  */
 
 // ─── App / Nav ────────────────────────────────────────────────────────────────
-export const APP_NAME = 'VAULT POKER';
+export const APP_NAME = 'POKER';
 export const NAV_LOBBY = 'Lobby';
 export const NAV_TABLES = 'Tables';
 
@@ -25,19 +25,19 @@ export const STATUS_WAITING_CONNECTION = 'Waiting for table connection...';
 export const STATUS_SYSTEM_MALFUNCTION = 'System malfunction. Please refresh.';
 
 // ─── Lobby ────────────────────────────────────────────────────────────────────
-export const LOBBY_HERO_SUBTITLE = 'The High-Stakes Experience';
-export const LOBBY_HERO_TITLE_1 = 'UNCOMPROMISED';
-export const LOBBY_HERO_TITLE_2 = 'ROYAL ACTION.';
+export const LOBBY_HERO_SUBTITLE = "Texas Hold'em";
+export const LOBBY_HERO_TITLE_1 = 'PLAY POKER';
+export const LOBBY_HERO_TITLE_2 = 'WITH FRIENDS';
 
-export const CREATE_TABLE_HEADING = 'Create Table';
-export const CREATE_TABLE_SUBTITLE = 'Define the stakes and command the room.';
-export const BTN_ESTABLISH = 'ESTABLISH TABLE';
-export const BTN_ESTABLISHING = 'ESTABLISHING...';
+export const CREATE_TABLE_HEADING = 'Create Game';
+export const CREATE_TABLE_SUBTITLE = 'Set the blinds and invite players.';
+export const BTN_CREATE_GAME = 'CREATE GAME';
+export const BTN_CREATING = 'CREATING...';
 
 export const JOIN_TABLE_HEADING = 'Quick Join';
-export const JOIN_TABLE_SUBTITLE = 'Enter an existing arena.';
-export const BTN_JOIN = 'ENTER VAULT';
-export const BTN_JOINING = 'ENTERING...';
+export const JOIN_TABLE_SUBTITLE = 'Join an existing game.';
+export const BTN_JOIN = 'JOIN GAME';
+export const BTN_JOINING = 'JOINING...';
 
 export const ERROR_CREATE_FALLBACK = 'Failed to create room. Please check your connection.';
 export const ERROR_JOIN_FALLBACK = 'Failed to join room. Room may not exist or password is incorrect.';

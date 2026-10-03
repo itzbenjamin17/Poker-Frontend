@@ -17,7 +17,7 @@ function WindowSizeGuard({ children }: { children: React.ReactNode }) {
     if (size.w < 320 || size.h < 480) {
         return (
             <div className="h-dvh flex flex-col items-center justify-center gap-4 bg-surface px-6 text-center">
-                <span className="text-xl font-headline font-bold text-emerald-primary">VAULT POKER</span>
+                <span className="text-xl font-headline font-bold text-emerald-primary">POKER</span>
                 <p className="text-zinc-400 text-sm">
                     {size.w < 320 ? 'Window too narrow' : 'Window too short'} to play.
                 </p>
@@ -43,7 +43,7 @@ export default function App() {
             >
                 <div className="flex items-center gap-12">
                     <span className="text-2xl font-headline font-bold tracking-tighter text-emerald-primary">
-                        VAULT POKER
+                        POKER
                     </span>
                 </div>
             </nav>

@@ -6,8 +6,8 @@ import { logger } from '../../security/logger';
 import {
     CREATE_TABLE_HEADING,
     CREATE_TABLE_SUBTITLE,
-    BTN_ESTABLISH,
-    BTN_ESTABLISHING,
+    BTN_CREATE_GAME,
+    BTN_CREATING,
     ERROR_CREATE_FALLBACK,
 } from '../../constants/strings';
 import { VALIDATION, validateCreate } from './validation';
@@ -73,7 +73,7 @@ export function CreateRoomForm({ onAuth, onError, loading, setLoading }: CreateR
                     <div className="col-span-full">
                         <Input
                             label="Room Name"
-                            placeholder="Emerald Vault 01"
+                            placeholder="Game 01"
                             value={createData.roomName}
                             onChange={e => setCreateData({ ...createData, roomName: e.target.value })}
                             required
@@ -161,7 +161,7 @@ export function CreateRoomForm({ onAuth, onError, loading, setLoading }: CreateR
                             type="submit"
                             disabled={loading}
                         >
-                            {loading ? BTN_ESTABLISHING : BTN_ESTABLISH}
+                            {loading ? BTN_CREATING : BTN_CREATE_GAME}
                         </Button>
                     </div>
                 </form>

@@ -1,4 +1,4 @@
-# Security Overview - Vault Poker
+# Security Overview - Poker
 
 ## Authentication
 - **JWT (JSON Web Tokens):** All non-public REST and WebSocket communication is secured via stateless JWT authentication.

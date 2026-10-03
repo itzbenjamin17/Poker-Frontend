@@ -78,7 +78,7 @@ src/
 
 ### User Experience
 **Branded multiplayer table UI**
-- "Vault Poker" lobby and table presentation
+- "Poker" lobby and table presentation
 - Motion-driven card reveals, overlays, notifications, and transitions
 - Responsive seat positioning with layouts for common table sizes
 - Reconnect countdowns, showdown results, side-pot display, and current-turn indicators

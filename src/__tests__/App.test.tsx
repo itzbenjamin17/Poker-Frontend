@@ -66,7 +66,7 @@ describe('App', () => {
 
         expect(screen.getByTestId('lobby-view')).toBeInTheDocument();
         expect(screen.queryByTestId('game-view')).not.toBeInTheDocument();
-        expect(screen.getByText('VAULT POKER')).toBeInTheDocument();
+        expect(screen.getByText('POKER')).toBeInTheDocument();
     });
 
     it('renders GameView component when user is authenticated and triggers clearAuth on leave', async () => {

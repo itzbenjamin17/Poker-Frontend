@@ -26,7 +26,7 @@ test.describe('Item 34: Form validation', () => {
     await createSection.getByLabel(/big blind/i).fill('5');
 
     // Click submit button
-    const submitBtn = createSection.getByRole('button', { name: /establish table/i });
+    const submitBtn = createSection.getByRole('button', { name: /create game/i });
     await submitBtn.click();
 
     // Verify error message is shown

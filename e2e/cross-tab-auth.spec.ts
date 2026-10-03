@@ -58,9 +58,9 @@ test.describe('Item 33: Cross-tab authentication and synchronization', () => {
     await tabA.getByRole('button', { name: /leave table/i }).click();
 
     // Tab A clears auth and returns to lobby home
-    await expect(tabA.getByRole('button', { name: /establish table/i })).toBeVisible();
+    await expect(tabA.getByRole('button', { name: /create game/i })).toBeVisible();
 
     // 5. Tab B detects storage event (poker-auth removed) and returns to lobby home
-    await expect(tabB.getByRole('button', { name: /establish table/i })).toBeVisible();
+    await expect(tabB.getByRole('button', { name: /create game/i })).toBeVisible();
   });
 });
