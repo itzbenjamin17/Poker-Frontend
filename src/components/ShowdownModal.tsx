@@ -12,7 +12,7 @@ import {
     SHOWDOWN_POT_SPLIT, SHOWDOWN_WON_WITH_PREFIX, SHOWDOWN_WON_ROUND,
     SHOWDOWN_SHOW_DETAILS, SHOWDOWN_HIDE_DETAILS,
     SHOWDOWN_OPEN_FULL_REVIEW, SHOWDOWN_CLOSE_FULL_REVIEW, SHOWDOWN_FULL_REVIEW,
-    SHOWDOWN_COMMUNITY_CARDS, SHOWDOWN_REVEALED_HOLE_CARDS, SHOWDOWN_PLAYER_OUTCOMES,
+    SHOWDOWN_COMMUNITY_CARDS, SHOWDOWN_PLAYER_OUTCOMES,
     SHOWDOWN_NO_REVEALED_HOLE_CARDS,
     LABEL_MAIN_POT, LABEL_SIDE_POT_PREFIX,
     ARIA_ROUND_RESULT,
@@ -20,6 +20,7 @@ import {
 
 interface ShowdownModalProps {
     showdownResult: GameState | null;
+    viewerPlayerId?: string | null;
 }
 
 import { formatHandRank, getPotBreakdown } from '../lib/game';
@@ -42,12 +43,11 @@ function getPlayerOutcome(player: Player, winners: string[]) {
     if (winners.includes(player.name)) return 'Winner';
     if (player.status === 'FOLDED' || player.hasFolded) return 'Folded';
     if (player.status === 'OUT') return 'Out';
-    if (player.status === 'ALL_IN') return 'All in';
     if (player.status === 'DISCONNECTED') return 'Disconnected';
-    return 'In hand';
+    return 'Lost';
 }
 
-export function ShowdownModal({ showdownResult }: ShowdownModalProps) {
+export function ShowdownModal({ showdownResult, viewerPlayerId }: ShowdownModalProps) {
     const [detailState, setDetailState] = useState<DetailState>('collapsed');
     const prefersReducedMotion = useReducedMotion();
     const fullReviewTriggerRef = useRef<HTMLButtonElement | null>(null);
@@ -105,6 +105,15 @@ export function ShowdownModal({ showdownResult }: ShowdownModalProps) {
     const isExpanded = effectiveDetailState !== 'collapsed';
     const potRows = getPotRows(showdownResult);
     const revealedPlayers = showdownResult.players.filter((player) => player.holeCards && player.holeCards.length > 0);
+    const chipsDistributed = showdownResult.players.reduce((sum, player) => sum + (player.chipsWon ?? 0), 0);
+    // The live pot is already paid out (0) by the time the result arrives, so prefer what was actually distributed.
+    const totalPotWon = chipsDistributed > 0 ? chipsDistributed : potRows.reduce((sum, pot) => sum + pot.amount, 0);
+    const viewer = viewerPlayerId ? showdownResult.players.find((player) => player.id === viewerPlayerId) : undefined;
+    const viewerResult = viewer
+        ? winners.includes(viewer.name)
+            ? { won: true, label: `+${formatMoney(viewer.chipsWon ?? showdownResult.winningsPerPlayer ?? 0)}` }
+            : { won: false, label: getPlayerOutcome(viewer, winners) }
+        : null;
     const motionTransition = { duration: prefersReducedMotion ? 0 : 0.22, ease: 'easeOut' as const };
 
     const closeFullReview = () => setDetailState('expanded');
@@ -183,17 +192,25 @@ export function ShowdownModal({ showdownResult }: ShowdownModalProps) {
                         <div className="mt-5 grid gap-4 lg:grid-cols-[1fr_1.1fr]">
                             <section aria-label="Result totals" className="space-y-3 rounded-xl border border-white/10 p-3">
                                 <dl className="grid grid-cols-2 gap-3 text-xs uppercase tracking-[0.12em]">
-                                    <div>
-                                        <dt className="text-zinc-500">State</dt>
-                                        <dd className="mt-1 font-bold text-zinc-200">{roundLabel}</dd>
-                                    </div>
                                     {showdownResult.winningsPerPlayer != null && (
                                         <div>
                                             <dt className="text-zinc-500">Payout</dt>
                                             <dd className="mt-1 font-bold text-gold-secondary">{formatMoney(showdownResult.winningsPerPlayer)}</dd>
                                         </div>
                                     )}
-                                    {potRows.map((pot) => (
+                                    <div>
+                                        <dt className="text-zinc-500">Total Pot</dt>
+                                        <dd className="mt-1 font-bold text-gold-secondary">{formatMoney(totalPotWon)}</dd>
+                                    </div>
+                                    {viewerResult && (
+                                        <div>
+                                            <dt className="text-zinc-500">Your Result</dt>
+                                            <dd className={cn('mt-1 font-bold', viewerResult.won ? 'text-gold-secondary' : 'text-zinc-200')}>
+                                                {viewerResult.label}
+                                            </dd>
+                                        </div>
+                                    )}
+                                    {potRows.length > 1 && potRows.map((pot) => (
                                         <div key={pot.label}>
                                             <dt className="text-zinc-500">{pot.label}</dt>
                                             <dd className="mt-1 font-bold text-gold-secondary">{formatMoney(pot.amount)}</dd>
@@ -213,29 +230,7 @@ export function ShowdownModal({ showdownResult }: ShowdownModalProps) {
                                 </div>
                             </section>
 
-                            <section aria-label={SHOWDOWN_REVEALED_HOLE_CARDS} className="rounded-xl border border-white/10 p-3">
-                                <h3 className="text-[10px] font-headline font-extrabold uppercase tracking-[0.16em] text-zinc-500">
-                                    {SHOWDOWN_REVEALED_HOLE_CARDS}
-                                </h3>
-                                {revealedPlayers.length > 0 ? (
-                                    <div className="mt-3 space-y-3">
-                                        {revealedPlayers.map((player, index) => (
-                                            <div key={`${player.id || player.name || 'player'}-${index}`} className="flex items-center justify-between gap-3">
-                                                <span className="text-xs font-bold uppercase tracking-[0.12em] text-zinc-300">{player.name}</span>
-                                                <div className="flex gap-1.5">
-                                                    {player.holeCards?.map((card) => (
-                                                        <CardUI key={`${player.id || player.name}-${card}`} card={card} scale={0.56} />
-                                                    ))}
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                ) : (
-                                    <p className="mt-3 text-xs text-zinc-500">{SHOWDOWN_NO_REVEALED_HOLE_CARDS}</p>
-                                )}
-                            </section>
-
-                            <section aria-label={SHOWDOWN_PLAYER_OUTCOMES} className="rounded-xl border border-white/10 p-3">
+                            <section aria-label={SHOWDOWN_PLAYER_OUTCOMES} className="rounded-xl border border-white/10 p-3 lg:col-span-2">
                                 <h3 className="text-[10px] font-headline font-extrabold uppercase tracking-[0.16em] text-zinc-500">
                                     {SHOWDOWN_PLAYER_OUTCOMES}
                                 </h3>
@@ -243,15 +238,25 @@ export function ShowdownModal({ showdownResult }: ShowdownModalProps) {
                                     {showdownResult.players.map((player, index) => (
                                         <li
                                             key={`${player.id || player.name || 'player'}-${index}`}
-                                            className="grid grid-cols-[1fr_auto] gap-3 rounded-lg bg-black/18 px-3 py-2 text-xs"
+                                            className={cn(
+                                                'flex flex-wrap items-center justify-between gap-3 rounded-lg px-3 py-2 text-xs',
+                                                winners.includes(player.name) ? 'bg-gold-secondary/10' : 'bg-black/18',
+                                            )}
                                         >
-                                            <div>
+                                            <div className="min-w-0">
                                                 <p className="font-bold text-zinc-100">{player.name}</p>
                                                 <p className="mt-0.5 uppercase tracking-[0.12em] text-zinc-500">
                                                     {getPlayerOutcome(player, winners)}
                                                     {formatHandRank(player.handRank) ? ` - ${formatHandRank(player.handRank)}` : ''}
                                                 </p>
                                             </div>
+                                            {player.holeCards && player.holeCards.length > 0 && (
+                                                <div className="flex gap-1.5">
+                                                    {player.holeCards.map((card) => (
+                                                        <CardUI key={`${player.id || player.name}-${card}`} card={card} scale={0.56} />
+                                                    ))}
+                                                </div>
+                                            )}
                                             <div className="text-right">
                                                 <p className="font-bold text-gold-secondary">{formatMoney(player.chips)}</p>
                                                 {typeof player.chipsWon === 'number' && (
@@ -263,6 +268,9 @@ export function ShowdownModal({ showdownResult }: ShowdownModalProps) {
                                         </li>
                                     ))}
                                 </ul>
+                                {revealedPlayers.length === 0 && (
+                                    <p className="mt-3 text-xs text-zinc-500">{SHOWDOWN_NO_REVEALED_HOLE_CARDS}</p>
+                                )}
                             </section>
                         </div>
                     </motion.div>

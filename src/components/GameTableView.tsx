@@ -115,6 +115,7 @@ export function GameTableView({
             {/* Showdown Modal */}
             <ShowdownModal
                 showdownResult={showdownResult}
+                viewerPlayerId={myPlayerId}
             />
 
             {/* Leave Button */}

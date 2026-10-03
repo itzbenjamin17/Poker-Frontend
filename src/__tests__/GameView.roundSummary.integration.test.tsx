@@ -152,7 +152,7 @@ describe('GameView - Collapsed Round Summary Integration', () => {
         expect(within(review).getByRole('img', { name: /king of spades/i })).toBeInTheDocument();
         expect(within(review).queryByRole('img', { name: /2 of hearts/i })).not.toBeInTheDocument();
         expect(within(review).getByText(/opponent/i)).toBeInTheDocument();
-        expect(within(review).getByText(/in hand - pair/i)).toBeInTheDocument();
+        expect(within(review).getByText(/lost - pair/i)).toBeInTheDocument();
 
         await user.click(within(review).getByRole('button', { name: /close full result review/i }));
         await waitFor(() => {
