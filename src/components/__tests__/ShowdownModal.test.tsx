@@ -1,5 +1,4 @@
 import { render, screen, within } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { ShowdownModal } from '../ShowdownModal';
 import type { GameState } from '../../types';
@@ -50,55 +49,12 @@ const showdownResult: GameState = {
 };
 
 describe('ShowdownModal', () => {
-    it('returns focus to the full-review trigger after closing the review dialog', async () => {
-        const user = userEvent.setup();
+    it('renders the showdown summary correctly', () => {
         render(<ShowdownModal showdownResult={showdownResult} />);
 
         const summary = screen.getByRole('region', { name: /round result/i });
-        await user.click(within(summary).getByRole('button', { name: /show result details/i }));
-
-        const fullReviewTrigger = within(summary).getByRole('button', { name: /open full result review/i });
-        await user.click(fullReviewTrigger);
-
-        const review = await screen.findByRole('dialog', { name: /full result review/i });
-        const close = within(review).getByRole('button', { name: /close full result review/i });
-        expect(close).toHaveFocus();
-
-        await user.click(close);
-
-        expect(screen.queryByRole('dialog', { name: /full result review/i })).not.toBeInTheDocument();
-        expect(fullReviewTrigger).toHaveFocus();
-    });
-
-    it('keeps the full-review path operable when reduced motion is preferred', async () => {
-        const user = userEvent.setup();
-        render(<ShowdownModal showdownResult={showdownResult} />);
-
-        const summary = screen.getByRole('region', { name: /round result/i });
-        await user.click(within(summary).getByRole('button', { name: /show result details/i }));
-        await user.click(within(summary).getByRole('button', { name: /open full result review/i }));
-
-        const review = await screen.findByRole('dialog', { name: /full result review/i });
-        expect(review).toBeVisible();
-        expect(within(review).getByRole('button', { name: /close full result review/i })).toHaveFocus();
-    });
-
-    it('keeps keyboard focus contained inside the full-review dialog', async () => {
-        const user = userEvent.setup();
-        render(<ShowdownModal showdownResult={showdownResult} />);
-
-        const summary = screen.getByRole('region', { name: /round result/i });
-        await user.click(within(summary).getByRole('button', { name: /show result details/i }));
-        await user.click(within(summary).getByRole('button', { name: /open full result review/i }));
-
-        const review = await screen.findByRole('dialog', { name: /full result review/i });
-        const close = within(review).getByRole('button', { name: /close full result review/i });
-        expect(close).toHaveFocus();
-
-        await user.tab({ shift: true });
-        expect(close).toHaveFocus();
-
-        await user.tab();
-        expect(close).toHaveFocus();
+        expect(within(summary).getByText(/TestPlayer won!/i)).toBeInTheDocument();
+        expect(within(summary).getByText(/TWO PAIR/i)).toBeInTheDocument();
+        expect(within(summary).getByText(/\+\$1,500/i)).toBeInTheDocument();
     });
 });

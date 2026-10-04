@@ -30,7 +30,7 @@ describe('useShowdownTimers', () => {
 
         // Advance timers to trigger hiding showdown
         act(() => {
-            vi.advanceTimersByTime(45000);
+            vi.advanceTimersByTime(65000);
         });
 
         expect(setShowdown).toHaveBeenCalledWith(null);
@@ -81,7 +81,7 @@ describe('useShowdownTimers', () => {
         });
 
         act(() => {
-            vi.advanceTimersByTime(45000);
+            vi.advanceTimersByTime(65000);
         });
 
         expect(setShowdown).not.toHaveBeenCalled();

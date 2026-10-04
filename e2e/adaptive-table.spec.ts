@@ -331,37 +331,23 @@ test.describe('Adaptive table-first foundation', () => {
       const heroSeat = hostPage.getByRole('group', { name: /host hero seat/i });
 
       await expect(summary).toBeVisible();
-      const detailsToggle = summary.getByRole('button', { name: /show result details/i });
-      await expect(detailsToggle).toBeVisible();
+      const fullReviewTrigger = summary.getByRole('button', { name: /open full result review/i });
+      await expect(fullReviewTrigger).toBeVisible();
 
       const summaryBox = await summary.boundingBox();
       const potBox = await totalPot.boundingBox();
       const heroBox = await heroSeat.boundingBox();
-      const detailsToggleBox = await detailsToggle.boundingBox();
+      const fullReviewTriggerBox = await fullReviewTrigger.boundingBox();
       expect(summaryBox).not.toBeNull();
       expect(potBox).not.toBeNull();
       expect(heroBox).not.toBeNull();
-      expect(detailsToggleBox).not.toBeNull();
-      expect(detailsToggleBox!.width).toBeGreaterThanOrEqual(44);
-      expect(detailsToggleBox!.height).toBeGreaterThanOrEqual(44);
-      expectInside(summaryBox!, { x: 0, y: 0, width: viewport.width, height: viewport.height });
-      expectNoOverlap(summaryBox!, potBox!);
-      expectNoOverlap(summaryBox!, heroBox!);
-
-      await detailsToggle.click();
-      await expect(summary.getByText(/main pot/i)).toBeVisible();
-      await expect(summary.getByText(/side pot 1/i)).toBeVisible();
-      const expandedSummaryBox = await summary.boundingBox();
-      expect(expandedSummaryBox).not.toBeNull();
-      expectInside(expandedSummaryBox!, { x: 0, y: 0, width: viewport.width, height: viewport.height });
-      expectNoOverlap(expandedSummaryBox!, potBox!);
-      expectNoOverlap(expandedSummaryBox!, heroBox!);
-      await expect(hostPage.getByRole('region', { name: /board cluster/i })).toBeVisible();
-      const fullReviewTrigger = summary.getByRole('button', { name: /open full result review/i });
-      const fullReviewTriggerBox = await fullReviewTrigger.boundingBox();
       expect(fullReviewTriggerBox).not.toBeNull();
       expect(fullReviewTriggerBox!.width).toBeGreaterThanOrEqual(44);
       expect(fullReviewTriggerBox!.height).toBeGreaterThanOrEqual(44);
+      expectInside(summaryBox!, { x: 0, y: 0, width: viewport.width, height: viewport.height });
+      expectNoOverlap(summaryBox!, potBox!);
+      expectNoOverlap(summaryBox!, heroBox!);
+      await expect(hostPage.getByRole('region', { name: /board cluster/i })).toBeVisible();
 
       await fullReviewTrigger.click();
       const review = hostPage.getByRole('dialog', { name: /full result review/i });
@@ -377,7 +363,6 @@ test.describe('Adaptive table-first foundation', () => {
       await review.getByRole('button', { name: /close full result review/i }).click();
       await expect(review).toHaveCount(0);
       await expect(summary.getByRole('button', { name: /open full result review/i })).toBeFocused();
-      await summary.getByRole('button', { name: /hide result details/i }).click();
     }
   });
 });

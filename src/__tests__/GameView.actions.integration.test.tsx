@@ -190,7 +190,6 @@ describe('GameView - Actions & Flows Integration', () => {
         expect(summary).toBeInTheDocument();
         expect(screen.queryByRole('dialog', { name: /round result/i })).not.toBeInTheDocument();
         expect(screen.getByText(/testplayer won/i)).toBeInTheDocument();
-        expect(screen.getByRole('button', { name: /show result details/i })).toBeInTheDocument();
     });
 
     it('redirects to lobby (calls onLeave) on hydration 403 error', async () => {

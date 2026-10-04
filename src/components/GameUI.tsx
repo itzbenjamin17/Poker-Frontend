@@ -221,7 +221,7 @@ export const PlayerPod = ({
             </div>
 
             {formatHandRank(handRank) && (
-                <div className="absolute -bottom-2.5 left-1/2 -translate-x-1/2 bg-surface-higher/90 backdrop-blur-md px-2 py-0.5 rounded border border-emerald-primary/30 z-20 whitespace-nowrap">
+                <div className="bg-surface-higher/90 backdrop-blur-md px-2 py-1 rounded-md border border-emerald-primary/30 z-20 whitespace-nowrap shadow-lg">
                     <span className="text-[9px] font-bold text-emerald-primary/90 uppercase tracking-widest">
                         {formatHandRank(handRank)}
                     </span>
