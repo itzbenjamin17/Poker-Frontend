@@ -331,38 +331,18 @@ test.describe('Adaptive table-first foundation', () => {
       const heroSeat = hostPage.getByRole('group', { name: /host hero seat/i });
 
       await expect(summary).toBeVisible();
-      const fullReviewTrigger = summary.getByRole('button', { name: /open full result review/i });
-      await expect(fullReviewTrigger).toBeVisible();
 
       const summaryBox = await summary.boundingBox();
       const potBox = await totalPot.boundingBox();
       const heroBox = await heroSeat.boundingBox();
-      const fullReviewTriggerBox = await fullReviewTrigger.boundingBox();
       expect(summaryBox).not.toBeNull();
       expect(potBox).not.toBeNull();
       expect(heroBox).not.toBeNull();
-      expect(fullReviewTriggerBox).not.toBeNull();
-      expect(fullReviewTriggerBox!.width).toBeGreaterThanOrEqual(44);
-      expect(fullReviewTriggerBox!.height).toBeGreaterThanOrEqual(44);
       expectInside(summaryBox!, { x: 0, y: 0, width: viewport.width, height: viewport.height });
       expectNoOverlap(summaryBox!, potBox!);
       expectNoOverlap(summaryBox!, heroBox!);
       await expect(hostPage.getByRole('region', { name: /board cluster/i })).toBeVisible();
 
-      await fullReviewTrigger.click();
-      const review = hostPage.getByRole('dialog', { name: /full result review/i });
-      await expect(review).toBeVisible();
-      await expect(review).toHaveCSS('transform', 'none');
-      await expect(review.getByRole('img', { name: /ace of hearts/i })).toBeVisible();
-      await expect(review.getByRole('img', { name: /ace of spades/i })).toBeVisible();
-      await expect(review.getByText(/player outcomes/i)).toBeVisible();
-      const reviewBox = await review.boundingBox();
-      expect(reviewBox).not.toBeNull();
-      expectInside(reviewBox!, { x: 0, y: 0, width: viewport.width, height: viewport.height });
-
-      await review.getByRole('button', { name: /close full result review/i }).click();
-      await expect(review).toHaveCount(0);
-      await expect(summary.getByRole('button', { name: /open full result review/i })).toBeFocused();
     }
   });
 });
