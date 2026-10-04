@@ -149,7 +149,13 @@ export function ActionPanel({
 
     const isAutoAdvancing = Boolean(gameState.isAutoAdvancing);
     const isShowdown = gameState.phase === 'SHOWDOWN';
-    const showControls = isMyTurn && !isSelfDisconnected && !isReadyCountdownActive
+    
+    // Fallback: If we somehow retained isReadyCountdownActive: true, but the countdown is 0
+    // and we've already transitioned out of SHOWDOWN, don't freeze the controls.
+    const isEffectivelyReadyCountdownActive = isReadyCountdownActive && 
+        (isShowdown || (readyCountdownSecondsRemaining > 0 && readyCount < readyEligibleCount));
+
+    const showControls = isMyTurn && !isSelfDisconnected && !isEffectivelyReadyCountdownActive
         && !isAutoAdvancing && !isShowdown && legalActions.size > 0;
     const waitingName = currentTurnPlayerName || gameState.currentPlayerName || 'another player';
     const canCheck = legalActions.has('CHECK');
@@ -325,7 +331,7 @@ export function ActionPanel({
                             )}
                         </AnimatePresence>
                     </motion.div>
-                ) : isReadyCountdownActive ? (
+                ) : isEffectivelyReadyCountdownActive ? (
                     <motion.div
                         key="ready-controls"
                         {...fadeMotion}

@@ -173,6 +173,11 @@ export function GameProvider({ auth, onLeave, children }: GameProviderProps) {
             readyCountdownDeadlineEpochMs: payload.readyCountdownDeadlineEpochMs ?? undefined,
         };
 
+        if (incomingData.phase !== 'SHOWDOWN') {
+            incomingData.isReadyCountdownActive = false;
+            incomingData.readyCountdownDeadlineEpochMs = undefined;
+        }
+
         const previousState = latestGameStateRef.current;
         let data = incomingData;
         const hadWinnersBefore = Boolean(previousState?.winners && previousState.winners.length > 0);
@@ -190,6 +195,23 @@ export function GameProvider({ auth, onLeave, children }: GameProviderProps) {
                 data = { ...incomingData, readyCountdownDeadlineEpochMs: previousState.readyCountdownDeadlineEpochMs };
             } else if (inReadyActive && mergedDeadline !== undefined) {
                 data = { ...incomingData, readyCountdownDeadlineEpochMs: mergedDeadline };
+            }
+        } else if (previousState?.phase !== 'SHOWDOWN' && incomingData.phase === 'SHOWDOWN') {
+            // Guard against stale SHOWDOWN packets arriving after we've already transitioned to PRE_FLOP
+            // If the deadline is already passed, it's definitely a stale packet that shouldn't resurrect the game state
+            const inDeadline = typeof incomingData.readyCountdownDeadlineEpochMs === 'number' ? incomingData.readyCountdownDeadlineEpochMs : 0;
+            if (incomingData.isReadyCountdownActive && inDeadline > 0 && inDeadline <= Date.now()) {
+                // Ignore this stale packet
+                return;
+            }
+        }
+
+        // Also guard against merging if the deadline has ALREADY expired in a SHOWDOWN -> SHOWDOWN merge
+        if (data.phase === 'SHOWDOWN' && data.isReadyCountdownActive && data.readyCountdownDeadlineEpochMs) {
+            if (data.readyCountdownDeadlineEpochMs <= Date.now()) {
+                // Timer is already expired, so this shouldn't be considered an active countdown
+                // Actually, if it's expired, we probably shouldn't show the timer UI indefinitely.
+                // We shouldn't cancel it, but maybe we let useShowdownTimers handle it.
             }
         }
 
