@@ -1,4 +1,5 @@
 import { createContext, useContext } from 'react';
+import type { GameSession } from '../domain/GameSession';
 import type {
     AuthResponse,
     GameState,
@@ -43,6 +44,7 @@ export type Action =
 export interface GameContextValue extends GameContextState {
     auth: AuthResponse;
     onLeave?: () => void;
+    session?: GameSession;
     dispatch: React.Dispatch<Action>;
     applyIncomingGameState: (payload: IncomingGameStatePayload) => void;
     applyIncomingPrivateState: (payload: IncomingPrivateStatePayload) => void;

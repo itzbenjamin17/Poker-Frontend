@@ -2,8 +2,8 @@ import {
     useCallback,
     useEffect,
     useMemo,
-    useReducer,
     useRef,
+    useSyncExternalStore,
     type ReactNode,
 } from 'react';
 import type {
@@ -12,15 +12,15 @@ import type {
     GameState,
     IncomingGameStatePayload,
     IncomingPrivateStatePayload,
-    WsStatus,
 } from '../types';
-import { useShowdownTimers } from '../hooks/useShowdownTimers';
 import {
     GameContext,
-    type GameContextState,
     type Action,
     type GameContextValue,
 } from './GameContext';
+import { GameSession } from '../domain/GameSession';
+import { InMemoryTransportAdapter, type GameTransport } from '../services/transport';
+import type { Clock } from '../domain/clock';
 
 const GAME_END_STORAGE_PREFIX = 'poker-game-end:';
 
@@ -52,242 +52,143 @@ function savePersistedGameEnd(roomId: string, result: GameEndResult | null): voi
             localStorage.removeItem(GAME_END_STORAGE_PREFIX + roomId);
         }
     } catch {
-        // Ignore storage errors (private browsing, quota exceeded, etc.) - the
-        // review still works for the current tab, it just won't survive a refresh.
+        // Ignore storage errors (private browsing, quota exceeded, etc.)
     }
 }
 
-function reducer(state: GameContextState, action: Action): GameContextState {
-    switch (action.type) {
-        case 'SET_ROOM': return { ...state, roomState: action.payload };
-        case 'SET_GAME': return { ...state, gameState: action.payload };
-        case 'SET_PRIVATE': return { ...state, privateState: action.payload };
-        case 'SET_SHOWDOWN': return { ...state, showdown: action.payload };
-        case 'SET_SHOWDOWN_RESULT': return { ...state, showdownResult: action.payload };
-        case 'SET_NOTIFICATION': return { ...state, notification: action.payload };
-        case 'SET_LOADING_STATUS': return { ...state, loadingStatus: action.payload };
-        case 'SET_MY_PLAYER_ID': return {
-            ...state,
-            myPlayerId: action.payload,
-        };
-        case 'SET_CLAIM_PENDING': return { ...state, claimPending: action.payload };
-        case 'SET_WS_STATUS': return { ...state, wsStatus: action.payload };
-        case 'SET_HYDRATED': return { ...state, isHydrated: action.payload };
-        case 'SET_GAME_END_RESULT': {
-            let nextGameState = state.gameState;
-            if (action.payload?.finalState) {
-                const fs = action.payload.finalState;
-                if (fs.phase === 'SHOWDOWN' && fs.pot === 0 && state.gameState && state.gameState.pot > 0) {
-                    fs.pot = state.gameState.pot;
-                    fs.pots = state.gameState.pots;
-                }
-                nextGameState = fs;
-            }
-            return {
-                ...state,
-                gameEndResult: action.payload,
-                isGameOver: action.payload !== null,
-                ...(nextGameState ? { gameState: nextGameState } : {}),
-                showdown: null,
-                showdownResult: null,
-                notification: null,
-            };
-        }
-        case 'CLEAR_GAME_STATE': return {
-            ...state,
-            gameState: null,
-            privateState: null,
-            showdown: null,
-            showdownResult: null,
-            claimPending: false,
-            myPlayerId: null,
-            gameEndResult: null,
-            isGameOver: false,
-        };
-        default: return state;
-    }
-}
-
-interface GameProviderProps {
+export interface GameProviderProps {
     auth: AuthResponse;
     onLeave?: () => void;
+    session?: GameSession;
+    transport?: GameTransport;
+    clock?: Clock;
     children: ReactNode;
 }
 
-export function GameProvider({ auth, onLeave, children }: GameProviderProps) {
-    const [state, dispatch] = useReducer(reducer, auth, (initAuth): GameContextState => {
-        const persistedGameEnd = loadPersistedGameEnd(initAuth.roomId);
-        return {
-            roomState: {
-                roomId: initAuth.roomId,
-                roomName: '',
-                players: [{ name: initAuth.playerName, isHost: false }],
-                gameStarted: false,
-            },
-            gameState: persistedGameEnd?.finalState ?? null,
-            privateState: null,
-            showdown: null,
-            showdownResult: null,
-            notification: null,
-            loadingStatus: 'Connecting...',
-            myPlayerId: null,
-            claimPending: false,
-            wsStatus: 'disconnected' as WsStatus,
-            isHydrated: false,
-            isGameOver: Boolean(persistedGameEnd),
-            gameEndResult: persistedGameEnd,
-        };
-    });
+/**
+ * Expand-phase compatibility adapter: connects the in-process GameSession domain store
+ * to legacy React context consumers using useSyncExternalStore.
+ */
+export function GameProvider({
+    auth,
+    onLeave,
+    session: sessionProp,
+    transport: transportProp,
+    clock,
+    children,
+}: GameProviderProps) {
+    const session = useMemo(() => {
+        if (sessionProp) return sessionProp;
+        const persistedGameEnd = loadPersistedGameEnd(auth.roomId);
+        return new GameSession({
+            auth,
+            transport: transportProp ?? new InMemoryTransportAdapter(),
+            clock,
+            initialGameEndResult: persistedGameEnd,
+            onLeave,
+        });
+    }, [sessionProp, auth, transportProp, clock, onLeave]);
+
+    // React 18/19 concurrent external store subscription
+    const state = useSyncExternalStore(
+        session.subscribe,
+        session.getSnapshot,
+        session.getSnapshot
+    );
 
     const latestGameStateRef = useRef<GameState | null>(null);
     const notificationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const gameOverRef = useRef(state.isGameOver);
 
-    // Sync gameOverRef with state
     useEffect(() => {
-        gameOverRef.current = state.isGameOver;
-    }, [state.isGameOver]);
+        latestGameStateRef.current = state.gameState;
+    }, [state.gameState]);
 
-    // Freeze the final snapshot in localStorage so a page refresh during the
-    // post-game review restores it instead of falling through to REST
-    // hydration, which 404s once the server has cleaned up the room.
     useEffect(() => {
         savePersistedGameEnd(auth.roomId, state.gameEndResult);
     }, [auth.roomId, state.gameEndResult]);
 
-    const setNotificationWithAutoDismiss = useCallback((msg: string | null, ms = 4000) => {
-        if (notificationTimerRef.current !== null) clearTimeout(notificationTimerRef.current);
-        dispatch({ type: 'SET_NOTIFICATION', payload: msg });
-        if (msg !== null && ms > 0) {
-            notificationTimerRef.current = setTimeout(() => {
-                dispatch({ type: 'SET_NOTIFICATION', payload: null });
-                notificationTimerRef.current = null;
-            }, ms);
+    const dispatch = useCallback((action: Action) => {
+        switch (action.type) {
+            case 'SET_ROOM':
+                session.setRoomState(action.payload);
+                break;
+            case 'SET_GAME':
+                session.setGameState(action.payload);
+                break;
+            case 'SET_PRIVATE':
+                session.applyPrivateState(action.payload);
+                break;
+            case 'SET_SHOWDOWN':
+                session.setShowdown(action.payload);
+                break;
+            case 'SET_SHOWDOWN_RESULT':
+                session.setShowdownResult(action.payload);
+                break;
+            case 'SET_NOTIFICATION':
+                session.setNotification(action.payload);
+                break;
+            case 'SET_LOADING_STATUS':
+                session.setLoadingStatus(action.payload);
+                break;
+            case 'SET_MY_PLAYER_ID':
+                session.setMyPlayerId(action.payload);
+                break;
+            case 'SET_CLAIM_PENDING':
+                session.setClaimPending(action.payload);
+                break;
+            case 'SET_WS_STATUS':
+                session.setWsStatus(action.payload);
+                break;
+            case 'SET_HYDRATED':
+                session.setHydrated(action.payload);
+                break;
+            case 'SET_GAME_END_RESULT':
+                session.setGameEndResult(action.payload);
+                break;
+            case 'CLEAR_GAME_STATE':
+                session.clearGameState();
+                break;
         }
-    }, []);
-
-    const setShowdown = useCallback((v: GameState | null) => dispatch({ type: 'SET_SHOWDOWN', payload: v }), []);
-    const setShowdownResult = useCallback((v: GameState | null) => dispatch({ type: 'SET_SHOWDOWN_RESULT', payload: v }), []);
-
-    const { clearShowdownTimers, scheduleShowdownHide } = useShowdownTimers(setShowdown, setShowdownResult);
+    }, [session]);
 
     const applyIncomingGameState = useCallback((payload: IncomingGameStatePayload) => {
-        if (gameOverRef.current) return;
-        const incomingData: GameState = {
-            ...payload,
-            gameId: payload.gameId ?? auth.roomId,
-            claimWinAvailable: payload.claimWinAvailable ?? undefined,
-            claimWinPlayerName: payload.claimWinPlayerName ?? undefined,
-            uncalledAmount: payload.uncalledAmount ?? undefined,
-            pots: payload.pots ?? undefined,
-            isReadyCountdownActive: payload.isReadyCountdownActive ?? undefined,
-            readyCountdownDeadlineEpochMs: payload.readyCountdownDeadlineEpochMs ?? undefined,
-        };
-
-        if (incomingData.phase !== 'SHOWDOWN') {
-            incomingData.isReadyCountdownActive = false;
-            incomingData.readyCountdownDeadlineEpochMs = undefined;
-        }
-
-        const previousState = latestGameStateRef.current;
-        let data = incomingData;
-        const hadWinnersBefore = Boolean(previousState?.winners && previousState.winners.length > 0);
-
-        if (previousState?.phase === 'SHOWDOWN' && incomingData.phase === 'SHOWDOWN') {
-            const prevReadyActive = Boolean(previousState.isReadyCountdownActive);
-            const inReadyActive = Boolean(incomingData.isReadyCountdownActive);
-            const prevDeadline = typeof previousState.readyCountdownDeadlineEpochMs === 'number' ? previousState.readyCountdownDeadlineEpochMs : undefined;
-            const inDeadline = typeof incomingData.readyCountdownDeadlineEpochMs === 'number' ? incomingData.readyCountdownDeadlineEpochMs : undefined;
-            const mergedDeadline = prevDeadline === undefined ? inDeadline : inDeadline === undefined ? prevDeadline : Math.max(prevDeadline, inDeadline);
-
-            if (prevReadyActive && !inReadyActive) {
-                data = { ...incomingData, isReadyCountdownActive: true, readyCountdownDeadlineEpochMs: mergedDeadline };
-            } else if (inReadyActive && incomingData.readyCountdownDeadlineEpochMs == null && previousState.readyCountdownDeadlineEpochMs != null) {
-                data = { ...incomingData, readyCountdownDeadlineEpochMs: previousState.readyCountdownDeadlineEpochMs };
-            } else if (inReadyActive && mergedDeadline !== undefined) {
-                data = { ...incomingData, readyCountdownDeadlineEpochMs: mergedDeadline };
-            }
-        } else if (previousState?.phase !== 'SHOWDOWN' && incomingData.phase === 'SHOWDOWN') {
-            // Guard against stale SHOWDOWN packets arriving after we've already transitioned to PRE_FLOP
-            // If the deadline is already passed, it's definitely a stale packet that shouldn't resurrect the game state
-            const inDeadline = typeof incomingData.readyCountdownDeadlineEpochMs === 'number' ? incomingData.readyCountdownDeadlineEpochMs : 0;
-            if (incomingData.isReadyCountdownActive && inDeadline > 0 && inDeadline <= Date.now()) {
-                // Ignore this stale packet
-                return;
-            }
-        }
-
-        // Also guard against merging if the deadline has ALREADY expired in a SHOWDOWN -> SHOWDOWN merge
-        if (data.phase === 'SHOWDOWN' && data.isReadyCountdownActive && data.readyCountdownDeadlineEpochMs) {
-            if (data.readyCountdownDeadlineEpochMs <= Date.now()) {
-                // Timer is already expired, so this shouldn't be considered an active countdown
-                // Actually, if it's expired, we probably shouldn't show the timer UI indefinitely.
-                // We shouldn't cancel it, but maybe we let useShowdownTimers handle it.
-            }
-        }
-
-        if (data.phase === 'SHOWDOWN' && data.pot === 0 && previousState && previousState.pot > 0) {
-            data = {
-                ...data,
-                pot: previousState.pot,
-                pots: previousState.pots
-            };
-        }
-
-        dispatch({ type: 'SET_GAME', payload: data });
-        latestGameStateRef.current = data;
-
-        if (data.winners && data.winners.length > 0) {
-            if (!hadWinnersBefore) dispatch({ type: 'SET_SHOWDOWN_RESULT', payload: null });
-            dispatch({ type: 'SET_SHOWDOWN', payload: data });
-            dispatch({ type: 'SET_SHOWDOWN_RESULT', payload: data });
-            scheduleShowdownHide(data);
-        } else if (data.phase === 'SHOWDOWN') {
-            const currentShowdownResult = previousState?.phase === 'SHOWDOWN' ? previousState : null;
-            if (currentShowdownResult && currentShowdownResult.winners && currentShowdownResult.winners.length > 0) {
-                const mergedShowdownResult = {
-                    ...currentShowdownResult,
-                    isReadyCountdownActive: data.isReadyCountdownActive,
-                    readyCountdownDeadlineEpochMs: data.readyCountdownDeadlineEpochMs,
-                    players: currentShowdownResult.players.map(p => {
-                        const updatedPlayer = data.players.find(up => up.id === p.id);
-                        if (!updatedPlayer) return p;
-                        return {
-                            ...p,
-                            chips: updatedPlayer.chips,
-                            status: updatedPlayer.status,
-                            isReadyForNextHand: updatedPlayer.isReadyForNextHand,
-                            disconnectDeadlineEpochMs: updatedPlayer.disconnectDeadlineEpochMs,
-                        };
-                    })
-                };
-                dispatch({ type: 'SET_SHOWDOWN', payload: mergedShowdownResult });
-                dispatch({ type: 'SET_SHOWDOWN_RESULT', payload: mergedShowdownResult });
-            } else {
-                dispatch({ type: 'SET_SHOWDOWN', payload: data });
-                dispatch({ type: 'SET_SHOWDOWN_RESULT', payload: data });
-            }
-            if (data.isReadyCountdownActive) scheduleShowdownHide(data);
-        } else {
-            dispatch({ type: 'SET_SHOWDOWN', payload: null });
-            dispatch({ type: 'SET_SHOWDOWN_RESULT', payload: null });
-            clearShowdownTimers();
-        }
-
-        const myPlayer = data.players.find((p) => p.name === auth.playerName);
-        if (myPlayer?.id) dispatch({ type: 'SET_MY_PLAYER_ID', payload: myPlayer.id });
-    }, [auth.playerName, auth.roomId, clearShowdownTimers, scheduleShowdownHide]);
+        session.applyGameState(payload);
+        latestGameStateRef.current = session.getSnapshot().gameState;
+    }, [session]);
 
     const applyIncomingPrivateState = useCallback((payload: IncomingPrivateStatePayload) => {
-        const nextHoleCards = Array.isArray(payload.holeCards) ? payload.holeCards : [];
-        dispatch({ type: 'SET_PRIVATE', payload: { holeCards: nextHoleCards } });
-        if (payload.playerId) dispatch({ type: 'SET_MY_PLAYER_ID', payload: payload.playerId });
-    }, []);
+        session.applyPrivateState(payload);
+    }, [session]);
+
+    const clearShowdownTimers = useCallback(() => {
+        session.clearShowdownTimers();
+    }, [session]);
+
+    const scheduleShowdownHide = useCallback((s: GameState) => {
+        session.scheduleShowdownHide(s);
+    }, [session]);
+
+    const setNotificationWithAutoDismiss = useCallback((msg: string | null, ms = 4000) => {
+        session.setNotification(msg, ms);
+    }, [session]);
 
     const value = useMemo<GameContextValue>(() => ({
-        ...state,
+        roomState: state.roomState,
+        gameState: state.gameState,
+        privateState: state.privateState,
+        showdown: state.showdown,
+        showdownResult: state.showdownResult,
+        notification: state.notification,
+        loadingStatus: state.loadingStatus,
+        myPlayerId: state.myPlayerId,
+        claimPending: state.claimPending,
+        wsStatus: state.wsStatus,
+        isHydrated: state.isHydrated,
+        isGameOver: state.isGameOver,
+        gameEndResult: state.gameEndResult,
         auth,
         onLeave,
+        session,
         dispatch,
         applyIncomingGameState,
         applyIncomingPrivateState,
@@ -296,10 +197,16 @@ export function GameProvider({ auth, onLeave, children }: GameProviderProps) {
         latestGameStateRef,
         notificationTimerRef,
         setNotificationWithAutoDismiss,
-    } as GameContextValue & { setNotificationWithAutoDismiss: typeof setNotificationWithAutoDismiss }), [
-        state, auth, onLeave,
-        applyIncomingGameState, applyIncomingPrivateState,
-        clearShowdownTimers, scheduleShowdownHide,
+    } as GameContextValue & { setNotificationWithAutoDismiss: typeof setNotificationWithAutoDismiss; session: GameSession }), [
+        state,
+        auth,
+        onLeave,
+        session,
+        dispatch,
+        applyIncomingGameState,
+        applyIncomingPrivateState,
+        clearShowdownTimers,
+        scheduleShowdownHide,
         setNotificationWithAutoDismiss,
     ]);
 

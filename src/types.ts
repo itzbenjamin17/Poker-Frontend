@@ -163,3 +163,22 @@ export interface GameEndResult {
     message: string;
     finalState?: GameState;
 }
+
+export interface SessionSnapshot {
+    roomState: RoomState | null;
+    gameState: GameState | null;
+    privateState: { holeCards: string[] } | null;
+    showdown: GameState | null;
+    showdownResult: GameState | null;
+    notification: string | null;
+    loadingStatus: string;
+    myPlayerId: string | null;
+    claimPending: boolean;
+    wsStatus: WsStatus;
+    isHydrated: boolean;
+    isGameOver: boolean;
+    gameEndResult: GameEndResult | null;
+    pendingActions: ReadonlySet<string>;
+    error: { message: string } | null;
+}
+
