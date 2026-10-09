@@ -61,9 +61,6 @@ describe('useGameDispatcher', () => {
             isHydrated: true,
             isGameOver: false,
             gameEndResult: null,
-            scheduleShowdownHide: vi.fn(),
-            latestGameStateRef: { current: null },
-            notificationTimerRef: { current: null },
             applyIncomingGameState: vi.fn(),
             applyIncomingPrivateState: vi.fn(),
         });

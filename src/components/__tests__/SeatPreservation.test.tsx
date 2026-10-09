@@ -125,8 +125,8 @@ function renderSeat(spec: SeatSpec) {
 }
 
 const hasGoldDecoration = (avatar: HTMLElement) =>
-    // Gold ring class, or the gold glow (Tailwind arbitrary shadow class, which survives a disconnected seat's amber ring), or an inline gold box-shadow.
-    /ring-gold-secondary|252,211,77/.test(avatar.className) || /252,\s*211,\s*77|gold/i.test(avatar.style.boxShadow);
+    avatar.closest('[data-is-winner]')?.getAttribute('data-is-winner') === 'true' ||
+    /252,\s*211,\s*77|gold/i.test(avatar.style.boxShadow);
 
 describe('opponent seat preservation', () => {
     it('keeps test ids, roles and accessible names for random opponent states', () => {
@@ -320,8 +320,9 @@ describe('hero seat preservation', () => {
             renderHero(scale, {}, 'FLUSH');
             for (const id of ['seat-hand-rank', 'seat-bet', 'seat-status']) {
                 const el = screen.getByTestId(id);
-                expect(el.closest('.right-full'), `${id} at scale ${scale}`).not.toBeNull();
-                expect(el.closest('.top-full'), `${id} at scale ${scale}`).toBeNull();
+                const details = el.closest('[data-testid="seat-details"]');
+                expect(details, `${id} at scale ${scale}`).not.toBeNull();
+                expect(details).toHaveAttribute('data-details-placement', 'left');
             }
             cleanup();
         }

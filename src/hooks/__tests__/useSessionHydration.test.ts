@@ -43,9 +43,6 @@ describe('useSessionHydration', () => {
             isHydrated: true,
             isGameOver: false,
             gameEndResult: null,
-            scheduleShowdownHide: vi.fn(),
-            latestGameStateRef: { current: null },
-            notificationTimerRef: { current: null },
             clearShowdownTimers: vi.fn(),
         });
     });

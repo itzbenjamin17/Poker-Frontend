@@ -26,17 +26,18 @@ export function RoomStage({ children, className }: RoomStageProps) {
     );
 }
 
-export interface RoomDockProps {
+export interface RoomDockProps extends React.HTMLAttributes<HTMLElement> {
     children: React.ReactNode;
     className?: string;
 }
 
-export function RoomDock({ children, className }: RoomDockProps) {
+export function RoomDock({ children, className, ...rest }: RoomDockProps) {
     return (
         <section
             aria-label="Room dock"
             data-testid="room-dock"
             className={cn('shrink-0 w-full overflow-visible', className)}
+            {...rest}
         >
             {children}
         </section>
@@ -136,6 +137,7 @@ export function PokerRoomLayout({
 
     return (
         <div
+            data-testid="poker-room-layout"
             className={cn(
                 'isolate flex h-screen h-[100dvh] w-full max-w-full flex-col relative overflow-hidden overscroll-none select-none bg-surface',
                 'pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]',

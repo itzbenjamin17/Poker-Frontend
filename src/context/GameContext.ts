@@ -28,13 +28,9 @@ export interface GameContextState {
 
 export type Action =
     | { type: 'SET_ROOM'; payload: RoomState | null }
-    | { type: 'SET_GAME'; payload: GameState | null }
     | { type: 'SET_PRIVATE'; payload: { holeCards: string[] } | null }
-    | { type: 'SET_SHOWDOWN'; payload: GameState | null }
-    | { type: 'SET_SHOWDOWN_RESULT'; payload: GameState | null }
     | { type: 'SET_NOTIFICATION'; payload: string | null }
     | { type: 'SET_LOADING_STATUS'; payload: string }
-    | { type: 'SET_MY_PLAYER_ID'; payload: string | null }
     | { type: 'SET_CLAIM_PENDING'; payload: boolean }
     | { type: 'SET_WS_STATUS'; payload: WsStatus }
     | { type: 'SET_HYDRATED'; payload: boolean }
@@ -49,9 +45,6 @@ export interface GameContextValue extends GameContextState {
     applyIncomingGameState: (payload: IncomingGameStatePayload) => void;
     applyIncomingPrivateState: (payload: IncomingPrivateStatePayload) => void;
     clearShowdownTimers: () => void;
-    scheduleShowdownHide: (state: GameState) => void;
-    latestGameStateRef: React.RefObject<GameState | null>;
-    notificationTimerRef: React.RefObject<ReturnType<typeof setTimeout> | null>;
 }
 
 export const GameContext = createContext<GameContextValue | null>(null);

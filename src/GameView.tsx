@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useMemo, useSyncExternalStore } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import type { AuthResponse } from './types';
 import type { GameSession } from './domain/GameSession';
 import { GameProvider } from './context/GameProvider';
@@ -22,26 +22,22 @@ type GameViewProps = {
 // ─── Inner component (connects to GameSession / GameContext) ──────────────────
 
 function GameViewInner() {
-    const context = useGameContext();
-    const { session, auth, onLeave } = context;
-
-    // Connect to GameSession domain store via useSyncExternalStore
-    const snapshot = session
-        ? useSyncExternalStore(session.subscribe, session.getSnapshot, session.getSnapshot)
-        : null;
-
-    const gameState = snapshot ? snapshot.gameState : context.gameState;
-    const roomState = snapshot ? snapshot.roomState : context.roomState;
-    const privateState = snapshot ? snapshot.privateState : context.privateState;
-    const showdown = snapshot ? snapshot.showdown : context.showdown;
-    const showdownResult = snapshot ? snapshot.showdownResult : context.showdownResult;
-    const notification = snapshot ? snapshot.notification : context.notification;
-    const loadingStatus = snapshot ? snapshot.loadingStatus : context.loadingStatus;
-    const myPlayerId = snapshot ? snapshot.myPlayerId : context.myPlayerId;
-    const claimPending = snapshot ? snapshot.claimPending : context.claimPending;
-    const wsStatus = snapshot ? snapshot.wsStatus : context.wsStatus;
-    const isHydrated = snapshot ? snapshot.isHydrated : context.isHydrated;
-    const gameEndResult = snapshot ? snapshot.gameEndResult : context.gameEndResult;
+    const {
+        auth,
+        onLeave,
+        gameState,
+        roomState,
+        privateState,
+        showdown,
+        showdownResult,
+        notification,
+        loadingStatus,
+        myPlayerId,
+        claimPending,
+        wsStatus,
+        isHydrated,
+        gameEndResult,
+    } = useGameContext();
 
     const [raiseAmount, setRaiseAmount] = useState('');
     const [nowMs, setNowMs] = useState(() => Date.now());

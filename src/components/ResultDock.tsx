@@ -42,7 +42,6 @@ export function ResultDock({ showdownResult, isReady, onReady, onUnready, isMobi
 
     return (
         <section
-            role="region"
             aria-label={ARIA_ROUND_RESULT}
             className="flex h-full w-full min-w-0 flex-col items-center border-t border-white/5 bg-surface-high relative"
         >

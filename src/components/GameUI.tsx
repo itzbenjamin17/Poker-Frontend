@@ -555,6 +555,8 @@ export const PlayerPod = ({
             {/* Extracted Bottom-Heavy Elements: Positioned absolutely so they do not alter the bounding box center */}
             {hasBottomDetails && (
                 <div
+                    data-testid="seat-details"
+                    data-details-placement={detailsPlacement}
                     className={cn(
                         'absolute flex flex-col pointer-events-none whitespace-nowrap z-20',
                         detailsPlacement === 'left'

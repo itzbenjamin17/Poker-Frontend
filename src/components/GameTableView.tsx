@@ -185,10 +185,14 @@ export function GameTableView({
             )}
 
             {/* Stable action slot - the table keeps the same height as turns change */}
-            <RoomDock className={cn(
-                isMobileLandscape ? 'h-16' : isCompactTable ? 'h-24' : 'h-28',
-                gameState.phase === 'SHOWDOWN' && 'short:h-12',
-            )}>
+            <RoomDock
+                data-is-compact={isCompactTable}
+                data-phase={gameState.phase}
+                className={cn(
+                    isMobileLandscape ? 'h-16' : isCompactTable ? 'h-24' : 'h-28',
+                    gameState.phase === 'SHOWDOWN' && 'short:h-12',
+                )}
+            >
                 {gameState.phase === 'SHOWDOWN' ? (
                     <ResultDock showdownResult={showdownResult} isReady={amReadyForNextHand} onReady={onReady} onUnready={onUnready} isMobileLandscape={isMobileLandscape} onLeaveGame={onLeaveGame} />
                 ) : (

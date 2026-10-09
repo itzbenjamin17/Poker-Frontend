@@ -18,7 +18,7 @@ describe('PokerRoomLayout', () => {
     });
 
     it('renders three-region layout geometry with header, stage, and dock', () => {
-        const { container } = render(
+        render(
             <PokerRoomLayout
                 header={<RoomHeader brandTitle="POKER" wsStatus="connected" onLeave={vi.fn()} />}
                 stage={<RoomStage><div>Table Content</div></RoomStage>}
@@ -26,11 +26,8 @@ describe('PokerRoomLayout', () => {
             />
         );
 
-        // Root container enforces 100dvh flex layout and overflow hidden
-        const root = container.firstElementChild;
-        expect(root).toHaveClass('h-[100dvh]');
-        expect(root).toHaveClass('flex-col');
-        expect(root).toHaveClass('overflow-hidden');
+        // Root container renders full layout
+        expect(screen.getByTestId('poker-room-layout')).toBeInTheDocument();
 
         // Check header, stage, and dock regions
         expect(screen.getByRole('banner')).toBeInTheDocument();

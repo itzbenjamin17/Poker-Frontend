@@ -32,6 +32,9 @@ export function CommunityCardsArea({ communityCards, scale }: CommunityCardsArea
                             </motion.div>
                         ) : (
                             <div
+                                role="group"
+                                aria-label={`Empty card slot ${i + 1}`}
+                                data-slot-index={i}
                                 className="absolute inset-0 border-2 border-white/5 rounded-md border-dashed flex items-center justify-center"
                                 style={{ borderRadius: `${scale * 6}px` }}
                             >

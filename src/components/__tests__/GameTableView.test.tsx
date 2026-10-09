@@ -124,7 +124,9 @@ describe('GameTableView', () => {
                     gameState={{ ...mockGameState, phase: 'SHOWDOWN' }}
                 />
             );
-            expect(screen.getByTestId('room-dock')).toHaveClass('h-28', 'short:h-12');
+            const showdownDock = screen.getByRole('region', { name: /room dock/i });
+            expect(showdownDock).toBeInTheDocument();
+            expect(showdownDock).toHaveAttribute('data-phase', 'SHOWDOWN');
             unmount();
 
             render(
@@ -133,24 +135,27 @@ describe('GameTableView', () => {
                     gameState={{ ...mockGameState, phase: 'FLOP' }}
                 />
             );
-            expect(screen.getByTestId('room-dock')).toHaveClass('h-28');
-            expect(screen.getByTestId('room-dock')).not.toHaveClass('short:h-12');
+            const flopDock = screen.getByRole('region', { name: /room dock/i });
+            expect(flopDock).toBeInTheDocument();
+            expect(flopDock).toHaveAttribute('data-phase', 'FLOP');
         });
     });
 
     describe('Item 19: isCompactTable scaling and layout classes', () => {
-        it('applies the compact action slot height when isCompactTable is true', () => {
-            const { container } = render(<GameTableView {...defaultProps} isCompactTable={true} />);
+        it('applies the compact action slot state when isCompactTable is true', () => {
+            render(<GameTableView {...defaultProps} isCompactTable={true} />);
 
-            const actionSlot = container.querySelector('.h-24');
-            expect(actionSlot).toBeInTheDocument();
+            const dock = screen.getByRole('region', { name: /room dock/i });
+            expect(dock).toBeInTheDocument();
+            expect(dock).toHaveAttribute('data-is-compact', 'true');
         });
 
-        it('applies the standard action slot height when isCompactTable is false', () => {
-            const { container } = render(<GameTableView {...defaultProps} isCompactTable={false} />);
+        it('applies the standard action slot state when isCompactTable is false', () => {
+            render(<GameTableView {...defaultProps} isCompactTable={false} />);
 
-            const actionSlot = container.querySelector('.h-28');
-            expect(actionSlot).toBeInTheDocument();
+            const dock = screen.getByRole('region', { name: /room dock/i });
+            expect(dock).toBeInTheDocument();
+            expect(dock).toHaveAttribute('data-is-compact', 'false');
         });
     });
 

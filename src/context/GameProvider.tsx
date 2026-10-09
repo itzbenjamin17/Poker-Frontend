@@ -2,14 +2,12 @@ import {
     useCallback,
     useEffect,
     useMemo,
-    useRef,
     useSyncExternalStore,
     type ReactNode,
 } from 'react';
 import type {
     AuthResponse,
     GameEndResult,
-    GameState,
     IncomingGameStatePayload,
     IncomingPrivateStatePayload,
 } from '../types';
@@ -66,8 +64,8 @@ export interface GameProviderProps {
 }
 
 /**
- * Expand-phase compatibility adapter: connects the in-process GameSession domain store
- * to legacy React context consumers using useSyncExternalStore.
+ * Lean context compatibility wrapper: connects the in-process GameSession domain store
+ * to React context consumers using useSyncExternalStore.
  */
 export function GameProvider({
     auth,
@@ -89,19 +87,12 @@ export function GameProvider({
         });
     }, [sessionProp, auth, transportProp, clock, onLeave]);
 
-    // React 18/19 concurrent external store subscription
+    // React external store subscription
     const state = useSyncExternalStore(
         session.subscribe,
         session.getSnapshot,
         session.getSnapshot
     );
-
-    const latestGameStateRef = useRef<GameState | null>(null);
-    const notificationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-    useEffect(() => {
-        latestGameStateRef.current = state.gameState;
-    }, [state.gameState]);
 
     useEffect(() => {
         savePersistedGameEnd(auth.roomId, state.gameEndResult);
@@ -112,26 +103,14 @@ export function GameProvider({
             case 'SET_ROOM':
                 session.setRoomState(action.payload);
                 break;
-            case 'SET_GAME':
-                session.setGameState(action.payload);
-                break;
             case 'SET_PRIVATE':
                 session.applyPrivateState(action.payload);
-                break;
-            case 'SET_SHOWDOWN':
-                session.setShowdown(action.payload);
-                break;
-            case 'SET_SHOWDOWN_RESULT':
-                session.setShowdownResult(action.payload);
                 break;
             case 'SET_NOTIFICATION':
                 session.setNotification(action.payload);
                 break;
             case 'SET_LOADING_STATUS':
                 session.setLoadingStatus(action.payload);
-                break;
-            case 'SET_MY_PLAYER_ID':
-                session.setMyPlayerId(action.payload);
                 break;
             case 'SET_CLAIM_PENDING':
                 session.setClaimPending(action.payload);
@@ -153,7 +132,6 @@ export function GameProvider({
 
     const applyIncomingGameState = useCallback((payload: IncomingGameStatePayload) => {
         session.applyGameState(payload);
-        latestGameStateRef.current = session.getSnapshot().gameState;
     }, [session]);
 
     const applyIncomingPrivateState = useCallback((payload: IncomingPrivateStatePayload) => {
@@ -162,14 +140,6 @@ export function GameProvider({
 
     const clearShowdownTimers = useCallback(() => {
         session.clearShowdownTimers();
-    }, [session]);
-
-    const scheduleShowdownHide = useCallback((s: GameState) => {
-        session.scheduleShowdownHide(s);
-    }, [session]);
-
-    const setNotificationWithAutoDismiss = useCallback((msg: string | null, ms = 4000) => {
-        session.setNotification(msg, ms);
     }, [session]);
 
     const value = useMemo<GameContextValue>(() => ({
@@ -193,11 +163,7 @@ export function GameProvider({
         applyIncomingGameState,
         applyIncomingPrivateState,
         clearShowdownTimers,
-        scheduleShowdownHide,
-        latestGameStateRef,
-        notificationTimerRef,
-        setNotificationWithAutoDismiss,
-    } as GameContextValue & { setNotificationWithAutoDismiss: typeof setNotificationWithAutoDismiss; session: GameSession }), [
+    }), [
         state,
         auth,
         onLeave,
@@ -206,8 +172,6 @@ export function GameProvider({
         applyIncomingGameState,
         applyIncomingPrivateState,
         clearShowdownTimers,
-        scheduleShowdownHide,
-        setNotificationWithAutoDismiss,
     ]);
 
     return <GameContext.Provider value={value}>{children}</GameContext.Provider>;

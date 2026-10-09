@@ -64,9 +64,6 @@ describe('useGameWebSocket', () => {
             isHydrated: true,
             isGameOver: false,
             gameEndResult: null,
-            scheduleShowdownHide: vi.fn(),
-            latestGameStateRef: { current: null },
-            notificationTimerRef: { current: null },
         });
     });
 
@@ -356,9 +353,6 @@ describe('useGameWebSocket', () => {
             isHydrated: true,
             isGameOver: false,
             gameEndResult: currentEndResult,
-            scheduleShowdownHide: vi.fn(),
-            latestGameStateRef: { current: null },
-            notificationTimerRef: { current: null },
         }));
 
         const { rerender } = renderHook(() => useGameWebSocket({ onSocketError }));
