@@ -402,5 +402,42 @@ describe('GameView - Actions & Flows Integration', () => {
 
         localStorage.removeItem('poker-game-end:ROOM123');
     });
+
+    it('displays error notification and Connection Lost overlay on STOMP error frame', async () => {
+        server.use(
+            http.get('/api/room/ROOM123', () => HttpResponse.json({
+                roomId: 'ROOM123',
+                roomName: 'Poker Table',
+                players: [{ name: 'TestPlayer', isHost: true }],
+                gameStarted: true,
+            })),
+            http.get('/api/game/ROOM123/state', () => HttpResponse.json({
+                gameId: 'ROOM123',
+                phase: 'PRE_FLOP',
+                pot: 0,
+                currentBet: 0,
+                communityCards: [],
+                currentPlayerId: 'p-1',
+                currentPlayerName: 'TestPlayer',
+                players: [{ id: 'p-1', name: 'TestPlayer', chips: 1000, currentBet: 0, status: 'ACTIVE' }],
+            }))
+        );
+
+        render(<GameView auth={mockAuth} />);
+        expect(await screen.findByLabelText('Total Pot')).toBeInTheDocument();
+
+        await waitFor(() => {
+            expect(screen.queryByText(/Connection lost/i)).not.toBeInTheDocument();
+        });
+
+        await act(async () => {
+            MockStompClient.simulateStompError({
+                headers: { message: 'Broker subscription rejected' },
+            });
+        });
+
+        expect(await screen.findByText(/Connection lost/i)).toBeInTheDocument();
+        expect(await screen.findByText(/Broker subscription rejected/i)).toBeInTheDocument();
+    });
 });
 

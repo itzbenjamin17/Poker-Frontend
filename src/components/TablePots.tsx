@@ -105,7 +105,12 @@ export function TablePots({
             </span>
 
             {/* Pots Cluster */}
-            <div className="flex flex-wrap items-center justify-center transition-all duration-300" style={{ gap: `${scale * 6}px` }}>
+            <div 
+                role="region" 
+                aria-label="Pot Breakdown"
+                className="flex flex-wrap items-center justify-center transition-all duration-300" 
+                style={{ gap: `${scale * 6}px` }}
+            >
                 
                 {!viewingSidePots ? (
                     <>
@@ -173,6 +178,7 @@ export function TablePots({
                         >
                             <ChevronLeft style={{ width: `${scale * 14}px`, height: `${scale * 14}px` }} />
                             <span className="font-bold uppercase tracking-widest">Main Pot</span>
+                            <span className="font-bold text-white/90">{mainPot.toLocaleString()}</span>
                             <span className="sr-only">{' hide pot details'}</span>
                         </button>
 

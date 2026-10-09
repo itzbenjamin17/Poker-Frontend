@@ -7,7 +7,7 @@ export class MockStompClient {
   static activeInstance: MockStompClient | null = null;
   onConnect: () => void = () => {}
   onWebSocketClose: () => void = () => {}
-  onStompError: (frame: { headers: Record<string, string> }) => void = () => {}
+  onStompError: (frame: { headers: Record<string, string>; body?: string }) => void = () => {}
   connected = true
 
   activate() {
@@ -39,6 +39,16 @@ export class MockStompClient {
     if (MockStompClient.activeInstance) {
       MockStompClient.activeInstance.connected = true;
       MockStompClient.activeInstance.onConnect();
+    }
+  }
+
+  static simulateStompError(frame: { headers?: Record<string, string>; body?: string } = {}) {
+    if (MockStompClient.activeInstance) {
+      MockStompClient.activeInstance.connected = false;
+      MockStompClient.activeInstance.onStompError({
+        headers: frame.headers ?? {},
+        body: frame.body ?? '',
+      });
     }
   }
 

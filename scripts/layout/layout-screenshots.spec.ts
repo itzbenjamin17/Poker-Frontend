@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import path from 'path';
-
 import fs from 'fs';
+import { setupStompWebSocketMock } from '../../e2e/support/stompWsMock';
 
 const viewports = [
     { name: 'iPhone14Landscape', width: 844, height: 390 },
@@ -43,8 +43,9 @@ test.describe('Layout Screenshots 3 to 10 players', () => {
                     playerName: 'Host',
                     playerId: 'p-1',
                 }));
-                window.localStorage.setItem('poker-e2e-mock', 'true');
             }, { authToken: token, id: roomId });
+
+            await setupStompWebSocketMock(page);
 
             const generatePlayers = (count: number) => {
                 const players = [];

@@ -3,6 +3,7 @@ import path from 'path';
 import fs from 'fs';
 import { cardGlyphViolations, feltContainmentViolations, feltFromRect } from '../../src/lib/layoutChecks';
 import type { CardGlyphMeasurement, GlyphMeasurement, PartShape, ShapePart } from '../../src/lib/layoutChecks';
+import { setupStompWebSocketMock } from '../../e2e/support/stompWsMock';
 
 /**
  * SHOWDOWN overlap / clipping / readability instrument.
@@ -797,8 +798,9 @@ async function openShowdown(
             playerName: 'Host',
             playerId: 'p-1',
         }));
-        window.localStorage.setItem('poker-e2e-mock', 'true');
     }, { authToken: token, id: roomId });
+
+    await setupStompWebSocketMock(page);
 
     // Later-registered routes win, so applying a new spec just registers the mocks again.
     const mock = async (next: MockSpec) => {

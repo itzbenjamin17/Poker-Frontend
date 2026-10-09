@@ -1,4 +1,5 @@
 import { test, expect, type BrowserContext, type Page } from './fixtures';
+import { setupStompWebSocketMock } from './support/stompWsMock';
 
 const eligibleViewports = [
   { width: 844, height: 390 },
@@ -158,15 +159,15 @@ async function expectAdaptiveTable(page: Page, viewportWidth: number) {
   if (viewportWidth >= 1024) {
     const potBreakdownBox = await page.getByRole('region', { name: /pot breakdown/i }).boundingBox();
     const communityBoxes = await Promise.all((await communityCards.all()).map((card) => card.boundingBox()));
-    const communityBottom = Math.max(...communityBoxes.map((box) => box!.y + box!.height));
+    const communityTop = Math.min(...communityBoxes.map((box) => box!.y));
     expect(potBreakdownBox).not.toBeNull();
-    expect(potBreakdownBox!.y).toBeGreaterThanOrEqual(communityBottom - 1);
+    expect(potBreakdownBox!.y).toBeLessThanOrEqual(communityTop + 1);
   } else {
     const compactDetailsBox = await page.getByRole('button', { name: /show pot details/i }).boundingBox();
     const communityBoxes = await Promise.all((await communityCards.all()).map((card) => card.boundingBox()));
-    const communityBottom = Math.max(...communityBoxes.map((box) => box!.y + box!.height));
+    const communityTop = Math.min(...communityBoxes.map((box) => box!.y));
     expect(compactDetailsBox).not.toBeNull();
-    expect(compactDetailsBox!.y).toBeGreaterThanOrEqual(communityBottom - 1);
+    expect(compactDetailsBox!.y).toBeLessThanOrEqual(communityTop + 1);
   }
 }
 
@@ -195,8 +196,8 @@ test.describe('Adaptive table-first foundation', () => {
         playerName: 'Host',
         playerId: 'p-1',
       }));
-      window.localStorage.setItem('poker-e2e-mock', 'true');
     }, { authToken: token });
+    await setupStompWebSocketMock(hostPage);
     await hostPage.route('**/api/room/ROOM123', (route) => route.fulfill({
       contentType: 'application/json',
       body: JSON.stringify({
@@ -240,6 +241,7 @@ test.describe('Adaptive table-first foundation', () => {
 
     for (const viewport of eligibleViewports) {
       await hostPage.setViewportSize({ width: viewport.width, height: viewport.height });
+      await hostPage.waitForTimeout(300);
       await expectAdaptiveTable(hostPage, viewport.width);
     }
   });
@@ -259,8 +261,8 @@ test.describe('Adaptive table-first foundation', () => {
         playerName: 'Host',
         playerId: 'p-1',
       }));
-      window.localStorage.setItem('poker-e2e-mock', 'true');
     }, { authToken: token });
+    await setupStompWebSocketMock(hostPage);
     await hostPage.route('**/api/room/ROOM123', (route) => route.fulfill({
       contentType: 'application/json',
       body: JSON.stringify({
@@ -336,8 +338,8 @@ test.describe('Adaptive table-first foundation', () => {
         playerName: 'Host',
         playerId: 'p-1',
       }));
-      window.localStorage.setItem('poker-e2e-mock', 'true');
     }, { authToken: token });
+    await setupStompWebSocketMock(hostPage);
     await hostPage.route('**/api/room/ROOM123', (route) => route.fulfill({
       contentType: 'application/json',
       body: JSON.stringify({

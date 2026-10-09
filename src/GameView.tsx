@@ -49,14 +49,18 @@ function GameViewInner() {
         dispatcherRef.current?.onSocketError(msg);
     }, []);
 
-    const { stompClientRef } = useGameWebSocket({ onSocketError: handleSocketError });
+    const { stompClientRef, transportRef } = useGameWebSocket({ onSocketError: handleSocketError });
 
     const publisherAdapter = useMemo(() => ({
         publish: (dest: string, body: string) => {
-            stompClientRef.current?.publish({ destination: dest, body });
+            if (transportRef.current) {
+                transportRef.current.publish(dest, body);
+            } else {
+                stompClientRef.current?.publish({ destination: dest, body });
+            }
         },
-        isConnected: () => stompClientRef.current?.connected ?? false
-    }), [stompClientRef]);
+        isConnected: () => transportRef.current?.isConnected?.() ?? stompClientRef.current?.connected ?? false
+    }), [transportRef, stompClientRef]);
 
     const dispatcher = useGameDispatcher(publisherAdapter);
     

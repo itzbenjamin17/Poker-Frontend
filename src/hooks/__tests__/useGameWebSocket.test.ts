@@ -315,4 +315,134 @@ describe('useGameWebSocket', () => {
         expect(pokerApi.getGameState).toHaveBeenCalledWith('ROOM123', 'test-token');
         expect(pokerApi.getPrivateState).toHaveBeenCalledWith('ROOM123', 'test-token');
     });
+
+    it('handles STOMP error frame by updating ws status and calling onSocketError', async () => {
+        renderHook(() => useGameWebSocket({ onSocketError }));
+        await act(async () => { vi.advanceTimersByTime(10); });
+
+        act(() => {
+            MockStompClient.simulateStompError({
+                headers: { message: 'Subscription rejected by broker' },
+                body: 'Detailed error trace',
+            });
+        });
+
+        expect(dispatch).toHaveBeenCalledWith({
+            type: 'SET_WS_STATUS',
+            payload: 'reconnecting',
+        });
+        expect(onSocketError).toHaveBeenCalledWith('Subscription rejected by broker');
+    });
+
+    it('ignores STOMP error after game end when connected', async () => {
+        let currentEndResult: any = null;
+        vi.mocked(useGameContext).mockImplementation(() => ({
+            auth: mockAuth,
+            onLeave,
+            dispatch,
+            applyIncomingGameState,
+            applyIncomingPrivateState,
+            clearShowdownTimers,
+            roomState: null,
+            gameState: null,
+            privateState: null,
+            showdown: null,
+            showdownResult: null,
+            notification: null,
+            loadingStatus: 'Connected',
+            myPlayerId: 'p-1',
+            claimPending: false,
+            wsStatus: 'connected',
+            isHydrated: true,
+            isGameOver: false,
+            gameEndResult: currentEndResult,
+            scheduleShowdownHide: vi.fn(),
+            latestGameStateRef: { current: null },
+            notificationTimerRef: { current: null },
+        }));
+
+        const { rerender } = renderHook(() => useGameWebSocket({ onSocketError }));
+        await act(async () => { vi.advanceTimersByTime(10); });
+
+        // Simulate game end while connected
+        currentEndResult = { winnerName: 'Player1', isForfeit: false, message: 'Done' };
+        rerender();
+
+        dispatch.mockClear();
+        onSocketError.mockClear();
+
+        act(() => {
+            MockStompClient.simulateStompError({
+                headers: { message: 'Room destroyed' },
+            });
+        });
+
+        expect(dispatch).not.toHaveBeenCalledWith({
+            type: 'SET_WS_STATUS',
+            payload: 'reconnecting',
+        });
+        expect(onSocketError).not.toHaveBeenCalled();
+    });
+
+    it('handles STOMP error frame with body fallback when message header is missing', async () => {
+        renderHook(() => useGameWebSocket({ onSocketError }));
+        await act(async () => { vi.advanceTimersByTime(10); });
+
+        act(() => {
+            MockStompClient.simulateStompError({
+                body: 'Internal broker connection failure',
+            });
+        });
+
+        expect(dispatch).toHaveBeenCalledWith({
+            type: 'SET_WS_STATUS',
+            payload: 'reconnecting',
+        });
+        expect(onSocketError).toHaveBeenCalledWith('Internal broker connection failure');
+    });
+
+    it('handles STOMP error frame with default fallback when both header and body are missing', async () => {
+        renderHook(() => useGameWebSocket({ onSocketError }));
+        await act(async () => { vi.advanceTimersByTime(10); });
+
+        act(() => {
+            MockStompClient.simulateStompError({});
+        });
+
+        expect(dispatch).toHaveBeenCalledWith({
+            type: 'SET_WS_STATUS',
+            payload: 'reconnecting',
+        });
+        expect(onSocketError).toHaveBeenCalledWith('STOMP transport error');
+    });
+
+    it('works seamlessly with InMemoryTransportAdapter', async () => {
+        const inMemoryTransport = new (await import('../../services/transport')).InMemoryTransportAdapter();
+        renderHook(() => useGameWebSocket({ onSocketError, transport: inMemoryTransport }));
+
+        expect(dispatch).toHaveBeenCalledWith({
+            type: 'SET_WS_STATUS',
+            payload: 'connected',
+        });
+
+        // Test packet injection
+        act(() => {
+            inMemoryTransport.simulateMessage('/room/ROOM123', JSON.stringify({
+                message: 'ROOM_CLOSED',
+            }));
+        });
+
+        expect(dispatch).toHaveBeenCalledWith({
+            type: 'SET_ROOM',
+            payload: null,
+        });
+
+        // Test error injection
+        act(() => {
+            inMemoryTransport.simulateError('In-memory simulated error');
+        });
+
+        expect(onSocketError).toHaveBeenCalledWith('In-memory simulated error');
+    });
 });
+

@@ -1,0 +1,277 @@
+import { Client } from '@stomp/stompjs';
+import { createStompClient } from './api';
+import { logger } from '../security/logger';
+
+export type TransportStatus = 'connected' | 'reconnecting' | 'disconnected';
+
+export interface TransportSubscription {
+    unsubscribe: () => void;
+}
+
+export interface GameTransport {
+    connect(): void;
+    disconnect(): void;
+    subscribe(destination: string, handler: (message: string) => void): TransportSubscription;
+    publish(destination: string, body: string): void;
+    onStatusChange(listener: (status: TransportStatus) => void): () => void;
+    onError?(listener: (error: string) => void): () => void;
+    isConnected?(): boolean;
+}
+
+/**
+ * Production adapter wrapping the @stomp/stompjs Client behind the GameTransport port.
+ */
+export class StompTransportAdapter implements GameTransport {
+    private client: Client;
+    private statusListeners: Set<(status: TransportStatus) => void> = new Set();
+    private errorListeners: Set<(error: string) => void> = new Set();
+    private currentStatus: TransportStatus = 'disconnected';
+    private nextSubId = 1;
+    private subscriptions: Map<
+        number,
+        {
+            destination: string;
+            handler: (message: string) => void;
+            stompSub?: { unsubscribe: () => void };
+        }
+    > = new Map();
+
+    constructor(clientOrToken: Client | string) {
+        if (typeof clientOrToken === 'string') {
+            this.client = createStompClient(clientOrToken);
+        } else {
+            this.client = clientOrToken;
+        }
+
+        this.setupClientCallbacks();
+    }
+
+    public getClient(): Client {
+        return this.client;
+    }
+
+    private setupClientCallbacks(): void {
+        this.client.onConnect = () => {
+            logger.log('Connected to WebSocket');
+            this.resubscribeAll();
+            this.setStatus('connected');
+        };
+
+        this.client.onWebSocketClose = () => {
+            logger.warn('WebSocket closed — will reconnect automatically');
+            this.setStatus('reconnecting');
+        };
+
+        this.client.onStompError = (frame) => {
+            const errorMsg = frame?.headers?.['message'] || frame?.body || 'STOMP transport error';
+            logger.warn('STOMP error:', errorMsg);
+            this.setStatus('reconnecting');
+            this.notifyError(errorMsg);
+        };
+    }
+
+    private resubscribeAll(): void {
+        for (const entry of this.subscriptions.values()) {
+            entry.stompSub = this.client.subscribe(entry.destination, (msg) => {
+                entry.handler(msg.body);
+            });
+        }
+    }
+
+    private setStatus(status: TransportStatus): void {
+        this.currentStatus = status;
+        for (const listener of this.statusListeners) {
+            listener(status);
+        }
+    }
+
+    private notifyError(errorMessage: string): void {
+        for (const listener of this.errorListeners) {
+            listener(errorMessage);
+        }
+    }
+
+    public connect(): void {
+        this.client.activate();
+    }
+
+    public forceReconnect(): void {
+        if (typeof (this.client as unknown as { forceDisconnect?: () => void }).forceDisconnect === 'function') {
+            (this.client as unknown as { forceDisconnect: () => void }).forceDisconnect();
+        }
+        this.client.activate();
+    }
+
+    public disconnect(): void {
+        this.setStatus('disconnected');
+        for (const entry of this.subscriptions.values()) {
+            if (entry.stompSub) {
+                entry.stompSub.unsubscribe();
+                entry.stompSub = undefined;
+            }
+        }
+        this.client.deactivate();
+    }
+
+    public subscribe(destination: string, handler: (message: string) => void): TransportSubscription {
+        const id = this.nextSubId++;
+        const entry: {
+            destination: string;
+            handler: (message: string) => void;
+            stompSub?: { unsubscribe: () => void };
+        } = {
+            destination,
+            handler,
+        };
+
+        try {
+            entry.stompSub = this.client.subscribe(destination, (msg) => {
+                handler(msg.body);
+            });
+        } catch {
+            // If client is not yet connected, resubscribeAll will subscribe on onConnect
+        }
+
+        this.subscriptions.set(id, entry);
+
+        return {
+            unsubscribe: () => {
+                const subEntry = this.subscriptions.get(id);
+                if (subEntry) {
+                    if (subEntry.stompSub) {
+                        subEntry.stompSub.unsubscribe();
+                    }
+                    this.subscriptions.delete(id);
+                }
+            },
+        };
+    }
+
+    public publish(destination: string, body: string): void {
+        this.client.publish({ destination, body });
+    }
+
+    public onStatusChange(listener: (status: TransportStatus) => void): () => void {
+        this.statusListeners.add(listener);
+        return () => {
+            this.statusListeners.delete(listener);
+        };
+    }
+
+    public onError(listener: (error: string) => void): () => void {
+        this.errorListeners.add(listener);
+        return () => {
+            this.errorListeners.delete(listener);
+        };
+    }
+
+    public isConnected(): boolean {
+        return this.currentStatus === 'connected' && Boolean(this.client.connected);
+    }
+}
+
+/**
+ * In-memory adapter for deterministic packet injection and inspection during testing.
+ */
+export class InMemoryTransportAdapter implements GameTransport {
+    private currentStatus: TransportStatus = 'disconnected';
+    private subscriptions: Map<string, Set<(message: string) => void>> = new Map();
+    private publishedMessages: Array<{ destination: string; body: string }> = [];
+    private statusListeners: Set<(status: TransportStatus) => void> = new Set();
+    private errorListeners: Set<(error: string) => void> = new Set();
+
+    public connect(): void {
+        this.setStatus('connected');
+    }
+
+    public disconnect(): void {
+        this.setStatus('disconnected');
+    }
+
+    public subscribe(destination: string, handler: (message: string) => void): TransportSubscription {
+        let handlers = this.subscriptions.get(destination);
+        if (!handlers) {
+            handlers = new Set();
+            this.subscriptions.set(destination, handlers);
+        }
+        handlers.add(handler);
+
+        return {
+            unsubscribe: () => {
+                const currentHandlers = this.subscriptions.get(destination);
+                if (currentHandlers) {
+                    currentHandlers.delete(handler);
+                    if (currentHandlers.size === 0) {
+                        this.subscriptions.delete(destination);
+                    }
+                }
+            },
+        };
+    }
+
+    public publish(destination: string, body: string): void {
+        this.publishedMessages.push({ destination, body });
+    }
+
+    public onStatusChange(listener: (status: TransportStatus) => void): () => void {
+        this.statusListeners.add(listener);
+        return () => {
+            this.statusListeners.delete(listener);
+        };
+    }
+
+    public onError(listener: (error: string) => void): () => void {
+        this.errorListeners.add(listener);
+        return () => {
+            this.errorListeners.delete(listener);
+        };
+    }
+
+    public isConnected(): boolean {
+        return this.currentStatus === 'connected';
+    }
+
+    private setStatus(status: TransportStatus): void {
+        this.currentStatus = status;
+        for (const listener of this.statusListeners) {
+            listener(status);
+        }
+    }
+
+    // ── Inspection & Simulation Helpers ───────────────────────────────────────────
+
+    public simulateMessage(destination: string, body: unknown): void {
+        const payload = typeof body === 'string' ? body : JSON.stringify(body);
+        const handlers = this.subscriptions.get(destination);
+        if (handlers) {
+            for (const handler of handlers) {
+                handler(payload);
+            }
+        }
+    }
+
+    public simulateStatus(status: TransportStatus): void {
+        this.setStatus(status);
+    }
+
+    public simulateError(errorMessage: string): void {
+        for (const listener of this.errorListeners) {
+            listener(errorMessage);
+        }
+    }
+
+    public getPublishedMessages(destination?: string): Array<{ destination: string; body: string }> {
+        if (destination) {
+            return this.publishedMessages.filter((m) => m.destination === destination);
+        }
+        return [...this.publishedMessages];
+    }
+
+    public clearPublishedMessages(): void {
+        this.publishedMessages = [];
+    }
+
+    public getSubscriptions(): Map<string, Set<(message: string) => void>> {
+        return new Map(this.subscriptions);
+    }
+}
