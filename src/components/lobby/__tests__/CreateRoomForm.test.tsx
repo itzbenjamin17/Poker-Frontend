@@ -1,15 +1,10 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { http, HttpResponse } from 'msw';
 import { CreateRoomForm } from '../CreateRoomForm';
-import { pokerApi } from '../../../services/api';
+import { server } from '../../../test/mocks/server';
 import '@testing-library/jest-dom';
-
-vi.mock('../../../services/api', () => ({
-    pokerApi: {
-        createRoom: vi.fn(),
-    },
-}));
 
 describe('CreateRoomForm', () => {
     const mockOnAuth = vi.fn();
@@ -54,20 +49,12 @@ describe('CreateRoomForm', () => {
         await user.click(submitButton);
 
         expect(mockOnError).toHaveBeenCalledWith('Big blind must be at least 2× the small blind.');
-        expect(pokerApi.createRoom).not.toHaveBeenCalled();
         expect(mockOnAuth).not.toHaveBeenCalled();
+        expect(mockSetLoading).not.toHaveBeenCalled();
     });
 
-    it('calls pokerApi.createRoom with correctly shaped payload and invokes onAuth on success', async () => {
+    it('submits valid form data through MSW and invokes onAuth on success', async () => {
         const user = userEvent.setup();
-        const fakeAuthResponse = {
-            token: 'test-jwt-token',
-            playerName: 'CardShark',
-            roomId: 'room-xyz',
-            message: 'Success',
-        };
-        vi.mocked(pokerApi.createRoom).mockResolvedValueOnce(fakeAuthResponse);
-
         render(
             <CreateRoomForm
                 onAuth={mockOnAuth}
@@ -102,23 +89,24 @@ describe('CreateRoomForm', () => {
         await user.click(submitButton);
 
         await waitFor(() => {
-            expect(pokerApi.createRoom).toHaveBeenCalledWith({
-                roomName: 'Vip High Stakes',
+            expect(mockOnAuth).toHaveBeenCalledWith({
+                message: 'Room created successfully',
+                token: 'mock-jwt-token',
+                roomId: 'ABCD',
                 playerName: 'CardShark',
-                smallBlind: 50,
-                bigBlind: 100,
-                buyIn: 2000,
-                maxPlayers: 6,
             });
-            expect(mockOnAuth).toHaveBeenCalledWith(fakeAuthResponse);
             expect(mockSetLoading).toHaveBeenCalledWith(true);
             expect(mockSetLoading).toHaveBeenCalledWith(false);
         });
     });
 
-    it('calls onError with error message when pokerApi.createRoom fails', async () => {
+    it('calls onError with backend error message when room creation fails', async () => {
         const user = userEvent.setup();
-        vi.mocked(pokerApi.createRoom).mockRejectedValueOnce(new Error('Room already exists'));
+        server.use(
+            http.post('/api/room/create', () => {
+                return HttpResponse.json({ message: 'Room already exists' }, { status: 400 });
+            })
+        );
 
         render(
             <CreateRoomForm

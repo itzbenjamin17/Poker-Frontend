@@ -1,5 +1,5 @@
 import { Client } from '@stomp/stompjs';
-import type { AuthResponse, RoomDataResponse } from '../types';
+import type { ApiResponse, AuthResponse, RoomDataResponse, TokenResponse } from '../types';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api';
 const REQUEST_TIMEOUT_MS = 15000;
@@ -43,16 +43,12 @@ export async function getErrorMessage(res: Response, fallback: string): Promise<
     return fallback;
 }
 
-function normalizeAuthResponse(raw: unknown): AuthResponse {
-    const src = (raw ?? {}) as Record<string, unknown>;
-    // Backend sends: { "message": "...", "data": { "token": "...", "roomId": "...", "playerName": "..." } }
-    const data = (src.data ?? src) as Record<string, unknown>;
-
+function normalizeAuthResponse(res: ApiResponse<TokenResponse>): AuthResponse {
     return {
-        message: typeof src.message === 'string' ? src.message : '',
-        token: typeof data.token === 'string' ? data.token : '',
-        roomId: typeof data.roomId === 'string' ? data.roomId : '',
-        playerName: typeof data.playerName === 'string' ? data.playerName : '',
+        message: res.message,
+        token: res.data.token,
+        roomId: res.data.roomId,
+        playerName: res.data.playerName,
     };
 }
 
@@ -133,7 +129,7 @@ export const pokerApi = {
         buyIn: number;
         password?: string;
     }): Promise<AuthResponse> {
-        const data = await fetchApi<unknown>(`${API_BASE}/room/create`, {
+        const data = await fetchApi<ApiResponse<TokenResponse>>(`${API_BASE}/room/create`, {
             method: 'POST',
             body: JSON.stringify(payload),
         });
@@ -141,7 +137,7 @@ export const pokerApi = {
     },
 
     async joinRoom(payload: { roomName: string; playerName: string; password?: string }): Promise<AuthResponse> {
-        const data = await fetchApi<unknown>(`${API_BASE}/room/join`, {
+        const data = await fetchApi<ApiResponse<TokenResponse>>(`${API_BASE}/room/join`, {
             method: 'POST',
             body: JSON.stringify(payload),
         });

@@ -98,6 +98,22 @@ export interface RoomState {
     gameStarted?: boolean;
 }
 
+/** Generic API response wrapper matching Spring Boot's ApiResponse<T> envelope. */
+export interface ApiResponse<T> {
+    message: string;
+    data: T;
+}
+
+/** Token and room identification payload returned by room create and join endpoints. */
+export interface TokenResponse {
+    token: string;
+    roomId: string;
+    playerName: string;
+}
+
+/** Wire response format returned by Spring Boot room creation and join endpoints. */
+export type RoomAuthResponse = ApiResponse<TokenResponse>;
+
 export interface AuthResponse {
     message: string;
     token: string;

@@ -1,32 +1,39 @@
 import { http, HttpResponse } from 'msw'
+import type { ApiResponse, TokenResponse } from '../../types'
 
 export const handlers = [
   // Mock join room
   http.post('/api/room/join', async ({ request }) => {
     const { playerName, roomName } = await request.json() as { playerName: string, roomName: string }
     
-    if (roomName === 'INVALID') {
-      return new HttpResponse(JSON.stringify({ message: 'Room not found' }), { 
-        status: 404,
-        headers: { 'Content-Type': 'application/json' }
-      })
+    if (roomName === 'INVALID' || roomName === 'NonExistent') {
+      return HttpResponse.json({ message: 'Room not found' }, { status: 404 })
     }
 
-    return HttpResponse.json({
-      token: 'mock-jwt-token',
-      playerName,
-      roomId: roomName
-    })
+    const response: ApiResponse<TokenResponse> = {
+      message: 'Successfully joined room',
+      data: {
+        token: 'mock-jwt-token',
+        playerName,
+        roomId: roomName,
+      },
+    }
+
+    return HttpResponse.json(response)
   }),
 
   // Mock create room
   http.post('/api/room/create', async ({ request }) => {
     const { playerName } = await request.json() as { playerName: string }
-    return HttpResponse.json({
-      token: 'mock-jwt-token',
-      playerName,
-      roomId: 'ABCD'
-    })
+    const response: ApiResponse<TokenResponse> = {
+      message: 'Room created successfully',
+      data: {
+        token: 'mock-jwt-token',
+        playerName,
+        roomId: 'ABCD',
+      },
+    }
+    return HttpResponse.json(response)
   }),
 
   // Mock room info

@@ -191,4 +191,49 @@ describe('api service', () => {
             });
         });
     });
+
+    describe('room responses with ApiResponse envelope', () => {
+        it('createRoom cleanly handles and normalizes ApiResponse<TokenResponse>', async () => {
+            const result = await pokerApi.createRoom({
+                roomName: 'High Roller',
+                playerName: 'Alice',
+                maxPlayers: 6,
+                smallBlind: 10,
+                bigBlind: 20,
+                buyIn: 500,
+            });
+
+            expect(result).toEqual({
+                message: 'Room created successfully',
+                token: 'mock-jwt-token',
+                roomId: 'ABCD',
+                playerName: 'Alice',
+            });
+        });
+
+        it('joinRoom cleanly handles and normalizes ApiResponse<TokenResponse>', async () => {
+            const result = await pokerApi.joinRoom({
+                roomName: 'Room99',
+                playerName: 'Bob',
+            });
+
+            expect(result).toEqual({
+                message: 'Successfully joined room',
+                token: 'mock-jwt-token',
+                roomId: 'Room99',
+                playerName: 'Bob',
+            });
+        });
+
+        it('joinRoom throws ApiError with message from backend error response', async () => {
+            await expect(pokerApi.joinRoom({
+                roomName: 'INVALID',
+                playerName: 'Bob',
+            })).rejects.toMatchObject({
+                status: 404,
+                message: 'Room not found',
+            });
+        });
+    });
 });
+

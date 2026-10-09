@@ -1,16 +1,11 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { http, HttpResponse } from 'msw';
 import { JoinRoomForm } from '../JoinRoomForm';
-import { pokerApi } from '../../../services/api';
+import { server } from '../../../test/mocks/server';
 import { BTN_JOIN, BTN_JOINING } from '../../../constants/strings';
 import '@testing-library/jest-dom';
-
-vi.mock('../../../services/api', () => ({
-    pokerApi: {
-        joinRoom: vi.fn(),
-    },
-}));
 
 describe('JoinRoomForm', () => {
     const mockOnAuth = vi.fn();
@@ -42,8 +37,8 @@ describe('JoinRoomForm', () => {
         await user.click(submitButton);
 
         expect(mockOnError).toHaveBeenCalledWith('Room name is required.');
-        expect(pokerApi.joinRoom).not.toHaveBeenCalled();
         expect(mockOnAuth).not.toHaveBeenCalled();
+        expect(mockSetLoading).not.toHaveBeenCalled();
 
         // Now fill room name but whitespace player alias
         await user.clear(roomInput);
@@ -53,20 +48,11 @@ describe('JoinRoomForm', () => {
         await user.click(submitButton);
 
         expect(mockOnError).toHaveBeenCalledWith('Player alias is required.');
-        expect(pokerApi.joinRoom).not.toHaveBeenCalled();
         expect(mockOnAuth).not.toHaveBeenCalled();
     });
 
     it('successful submission calls pokerApi.joinRoom with trimmed inputs and invokes onAuth', async () => {
         const user = userEvent.setup();
-        const fakeAuthResponse = {
-            token: 'test-jwt-token',
-            playerName: 'CardShark',
-            roomId: 'room-xyz',
-            message: 'Success',
-        };
-        vi.mocked(pokerApi.joinRoom).mockResolvedValueOnce(fakeAuthResponse);
-
         render(
             <JoinRoomForm
                 onAuth={mockOnAuth}
@@ -85,11 +71,12 @@ describe('JoinRoomForm', () => {
         await user.click(submitButton);
 
         await waitFor(() => {
-            expect(pokerApi.joinRoom).toHaveBeenCalledWith({
-                roomName: 'PokerNight',
+            expect(mockOnAuth).toHaveBeenCalledWith({
+                message: 'Successfully joined room',
+                token: 'mock-jwt-token',
+                roomId: 'PokerNight',
                 playerName: 'CardShark',
             });
-            expect(mockOnAuth).toHaveBeenCalledWith(fakeAuthResponse);
             expect(mockSetLoading).toHaveBeenCalledWith(true);
             expect(mockSetLoading).toHaveBeenCalledWith(false);
         });
@@ -97,7 +84,11 @@ describe('JoinRoomForm', () => {
 
     it('api errors are displayed to the user via onError', async () => {
         const user = userEvent.setup();
-        vi.mocked(pokerApi.joinRoom).mockRejectedValueOnce(new Error('Room not found'));
+        server.use(
+            http.post('/api/room/join', () => {
+                return HttpResponse.json({ message: 'Room not found' }, { status: 404 });
+            })
+        );
 
         render(
             <JoinRoomForm
