@@ -4,6 +4,7 @@ const backendDir = process.env.BACKEND_DIR || '../Poker';
 
 export default defineConfig({
   testDir: './e2e',
+  testIgnore: ['**/scripts/**', '**/layout-*'],
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,

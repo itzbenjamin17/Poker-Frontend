@@ -23,6 +23,8 @@ dist-ssr
 *.sln
 *.sw?
 *.code-workspace
+.agents/*
+.kiro/*
 
 test-results/
 playwright-report/
