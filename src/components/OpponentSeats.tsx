@@ -106,7 +106,8 @@ export function OpponentSeats({
                 const playerKey = getPlayerKey(p, i);
                 const seat = getSeatPosition(i, orderedPlayers.length, heroIndex);
                 const showdownPlayer = showdown?.players.find((sp) => sp.id === p.id);
-                const isShowdownWinner = Boolean(showdownPlayer?.isWinner);
+                const isShowdownWinner = Boolean(showdownPlayer?.isWinner || p.isWinner);
+                const isActiveTurn = currentPlayerId === p.id;
                 const isExpanded = expandedOpponentId === playerKey;
                 const canRenderCards = p.status === 'ACTIVE' || p.status === 'ALL_IN' || p.status === 'DISCONNECTED';
                 const shouldReveal = Boolean(showdownPlayer?.holeCards && showdownPlayer.holeCards.length > 0);
@@ -134,6 +135,9 @@ export function OpponentSeats({
                         role="group"
                         aria-label={`${p.name} seat`}
                         data-testid={`opponent-seat-${playerKey}`}
+                        data-seat-index={i}
+                        data-is-active-turn={isActiveTurn}
+                        data-is-winner={isShowdownWinner}
                         className={cn(
                             'absolute -translate-x-1/2 -translate-y-1/2 flex flex-col items-center',
                             isExpanded ? 'z-30' : 'z-20',

@@ -1,5 +1,6 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo, useSyncExternalStore } from 'react';
 import type { AuthResponse } from './types';
+import type { GameSession } from './domain/GameSession';
 import { GameProvider } from './context/GameProvider';
 import { useGameContext } from './context/GameContext';
 import { useSessionHydration } from './hooks/useSessionHydration';
@@ -15,13 +16,32 @@ import { RoomHeader } from './components/RoomHeader';
 type GameViewProps = {
     auth: AuthResponse;
     onLeave?: () => void;
+    session?: GameSession;
 };
 
-// ─── Inner component (has access to GameContext) ──────────────────────────────
+// ─── Inner component (connects to GameSession / GameContext) ──────────────────
 
 function GameViewInner() {
-    // ALL hooks must be called unconditionally at the top — no hooks after returns.
-    const { gameState, loadingStatus, roomState, isHydrated, onLeave, gameEndResult, wsStatus } = useGameContext();
+    const context = useGameContext();
+    const { session, auth, onLeave } = context;
+
+    // Connect to GameSession domain store via useSyncExternalStore
+    const snapshot = session
+        ? useSyncExternalStore(session.subscribe, session.getSnapshot, session.getSnapshot)
+        : null;
+
+    const gameState = snapshot ? snapshot.gameState : context.gameState;
+    const roomState = snapshot ? snapshot.roomState : context.roomState;
+    const privateState = snapshot ? snapshot.privateState : context.privateState;
+    const showdown = snapshot ? snapshot.showdown : context.showdown;
+    const showdownResult = snapshot ? snapshot.showdownResult : context.showdownResult;
+    const notification = snapshot ? snapshot.notification : context.notification;
+    const loadingStatus = snapshot ? snapshot.loadingStatus : context.loadingStatus;
+    const myPlayerId = snapshot ? snapshot.myPlayerId : context.myPlayerId;
+    const claimPending = snapshot ? snapshot.claimPending : context.claimPending;
+    const wsStatus = snapshot ? snapshot.wsStatus : context.wsStatus;
+    const isHydrated = snapshot ? snapshot.isHydrated : context.isHydrated;
+    const gameEndResult = snapshot ? snapshot.gameEndResult : context.gameEndResult;
 
     const [raiseAmount, setRaiseAmount] = useState('');
     const [nowMs, setNowMs] = useState(() => Date.now());
@@ -71,7 +91,13 @@ function GameViewInner() {
     // ── Routing (no hooks below this line) ──────────────────────────────────────
 
     if (gameEndResult) {
-        return <GameReviewView onLeave={() => dispatcher.dispatch({ type: 'LEAVE_REVIEW' })} />;
+        return (
+            <GameReviewView
+                gameEndResult={gameEndResult}
+                gameState={gameState}
+                onLeave={() => dispatcher.dispatch({ type: 'LEAVE_REVIEW' })}
+            />
+        );
     }
 
     if (!isHydrated) {
@@ -97,6 +123,10 @@ function GameViewInner() {
                 >
                     <RoomStage>
                         <GameLobbyView
+                            roomState={roomState}
+                            playerName={auth.playerName}
+                            auth={auth}
+                            notification={notification}
                             onStartGame={() => dispatcher.dispatch({ type: 'START_GAME' })}
                             isStartingGame={dispatcher.isPending('START_GAME')}
                             onLeaveGame={() => dispatcher.dispatch({ type: 'LEAVE_GAME' })}
@@ -142,6 +172,17 @@ function GameViewInner() {
             onLeave={() => dispatcher.dispatch({ type: 'LEAVE_GAME' })}
         >
             <GameTableView
+                gameState={gameState}
+                roomState={roomState}
+                auth={auth}
+                playerName={auth.playerName}
+                myPlayerId={myPlayerId}
+                privateState={privateState}
+                showdown={showdown}
+                showdownResult={showdownResult}
+                claimPending={claimPending}
+                notification={notification}
+                wsStatus={wsStatus}
                 nowMs={nowMs}
                 raiseAmount={raiseAmount}
                 raiseError={dispatcher.error?.message ?? null}
@@ -163,9 +204,9 @@ function GameViewInner() {
 
 // ─── Public export ─────────────────────────────────────────────────────────────
 
-export default function GameView({ auth, onLeave }: GameViewProps) {
+export default function GameView({ auth, onLeave, session }: GameViewProps) {
     return (
-        <GameProvider auth={auth} onLeave={onLeave}>
+        <GameProvider auth={auth} onLeave={onLeave} session={session}>
             <GameViewInner />
         </GameProvider>
     );

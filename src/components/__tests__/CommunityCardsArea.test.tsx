@@ -15,6 +15,11 @@ describe('CommunityCardsArea', () => {
         expect(placeholders).toHaveLength(5);
     });
 
+    it('renders as a semantic region with accessible name "Community cards"', () => {
+        render(<CommunityCardsArea communityCards={[]} scale={1} />);
+        expect(screen.getByRole('region', { name: /community cards/i })).toBeInTheDocument();
+    });
+
     it('FLOP: displays 3 dealt cards and 2 placeholder slots with Turn label', () => {
         const { container } = render(
             <CommunityCardsArea communityCards={['AH', 'KD', 'QS']} scale={1} />

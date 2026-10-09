@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { useGameContext } from '../context/GameContext';
 import { cn } from '../lib/cn';
 import { Card } from './UI';
 import { Button } from './UI';
@@ -11,15 +10,26 @@ import {
     LABEL_BLINDS, LABEL_MIN_BUYIN,
     LABEL_TABLE_RULES, LABEL_HOST,
 } from '../constants/strings';
+import type { RoomState } from '../types';
 
-interface GameLobbyViewProps {
+export interface GameLobbyViewProps {
+    roomState: RoomState | null;
+    playerName?: string;
+    auth?: { playerName: string } | null;
+    notification?: string | null;
     onStartGame: () => void;
     onLeaveGame?: () => void;
     isStartingGame?: boolean;
 }
 
-export function GameLobbyView({ onStartGame, isStartingGame = false }: GameLobbyViewProps) {
-    const { auth, roomState, notification } = useGameContext();
+export function GameLobbyView({
+    roomState,
+    playerName,
+    auth,
+    notification = null,
+    onStartGame,
+    isStartingGame = false,
+}: GameLobbyViewProps) {
     const [copied, setCopied] = useState(false);
 
     if (!roomState) return null;
@@ -42,10 +52,15 @@ export function GameLobbyView({ onStartGame, isStartingGame = false }: GameLobby
             ? `$${roomState.buyIn.toLocaleString()}`
             : 'Waiting...';
 
-    const amHost = roomState.players?.find(p => p.name === auth.playerName)?.isHost ?? false;
+    const effectivePlayerName = playerName ?? auth?.playerName;
+    const amHost = roomState.players?.find(p => p.name === effectivePlayerName)?.isHost ?? false;
 
     return (
-        <div className="w-full max-w-5xl p-4 sm:p-8 overflow-y-auto max-h-full">
+        <div
+            role="region"
+            aria-label="Game lobby"
+            className="w-full max-w-5xl p-4 sm:p-8 overflow-y-auto max-h-full"
+        >
             <NotificationBanner notification={notification} />
 
             <div className="w-full">

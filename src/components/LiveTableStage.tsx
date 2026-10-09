@@ -109,6 +109,7 @@ export function LiveTableStage({
                         isCompactTable={isCompactTable}
                         nowMs={nowMs}
                         tableScale={tableScale}
+                        seatIndex={heroIndex >= 0 ? heroIndex : 0}
                     />
                 )}
             </TableSurface>

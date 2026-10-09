@@ -15,6 +15,7 @@ export interface HeroSeatProps {
     nowMs: number;
     tableScale: TableScale;
     className?: string;
+    seatIndex?: number;
 }
 
 export function HeroSeat({
@@ -27,9 +28,11 @@ export function HeroSeat({
     nowMs,
     tableScale,
     className,
+    seatIndex,
 }: HeroSeatProps) {
     const showdownPlayer = showdown?.players.find((sp) => sp.id === player.id);
-    const isShowdownWinner = Boolean(showdownPlayer?.isWinner);
+    const isShowdownWinner = Boolean(showdownPlayer?.isWinner || player.isWinner);
+    const isActiveTurn = currentPlayerId === player.id;
     const canRenderCards = player.status === 'ACTIVE' || player.status === 'ALL_IN' || player.status === 'DISCONNECTED';
     const shouldReveal = Boolean(showdownPlayer?.holeCards && showdownPlayer.holeCards.length > 0);
     const displayCards = shouldReveal ? showdownPlayer!.holeCards! : privateCards;
@@ -57,6 +60,9 @@ export function HeroSeat({
             role="group"
             aria-label={`${player.name} hero seat`}
             data-testid="hero-seat"
+            data-seat-index={seatIndex ?? 0}
+            data-is-active-turn={isActiveTurn}
+            data-is-winner={isShowdownWinner}
             className={cn(
                 'absolute -translate-x-1/2 -translate-y-1/2 flex flex-col items-center z-20',
                 className,

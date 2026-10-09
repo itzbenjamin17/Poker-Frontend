@@ -71,8 +71,11 @@ describe('ActionPanel', () => {
         renderActionPanel({
             gameState: { ...mockGameState, currentBet: 10, legalActions: ['FOLD', 'CHECK', 'RAISE'] },
             me: { ...mockMe, currentBet: 10 },
+            isMyTurn: true,
         });
 
+        const dock = screen.getByRole('region', { name: /action dock/i });
+        expect(dock).toHaveAttribute('data-is-active-turn', 'true');
         expect(screen.getByRole('button', { name: /fold/i })).toBeInTheDocument();
         expect(screen.getByRole('button', { name: /check/i })).toBeInTheDocument();
         expect(screen.getByRole('button', { name: /^raise$/i })).toHaveAttribute('aria-expanded', 'false');

@@ -184,6 +184,7 @@ export function ActionPanel({
         <motion.section
             role="region"
             aria-label="Action dock"
+            data-is-active-turn={isMyTurn}
             {...sectionMotion}
             style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 8px)' }}
             className={cn(

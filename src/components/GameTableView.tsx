@@ -5,16 +5,27 @@ import { ResultDock } from './ResultDock';
 import { NotificationBanner } from './NotificationBanner';
 import { RoomStage, RoomDock } from './PokerRoomLayout';
 import { LiveTableStage } from './LiveTableStage';
-import { useGameContext } from '../context/GameContext';
 
-import type { PokerAction } from '../types';
+import type { GameState, PokerAction, RoomState, WsStatus } from '../types';
 import {
     BTN_LEAVE_TABLE, BTN_CLAIM_WIN, BTN_CLAIMING,
     WAITING_RECONNECT_PREFIX, WAITING_RECONNECT_SUFFIX,
 } from '../constants/strings';
-import type { WsStatus } from '../types';
 
-interface GameTableViewProps {
+export interface GameTableViewProps {
+    /** Domain & session state */
+    gameState: GameState | null;
+    roomState: RoomState | null;
+    auth?: { playerName: string } | null;
+    playerName?: string;
+    myPlayerId?: string | null;
+    privateState?: { holeCards: string[] } | null;
+    showdown?: GameState | null;
+    showdownResult?: GameState | null;
+    claimPending?: boolean;
+    notification?: string | null;
+    wsStatus?: WsStatus;
+
     /** Chrome-density flags for ActionPanel/ResultDock only; the table layout never reads them. */
     isCompactTable?: boolean;
     isMobileLandscape?: boolean;
@@ -32,26 +43,38 @@ interface GameTableViewProps {
 }
 
 export function GameTableView({
-                                  isCompactTable = false,
-                                  isMobileLandscape = false,
-                                  nowMs,
-                                  raiseAmount,
-                                  raiseError,
-                                  onAction,
-                                  onReady,
-                                  onUnready,
-                                  onClaimWin,
-                                  onLeaveGame,
-                                  onRaiseChange,
-                                  isActionPending,
-                                  hasShellHeader = false,
-                              }: GameTableViewProps) {
-    const { auth, roomState, gameState, privateState, showdown, showdownResult, claimPending, myPlayerId, notification, wsStatus } = useGameContext();
-
+    gameState,
+    roomState,
+    auth,
+    playerName,
+    myPlayerId = null,
+    privateState = null,
+    showdown = null,
+    showdownResult = null,
+    claimPending = false,
+    notification = null,
+    wsStatus = 'connected',
+    isCompactTable = false,
+    isMobileLandscape = false,
+    nowMs,
+    raiseAmount,
+    raiseError,
+    onAction,
+    onReady,
+    onUnready,
+    onClaimWin,
+    onLeaveGame,
+    onRaiseChange,
+    isActionPending,
+    hasShellHeader = false,
+}: GameTableViewProps) {
     if (!gameState || !roomState) return null;
 
+    const effectivePlayerName = playerName ?? auth?.playerName;
     const me = gameState.players.find((p) => p.id === myPlayerId);
-    const myIndex = gameState.players.findIndex((p) => p.id === myPlayerId || p.name === auth.playerName);
+    const myIndex = gameState.players.findIndex(
+        (p) => p.id === myPlayerId || (effectivePlayerName && p.name === effectivePlayerName)
+    );
     const orderedPlayers = myIndex <= 0
         ? gameState.players
         : [...gameState.players.slice(myIndex), ...gameState.players.slice(0, myIndex)];
@@ -64,7 +87,7 @@ export function GameTableView({
 
     const canClaimWin = Boolean(
         gameState.claimWinAvailable &&
-        (gameState.claimWinPlayerName === auth.playerName || gameState.claimWinPlayerName === me?.name)
+        ((effectivePlayerName && gameState.claimWinPlayerName === effectivePlayerName) || gameState.claimWinPlayerName === me?.name)
     );
 
     const isReadyEligible = Boolean(me && me.status !== 'OUT' && me.status !== 'DISCONNECTED');
@@ -85,6 +108,7 @@ export function GameTableView({
     return (
         <main
             aria-label="Live poker table"
+            data-testid="game-table-view"
             className={cn(
                 'isolate flex w-full max-w-full flex-col relative overflow-hidden overscroll-none',
                 hasShellHeader ? 'flex-1 min-h-0 min-w-0' : 'h-[100dvh] min-h-[600px] md:h-screen',

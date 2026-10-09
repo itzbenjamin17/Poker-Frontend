@@ -1,14 +1,9 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { GameTableView } from '../GameTableView';
-import { useGameContext } from '../../context/GameContext';
 import { WAITING_RECONNECT_PREFIX, WAITING_RECONNECT_SUFFIX } from '../../constants/strings';
 import type { GameState, RoomState, Player } from '../../types';
 import '@testing-library/jest-dom';
-
-vi.mock('../../context/GameContext', () => ({
-    useGameContext: vi.fn(),
-}));
 
 describe('GameTableView', () => {
     const defaultPlayer: Player = {
@@ -55,6 +50,16 @@ describe('GameTableView', () => {
     };
 
     const defaultProps = {
+        gameState: mockGameState,
+        roomState: mockRoomState,
+        auth: { token: 'tok', playerName: 'Hero', roomId: 'room-1', message: 'Success' },
+        myPlayerId: 'p-1',
+        privateState: { holeCards: ['AH', 'AD'] },
+        showdown: null,
+        showdownResult: null,
+        claimPending: false,
+        notification: null,
+        wsStatus: 'connected' as const,
         isCompactTable: false,
         isMobileLandscape: false,
         nowMs: 100000,
@@ -74,20 +79,7 @@ describe('GameTableView', () => {
 
     describe('Item 18: Disconnect Overlay & Reconnect Banner', () => {
         it('renders the connection lost overlay when wsStatus is disconnected', () => {
-            vi.mocked(useGameContext).mockReturnValue({
-                auth: { token: 'tok', playerName: 'Hero', roomId: 'room-1' },
-                roomState: mockRoomState,
-                gameState: mockGameState,
-                privateState: { holeCards: ['AH', 'AD'] },
-                showdown: null,
-                showdownResult: null,
-                claimPending: false,
-                myPlayerId: 'p-1',
-                notification: null,
-                wsStatus: 'disconnected',
-            } as any);
-
-            render(<GameTableView {...defaultProps} />);
+            render(<GameTableView {...defaultProps} wsStatus="disconnected" />);
 
             const alertEl = screen.getByRole('alert');
             expect(alertEl).toBeInTheDocument();
@@ -96,20 +88,7 @@ describe('GameTableView', () => {
         });
 
         it('does not render connection lost overlay when wsStatus is connected', () => {
-            vi.mocked(useGameContext).mockReturnValue({
-                auth: { token: 'tok', playerName: 'Hero', roomId: 'room-1' },
-                roomState: mockRoomState,
-                gameState: mockGameState,
-                privateState: { holeCards: ['AH', 'AD'] },
-                showdown: null,
-                showdownResult: null,
-                claimPending: false,
-                myPlayerId: 'p-1',
-                notification: null,
-                wsStatus: 'connected',
-            } as any);
-
-            render(<GameTableView {...defaultProps} />);
+            render(<GameTableView {...defaultProps} wsStatus="connected" />);
 
             expect(screen.queryByRole('alert')).not.toBeInTheDocument();
         });
@@ -125,48 +104,35 @@ describe('GameTableView', () => {
                 players: [defaultPlayer, disconnectedOpponent],
             };
 
-            vi.mocked(useGameContext).mockReturnValue({
-                auth: { token: 'tok', playerName: 'Hero', roomId: 'room-1' },
-                roomState: mockRoomState,
-                gameState: stateWithDisconnectedTurn,
-                privateState: { holeCards: ['AH', 'AD'] },
-                showdown: null,
-                showdownResult: null,
-                claimPending: false,
-                myPlayerId: 'p-1',
-                notification: null,
-                wsStatus: 'connected',
-            } as any);
-
-            render(<GameTableView {...defaultProps} isCompactTable={false} />);
+            render(
+                <GameTableView
+                    {...defaultProps}
+                    gameState={stateWithDisconnectedTurn}
+                    isCompactTable={false}
+                />
+            );
 
             expect(screen.getByText(`${WAITING_RECONNECT_PREFIX}Villain${WAITING_RECONNECT_SUFFIX}`)).toBeInTheDocument();
         });
     });
 
     describe('Short-viewport chrome', () => {
-        const mockContext = (phase: GameState['phase']) =>
-            vi.mocked(useGameContext).mockReturnValue({
-                auth: { token: 'tok', playerName: 'Hero', roomId: 'room-1' },
-                roomState: mockRoomState,
-                gameState: { ...mockGameState, phase },
-                privateState: { holeCards: ['AH', 'AD'] },
-                showdown: null,
-                showdownResult: null,
-                claimPending: false,
-                myPlayerId: 'p-1',
-                notification: null,
-                wsStatus: 'connected',
-            } as any);
-
         it('compacts only the showdown dock on short viewports', () => {
-            mockContext('SHOWDOWN');
-            const { unmount } = render(<GameTableView {...defaultProps} />);
+            const { unmount } = render(
+                <GameTableView
+                    {...defaultProps}
+                    gameState={{ ...mockGameState, phase: 'SHOWDOWN' }}
+                />
+            );
             expect(screen.getByTestId('room-dock')).toHaveClass('h-28', 'short:h-12');
             unmount();
 
-            mockContext('FLOP');
-            render(<GameTableView {...defaultProps} />);
+            render(
+                <GameTableView
+                    {...defaultProps}
+                    gameState={{ ...mockGameState, phase: 'FLOP' }}
+                />
+            );
             expect(screen.getByTestId('room-dock')).toHaveClass('h-28');
             expect(screen.getByTestId('room-dock')).not.toHaveClass('short:h-12');
         });
@@ -174,46 +140,49 @@ describe('GameTableView', () => {
 
     describe('Item 19: isCompactTable scaling and layout classes', () => {
         it('applies the compact action slot height when isCompactTable is true', () => {
-            vi.mocked(useGameContext).mockReturnValue({
-                auth: { token: 'tok', playerName: 'Hero', roomId: 'room-1' },
-                roomState: mockRoomState,
-                gameState: mockGameState,
-                privateState: { holeCards: ['AH', 'AD'] },
-                showdown: null,
-                showdownResult: null,
-                claimPending: false,
-                myPlayerId: 'p-1',
-                notification: null,
-                wsStatus: 'connected',
-            } as any);
-
             const { container } = render(<GameTableView {...defaultProps} isCompactTable={true} />);
 
-            // The stage itself has no padding; only the action slot density follows the flag
-            // Check that action slot uses compact height 'h-24'
             const actionSlot = container.querySelector('.h-24');
             expect(actionSlot).toBeInTheDocument();
         });
 
         it('applies the standard action slot height when isCompactTable is false', () => {
-            vi.mocked(useGameContext).mockReturnValue({
-                auth: { token: 'tok', playerName: 'Hero', roomId: 'room-1' },
-                roomState: mockRoomState,
-                gameState: mockGameState,
-                privateState: { holeCards: ['AH', 'AD'] },
-                showdown: null,
-                showdownResult: null,
-                claimPending: false,
-                myPlayerId: 'p-1',
-                notification: null,
-                wsStatus: 'connected',
-            } as any);
-
             const { container } = render(<GameTableView {...defaultProps} isCompactTable={false} />);
 
-            // Standard layout should have action slot height 'h-28'
             const actionSlot = container.querySelector('.h-28');
             expect(actionSlot).toBeInTheDocument();
+        });
+    });
+
+    describe('Semantic ARIA roles and domain data attributes', () => {
+        it('renders live poker table region, community cards, action dock, and seat attributes', () => {
+            render(<GameTableView {...defaultProps} />);
+
+            // Table landmark and surface region
+            expect(screen.getByRole('main', { name: /live poker table/i })).toBeInTheDocument();
+            expect(screen.getByRole('region', { name: /^poker table$/i })).toBeInTheDocument();
+
+            // Community cards region
+            expect(screen.getByRole('region', { name: /community cards/i })).toBeInTheDocument();
+
+            // Action dock region
+            const actionDock = screen.getByRole('region', { name: /action dock/i });
+            expect(actionDock).toBeInTheDocument();
+            expect(actionDock).toHaveAttribute('data-is-active-turn', 'true');
+
+            // Hero seat
+            const heroSeat = screen.getByRole('group', { name: /hero hero seat/i });
+            expect(heroSeat).toBeInTheDocument();
+            expect(heroSeat).toHaveAttribute('data-seat-index', '0');
+            expect(heroSeat).toHaveAttribute('data-is-active-turn', 'true');
+            expect(heroSeat).toHaveAttribute('data-is-winner', 'false');
+
+            // Opponent seat
+            const villainSeat = screen.getByRole('group', { name: /villain seat/i });
+            expect(villainSeat).toBeInTheDocument();
+            expect(villainSeat).toHaveAttribute('data-seat-index', '1');
+            expect(villainSeat).toHaveAttribute('data-is-active-turn', 'false');
+            expect(villainSeat).toHaveAttribute('data-is-winner', 'false');
         });
     });
 });

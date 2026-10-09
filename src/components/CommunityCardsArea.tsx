@@ -11,7 +11,12 @@ interface CommunityCardsAreaProps {
 export function CommunityCardsArea({ communityCards, scale }: CommunityCardsAreaProps) {
     const compactCards = isCompactCardScale(scale);
     return (
-        <div className="flex gap-3" style={{ gap: `${scale * 12}px` }}>
+        <div
+            role="region"
+            aria-label="Community cards"
+            className="flex gap-3"
+            style={{ gap: `${scale * 12}px` }}
+        >
             {Array.from({ length: 5 }).map((_, i) => {
                 const card = communityCards[i];
                 return (
