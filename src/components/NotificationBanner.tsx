@@ -38,11 +38,11 @@ export function NotificationBanner({ notification }: NotificationBannerProps) {
                 <motion.div
                     role="alert"
                     aria-live="assertive"
-                    initial={{ opacity: 0, scale: 0.88 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    exit={{ opacity: 0, scale: 0.88 }}
+                    initial={{ opacity: 0, y: -24, scale: 0.95 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: -24, scale: 0.95 }}
                     transition={{ type: 'spring', stiffness: 380, damping: 28 }}
-                    className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-[100] bg-gold-secondary text-surface px-8 py-4 rounded-2xl font-headline font-bold shadow-2xl max-w-[85vw] md:max-w-xl text-center pointer-events-none text-base md:text-lg"
+                    className="fixed top-6 left-1/2 -translate-x-1/2 z-[100] bg-gold-secondary text-surface px-6 py-2.5 rounded-full font-headline font-bold shadow-lg max-w-[85vw] md:max-w-xl text-center pointer-events-none text-sm md:text-base border border-amber-300/20"
                 >
                     {frozen}
 

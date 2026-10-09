@@ -13,20 +13,20 @@ export function PotBreakdown({ mainPot, sidePots, uncalledAmount }: PotBreakdown
         <div role="region" aria-label="Pot breakdown" className="flex flex-wrap items-center justify-center gap-2 px-4">
             <div className="bg-black/35 px-3 py-1 rounded-full border border-white/10">
                 <span className="text-[10px] uppercase tracking-widest font-bold text-white/70">{LABEL_MAIN_POT}</span>
-                <span className="ml-2 text-sm font-bold text-gold-secondary">${mainPot.toLocaleString()}</span>
+                <span className="ml-2 text-sm font-bold text-gold-secondary">{mainPot.toLocaleString()} Chips</span>
             </div>
             {sidePots.map((amount, index) => (
                 <div key={`side-pot-${index}`} className="bg-black/35 px-3 py-1 rounded-full border border-gold-secondary/30">
                     <span className="text-[10px] uppercase tracking-widest font-bold text-white/70">
                         {LABEL_SIDE_POT_PREFIX} {index + 1}
                     </span>
-                    <span className="ml-2 text-sm font-bold text-gold-secondary">${amount.toLocaleString()}</span>
+                    <span className="ml-2 text-sm font-bold text-gold-secondary">{amount.toLocaleString()} Chips</span>
                 </div>
             ))}
             {uncalledAmount > 0 && (
                 <div className="bg-black/35 px-3 py-1 rounded-full border border-gold-secondary/30">
                     <span className="text-[10px] uppercase tracking-widest font-bold text-white/70">{LABEL_UNCALLED}</span>
-                    <span className="ml-2 text-sm font-bold text-gold-secondary">${uncalledAmount.toLocaleString()}</span>
+                    <span className="ml-2 text-sm font-bold text-gold-secondary">{uncalledAmount.toLocaleString()} Chips</span>
                 </div>
             )}
         </div>
@@ -47,7 +47,7 @@ export function CompactPotDetails({ mainPot, sidePots, uncalledAmount }: PotBrea
                 {isOpen ? 'Hide pot details' : 'Show pot details'}
             </button>
             {isOpen && (
-                <div className="absolute top-full z-30 mt-1 rounded-xl border border-white/10 bg-surface-high/95 py-2 shadow-xl backdrop-blur-md">
+                <div className="fixed bottom-32 left-1/2 -translate-x-1/2 z-50 mt-1 rounded-full border border-white/10 bg-surface-high/95 py-2 px-4 shadow-xl backdrop-blur-md pointer-events-auto max-w-[90vw]">
                     <PotBreakdown mainPot={mainPot} sidePots={sidePots} uncalledAmount={uncalledAmount} />
                 </div>
             )}
@@ -75,7 +75,7 @@ export function TablePots({
                 <div aria-label={prominentPotLabel} className="bg-black/40 px-3 md:px-6 py-2 rounded-full border border-white/5 backdrop-blur-md flex items-center gap-2 md:gap-3">
                     <Coins aria-hidden="true" className="w-3 h-3 md:w-4 md:h-4 text-gold-secondary" />
                     <span className="font-headline font-bold text-lg md:text-2xl tracking-tight text-white">
-                        ${prominentPot.toLocaleString()}
+                        {prominentPot.toLocaleString()} Chips
                     </span>
                 </div>
                 <span className="text-[9px] md:text-[10px] text-emerald-primary/60 font-bold uppercase tracking-[0.2em] animate-in fade-in duration-500">

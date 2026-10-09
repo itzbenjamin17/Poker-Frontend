@@ -120,31 +120,29 @@ export function ActionPanel({
     const callExceedsStack = callAmount > availableChips;
 
     const rawRaise = raiseAmount.trim();
-    const parsedRaiseAmount = rawRaise === '' ? NaN : Number.parseInt(rawRaise, 10);
+    const parsedRaiseAmount = rawRaise === '' ? minRaiseAmount : Number.parseInt(rawRaise, 10);
     let computedRaiseError: string | null = null;
 
-    if (rawRaise !== '') {
-        if (!/^\d+$/.test(rawRaise)) {
-            computedRaiseError = 'Enter a whole number.';
-        } else if (!Number.isFinite(parsedRaiseAmount) || parsedRaiseAmount <= 0) {
-            computedRaiseError = 'Amount must be greater than 0.';
-        } else if (parsedRaiseAmount < minRaiseAmount) {
-            if (actionType === 'RAISE' && parsedRaiseAmount === availableChips) {
-                computedRaiseError = `Minimum raise is ${minRaiseAmount.toLocaleString()} chips. Your full stack is smaller, use All In${callExceedsStack ? '' : ' or Call'}.`;
-            } else {
-                computedRaiseError = actionType === 'BET'
-                    ? `Bet amount must be at least ${minBetAmount.toLocaleString()} chips.`
-                    : `Minimum raise is ${minRaiseAmount.toLocaleString()} chips.`;
-            }
-        } else if (parsedRaiseAmount > availableChips) {
-            computedRaiseError = `You only have ${availableChips.toLocaleString()} chips.`;
-        } else if (parsedRaiseAmount > 10_000_000) {
-            computedRaiseError = 'Amount cannot exceed 10,000,000 chips.';
+    if (rawRaise !== '' && !/^\d+$/.test(rawRaise)) {
+        computedRaiseError = 'Enter a whole number.';
+    } else if (!Number.isFinite(parsedRaiseAmount) || parsedRaiseAmount <= 0) {
+        computedRaiseError = 'Amount must be greater than 0.';
+    } else if (parsedRaiseAmount < minRaiseAmount) {
+        if (actionType === 'RAISE' && parsedRaiseAmount === availableChips) {
+            computedRaiseError = `Minimum raise is ${minRaiseAmount.toLocaleString()} chips. Your full stack is smaller, use All In${callExceedsStack ? '' : ' or Call'}.`;
+        } else {
+            computedRaiseError = actionType === 'BET'
+                ? `Bet amount must be at least ${minBetAmount.toLocaleString()} chips.`
+                : `Minimum raise is ${minRaiseAmount.toLocaleString()} chips.`;
         }
+    } else if (parsedRaiseAmount > availableChips) {
+        computedRaiseError = `You only have ${availableChips.toLocaleString()} chips.`;
+    } else if (parsedRaiseAmount > 10_000_000) {
+        computedRaiseError = 'Amount cannot exceed 10,000,000 chips.';
     }
 
     const activeRaiseError = raiseError ?? computedRaiseError;
-    const canSubmitRaise = rawRaise !== '' && !activeRaiseError;
+    const canSubmitRaise = !activeRaiseError;
     const hasError = Boolean(activeRaiseError);
 
     const isAutoAdvancing = Boolean(gameState.isAutoAdvancing);
@@ -176,10 +174,11 @@ export function ActionPanel({
             role="region"
             aria-label="Action dock"
             {...sectionMotion}
+            style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 16px)' }}
             className={cn(
-                'flex h-full w-full min-w-0 flex-wrap items-center justify-center border-t border-white/5 bg-surface-high',
-                isMobileLandscape ? 'gap-2 p-1.5' : 'gap-3 md:gap-4',
-                !isMobileLandscape && (isCompactTable ? 'p-2' : 'p-4 md:p-6'),
+                'flex h-full w-full min-w-0 flex-wrap items-center justify-center border-t border-white/5 bg-surface-high pb-[max(env(safe-area-inset-bottom),16px)]',
+                isMobileLandscape ? 'gap-2 pt-1.5 px-1.5' : 'gap-3 md:gap-4',
+                !isMobileLandscape && (isCompactTable ? 'pt-2 px-2' : 'pt-4 px-4 md:pt-6 md:px-6'),
             )}
         >
             <AnimatePresence mode="wait">
@@ -204,7 +203,7 @@ export function ActionPanel({
                             </Button>
                         ) : canCall ? (
                             <Button variant="primary" size={controlButtonSize} onClick={() => handleAction('CALL')} disabled={isActionPending}>
-                                {isActionPending && pendingAction === 'CALL' ? 'Submitting...' : `${BTN_CALL_PREFIX}${callAmount.toLocaleString()}`}
+                                {isActionPending && pendingAction === 'CALL' ? 'Submitting...' : `${BTN_CALL_PREFIX}${callAmount.toLocaleString()} Chips`}
                             </Button>
                         ) : null}
 
@@ -236,7 +235,7 @@ export function ActionPanel({
 
                         {canAllIn && (
                             <Button variant="outline" size={controlButtonSize} onClick={() => handleAction('ALL_IN')} disabled={isActionPending}>
-                                {isActionPending && pendingAction === 'ALL_IN' ? 'Submitting...' : `${BTN_ALL_IN_PREFIX}${availableChips.toLocaleString()}`}
+                                {isActionPending && pendingAction === 'ALL_IN' ? 'Submitting...' : `${BTN_ALL_IN_PREFIX}${availableChips.toLocaleString()} Chips`}
                             </Button>
                         )}
 
@@ -247,55 +246,94 @@ export function ActionPanel({
                                     key="amount-controls"
                                     {...fadeMotion}
                                     className={cn(
-                                        'flex flex-wrap items-center justify-center gap-2',
-                                        'w-auto',
+                                        'flex flex-col items-center justify-center gap-3 w-full max-w-sm mt-2 mb-1',
                                     )}
                                 >
+                                    <div className="flex w-full gap-2 justify-center">
+                                        <Button 
+                                            variant="outline" 
+                                            size="xs" 
+                                            onClick={() => onRaiseChange(String(Math.max(minRaiseAmount, Math.min(availableChips, bigBlind * 3))))}
+                                            disabled={isActionPending}
+                                        >
+                                            3BB
+                                        </Button>
+                                        <Button 
+                                            variant="outline" 
+                                            size="xs" 
+                                            onClick={() => onRaiseChange(String(Math.max(minRaiseAmount, Math.min(availableChips, Math.floor((gameState.pot || 0) / 2)))))}
+                                            disabled={isActionPending}
+                                        >
+                                            1/2 Pot
+                                        </Button>
+                                        <Button 
+                                            variant="outline" 
+                                            size="xs" 
+                                            onClick={() => onRaiseChange(String(Math.max(minRaiseAmount, Math.min(availableChips, gameState.pot || 0))))}
+                                            disabled={isActionPending}
+                                        >
+                                            Pot
+                                        </Button>
+                                        <Button 
+                                            variant="outline" 
+                                            size="xs" 
+                                            onClick={() => onRaiseChange(String(availableChips))}
+                                            disabled={isActionPending}
+                                        >
+                                            Max
+                                        </Button>
+                                    </div>
+                                    
                                     <div className={cn(
-                                        'flex items-stretch overflow-hidden rounded-xl border transition-colors duration-150',
+                                        'flex w-full flex-col gap-2 rounded-xl border p-3 transition-colors duration-150',
                                         hasError
-                                            ? 'border-red-500/50 shadow-[0_0_0_1px_rgba(239,68,68,0.2)]'
-                                            : 'border-white/10 focus-within:border-white/25',
+                                            ? 'border-red-500/50 shadow-[0_0_0_1px_rgba(239,68,68,0.2)] bg-red-500/5'
+                                            : 'border-white/10 bg-black/20 focus-within:border-white/25',
                                     )}>
-                                        <div className={cn(
-                                            'flex select-none items-center border-r border-white/10 bg-white/5',
-                                            isCompactTable || isMobileLandscape ? 'px-2' : 'px-3',
-                                        )}>
-                                            <span className="text-sm font-bold text-zinc-400">$</span>
+                                        <div className="flex justify-between items-center text-xs font-bold px-1">
+                                            <span className="text-zinc-400">Chips</span>
+                                            <span className="text-white tabular-nums text-sm">{parsedRaiseAmount.toLocaleString()}</span>
                                         </div>
-
+                                        
                                         <input
-                                            type="number"
+                                            type="range"
                                             aria-label={ARIA_RAISE_AMOUNT}
                                             aria-describedby={activeRaiseError ? 'raise-amount-error' : undefined}
                                             aria-invalid={hasError}
-                                            className={cn(
-                                                'bg-black/30 font-bold tabular-nums text-white outline-none placeholder:text-zinc-600',
-                                                '[appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none',
-                                                isMobileLandscape ? 'w-20 px-2 py-1.5 text-xs'
-                                                    : isCompactTable ? 'w-14 px-2 py-1.5 text-xs'
-                                                        : 'w-24 px-3 py-2 text-sm',
-                                            )}
-                                            placeholder={minRaiseAmount.toString()}
-                                            value={raiseAmount}
+                                            className="w-full cursor-pointer accent-gold-secondary"
+                                            value={parsedRaiseAmount}
                                             onChange={e => onRaiseChange(e.target.value)}
                                             min={minRaiseAmount}
+                                            max={Math.max(minRaiseAmount, availableChips)}
                                             step={1}
                                         />
+                                    </div>
 
+                                    <div className="flex gap-2 w-full justify-center">
+                                        <Button
+                                            variant="ghost"
+                                            size={controlButtonSize}
+                                            onClick={() => {
+                                                setAmountAction(null);
+                                                onRaiseChange('');
+                                            }}
+                                            disabled={isActionPending}
+                                        >
+                                            Cancel
+                                        </Button>
+                                        
                                         <button
                                             type="button"
                                             disabled={!canSubmitRaise || isActionPending}
                                             onClick={() => {
                                                 if (!canSubmitRaise || isActionPending) return;
-                                                const amount = Number.parseInt(rawRaise, 10);
-                                                handleAction(actionType, amount);
+                                                handleAction(actionType, parsedRaiseAmount);
                                                 onRaiseChange('');
                                                 setAmountAction(null);
                                             }}
                                             className={cn(
-                                                'select-none border-l border-white/10 font-headline font-extrabold uppercase tracking-wider transition-all duration-150',
-                                                isCompactTable || isMobileLandscape ? 'px-2.5 py-1.5 text-[10px]' : 'px-4 py-2 text-xs',
+                                                'select-none rounded-lg font-headline font-extrabold uppercase tracking-wider transition-all duration-150',
+                                                'px-6 py-2 text-xs',
                                                 canSubmitRaise && !isActionPending
                                                     ? 'cursor-pointer bg-gold-secondary text-black hover:brightness-110 active:brightness-95'
                                                     : 'cursor-not-allowed bg-white/5 text-zinc-600',
@@ -304,18 +342,6 @@ export function ActionPanel({
                                             {isActionPending && pendingAction === actionType ? 'Submitting...' : actionType === 'BET' ? BTN_BET : BTN_RAISE}
                                         </button>
                                     </div>
-
-                                    <Button
-                                        variant="ghost"
-                                        size={controlButtonSize}
-                                        onClick={() => {
-                                            setAmountAction(null);
-                                            onRaiseChange('');
-                                        }}
-                                        disabled={isActionPending}
-                                    >
-                                        Cancel
-                                    </Button>
 
                                     {activeRaiseError && (
                                         <motion.p

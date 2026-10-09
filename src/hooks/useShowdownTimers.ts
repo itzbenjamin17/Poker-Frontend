@@ -1,7 +1,8 @@
 import { useCallback, useRef } from 'react';
 import type { GameState } from '../types';
 
-const SHOWDOWN_FALLBACK_HIDE_MS = 45_000;
+// The backend uses a 60s ready-countdown. We use 65s as a 5-second buffer to handle network delays.
+const SHOWDOWN_FALLBACK_HIDE_MS = 65_000;
 
 export function useShowdownTimers(
     setShowdown: (v: GameState | null) => void,

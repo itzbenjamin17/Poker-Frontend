@@ -84,6 +84,7 @@ export const PlayerPod = ({
     className,
     scale = 1,
     handRank,
+    bestHand,
 }: {
     player: Player;
     isCurrent?: boolean;
@@ -94,6 +95,7 @@ export const PlayerPod = ({
     className?: string;
     scale?: number;
     handRank?: string;
+    bestHand?: string[];
 }) => {
     const isDisconnected = player.status === 'DISCONNECTED';
 
@@ -186,7 +188,7 @@ export const PlayerPod = ({
                         borderRadius: `${scale * 999}px`,
                     }}
                 >
-                    <span className="font-bold text-gold-secondary" style={{ fontSize: `${scale * baseChipsFontSize}px` }}>${player.chips.toLocaleString()}</span>
+                    <span className="font-bold text-gold-secondary" style={{ fontSize: `${scale * baseChipsFontSize}px` }}>{player.chips.toLocaleString()} Chips</span>
                 </div>
 
                 {/* Action Indicator */}
@@ -220,10 +222,10 @@ export const PlayerPod = ({
                 )}
             </div>
 
-            {formatHandRank(handRank) && (
-                <div className="absolute -bottom-2.5 left-1/2 -translate-x-1/2 bg-surface-higher/90 backdrop-blur-md px-2 py-0.5 rounded border border-emerald-primary/30 z-20 whitespace-nowrap">
+            {formatHandRank(handRank, bestHand || player.bestHand) && (
+                <div className="bg-surface-higher/90 backdrop-blur-md px-2 py-1 rounded-md border border-emerald-primary/30 z-20 whitespace-nowrap shadow-lg">
                     <span className="text-[9px] font-bold text-emerald-primary/90 uppercase tracking-widest">
-                        {formatHandRank(handRank)}
+                        {formatHandRank(handRank, bestHand || player.bestHand)}
                     </span>
                 </div>
             )}
@@ -231,7 +233,7 @@ export const PlayerPod = ({
             <div className="text-center flex flex-col items-center">
                 <h3 className="font-headline font-bold uppercase tracking-widest text-white/80" style={{ fontSize: `${scale * 10}px` }}>{player.name}</h3>
                 {player.currentBet > 0 && (
-                    <p className="font-bold text-emerald-primary/60" style={{ fontSize: `${scale * 9}px` }}>BET: ${player.currentBet}</p>
+                    <p className="font-bold text-emerald-primary/60" style={{ fontSize: `${scale * 9}px` }}>BET: {player.currentBet.toLocaleString()} Chips</p>
                 )}
                 {isDisconnected && (
                     <p className="font-bold text-amber-300 uppercase tracking-wider" style={{ fontSize: `${scale * 9}px` }}>

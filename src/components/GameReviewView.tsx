@@ -105,9 +105,9 @@ export function GameReviewView({ onLeave }: GameReviewViewProps) {
                                             </div>
                                             <div className="text-sm text-neutral-400">
                                                 {player.chips} chips
-                                                {formatHandRank(player.handRank) && (
+                                                {formatHandRank(player.handRank, player.bestHand) && (
                                                     <span className="text-zinc-400 capitalize">
-                                                        • {formatHandRank(player.handRank)}
+                                                        • {formatHandRank(player.handRank, player.bestHand)}
                                                     </span>
                                                 )}
                                             </div>

@@ -97,7 +97,7 @@ export function GameTableView({
         <main
             aria-label="Live poker table"
             className={cn(
-            'isolate flex h-[100svh] min-h-0 w-full max-w-full flex-col relative overflow-hidden overscroll-none',
+            'isolate flex h-[100dvh] min-h-[600px] w-full max-w-full flex-col relative overflow-hidden overscroll-none',
             'md:h-screen',
         )}
         >

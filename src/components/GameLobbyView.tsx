@@ -9,7 +9,7 @@ import type { WsStatus } from '../types';
 import {
     GAME_LOBBY_LABEL,
     BTN_LEAVE_LOBBY, BTN_START_GAME, BTN_STARTING_GAME, LABEL_WAITING_HOST,
-    LABEL_WAITING_PLAYERS, LABEL_BLINDS, LABEL_MIN_BUYIN,
+    LABEL_BLINDS, LABEL_MIN_BUYIN,
     LABEL_TABLE_RULES, LABEL_HOST,
 } from '../constants/strings';
 
@@ -112,15 +112,15 @@ export function GameLobbyView({ onStartGame, onLeaveGame, isStartingGame = false
                                 </Card>
                             </li>
                         ))}
-                        {Array.from({ length: (roomState.maxPlayers || 6) - (roomState.players?.length || 0) }).map((_, i) => (
-                            <li key={`empty-${i}`}>
+                        {((roomState.maxPlayers || 6) - (roomState.players?.length || 0)) > 0 && (
+                            <li className="md:col-span-2">
                                 <div className="border border-white/5 rounded-xl p-6 flex items-center justify-center border-dashed">
-                                    <p className="text-zinc-700 text-xs uppercase tracking-widest italic">
-                                        {LABEL_WAITING_PLAYERS}
+                                    <p className="text-zinc-500 text-sm uppercase tracking-widest font-semibold">
+                                        {roomState.players?.length || 0} / {roomState.maxPlayers || 6} Players Joined
                                     </p>
                                 </div>
                             </li>
-                        ))}
+                        )}
                     </ul>
 
                     {/* Sidebar */}

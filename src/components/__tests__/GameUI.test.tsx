@@ -52,8 +52,8 @@ describe('GameUI Components', () => {
             render(<PlayerPod player={mockPlayer} />);
             expect(screen.getByRole('heading', { name: 'Vik' })).toBeInTheDocument();
             expect(screen.getByText('VI')).toBeInTheDocument(); // Initials
-            expect(screen.getByText('$5,000')).toBeInTheDocument(); // Chips
-            expect(screen.getByText('BET: $450')).toBeInTheDocument(); // Current bet
+            expect(screen.getByText('5,000 Chips')).toBeInTheDocument(); // Chips
+            expect(screen.getByText('BET: 450 Chips')).toBeInTheDocument(); // Current bet
         });
 
         test('renders active turn label for screen readers when the player is current player', () => {

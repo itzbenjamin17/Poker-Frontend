@@ -53,33 +53,43 @@ describe('useSeatLayout', () => {
         expect(tallRes.current.isMobileLandscape).toBe(false)
     })
 
-    it('always maps index 0 (local player) to bottom-center', () => {
+    it('adjusts index 0 (local player) closer to center for smaller games', () => {
         const { result } = renderHook(() => useSeatLayout({ width: 1100, height: 700 }))
-        const pos = result.current.getSeatPosition(0, 4)
-        expect(pos.left).toBe(50)
-        expect(pos.top).toBe(80) // standard top
-        expect(pos.cardPlacement).toBe('right')
+        
+        // Large game (total 6): standard top
+        const posLarge = result.current.getSeatPosition(0, 6)
+        expect(posLarge.left).toBe(50)
+        expect(posLarge.top).toBe(80) 
+
+        // Small game (total 2): pulled up closer to center
+        const posSmall = result.current.getSeatPosition(0, 2)
+        expect(posSmall.top).toBe(80 - 12) // pulled up by 12
     })
 
-    it('maps index 1 in a heads-up game (total 2) to directly across', () => {
+    it('maps index 1 in a heads-up game (total 2) directly across and pulled closer', () => {
         const { result } = renderHook(() => useSeatLayout({ width: 1100, height: 700 }))
         const pos = result.current.getSeatPosition(1, 2)
-        expect(pos.left).toBe(50)
-        expect(pos.top).toBe(18) // standard top
+        // 45 is centerY for standard. baseRadiusY is 28. multiplier for small game is 0.6.
+        // top = 45 - (28 * 0.6) = 45 - 16.8 = 28.2
+        expect(pos.left).toBeCloseTo(50)
+        expect(pos.top).toBeCloseTo(28.2)
         expect(pos.cardPlacement).toBe('right')
     })
 
-    it('correctly retrieves static coordinates for standard counts', () => {
+    it('distributes players evenly along an ellipse based on total', () => {
         const { result } = renderHook(() => useSeatLayout({ width: 1100, height: 700 }))
 
         // 3 players
         const pos3_1 = result.current.getSeatPosition(1, 3)
-        expect(pos3_1).toEqual({ left: 18, top: 45, cardPlacement: 'below' })
+        // Others = 2, startAngle = 195. 
+        expect(pos3_1.left).toBeCloseTo(27.977)
+        expect(pos3_1.top).toBeCloseTo(40.652)
+        expect(pos3_1.cardPlacement).toBe('below')
 
         // 6 players
         const pos6_3 = result.current.getSeatPosition(3, 6)
-        expect(pos6_3.left).toBe(50)
-        expect(pos6_3.top).toBe(14) // standard top for index 3
+        expect(pos6_3.left).toBeCloseTo(50)
+        expect(pos6_3.top).toBeCloseTo(17) // centerY(45) - radiusY(28) = 17
     })
 
     it('falls back to elliptical distribution for 7+ players', () => {

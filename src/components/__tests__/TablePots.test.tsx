@@ -19,7 +19,7 @@ describe('TablePots', () => {
 
         const potContainer = screen.getByLabelText('Total Pot');
         expect(potContainer).toBeInTheDocument();
-        expect(screen.getByText('$1,500')).toBeInTheDocument();
+        expect(screen.getByText('1,500 Chips')).toBeInTheDocument();
         expect(screen.getByText('PRE FLOP')).toBeInTheDocument();
     });
 
@@ -36,7 +36,7 @@ describe('TablePots', () => {
 
         const potContainer = screen.getByLabelText(LABEL_MAIN_POT);
         expect(potContainer).toBeInTheDocument();
-        expect(screen.getByText('$2,000')).toBeInTheDocument();
+        expect(screen.getByText('2,000 Chips')).toBeInTheDocument();
         expect(screen.getByText('RIVER')).toBeInTheDocument();
     });
 });
@@ -55,16 +55,16 @@ describe('PotBreakdown', () => {
         expect(region).toBeInTheDocument();
 
         expect(screen.getByText(LABEL_MAIN_POT)).toBeInTheDocument();
-        expect(screen.getByText('$1,000')).toBeInTheDocument();
+        expect(screen.getByText('1,000 Chips')).toBeInTheDocument();
 
         expect(screen.getByText(`${LABEL_SIDE_POT_PREFIX} 1`)).toBeInTheDocument();
-        expect(screen.getByText('$500')).toBeInTheDocument();
+        expect(screen.getByText('500 Chips')).toBeInTheDocument();
 
         expect(screen.getByText(`${LABEL_SIDE_POT_PREFIX} 2`)).toBeInTheDocument();
-        expect(screen.getByText('$250')).toBeInTheDocument();
+        expect(screen.getByText('250 Chips')).toBeInTheDocument();
 
         expect(screen.getByText(LABEL_UNCALLED)).toBeInTheDocument();
-        expect(screen.getByText('$100')).toBeInTheDocument();
+        expect(screen.getByText('100 Chips')).toBeInTheDocument();
     });
 
     it('does not render uncalled amount badge if uncalledAmount is 0', () => {
@@ -100,8 +100,8 @@ describe('CompactPotDetails', () => {
         await user.click(toggleBtn);
         expect(screen.getByRole('button', { name: /hide pot details/i })).toHaveAttribute('aria-expanded', 'true');
         expect(screen.getByRole('region', { name: /pot breakdown/i })).toBeInTheDocument();
-        expect(screen.getByText('$1,200')).toBeInTheDocument();
-        expect(screen.getByText('$400')).toBeInTheDocument();
+        expect(screen.getByText('1,200 Chips')).toBeInTheDocument();
+        expect(screen.getByText('400 Chips')).toBeInTheDocument();
 
         // Click to collapse
         await user.click(toggleBtn);

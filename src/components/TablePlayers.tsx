@@ -61,8 +61,9 @@ export function TablePlayers({
                 const displayCards = shouldReveal ? showdownPlayer!.holeCards! : playerPrivateCards;
                 const blindText = getBlindText(p);
 
-                const baseCardWidth = isSelf ? (isCompactTable ? 32 : 48) : (isCompactTable ? 20 : 32);
-                const baseCardHeight = isSelf ? (isCompactTable ? 48 : 64) : (isCompactTable ? 32 : 48);
+                const useHeroSize = isSelf || shouldReveal;
+                const baseCardWidth = useHeroSize ? (isCompactTable ? 40 : 64) : (isCompactTable ? 20 : 32);
+                const baseCardHeight = useHeroSize ? (isCompactTable ? 60 : 96) : (isCompactTable ? 32 : 48);
 
                 return (
                     <div
@@ -123,9 +124,9 @@ export function TablePlayers({
                                     top: seat.cardPlacement !== 'below' ? '35%' : undefined,
                                     transform: seat.cardPlacement !== 'below' ? 'translateY(-50%)' : undefined,
                                     // Minimum gap of 12px so the timer ring / blind badge never clips into cards
-                                    marginRight: seat.cardPlacement === 'left' ? `${Math.max(12, scale * 16)}px` : undefined,
-                                    marginLeft: seat.cardPlacement === 'right' ? `${Math.max(12, scale * 16)}px` : undefined,
-                                    marginTop: seat.cardPlacement === 'below' ? `${Math.max(8, scale * 12)}px` : undefined,
+                                    marginRight: seat.cardPlacement === 'left' ? `${Math.max(12, scale * (isSelf ? 32 : 16))}px` : undefined,
+                                    marginLeft: seat.cardPlacement === 'right' ? `${Math.max(12, scale * (isSelf ? 32 : 16))}px` : undefined,
+                                    marginTop: seat.cardPlacement === 'below' ? `${Math.max(8, scale * (isSelf ? 24 : 12))}px` : undefined,
                                 }}
                             >
                                 <div className="flex justify-center" style={{ gap: `${scale * 4}px` }}>
@@ -190,7 +191,7 @@ export function TablePlayers({
                                 <dl className="grid grid-cols-2 gap-2 text-[10px] uppercase tracking-[0.12em]">
                                     <div>
                                         <dt className="text-zinc-500">Stack</dt>
-                                        <dd className="mt-0.5 font-bold text-gold-secondary">${p.chips.toLocaleString()}</dd>
+                                        <dd className="mt-0.5 font-bold text-gold-secondary">{p.chips.toLocaleString()} Chips</dd>
                                     </div>
                                     <div>
                                         <dt className="text-zinc-500">Status</dt>
@@ -199,7 +200,7 @@ export function TablePlayers({
                                     {p.currentBet > 0 && (
                                         <div className="col-span-2">
                                             <dt className="text-zinc-500">Current bet</dt>
-                                            <dd className="mt-0.5 font-bold text-emerald-primary">Bet ${p.currentBet.toLocaleString()}</dd>
+                                            <dd className="mt-0.5 font-bold text-emerald-primary">Bet {p.currentBet.toLocaleString()} Chips</dd>
                                         </div>
                                     )}
                                     {blindText && (

@@ -87,7 +87,7 @@ describe('ActionPanel', () => {
         });
 
         expect(screen.getByRole('button', { name: /fold/i })).toBeInTheDocument();
-        expect(screen.getByRole('button', { name: /call \$10/i })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /call 10 chips/i })).toBeInTheDocument();
         expect(screen.queryByRole('button', { name: /check/i })).not.toBeInTheDocument();
     });
 
@@ -97,7 +97,7 @@ describe('ActionPanel', () => {
             me: { ...mockMe, chips: 50, currentBet: 10 },
         });
 
-        expect(screen.getByRole('button', { name: /all in \$50/i })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /all in 50 chips/i })).toBeInTheDocument();
     });
 
     it('progressively reveals valid amount controls for raise', async () => {
@@ -111,7 +111,7 @@ describe('ActionPanel', () => {
         await user.click(screen.getByRole('button', { name: /^raise$/i }));
 
         expect(screen.getByLabelText(/raise amount/i)).toBeInTheDocument();
-        expect(screen.getByRole('button', { name: /^raise$/i })).toBeDisabled();
+        expect(screen.getByRole('button', { name: /^raise$/i })).not.toBeDisabled();
         expect(screen.getByRole('button', { name: /cancel/i })).toBeInTheDocument();
     });
 
@@ -184,7 +184,7 @@ describe('ActionPanel', () => {
         });
 
         expect(screen.getByRole('button', { name: /fold/i })).toBeInTheDocument();
-        expect(screen.getByRole('button', { name: /call \$10/i })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /call 10 chips/i })).toBeInTheDocument();
         expect(screen.queryByRole('button', { name: /check/i })).not.toBeInTheDocument();
         expect(screen.queryByRole('button', { name: /raise/i })).not.toBeInTheDocument();
         expect(screen.queryByRole('button', { name: /all in/i })).not.toBeInTheDocument();
