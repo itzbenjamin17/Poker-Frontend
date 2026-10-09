@@ -73,15 +73,26 @@ function reducer(state: GameContextState, action: Action): GameContextState {
         case 'SET_CLAIM_PENDING': return { ...state, claimPending: action.payload };
         case 'SET_WS_STATUS': return { ...state, wsStatus: action.payload };
         case 'SET_HYDRATED': return { ...state, isHydrated: action.payload };
-        case 'SET_GAME_END_RESULT': return {
-            ...state,
-            gameEndResult: action.payload,
-            isGameOver: action.payload !== null,
-            ...(action.payload?.finalState ? { gameState: action.payload.finalState } : {}),
-            showdown: null,
-            showdownResult: null,
-            notification: null,
-        };
+        case 'SET_GAME_END_RESULT': {
+            let nextGameState = state.gameState;
+            if (action.payload?.finalState) {
+                const fs = action.payload.finalState;
+                if (fs.phase === 'SHOWDOWN' && fs.pot === 0 && state.gameState && state.gameState.pot > 0) {
+                    fs.pot = state.gameState.pot;
+                    fs.pots = state.gameState.pots;
+                }
+                nextGameState = fs;
+            }
+            return {
+                ...state,
+                gameEndResult: action.payload,
+                isGameOver: action.payload !== null,
+                ...(nextGameState ? { gameState: nextGameState } : {}),
+                showdown: null,
+                showdownResult: null,
+                notification: null,
+            };
+        }
         case 'CLEAR_GAME_STATE': return {
             ...state,
             gameState: null,
@@ -213,6 +224,14 @@ export function GameProvider({ auth, onLeave, children }: GameProviderProps) {
                 // Actually, if it's expired, we probably shouldn't show the timer UI indefinitely.
                 // We shouldn't cancel it, but maybe we let useShowdownTimers handle it.
             }
+        }
+
+        if (data.phase === 'SHOWDOWN' && data.pot === 0 && previousState && previousState.pot > 0) {
+            data = {
+                ...data,
+                pot: previousState.pot,
+                pots: previousState.pots
+            };
         }
 
         dispatch({ type: 'SET_GAME', payload: data });

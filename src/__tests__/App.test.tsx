@@ -1,4 +1,4 @@
-import { render, screen, act } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import App from '../App';
@@ -95,7 +95,7 @@ describe('App', () => {
         expect(mockClearAuth).toHaveBeenCalledTimes(1);
     });
 
-    it('displays screen-too-small warning when width is below 320px', () => {
+    it('renders the lobby in a narrow window without a size warning (WindowSizeGuard was removed)', () => {
         window.innerWidth = 300;
         window.innerHeight = 600;
 
@@ -109,53 +109,7 @@ describe('App', () => {
 
         render(<App />);
 
-        expect(screen.getByText(/Window too narrow to play/i)).toBeInTheDocument();
-        expect(screen.getByText(/Please resize your window/i)).toBeInTheDocument();
-        expect(screen.queryByTestId('lobby-view')).not.toBeInTheDocument();
-    });
-
-    it('displays screen-too-small warning when height is below 480px', () => {
-        window.innerWidth = 800;
-        window.innerHeight = 400;
-
-        vi.mocked(useAuthSession).mockReturnValue({
-            auth: null,
-            setAuth: mockSetAuth,
-            clearAuth: mockClearAuth,
-            authError: null,
-            clearAuthError: mockClearAuthError,
-        });
-
-        render(<App />);
-
-        expect(screen.getByText(/Window too short to play/i)).toBeInTheDocument();
-        expect(screen.getByText(/Try rotating your device/i)).toBeInTheDocument();
-        expect(screen.queryByTestId('lobby-view')).not.toBeInTheDocument();
-    });
-
-    it('updates WindowSizeGuard display on window resize event', () => {
-        window.innerWidth = 300;
-        window.innerHeight = 600;
-
-        vi.mocked(useAuthSession).mockReturnValue({
-            auth: null,
-            setAuth: mockSetAuth,
-            clearAuth: mockClearAuth,
-            authError: null,
-            clearAuthError: mockClearAuthError,
-        });
-
-        render(<App />);
-        expect(screen.getByText(/Window too narrow to play/i)).toBeInTheDocument();
-
-        // Resize back to valid dimensions
-        act(() => {
-            window.innerWidth = 1024;
-            window.innerHeight = 768;
-            window.dispatchEvent(new Event('resize'));
-        });
-
-        expect(screen.queryByText(/Window too narrow to play/i)).not.toBeInTheDocument();
         expect(screen.getByTestId('lobby-view')).toBeInTheDocument();
+        expect(screen.queryByText(/Window too narrow to play/i)).not.toBeInTheDocument();
     });
 });

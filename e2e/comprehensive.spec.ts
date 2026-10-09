@@ -34,9 +34,9 @@ test.describe('Comprehensive Poker Scenarios', () => {
         // Wait for the game to start (pot or blinds visible)
         // 3-player rules: Alice (index 0, BB posts $20), Bob (index 1, Dealer posts $0), Charlie (index 2, SB posts $10)
         // Blinds are posted automatically resulting in $30 initial pot
-        await expect(pages[0].getByLabel(/total pot/i)).toContainText('$30');
-        await expect(pages[1].getByLabel(/total pot/i)).toContainText('$30');
-        await expect(pages[2].getByLabel(/total pot/i)).toContainText('$30');
+        await expect(pages[0].getByLabel(/total pot/i)).toContainText('30');
+        await expect(pages[1].getByLabel(/total pot/i)).toContainText('30');
+        await expect(pages[2].getByLabel(/total pot/i)).toContainText('30');
 
         // Pre-flop Betting Round:
         // 1. Bob (Dealer, index 1) acts first pre-flop. Bob calls the $20 big blind (posts $20).
@@ -56,7 +56,7 @@ test.describe('Comprehensive Poker Scenarios', () => {
 
         // Phase change to Flop!
         // Pot is now $60 ($20 from each player).
-        await expect(pages[0].getByLabel(/total pot/i)).toContainText('$60');
+        await expect(pages[0].getByLabel(/total pot/i)).toContainText('60');
         await expect(pages[0].getByText('FLOP')).toBeVisible();
     });
 
@@ -113,7 +113,7 @@ test.describe('Comprehensive Poker Scenarios', () => {
 
         // Flop phase:
         // Pot is $40. Both P1 and P2 have $20 left.
-        await expect(hostPage.getByLabel(/total pot/i)).toContainText('$40');
+        await expect(hostPage.getByLabel(/total pot/i)).toContainText('40');
 
         // P1 (BB, acts first postflop) bets all-in by putting $20.
         // First click Bet to expand amount controls
@@ -191,3 +191,4 @@ test.describe('Comprehensive Poker Scenarios', () => {
         await expect(hostPage.getByText(/round result|won/i).first()).toBeVisible({ timeout: 20000 });
     });
 });
+

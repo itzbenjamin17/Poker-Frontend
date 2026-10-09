@@ -55,14 +55,11 @@ describe('GameTableView', () => {
     };
 
     const defaultProps = {
-        tableTier: 'standard' as const,
         isCompactTable: false,
         isMobileLandscape: false,
-        scale: 1,
         nowMs: 100000,
         raiseAmount: '40',
         raiseError: null,
-        getSeatPosition: () => ({ left: 50, top: 50, cardPlacement: 'below' as const }),
         onAction: vi.fn(),
         onReady: vi.fn(),
         onClaimWin: vi.fn(),
@@ -147,8 +144,36 @@ describe('GameTableView', () => {
         });
     });
 
+    describe('Short-viewport chrome', () => {
+        const mockContext = (phase: GameState['phase']) =>
+            vi.mocked(useGameContext).mockReturnValue({
+                auth: { token: 'tok', playerName: 'Hero', roomId: 'room-1' },
+                roomState: mockRoomState,
+                gameState: { ...mockGameState, phase },
+                privateState: { holeCards: ['AH', 'AD'] },
+                showdown: null,
+                showdownResult: null,
+                claimPending: false,
+                myPlayerId: 'p-1',
+                notification: null,
+                wsStatus: 'connected',
+            } as any);
+
+        it('compacts only the showdown dock on short viewports', () => {
+            mockContext('SHOWDOWN');
+            const { unmount } = render(<GameTableView {...defaultProps} />);
+            expect(screen.getByTestId('room-dock')).toHaveClass('h-28', 'short:h-12');
+            unmount();
+
+            mockContext('FLOP');
+            render(<GameTableView {...defaultProps} />);
+            expect(screen.getByTestId('room-dock')).toHaveClass('h-28');
+            expect(screen.getByTestId('room-dock')).not.toHaveClass('short:h-12');
+        });
+    });
+
     describe('Item 19: isCompactTable scaling and layout classes', () => {
-        it('applies compact padding classes when isCompactTable is true', () => {
+        it('applies the compact action slot height when isCompactTable is true', () => {
             vi.mocked(useGameContext).mockReturnValue({
                 auth: { token: 'tok', playerName: 'Hero', roomId: 'room-1' },
                 roomState: mockRoomState,
@@ -164,16 +189,13 @@ describe('GameTableView', () => {
 
             const { container } = render(<GameTableView {...defaultProps} isCompactTable={true} />);
 
-            // Check that compact padding 'p-2' is applied to the table container area
-            const tableArea = container.querySelector('.p-2');
-            expect(tableArea).toBeInTheDocument();
-
+            // The stage itself has no padding; only the action slot density follows the flag
             // Check that action slot uses compact height 'h-24'
             const actionSlot = container.querySelector('.h-24');
             expect(actionSlot).toBeInTheDocument();
         });
 
-        it('applies standard padding and height classes when isCompactTable is false', () => {
+        it('applies the standard action slot height when isCompactTable is false', () => {
             vi.mocked(useGameContext).mockReturnValue({
                 auth: { token: 'tok', playerName: 'Hero', roomId: 'room-1' },
                 roomState: mockRoomState,

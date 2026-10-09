@@ -34,7 +34,7 @@ test.describe('Item 33: Cross-tab authentication and synchronization', () => {
 
     // Guest joins room
     await joinRoom(guestPage, roomName, guestName);
-    await expect(tabA.getByRole('heading', { name: guestName })).toBeVisible();
+    await expect(tabA.getByText(guestName )).toBeVisible();
 
     // 2. Open Tab B in the SAME hostContext (simulating second browser tab for HostAlice)
     const tabB = await hostContext.newPage();
@@ -42,7 +42,7 @@ test.describe('Item 33: Cross-tab authentication and synchronization', () => {
 
     // Tab B shares auth session and is immediately in the room
     await expect(tabB.getByText(/game lobby/i)).toBeVisible();
-    await expect(tabB.getByText(roomName)).toBeVisible();
+    await expect(tabB.getByText(roomName).first()).toBeVisible();
 
     // 3. Start game so host is at the active game table
     await tabA.getByRole('button', { name: /start game/i }).click();
@@ -64,3 +64,4 @@ test.describe('Item 33: Cross-tab authentication and synchronization', () => {
     await expect(tabB.getByRole('button', { name: /create game/i })).toBeVisible();
   });
 });
+

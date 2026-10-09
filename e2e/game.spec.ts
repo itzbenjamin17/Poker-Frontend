@@ -27,15 +27,15 @@ test.describe('Game Table Flow', () => {
     await createRoom(hostPage, roomName, hostName);
     await joinRoom(guestPage, roomName, guestName);
 
-    await expect(hostPage.getByRole('heading', { name: guestName })).toBeVisible();
+    await expect(hostPage.getByText(guestName )).toBeVisible();
 
     // 2. Start Game
     await hostPage.getByRole('button', { name: /start game/i }).click();
 
     // Wait for transition to Game View
     // Heads-up rules: Guest (Dealer/SB) posts $10, Host (BB) posts $20, resulting in a $30 initial pot.
-    await expect(hostPage.getByLabel(/total pot/i)).toContainText('$30');
-    await expect(guestPage.getByLabel(/total pot/i)).toContainText('$30');
+    await expect(hostPage.getByLabel(/total pot/i)).toContainText('30');
+    await expect(guestPage.getByLabel(/total pot/i)).toContainText('30');
 
     // Verify Hole Cards are present (at least the components exist)
     // Local player has 2 cards visible, opponent has 2 cards hidden
@@ -56,10 +56,11 @@ test.describe('Game Table Flow', () => {
 
     // 4. Verify Phase Change (Flop dealt)
     // Pot should be $40 now (20 from Host + 20 from Guest)
-    await expect(hostPage.getByLabel(/total pot/i)).toContainText('$40');
+    await expect(hostPage.getByLabel(/total pot/i)).toContainText('40');
     
     // Should see 3 community cards
     // Total cards on screen: 2 (hole) + 3 (community) = 5
     await expect(hostPage.getByRole('img', { name: /of/i })).toHaveCount(5);
   });
 });
+

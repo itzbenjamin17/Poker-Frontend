@@ -4,7 +4,6 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { GameLobbyView } from '../GameLobbyView';
 import { useGameContext } from '../../context/GameContext';
 import {
-    BTN_LEAVE_LOBBY,
     BTN_START_GAME,
     BTN_STARTING_GAME,
     LABEL_WAITING_HOST,
@@ -17,7 +16,6 @@ vi.mock('../../context/GameContext', () => ({
 
 describe('GameLobbyView', () => {
     const mockOnStartGame = vi.fn();
-    const mockOnLeaveGame = vi.fn();
 
     const baseRoomState = {
         roomId: 'room-1',
@@ -49,7 +47,7 @@ describe('GameLobbyView', () => {
             dispatch: vi.fn(),
         } as any);
 
-        render(<GameLobbyView onStartGame={mockOnStartGame} onLeaveGame={mockOnLeaveGame} />);
+        render(<GameLobbyView onStartGame={mockOnStartGame} />);
 
         expect(screen.getByText('HighRollers')).toBeInTheDocument();
         expect(screen.getByText('$10 / $20')).toBeInTheDocument();
@@ -71,7 +69,7 @@ describe('GameLobbyView', () => {
             dispatch: vi.fn(),
         } as any);
 
-        render(<GameLobbyView onStartGame={mockOnStartGame} onLeaveGame={mockOnLeaveGame} />);
+        render(<GameLobbyView onStartGame={mockOnStartGame} />);
 
         const startButton = screen.getByRole('button', { name: new RegExp(BTN_START_GAME, 'i') });
         expect(startButton).toBeEnabled();
@@ -92,7 +90,7 @@ describe('GameLobbyView', () => {
         } as any);
 
         const { rerender } = render(
-            <GameLobbyView onStartGame={mockOnStartGame} onLeaveGame={mockOnLeaveGame} />
+            <GameLobbyView onStartGame={mockOnStartGame} />
         );
 
         const startButton = screen.getByRole('button', { name: new RegExp(BTN_START_GAME, 'i') });
@@ -101,7 +99,6 @@ describe('GameLobbyView', () => {
         rerender(
             <GameLobbyView
                 onStartGame={mockOnStartGame}
-                onLeaveGame={mockOnLeaveGame}
                 isStartingGame={true}
             />
         );
@@ -121,41 +118,10 @@ describe('GameLobbyView', () => {
             dispatch: vi.fn(),
         } as any);
 
-        render(<GameLobbyView onStartGame={mockOnStartGame} onLeaveGame={mockOnLeaveGame} />);
+        render(<GameLobbyView onStartGame={mockOnStartGame} />);
 
         expect(screen.queryByRole('button', { name: new RegExp(BTN_START_GAME, 'i') })).not.toBeInTheDocument();
         expect(screen.getByText(LABEL_WAITING_HOST)).toBeInTheDocument();
-    });
-
-    it('clicking Leave Lobby invokes onLeaveGame after confirmation', async () => {
-        const user = userEvent.setup();
-        const confirmSpy = vi.spyOn(window, 'confirm');
-
-        vi.mocked(useGameContext).mockReturnValue({
-            auth: { playerName: 'GuestPlayer', token: 'token', roomId: 'room-1', message: 'Success' },
-            roomState: baseRoomState,
-            gameState: null,
-            privateState: null,
-            notification: null,
-            wsStatus: 'connected',
-            dispatch: vi.fn(),
-        } as any);
-
-        render(<GameLobbyView onStartGame={mockOnStartGame} onLeaveGame={mockOnLeaveGame} />);
-
-        const leaveButton = screen.getByRole('button', { name: new RegExp(BTN_LEAVE_LOBBY, 'i') });
-
-        // Cancel confirmation
-        confirmSpy.mockReturnValueOnce(false);
-        await user.click(leaveButton);
-        expect(mockOnLeaveGame).not.toHaveBeenCalled();
-
-        // Accept confirmation
-        confirmSpy.mockReturnValueOnce(true);
-        await user.click(leaveButton);
-        expect(mockOnLeaveGame).toHaveBeenCalledTimes(1);
-
-        confirmSpy.mockRestore();
     });
 
     it('copy room code button writes room name to clipboard', async () => {
@@ -177,7 +143,7 @@ describe('GameLobbyView', () => {
             dispatch: vi.fn(),
         } as any);
 
-        render(<GameLobbyView onStartGame={mockOnStartGame} onLeaveGame={mockOnLeaveGame} />);
+        render(<GameLobbyView onStartGame={mockOnStartGame}  />);
 
         const copyButton = screen.getByRole('button', { name: /copy room code/i });
         await user.click(copyButton);

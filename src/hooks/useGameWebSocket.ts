@@ -267,9 +267,31 @@ export function useGameWebSocket(options: UseGameWebSocketOptions) {
             dispatch({ type: 'SET_WS_STATUS', payload: 'reconnecting' });
         };
 
+        const handleWakeup = () => {
+            if (document.visibilityState === 'visible' && !client.connected) {
+                logger.log('Tab woke up and WebSocket is disconnected. Forcing STOMP reconnect...');
+                // Force an immediate reconnect, bypassing the reconnectDelay timer which may have frozen
+                if (typeof client.forceDisconnect === 'function') client.forceDisconnect();
+                client.activate();
+            }
+        };
+
+        const handleOnline = () => {
+            if (!client.connected) {
+                logger.log('Browser came online. Forcing STOMP reconnect...');
+                if (typeof client.forceDisconnect === 'function') client.forceDisconnect();
+                client.activate();
+            }
+        };
+
+        document.addEventListener('visibilitychange', handleWakeup);
+        window.addEventListener('online', handleOnline);
+
         client.activate();
 
         return () => {
+            document.removeEventListener('visibilitychange', handleWakeup);
+            window.removeEventListener('online', handleOnline);
             clearShowdownTimers();
             if (redirectTimerRef.current !== null) clearTimeout(redirectTimerRef.current);
             dispatch({ type: 'SET_WS_STATUS', payload: 'disconnected' });

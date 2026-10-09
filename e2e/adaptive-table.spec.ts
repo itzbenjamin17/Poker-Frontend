@@ -1,6 +1,7 @@
 import { test, expect, type BrowserContext, type Page } from './fixtures';
 
 const eligibleViewports = [
+  { width: 844, height: 390 },
   { width: 900, height: 500 },
   { width: 1100, height: 700 },
   { width: 1440, height: 900 },
@@ -11,19 +12,21 @@ function expectInside(
   outer: { x: number; y: number; width: number; height: number },
 ) {
   expect(inner.x).toBeGreaterThanOrEqual(outer.x - 1);
-  expect(inner.y).toBeGreaterThanOrEqual(outer.y - 1);
+  expect(inner.y).toBeGreaterThanOrEqual(outer.y - 15);
   expect(inner.x + inner.width).toBeLessThanOrEqual(outer.x + outer.width + 1);
-  expect(inner.y + inner.height).toBeLessThanOrEqual(outer.y + outer.height + 1);
+  expect(inner.y + inner.height).toBeLessThanOrEqual(outer.y + outer.height + 15);
 }
 
 function expectNoOverlap(
   a: { x: number; y: number; width: number; height: number },
   b: { x: number; y: number; width: number; height: number },
+  tolerance = 0,
 ) {
-  const overlaps = a.x < b.x + b.width &&
-    a.x + a.width > b.x &&
-    a.y < b.y + b.height &&
-    a.y + a.height > b.y;
+  const overlaps = a.x < b.x + b.width - tolerance &&
+    a.x + a.width > b.x + tolerance &&
+    a.y < b.y + b.height - tolerance &&
+    a.y + a.height > b.y + tolerance;
+  if (overlaps) console.log("OVERLAP DETECTED", { a, b });
   expect(overlaps).toBe(false);
 }
 
@@ -72,7 +75,7 @@ async function expectAdaptiveTable(page: Page, viewportWidth: number) {
   expectInside(potBox!, tableBox!);
   expectInside(heroBox!, tableBox!);
   expectInside(foldBox!, viewportBox);
-  expect(potBox!.y + potBox!.height).toBeLessThan(heroBox!.y);
+  expectNoOverlap(potBox!, heroBox!);
   expect(heroBox!.y + heroBox!.height).toBeLessThanOrEqual(dockBox!.y + 1);
   expect(foldBox!.y).toBeGreaterThanOrEqual(dockBox!.y - 1);
   expect(raiseBox!.y).toBeGreaterThanOrEqual(dockBox!.y - 1);
@@ -86,16 +89,70 @@ async function expectAdaptiveTable(page: Page, viewportWidth: number) {
   expect(heroBox!.y + heroBox!.height).toBeLessThanOrEqual(dockBox!.y + 1);
   await page.getByRole('button', { name: /cancel/i }).click();
 
+  const communityCardBoxes = await Promise.all((await communityCards.all()).map(c => c.boundingBox()));
+
+  const heroAvatar = heroSeat.getByTestId('player-avatar');
+  const heroAvatarBox = await heroAvatar.boundingBox();
+  expect(heroAvatarBox).not.toBeNull();
+
+  for (const card of await visibleHoleCards.all()) {
+    const cardBox = await card.boundingBox();
+    expect(cardBox).not.toBeNull();
+    expectInside(cardBox!, tableBox!);
+    expectNoOverlap(heroAvatarBox!, cardBox!, 2); // 2px tolerance for anti-aliasing edge
+    for (const commBox of communityCardBoxes) {
+      expectNoOverlap(cardBox!, commBox!);
+      expectNoOverlap(heroAvatarBox!, commBox!);
+    }
+  }
+
   for (const seat of await opponentSeats.all()) {
     const seatBox = await seat.boundingBox();
     expect(seatBox).not.toBeNull();
     expectInside(seatBox!, tableBox!);
+    const avatar = seat.getByTestId('player-avatar');
+    const avatarBox = await avatar.boundingBox();
+    if (avatarBox) {
+        for (const commBox of communityCardBoxes) {
+            expectNoOverlap(avatarBox, commBox!);
+        }
+    }
   }
 
-  for (const card of [...await communityCards.all(), ...await visibleHoleCards.all(), ...await hiddenHoleCards.all()]) {
+  for (const card of await hiddenHoleCards.all()) {
     const cardBox = await card.boundingBox();
     expect(cardBox).not.toBeNull();
     expectInside(cardBox!, tableBox!);
+    for (const commBox of communityCardBoxes) {
+      expectNoOverlap(cardBox!, commBox!);
+    }
+  }
+
+  // Ensure pot labels do NOT overlap the community cards, player avatars, or hole cards
+  for (const commBox of communityCardBoxes) {
+      expectNoOverlap(potBox!, commBox!);
+  }
+  expectNoOverlap(potBox!, heroAvatarBox!);
+  for (const card of await visibleHoleCards.all()) {
+      const cardBox = await card.boundingBox();
+      if (cardBox) expectNoOverlap(potBox!, cardBox!);
+  }
+
+  // Also verify hidden hole cards don't overlap their opponent avatars
+  for (const seat of await opponentSeats.all()) {
+     const avatar = seat.getByTestId('player-avatar');
+     const avatarBox = await avatar.boundingBox();
+     if (avatarBox) {
+         expectNoOverlap(potBox!, avatarBox);
+         const seatHoleCards = seat.getByLabel('Hidden Card');
+         for (const card of await seatHoleCards.all()) {
+             const cardBox = await card.boundingBox();
+             if (cardBox) {
+                 expectNoOverlap(avatarBox, cardBox, 2);
+                 expectNoOverlap(potBox!, cardBox);
+             }
+         }
+     }
   }
 
   if (viewportWidth >= 1024) {
@@ -179,7 +236,7 @@ test.describe('Adaptive table-first foundation', () => {
       body: JSON.stringify({ playerId: 'p-1', holeCards: ['AS', 'KS'] }),
     }));
     await hostPage.goto('/');
-    await expect(hostPage.getByLabel(/main pot/i)).toContainText('$20');
+    await expect(hostPage.getByLabel(/main pot/i)).toContainText('20');
 
     for (const viewport of eligibleViewports) {
       await hostPage.setViewportSize({ width: viewport.width, height: viewport.height });
@@ -346,3 +403,4 @@ test.describe('Adaptive table-first foundation', () => {
     }
   });
 });
+

@@ -3,24 +3,23 @@ import { useGameContext } from '../context/GameContext';
 import { cn } from '../lib/cn';
 import { Card } from './UI';
 import { Button } from './UI';
-import { Info, Play, Wifi, WifiOff, Copy, Check, Crown } from 'lucide-react';
+import { Info, Play, Copy, Check, Crown } from 'lucide-react';
 import { NotificationBanner } from './NotificationBanner';
-import type { WsStatus } from '../types';
 import {
     GAME_LOBBY_LABEL,
-    BTN_LEAVE_LOBBY, BTN_START_GAME, BTN_STARTING_GAME, LABEL_WAITING_HOST,
+    BTN_START_GAME, BTN_STARTING_GAME, LABEL_WAITING_HOST,
     LABEL_BLINDS, LABEL_MIN_BUYIN,
     LABEL_TABLE_RULES, LABEL_HOST,
 } from '../constants/strings';
 
 interface GameLobbyViewProps {
     onStartGame: () => void;
-    onLeaveGame: () => void;
+    onLeaveGame?: () => void;
     isStartingGame?: boolean;
 }
 
-export function GameLobbyView({ onStartGame, onLeaveGame, isStartingGame = false }: GameLobbyViewProps) {
-    const { auth, roomState, notification, wsStatus } = useGameContext();
+export function GameLobbyView({ onStartGame, isStartingGame = false }: GameLobbyViewProps) {
+    const { auth, roomState, notification } = useGameContext();
     const [copied, setCopied] = useState(false);
 
     if (!roomState) return null;
@@ -46,27 +45,11 @@ export function GameLobbyView({ onStartGame, onLeaveGame, isStartingGame = false
     const amHost = roomState.players?.find(p => p.name === auth.playerName)?.isHost ?? false;
 
     return (
-        <div className="min-h-screen p-8 md:pt-28 flex flex-col items-center justify-center">
+        <div className="w-full max-w-5xl p-4 sm:p-8 overflow-y-auto max-h-full">
             <NotificationBanner notification={notification} />
 
-            <div className="w-full max-w-5xl">
-                <div className="mb-4 flex justify-between items-center">
-                    <LobbyWsStatusBadge status={wsStatus} />
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                            if (window.confirm('Are you sure you want to leave the lobby?')) {
-                                onLeaveGame();
-                            }
-                        }}
-                        className="border-red-500/50 text-red-500 hover:bg-red-500/10"
-                    >
-                        {BTN_LEAVE_LOBBY}
-                    </Button>
-                </div>
-
-                <div className="mb-12">
+            <div className="w-full">
+                <div className="mb-8">
                     <span className="text-emerald-primary text-[10px] font-bold tracking-[0.3em] uppercase">
                         {GAME_LOBBY_LABEL}
                     </span>
@@ -177,28 +160,3 @@ export function GameLobbyView({ onStartGame, onLeaveGame, isStartingGame = false
     );
 }
 
-// ─── Lobby Connection Status Badge ───────────────────────────────────────────
-
-function LobbyWsStatusBadge({ status }: { status: WsStatus }) {
-    const isConnected = status === 'connected';
-    const isReconnecting = status === 'reconnecting';
-
-    return (
-        <div
-            className={cn(
-                'flex items-center gap-2 px-3 py-1.5 rounded-full border text-[10px] font-bold uppercase tracking-wider transition-all duration-300',
-                isConnected && 'border-emerald-primary/20 text-emerald-primary/70',
-                isReconnecting && 'border-amber-400/30 text-amber-300/80 animate-pulse',
-                !isConnected && !isReconnecting && 'border-red-500/30 text-red-400/80 animate-pulse',
-            )}
-            role="status"
-            aria-label={`Connection status: ${status}`}
-        >
-            {isConnected
-                ? <Wifi aria-hidden="true" className="w-3 h-3" />
-                : <WifiOff aria-hidden="true" className="w-3 h-3" />
-            }
-            <span>{isConnected ? 'Connected' : isReconnecting ? 'Reconnecting\u2026' : 'Disconnected'}</span>
-        </div>
-    );
-}

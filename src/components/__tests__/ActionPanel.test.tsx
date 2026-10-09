@@ -87,7 +87,7 @@ describe('ActionPanel', () => {
         });
 
         expect(screen.getByRole('button', { name: /fold/i })).toBeInTheDocument();
-        expect(screen.getByRole('button', { name: /call 10 chips/i })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /call 10/i })).toBeInTheDocument();
         expect(screen.queryByRole('button', { name: /check/i })).not.toBeInTheDocument();
     });
 
@@ -97,22 +97,61 @@ describe('ActionPanel', () => {
             me: { ...mockMe, chips: 50, currentBet: 10 },
         });
 
-        expect(screen.getByRole('button', { name: /all in 50 chips/i })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /all in 50/i })).toBeInTheDocument();
     });
 
-    it('progressively reveals valid amount controls for raise', async () => {
+    it('progressively reveals valid amount controls for raise, replacing normal row, and restores on cancel', async () => {
         const user = userEvent.setup();
         renderActionPanel({
             gameState: { ...mockGameState, currentBet: 20, legalActions: ['FOLD', 'CALL', 'RAISE'] },
             me: { ...mockMe, currentBet: 10 },
         });
 
+        // Initially in normal betting state
+        expect(screen.getByRole('button', { name: /fold/i })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /call 10/i })).toBeInTheDocument();
         expect(screen.queryByLabelText(/raise amount/i)).not.toBeInTheDocument();
+
+        // Clicking Raise enters raise state and replaces normal row completely
         await user.click(screen.getByRole('button', { name: /^raise$/i }));
 
         expect(screen.getByLabelText(/raise amount/i)).toBeInTheDocument();
         expect(screen.getByRole('button', { name: /^raise$/i })).not.toBeDisabled();
         expect(screen.getByRole('button', { name: /cancel/i })).toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: /fold/i })).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: /call/i })).not.toBeInTheDocument();
+
+        // Clicking Cancel returns to normal state
+        await user.click(screen.getByRole('button', { name: /cancel/i }));
+        expect(screen.getByRole('button', { name: /fold/i })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /call 10/i })).toBeInTheDocument();
+        expect(screen.queryByLabelText(/raise amount/i)).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: /cancel/i })).not.toBeInTheDocument();
+    });
+
+    it('clicking preset buttons updates raise amount via onRaiseChange', async () => {
+        const user = userEvent.setup();
+        const onRaiseChange = vi.fn();
+        renderActionPanel({
+            gameState: { ...mockGameState, currentBet: 20, pot: 100, legalActions: ['FOLD', 'CALL', 'RAISE'] },
+            me: { ...mockMe, chips: 1000, currentBet: 10 },
+            onRaiseChange,
+            bigBlind: 20,
+        });
+
+        await user.click(screen.getByRole('button', { name: /^raise$/i }));
+
+        await user.click(screen.getByRole('button', { name: /^3bb$/i }));
+        expect(onRaiseChange).toHaveBeenCalledWith('60');
+
+        await user.click(screen.getByRole('button', { name: /^1\/2 pot$/i }));
+        expect(onRaiseChange).toHaveBeenCalledWith('50');
+
+        await user.click(screen.getByRole('button', { name: /^pot$/i }));
+        expect(onRaiseChange).toHaveBeenCalledWith('100');
+
+        await user.click(screen.getByRole('button', { name: /^max$/i }));
+        expect(onRaiseChange).toHaveBeenCalledWith('1000');
     });
 
     it('displays error messages after amount controls are revealed', async () => {
@@ -124,7 +163,7 @@ describe('ActionPanel', () => {
         });
 
         await user.click(screen.getByRole('button', { name: /^raise$/i }));
-        expect(screen.getByText(/You only have 100 chips/i)).toBeInTheDocument();
+        expect(screen.getByText(/You only have 100/i)).toBeInTheDocument();
 
         rerender(
             <ActionPanel
@@ -145,7 +184,7 @@ describe('ActionPanel', () => {
             />,
         );
         await user.click(screen.getByRole('button', { name: /^raise$/i }));
-        expect(screen.getByText(/Minimum raise is 11 chips/i)).toBeInTheDocument();
+        expect(screen.getByText(/Minimum raise is 11/i)).toBeInTheDocument();
     });
 
     it('triggers onAction callback correctly when clicked', async () => {
@@ -184,7 +223,7 @@ describe('ActionPanel', () => {
         });
 
         expect(screen.getByRole('button', { name: /fold/i })).toBeInTheDocument();
-        expect(screen.getByRole('button', { name: /call 10 chips/i })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /call 10/i })).toBeInTheDocument();
         expect(screen.queryByRole('button', { name: /check/i })).not.toBeInTheDocument();
         expect(screen.queryByRole('button', { name: /raise/i })).not.toBeInTheDocument();
         expect(screen.queryByRole('button', { name: /all in/i })).not.toBeInTheDocument();

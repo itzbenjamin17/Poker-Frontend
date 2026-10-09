@@ -1,5 +1,8 @@
 @import "tailwindcss";
 
+/* Short viewports: chrome (header/dock) compacts via CSS only; the table never reads the window. */
+@custom-variant short (@media (max-height: 640px));
+
 @theme {
   --font-headline: "Space Grotesk", sans-serif;
   --font-body: "Inter", sans-serif;
@@ -21,10 +24,6 @@
 }
 
 @layer base {
-  html {
-    scrollbar-gutter: stable;
-  }
-
   html,
   body,
   #root {
@@ -49,5 +48,5 @@
 }
 
 .poker-table-gradient {
-  background: radial-gradient(circle at 50% 50%, var(--color-emerald-container) 0%, var(--color-surface) 80%);
+  background: radial-gradient(circle at 50% 50%, var(--color-emerald-container) 0%, #1b2a22 80%);
 }

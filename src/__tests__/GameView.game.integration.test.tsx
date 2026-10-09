@@ -55,9 +55,8 @@ describe('GameView - Game Table Integration', () => {
       screen.getByLabelText('Total Pot'),
     )
     const heroSeat = screen.getByRole('group', { name: /testplayer hero seat/i })
-    expect(within(heroSeat).getByRole('heading', { name: 'TestPlayer' })).toBeInTheDocument()
-    expect(within(heroSeat).getByText('980 Chips')).toBeInTheDocument()
-    expect(within(heroSeat).getByText('BET: 20 Chips')).toBeInTheDocument()
+    expect(within(heroSeat).getByText('980')).toBeInTheDocument()
+    expect(within(heroSeat).getByText('BET: 20')).toBeInTheDocument()
     expect(within(heroSeat).getByText('Active turn')).toBeInTheDocument()
     expect(screen.getByRole('group', { name: /opponent seat/i })).toBeInTheDocument()
 
@@ -151,7 +150,7 @@ describe('GameView - Game Table Integration', () => {
 
     render(<GameView auth={mockAuth} />)
 
-    expect(await screen.findByLabelText('Main Pot')).toHaveTextContent('70 Chips')
+    expect(await screen.findByLabelText('Main Pot')).toHaveTextContent('70')
     expect(screen.getByRole('region', { name: /poker table/i })).toBeInTheDocument()
 
     const potDetails = screen.getByRole('button', { name: /show pot details/i })
@@ -211,8 +210,8 @@ describe('GameView - Game Table Integration', () => {
     const opponentSeat = screen.getByRole('group', { name: /opponent seat/i })
     expect(within(opponentSeat).getByText(/stack/i)).toBeInTheDocument()
     const detailsPanel = screen.getByRole('region', { name: /opponent expanded details/i })
-    expect(within(detailsPanel).getByText('875 Chips')).toBeInTheDocument()
-    expect(within(opponentSeat).getByText(/bet 25 chips/i)).toBeInTheDocument()
+    expect(within(detailsPanel).getByText('875')).toBeInTheDocument()
+    expect(within(opponentSeat).getByText(/bet 25/i)).toBeInTheDocument()
     expect(within(opponentSeat).getByText(/small blind/i)).toBeInTheDocument()
     expect(within(opponentSeat).queryByRole('img', { name: /of/i })).not.toBeInTheDocument()
 

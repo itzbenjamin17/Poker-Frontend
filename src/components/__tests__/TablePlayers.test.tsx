@@ -2,13 +2,20 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, test, expect } from 'vitest';
 import { TablePlayers } from '../TablePlayers';
+import { getTableScale } from '../../lib/tableGeometry';
 import type { Player, GameState } from '../../types';
 
 describe('TablePlayers', () => {
+    const tableScale = getTableScale({ width: 900, height: 419 }, 3);
+
     const mockGetSeatPosition = () => ({
         left: 50,
         top: 50,
-        cardPlacement: 'below' as const,
+        cardPlacement: 'right' as const,
+        panelPlacement: 'centre' as const,
+        side: 'centre' as const,
+        verticalZone: 'middle' as const,
+        labelPlacement: 'avatar' as const,
     });
 
     const player1: Player = {
@@ -43,7 +50,7 @@ describe('TablePlayers', () => {
                     getSeatPosition={mockGetSeatPosition}
                     isCompactTable={false}
                     nowMs={100000}
-                    scale={1}
+                    tableScale={tableScale}
                 />
             );
 
@@ -88,7 +95,7 @@ describe('TablePlayers', () => {
                     getSeatPosition={mockGetSeatPosition}
                     isCompactTable={false}
                     nowMs={100000}
-                    scale={1}
+                    tableScale={tableScale}
                 />
             );
 
@@ -118,7 +125,7 @@ describe('TablePlayers', () => {
                     getSeatPosition={mockGetSeatPosition}
                     isCompactTable={false}
                     nowMs={nowMs}
-                    scale={1}
+                    tableScale={tableScale}
                 />
             );
 
@@ -150,7 +157,7 @@ describe('TablePlayers', () => {
                     getSeatPosition={mockGetSeatPosition}
                     isCompactTable={false}
                     nowMs={100000}
-                    scale={1}
+                    tableScale={tableScale}
                 />
             );
 

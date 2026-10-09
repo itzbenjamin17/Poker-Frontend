@@ -40,7 +40,7 @@ describe('GameView - Room Lobby Integration', () => {
     // Check hydration
     await waitFor(() => {
       expect(screen.getByText(/GAME LOBBY/i)).toBeInTheDocument()
-      expect(screen.getByText(/High Stakes/i)).toBeInTheDocument()
+      expect(screen.getAllByText(/High Stakes/i).length).toBeGreaterThan(0)
       expect(screen.getByText(/\$50 \/ \$100/i)).toBeInTheDocument()
     })
 

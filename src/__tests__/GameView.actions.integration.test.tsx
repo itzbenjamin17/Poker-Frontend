@@ -276,7 +276,7 @@ describe('GameView - Actions & Flows Integration', () => {
         });
 
         // Overlay should appear
-        expect(await screen.findByRole('alert')).toHaveTextContent(/Connection lost/i);
+        expect(await screen.findByText(/Connection lost/i)).toBeInTheDocument();
     });
 
     it('renders dedicated Game Over screen upon GAME_END event', async () => {

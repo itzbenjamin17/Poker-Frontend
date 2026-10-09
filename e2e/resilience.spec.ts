@@ -27,20 +27,20 @@ test.describe('Connection Resilience', () => {
     await createRoom(hostPage, roomName, hostName);
     await joinRoom(guestPage, roomName, guestName);
 
-    await expect(hostPage.getByRole('heading', { name: guestName })).toBeVisible();
+    await expect(hostPage.getByText(guestName )).toBeVisible();
     await hostPage.getByRole('button', { name: /start game/i }).click();
 
     // Verify both are in the game
     // Heads-up rules: Host (Dealer/SB) posts $10, Guest (BB) posts $20, resulting in a $30 initial pot.
-    await expect(hostPage.getByLabel(/total pot/i)).toContainText('$30');
-    await expect(guestPage.getByLabel(/total pot/i)).toContainText('$30');
+    await expect(hostPage.getByLabel(/total pot/i)).toContainText('30');
+    await expect(guestPage.getByLabel(/total pot/i)).toContainText('30');
 
     // 2. Simulate Disconnect (Refresh Guest Page)
     await guestPage.reload();
 
     // Verify Guest re-hydrates into the Game View automatically
     // It should skip the Lobby because of persistent auth in localStorage
-    await expect(guestPage.getByLabel(/total pot/i)).toContainText('$30');
+    await expect(guestPage.getByLabel(/total pot/i)).toContainText('30');
     await expect(guestPage.getByRole('img', { name: /of/i })).toHaveCount(2);
 
     // 3. Simulate Full Browser Close / Reopen
@@ -55,7 +55,8 @@ test.describe('Connection Resilience', () => {
     await newGuestPage.goto('/');
 
     // Verify Guest is back at the table
-    await expect(newGuestPage.getByLabel(/total pot/i)).toContainText('$30');
-    await expect(newGuestPage.getByRole('heading', { name: hostName })).toBeVisible();
+    await expect(newGuestPage.getByLabel(/total pot/i)).toContainText('30');
+    await expect(newGuestPage.getByText(hostName )).toBeVisible();
   });
 });
+

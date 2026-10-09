@@ -9,6 +9,7 @@ import type { PokerAction } from '../types';
 export type GameCommand = 
     | { type: 'PLAY_ACTION'; action: PokerAction; amount?: number }
     | { type: 'READY' }
+    | { type: 'UNREADY' }
     | { type: 'START_GAME' }
     | { type: 'CLAIM_WIN' }
     | { type: 'LEAVE_GAME' }
@@ -69,7 +70,7 @@ export function useGameDispatcher(publisher: PublisherAdapter) {
 
         setError(null);
 
-        if (command.type === 'PLAY_ACTION' || command.type === 'READY') {
+        if (command.type === 'PLAY_ACTION' || command.type === 'READY' || command.type === 'UNREADY') {
             if (!publisher.isConnected()) {
                 contextDispatch({ type: 'SET_NOTIFICATION', payload: 'Waiting for connection...' });
                 return;
@@ -89,6 +90,11 @@ export function useGameDispatcher(publisher: PublisherAdapter) {
                 } else if (command.type === 'READY') {
                     publisher.publish(
                         `/app/${encodeURIComponent(targetGameId)}/ready`,
+                        '{}'
+                    );
+                } else if (command.type === 'UNREADY') {
+                    publisher.publish(
+                        `/app/${encodeURIComponent(targetGameId)}/unready`,
                         '{}'
                     );
                 }

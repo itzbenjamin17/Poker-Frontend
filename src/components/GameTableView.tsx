@@ -1,15 +1,13 @@
 import { cn } from '../lib/cn';
 import { Button } from './UI';
 import { ActionPanel } from './ActionPanel';
-import { ShowdownModal } from './ShowdownModal';
+import { ResultDock } from './ResultDock';
 import { NotificationBanner } from './NotificationBanner';
-import { CompactPotDetails, PotBreakdown, TablePots } from './TablePots';
-import { CommunityCardsArea } from './CommunityCardsArea';
-import { TablePlayers } from './TablePlayers';
-import { getPotBreakdown } from '../lib/game';
+import { RoomStage, RoomDock } from './PokerRoomLayout';
+import { LiveTableStage } from './LiveTableStage';
 import { useGameContext } from '../context/GameContext';
 
-import type { PokerAction, SeatPosition, TableTier } from '../types';
+import type { PokerAction } from '../types';
 import {
     BTN_LEAVE_TABLE, BTN_CLAIM_WIN, BTN_CLAIMING,
     WAITING_RECONNECT_PREFIX, WAITING_RECONNECT_SUFFIX,
@@ -17,48 +15,46 @@ import {
 import type { WsStatus } from '../types';
 
 interface GameTableViewProps {
-    tableTier: TableTier;
-    isCompactTable: boolean;
-    isMobileLandscape: boolean;
-    scale: number;
+    /** Chrome-density flags for ActionPanel/ResultDock only; the table layout never reads them. */
+    isCompactTable?: boolean;
+    isMobileLandscape?: boolean;
     nowMs: number;
     raiseAmount: string;
     raiseError: string | null;
-    getSeatPosition: (index: number, total: number) => SeatPosition;
     onAction: (action: PokerAction, amount?: number) => void;
     onReady: () => void;
+    onUnready?: () => void;
     onClaimWin: () => void;
     onLeaveGame: () => void;
     onRaiseChange: (val: string) => void;
     isActionPending: boolean;
+    hasShellHeader?: boolean;
 }
 
 export function GameTableView({
-                                  tableTier,
-                                  isCompactTable,
-                                  isMobileLandscape,
-                                  scale,
+                                  isCompactTable = false,
+                                  isMobileLandscape = false,
                                   nowMs,
                                   raiseAmount,
                                   raiseError,
-                                  getSeatPosition,
                                   onAction,
                                   onReady,
+                                  onUnready,
                                   onClaimWin,
                                   onLeaveGame,
                                   onRaiseChange,
                                   isActionPending,
+                                  hasShellHeader = false,
                               }: GameTableViewProps) {
     const { auth, roomState, gameState, privateState, showdown, showdownResult, claimPending, myPlayerId, notification, wsStatus } = useGameContext();
 
     if (!gameState || !roomState) return null;
 
     const me = gameState.players.find((p) => p.id === myPlayerId);
-    const orderedPlayers = (() => {
-        const myIndex = gameState.players.findIndex((p) => p.id === myPlayerId || p.name === auth.playerName);
-        if (myIndex <= 0) return gameState.players;
-        return [...gameState.players.slice(myIndex), ...gameState.players.slice(0, myIndex)];
-    })();
+    const myIndex = gameState.players.findIndex((p) => p.id === myPlayerId || p.name === auth.playerName);
+    const orderedPlayers = myIndex <= 0
+        ? gameState.players
+        : [...gameState.players.slice(myIndex), ...gameState.players.slice(0, myIndex)];
 
     const isMyTurn = gameState.currentPlayerId === myPlayerId;
     const isSelfDisconnected = me?.status === 'DISCONNECTED';
@@ -86,25 +82,17 @@ export function GameTableView({
 
     const bottomCanvasWidthClass = 'w-full min-w-0';
 
-    const uncalledAmount = gameState.uncalledAmount ?? 0;
-    const potBreakdown = getPotBreakdown(gameState);
-    const displayedPot = Math.max(0, gameState.pot - uncalledAmount);
-    const mainPot = potBreakdown[0] ?? gameState.pot;
-    const sidePots = potBreakdown.slice(1);
-
-
     return (
         <main
             aria-label="Live poker table"
             className={cn(
-            'isolate flex h-[100dvh] min-h-[600px] w-full max-w-full flex-col relative overflow-hidden overscroll-none',
-            'md:h-screen',
-        )}
+                'isolate flex w-full max-w-full flex-col relative overflow-hidden overscroll-none',
+                hasShellHeader ? 'flex-1 min-h-0 min-w-0' : 'h-[100dvh] min-h-[600px] md:h-screen',
+            )}
         >
             <NotificationBanner notification={notification} />
 
-
-            {wsStatus !== 'connected' && (
+            {!hasShellHeader && wsStatus !== 'connected' && (
                 <div className="absolute inset-0 bg-surface/80 backdrop-blur-sm z-50 flex flex-col items-center justify-center gap-4 text-center select-none pointer-events-auto" role="alert" aria-live="assertive">
                     <div className="w-12 h-12 border-4 border-emerald-primary border-t-transparent rounded-full animate-spin" aria-hidden="true" />
                     <h2 className="font-headline text-2xl font-bold text-white tracking-tight">Connection lost</h2>
@@ -112,30 +100,28 @@ export function GameTableView({
                 </div>
             )}
 
-            {/* Showdown Modal */}
-            <ShowdownModal
-                showdownResult={showdownResult}
-                viewerPlayerId={myPlayerId}
-            />
+            {/* Showdown Modal removed in favor of ResultDock */}
 
             {/* Leave Button */}
-            <div className="absolute top-4 left-3 md:top-24 md:left-8 z-40">
-                <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                        if (window.confirm('Are you sure you want to leave the table? This will abandon your seat.')) {
-                            onLeaveGame();
-                        }
-                    }}
-                    className="border-red-500/50 text-red-500 hover:bg-red-500/10"
-                >
-                    {BTN_LEAVE_TABLE}
-                </Button>
-            </div>
+            {!hasShellHeader && (
+                <div className="absolute top-4 left-3 md:top-24 md:left-8 z-40">
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                            if (window.confirm('Are you sure you want to leave the table? This will abandon your seat.')) {
+                                onLeaveGame();
+                            }
+                        }}
+                        className="border-red-500/50 text-red-500 hover:bg-red-500/10"
+                    >
+                        {BTN_LEAVE_TABLE}
+                    </Button>
+                </div>
+            )}
 
             {/* WebSocket connection status badge */}
-            <WsStatusBadge status={wsStatus} />
+            {!hasShellHeader && <WsStatusBadge status={wsStatus} />}
 
             {canClaimWin && (
                 <div className="absolute bottom-6 left-4 md:bottom-6 md:left-8 z-40">
@@ -152,62 +138,16 @@ export function GameTableView({
             )}
 
             {/* Table Area */}
-            <div className={cn(
-                'relative flex min-h-0 min-w-0 flex-1 overflow-hidden',
-                isMobileLandscape
-                    ? 'min-w-0 min-h-0 items-center justify-center p-1.5'
-                    : 'min-w-0 min-h-0 items-center justify-center',
-                !isMobileLandscape &&
-                (isCompactTable ? 'p-2' : 'p-3 sm:p-4 md:p-6 lg:p-8'),
-            )}>
-                <div className={cn(
-                    'poker-table-gradient border-surface-high relative transition-all duration-300 overflow-visible',
-                    tableTier === 'compact' && cn(
-                        'w-full h-full aspect-[2.15/1] rounded-[72px] border-[8px] shadow-[0_0_48px_rgba(0,0,0,0.62)]',
-                        isMobileLandscape && 'aspect-[2.35/1] rounded-[48px] border-[6px] min-w-0 min-h-0 max-h-[68dvh]',
-                    ),
-                    tableTier === 'standard' && 'w-full h-full aspect-[2.15/1] rounded-[170px] border-[10px] shadow-[0_0_76px_rgba(0,0,0,0.72)]',
-                    tableTier === 'wide' && 'w-full h-full aspect-[2.35/1] rounded-[220px] border-[12px] shadow-[0_0_100px_rgba(0,0,0,0.8)]',
-                )}
-                    role="region"
-                    aria-label="Poker table"
-                >
-                    {/* Community Cards & Pots */}
-                    <section
-                        aria-label="Board cluster"
-                        className="absolute inset-0 flex flex-col items-center justify-center gap-2 md:gap-6"
-                    >
-                        <TablePots
-                            displayedPot={displayedPot}
-                            mainPot={mainPot}
-                            sidePots={sidePots}
-                            uncalledAmount={uncalledAmount}
-                            phase={gameState.phase}
-                        />
-                        <CommunityCardsArea communityCards={gameState.communityCards} scale={scale} />
-                        {isCompactTable ? (
-                            (sidePots.length > 0 || uncalledAmount > 0) && (
-                                <CompactPotDetails mainPot={mainPot} sidePots={sidePots} uncalledAmount={uncalledAmount} />
-                            )
-                        ) : (
-                            <PotBreakdown mainPot={mainPot} sidePots={sidePots} uncalledAmount={uncalledAmount} />
-                        )}
-                    </section>
-
-                    {/* Players */}
-                    <TablePlayers
-                        orderedPlayers={orderedPlayers}
-                        currentPlayerId={gameState.currentPlayerId}
-                        myPlayerId={myPlayerId}
-                        showdown={showdown}
-                        privateState={privateState}
-                        getSeatPosition={getSeatPosition}
-                        isCompactTable={isCompactTable}
-                        nowMs={nowMs}
-                        scale={scale}
-                    />
-                </div>
-            </div>
+            <RoomStage>
+                <LiveTableStage
+                    nowMs={nowMs}
+                    gameState={gameState}
+                    orderedPlayers={orderedPlayers}
+                    myPlayerId={myPlayerId}
+                    showdown={showdown}
+                    privateState={privateState}
+                />
+            </RoomStage>
 
             {/* Waiting for reconnect banner */}
             {isWaitingForReconnect && currentTurnPlayer && !isCompactTable && (
@@ -221,34 +161,39 @@ export function GameTableView({
             )}
 
             {/* Stable action slot - the table keeps the same height as turns change */}
-            <div className={cn(
-                'w-full shrink-0 overflow-hidden',
-                isMobileLandscape ? 'h-20' : isCompactTable ? 'h-24' : 'h-28',
+            <RoomDock className={cn(
+                isMobileLandscape ? 'h-16' : isCompactTable ? 'h-24' : 'h-28',
+                gameState.phase === 'SHOWDOWN' && 'short:h-12',
             )}>
-                <ActionPanel
-                    gameState={gameState}
-                    me={me}
-                    isMyTurn={isMyTurn}
-                    isSelfDisconnected={isSelfDisconnected}
-                    isReadyCountdownActive={isReadyCountdownActive}
-                    currentTurnPlayerName={currentTurnPlayer?.name}
-                    isMobileLandscape={isMobileLandscape}
-                    isCompactTable={isCompactTable}
-                    raiseAmount={raiseAmount}
-                    raiseError={raiseError}
-                    onRaiseChange={onRaiseChange}
-                    onAction={onAction}
-                    isActionPending={isActionPending}
-                    readyCountdownSecondsRemaining={readyCountdownSecondsRemaining}
-                    readyCount={readyCount}
-                    readyEligibleCount={readyEligibleCount}
-                    readyEligiblePlayers={readyEligiblePlayers}
-                    isReadyEligible={isReadyEligible}
-                    amReadyForNextHand={amReadyForNextHand}
-                    onReady={onReady}
-                    bigBlind={roomState.bigBlind ?? 50}
-                />
-            </div>
+                {gameState.phase === 'SHOWDOWN' ? (
+                    <ResultDock showdownResult={showdownResult} isReady={amReadyForNextHand} onReady={onReady} onUnready={onUnready} isMobileLandscape={isMobileLandscape} onLeaveGame={onLeaveGame} />
+                ) : (
+                    <ActionPanel
+                        gameState={gameState}
+                        me={me}
+                        isMyTurn={isMyTurn}
+                        isSelfDisconnected={isSelfDisconnected}
+                        isReadyCountdownActive={isReadyCountdownActive}
+                        currentTurnPlayerName={currentTurnPlayer?.name}
+                        isMobileLandscape={isMobileLandscape}
+                        isCompactTable={isCompactTable}
+                        raiseAmount={raiseAmount}
+                        raiseError={raiseError}
+                        onRaiseChange={onRaiseChange}
+                        onAction={onAction}
+                        isActionPending={isActionPending}
+                        readyCountdownSecondsRemaining={readyCountdownSecondsRemaining}
+                        readyCount={readyCount}
+                        readyEligibleCount={readyEligibleCount}
+                        readyEligiblePlayers={readyEligiblePlayers}
+                        isReadyEligible={isReadyEligible}
+                        amReadyForNextHand={amReadyForNextHand}
+                        onReady={onReady}
+                        bigBlind={roomState.bigBlind ?? 50}
+                        onLeaveGame={onLeaveGame}
+                    />
+                )}
+            </RoomDock>
         </main>
     );
 }

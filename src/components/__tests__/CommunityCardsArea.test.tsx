@@ -64,7 +64,7 @@ describe('CommunityCardsArea', () => {
         const wrapper = container.firstElementChild as HTMLElement;
         expect(wrapper.style.gap).toBe('18px');
 
-        const firstPlaceholder = container.querySelector('.border-dashed') as HTMLElement;
+        const firstPlaceholder = container.querySelector('.border-dashed')?.parentElement as HTMLElement;
         expect(firstPlaceholder.style.width).toBe('72px');
         expect(firstPlaceholder.style.height).toBe('96px');
     });

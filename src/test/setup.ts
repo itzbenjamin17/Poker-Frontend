@@ -17,3 +17,19 @@ afterEach(() => {
 
 // Close MSW server after all tests
 afterAll(() => server.close())
+
+// Global ResizeObserver mock for jsdom test runner
+if (typeof window !== 'undefined' && typeof window.ResizeObserver === 'undefined') {
+  class MockResizeObserver {
+    callback: ResizeObserverCallback;
+    constructor(callback: ResizeObserverCallback) {
+      this.callback = callback;
+    }
+    observe(_target: Element) { void _target; }
+    unobserve(_target: Element) { void _target; }
+    disconnect() {}
+  }
+  window.ResizeObserver = MockResizeObserver as unknown as typeof ResizeObserver;
+  globalThis.ResizeObserver = MockResizeObserver as unknown as typeof ResizeObserver;
+}
+

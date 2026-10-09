@@ -127,7 +127,15 @@ export type IncomingPrivateStatePayload = {
 export type SeatPosition = {
     left: number;
     top: number;
-    cardPlacement: 'left' | 'right' | 'below';
+    cardPlacement: 'left' | 'right' | 'below' | 'above';
+    panelPlacement: 'left' | 'centre' | 'right';
+    side: 'left' | 'centre' | 'right';
+    verticalZone: 'top' | 'middle' | 'bottom';
+    /**
+     * Where an opponent's hand-rank label goes: 'cards' puts it directly under the hole cards (seats whose cards sit
+     * beside the avatar), 'avatar' keeps it under/next to the avatar (hero, cards-below seats, centre seats, heads-up).
+     */
+    labelPlacement: 'avatar' | 'cards';
 };
 
 export type TableTier = 'compact' | 'standard' | 'wide';
