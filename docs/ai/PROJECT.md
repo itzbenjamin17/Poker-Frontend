@@ -29,9 +29,9 @@ Defined scripts from `package.json`:
 - `npm run test`: run the Vitest unit and component suite
 - `npm run backend:test`: start companion Spring Boot backend with test profile (`../Poker`)
 - `npm run test:all`: run Vitest followed by standard Playwright E2E tests
-- `npm run test:layout`: run the Playwright layout overlap verification suite (393 cases across 8 viewports)
-- `npm run test:layout:screenshots`: capture full layout screenshot suites across viewports and player counts
-- `npm run test:layout:all`: run layout overlap tests followed by screenshot capture
+- `npm run layout:overlap`: (Diagnostic) run the Playwright layout measurement script (in `scripts/layout/`)
+- `npm run layout:screenshots`: (Diagnostic) capture layout screenshot suites across viewports and player counts
+- `npm run layout:all`: (Diagnostic) run all layout diagnostic scripts
 
 The frontend expects a compatible backend at `http://localhost:8080` and proxies `/api` and `/ws` traffic there during development.
 
@@ -167,13 +167,9 @@ The testing strategy uses a strict two-tier architecture to balance thoroughness
 - **Production Build**: Run via `npm run build`. Builds production assets in < 500ms.
 - **Fast E2E Integration**: Run via `npx playwright test` against mocked or live backend. Ignores heavy layout specs via `playwright.config.ts`.
 
-### 2. Layout Overlap & Visual Gating Layer (Explicit Trigger)
-- **Layout Overlap Harness**: Run via `npm run test:layout` (`scripts/layout/layout-overlap.spec.ts`). Tests 393 permutations across 8 viewports and 3–10 players for:
-  - Check A: Element bounding box collisions (seats, board, pots, dock).
-  - Check B: Card clipping and card index occlusion.
-  - Check C: Felt containment (`safeMarginPx`).
-  - Check D: Minimum typography readability thresholds (font $\ge$ 8px).
-- **Screenshot Capture**: Run via `npm run test:layout:screenshots` (`scripts/layout/layout-screenshots.spec.ts`) to produce visual comparison artifacts.
+### 2. Layout Overlap & Visual Diagnostics (Optional Utility)
+- Kept in `scripts/layout/` as diagnostic measurement and screenshot generation tools (`npm run layout:overlap`, `npm run layout:screenshots`).
+- Decoupled from the primary test suite because full visual runs take 10–20+ minutes and do not prevent visual card crowding at 7–10 players without layout algorithmic tuning.
 
 ### Testing Conventions
 - Test behavior and accessibility, not internal state or CSS classes.
