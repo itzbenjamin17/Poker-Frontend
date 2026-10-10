@@ -11,7 +11,7 @@ test.describe('Lobby and Room Lifecycle', () => {
   });
 
   test('Host can create a room and Guest can join', async ({ browser, createRoom, joinRoom }) => {
-    const roomName = `E2E-Room-${Math.floor(Math.random() * 1000)}`;
+    const roomName = `E2E-Room-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
     const hostName = 'HostPlayer';
     const guestName = 'GuestPlayer';
 

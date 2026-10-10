@@ -11,7 +11,7 @@ test.describe('Game Table Flow', () => {
   });
 
   test('Two players can complete a simple betting round', async ({ browser, createRoom, joinRoom }) => {
-    const roomName = `Game-E2E-${Math.floor(Math.random() * 1000)}`;
+    const roomName = `Game-E2E-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
     const hostName = 'Host';
     const guestName = 'Guest';
 
@@ -45,7 +45,7 @@ test.describe('Game Table Flow', () => {
     // 3. Simple Action (Determine who is current player)
     // In Heads-up play, Guest (index 1, Dealer/SB) acts first pre-flop.
     // Guest calls the $20 big blind (contributing $10 more).
-    const guestCallBtn = guestPage.getByRole('button', { name: /call/i });
+    const guestCallBtn = guestPage.getByRole('button', { name: /^call/i });
     await expect(guestCallBtn).toBeVisible();
     await guestCallBtn.click();
 

@@ -11,7 +11,7 @@ test.describe('Connection Resilience', () => {
   });
 
   test('Player can reconnect and restore game state after refresh', async ({ browser, createRoom, joinRoom }) => {
-    const roomName = `Resilience-E2E-${Math.floor(Math.random() * 1000)}`;
+    const roomName = `Resilience-E2E-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
     const hostName = 'Host';
     const guestName = 'Guest';
 
@@ -56,7 +56,7 @@ test.describe('Connection Resilience', () => {
 
     // Verify Guest is back at the table
     await expect(newGuestPage.getByLabel(/total pot/i)).toContainText('30');
-    await expect(newGuestPage.getByText(hostName )).toBeVisible();
+    await expect(newGuestPage.getByRole('group', { name: new RegExp(`^${hostName} seat$`, 'i') })).toBeVisible();
   });
 });
 

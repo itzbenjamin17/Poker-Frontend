@@ -30,11 +30,12 @@ export const test = baseTest.extend<{
       
       const smallBlind = options?.smallBlind ?? '10';
       const bigBlind = options?.bigBlind ?? '20';
-      const buyIn = options?.buyIn ?? '1000';
 
       await createRegion.getByLabel(/small blind/i).fill(smallBlind);
       await createRegion.getByLabel(/big blind/i).fill(bigBlind);
-      await createRegion.getByLabel(/buy-in/i).fill(buyIn);
+      if (options?.buyIn && options.buyIn !== '1000') {
+        await createRegion.getByLabel(/buy-in/i).fill(options.buyIn);
+      }
 
       await pageArg.getByRole('button', { name: /create game/i }).click();
       await expectGameLobbyOrThrowAlert(pageArg);

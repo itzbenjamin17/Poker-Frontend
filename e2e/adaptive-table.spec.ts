@@ -171,6 +171,21 @@ async function expectAdaptiveTable(page: Page, viewportWidth: number) {
   }
 }
 
+async function resizeAndSettle(page: Page, viewport: { width: number; height: number }) {
+  const prevStyleWidth = await page.getByTestId('table-surface').evaluate((el) => (el as HTMLElement).style.width);
+  const currentSize = page.viewportSize();
+  await page.setViewportSize({ width: viewport.width, height: viewport.height });
+  if (!currentSize || currentSize.width !== viewport.width || currentSize.height !== viewport.height) {
+    await page.waitForFunction(
+      (prev) => {
+        const el = document.querySelector<HTMLElement>('[data-testid="table-surface"]');
+        return Boolean(el && el.style.width && el.style.width !== prev);
+      },
+      prevStyleWidth,
+    );
+  }
+}
+
 test.describe('Adaptive table-first foundation', () => {
   let contexts: BrowserContext[] = [];
 
@@ -240,8 +255,7 @@ test.describe('Adaptive table-first foundation', () => {
     await expect(hostPage.getByLabel(/main pot/i)).toContainText('20');
 
     for (const viewport of eligibleViewports) {
-      await hostPage.setViewportSize({ width: viewport.width, height: viewport.height });
-      await hostPage.waitForTimeout(300);
+      await resizeAndSettle(hostPage, viewport);
       await expectAdaptiveTable(hostPage, viewport.width);
     }
   });
@@ -304,7 +318,7 @@ test.describe('Adaptive table-first foundation', () => {
     await expect(hostPage.getByRole('region', { name: /action dock/i })).toContainText(/waiting for player 2 to act/i);
 
     for (const viewport of eligibleViewports) {
-      await hostPage.setViewportSize({ width: viewport.width, height: viewport.height });
+      await resizeAndSettle(hostPage, viewport);
       const pokerTable = hostPage.getByRole('region', { name: /^poker table$/i });
       const actionDock = hostPage.getByRole('region', { name: /action dock/i });
       const heroSeat = hostPage.getByRole('group', { name: /host hero seat/i });
@@ -384,7 +398,7 @@ test.describe('Adaptive table-first foundation', () => {
     await expect(hostPage.getByRole('region', { name: /round result/i })).toContainText(/host won/i);
 
     for (const viewport of eligibleViewports) {
-      await hostPage.setViewportSize({ width: viewport.width, height: viewport.height });
+      await resizeAndSettle(hostPage, viewport);
       const summary = hostPage.getByRole('region', { name: /round result/i });
       const totalPot = hostPage.getByLabel(/main pot|total pot/i);
       const heroSeat = hostPage.getByRole('group', { name: /host hero seat/i });

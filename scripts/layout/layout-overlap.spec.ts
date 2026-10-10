@@ -460,7 +460,7 @@ async function measureInPage(): Promise<Measurement> {
     const deadline = performance.now() + 5000;
     let previous = sample();
     for (;;) {
-        await new Promise((resolve) => setTimeout(resolve, 100));
+        await new Promise((resolve) => setTimeout(resolve, 32));
         await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
         const current = sample();
         if (same(previous, current)) return { ...current, stable: true };
@@ -818,7 +818,7 @@ async function openShowdown(
     const settle = async () => {
         await expect(page.getByRole('region', { name: /poker table/i })).toBeVisible();
         await expect(page.getByTestId('hero-seat')).toBeVisible();
-        await page.waitForTimeout(1500);
+        await page.waitForTimeout(450);
     };
 
     await mock(spec);
@@ -953,16 +953,16 @@ async function runScenario(
     try {
         for (const vp of vps) {
             await page.setViewportSize({ width: vp.width, height: vp.height });
+            await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
             if (dynamic) {
                 // The winner / disconnected seats are the ones on the left, right and top of THIS viewport's layout.
-                await page.waitForTimeout(500);
                 const next = specFor(scenario, count, await readExtremes(page));
                 if (JSON.stringify(next) !== applied) {
                     await apply(next);
                     applied = JSON.stringify(next);
+                    await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
                 }
             }
-            await page.waitForTimeout(300);
             const measurement = await page.evaluate(measureInPage);
             const { violations: found, minClearance, minPair } = analyze(measurement, count, heroLast);
             // LAYOUT_CHECKS drops unlisted checks entirely, before the gating split.

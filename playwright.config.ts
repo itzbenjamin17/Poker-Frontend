@@ -5,10 +5,10 @@ const backendDir = process.env.BACKEND_DIR || '../Poker';
 export default defineConfig({
   testDir: './e2e',
   testIgnore: ['**/scripts/**', '**/layout-*'],
-  fullyParallel: false,
+  fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
-  workers: 1, // Keep it sequential for multiplayer stability
+  workers: process.env.CI ? 2 : 4,
   reporter: 'html',
   use: {
     baseURL: 'http://localhost:5173',

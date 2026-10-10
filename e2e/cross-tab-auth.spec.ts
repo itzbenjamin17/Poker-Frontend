@@ -15,7 +15,7 @@ test.describe('Item 33: Cross-tab authentication and synchronization', () => {
     createRoom,
     joinRoom,
   }) => {
-    const roomName = `CrossTab-${Math.floor(Math.random() * 10000)}`;
+    const roomName = `CrossTab-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
     const hostName = 'HostAlice';
     const guestName = 'GuestBob';
 

@@ -40,12 +40,12 @@ test.describe('Comprehensive Poker Scenarios', () => {
 
         // Pre-flop Betting Round:
         // 1. Bob (Dealer, index 1) acts first pre-flop. Bob calls the $20 big blind (posts $20).
-        const bobCallBtn = pages[1].getByRole('button', { name: /call/i });
+        const bobCallBtn = pages[1].getByRole('button', { name: /^call/i });
         await expect(bobCallBtn).toBeVisible();
         await bobCallBtn.click();
 
         // 2. Charlie (Small Blind, index 2) acts second. Charlie already posted $10, so he calls $10 more ($20 total).
-        const charlieCallBtn = pages[2].getByRole('button', { name: /call/i });
+        const charlieCallBtn = pages[2].getByRole('button', { name: /^call/i });
         await expect(charlieCallBtn).toBeVisible();
         await charlieCallBtn.click();
 
@@ -102,7 +102,7 @@ test.describe('Comprehensive Poker Scenarios', () => {
         // Pre-flop:
         // P1 (BB, index 0) posted $20, has $20 left. P2 (Dealer/SB, index 1) posted $10, has $30 left.
         // P2 calls $10 (total $20 bet).
-        const callBtn = guestPage.getByRole('button', { name: /call/i });
+        const callBtn = guestPage.getByRole('button', { name: /^call/i });
         await expect(callBtn).toBeVisible();
         await callBtn.click();
 
@@ -128,7 +128,7 @@ test.describe('Comprehensive Poker Scenarios', () => {
         await betBtn.click();
 
         // P2 is facing a $20 bet, calls $20.
-        const p2CallBtn = guestPage.getByRole('button', { name: /call/i });
+        const p2CallBtn = guestPage.getByRole('button', { name: /^call/i });
         await expect(p2CallBtn).toBeVisible();
         await p2CallBtn.click();
 
@@ -151,7 +151,7 @@ test.describe('Comprehensive Poker Scenarios', () => {
         await hostPage.getByRole('button', { name: /start game/i }).click();
 
         // Pre-flop: Host (BB, index 0, $20), Guest (Dealer/SB, index 1, $10). Guest acts first.
-        const guestCallBtn = guestPage.getByRole('button', { name: /call/i });
+        const guestCallBtn = guestPage.getByRole('button', { name: /^call/i });
         await expect(guestCallBtn).toBeVisible();
         await guestCallBtn.click(); // Guest calls $10
 
