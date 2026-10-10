@@ -126,7 +126,7 @@ The table layout is fully decoupled from browser viewport globals (`window.inner
    \]
 3. **Dynamic Footprint Fitting (`fitSeatEllipse`)**:
    - Calculates worst-case seat footprints (avatar diameter, status badges, showdown card fan) scaled by `scale.overall`.
-   - Derives optimal semi-major and semi-minor radii \((rx, ry)\) to ensure every seat remains at least `safeMarginPx(scale.overall)` inside the felt boundary across 3–10 players and supported viewports (down to 650×300 minimum landscape).
+   - Derives optimal semi-major and semi-minor radii \((rx, ry)\) to ensure every seat remains at least `safeMarginPx(scale.overall)` inside the felt boundary across 3–10 players and supported viewports (down to 667×375 minimum landscape).
 4. **Hero Seat Pinning**: `HeroSeat` is statically anchored to `(50%, 86%)` above the action dock, isolated from dynamic opponent angle distribution.
 5. **Avatar-Centered Geometry (`PlayerPod`)**: The root bounding box strictly matches the avatar diameter (\(D \times D\)). Bottom-heavy elements (`handRank`, `currentBet`, disconnect timers) are extracted into an absolutely positioned subordinate container (`absolute top-full left-1/2 -translate-x-1/2`) so vertical growth does not displace the avatar center.
 6. **Showdown Card Fan & Density**:
@@ -134,7 +134,7 @@ The table layout is fully decoupled from browser viewport globals (`window.inner
    - Scale floor is enforced at `SCALE_FLOOR = 0.30` with `SCALE_CEILING = 1.15`.
    - Constrained top-row clearances fall back gracefully to avatar badge or screen-reader announcements to eliminate collisions with the central pot.
 7. **Orientation & Viewport Guards**: `PokerRoomLayout` enforces minimum playable viewport gates:
-   - Landscape minimum: 650×300 px.
+   - Landscape minimum: 667×375 px.
    - Portrait minimum: 600×800 px (displays `RotatePrompt` on narrow mobile screens < 600px width).
    - Desktop minimum height: 600 px.
 

@@ -9,7 +9,7 @@ const viewports = [
     { name: 'Laptop', width: 1366, height: 768 },
     { name: 'Desktop', width: 1920, height: 1080 },
     // New wacky ones at the edges of the gates
-    { name: 'MobileLandscape_Min', width: 650, height: 300 },
+    { name: 'MobileLandscape_Min', width: 667, height: 375 },
     { name: 'Desktop_MinHeight', width: 1024, height: 600 },
     { name: 'DesktopWide_MinHeight', width: 1920, height: 600 },
     { name: 'Portrait_MinWidth', width: 600, height: 800 }

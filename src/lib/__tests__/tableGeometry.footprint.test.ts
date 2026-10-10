@@ -509,7 +509,7 @@ const VIEWPORT_TABLES: [string, number, number][] = [
     ['1024x768', 977, 454],
     ['1366x768', 1171, 545],
     ['1920x1080', 1806, 840],
-    ['650x300', 435, 202],
+    ['667x375', 525, 244],
     ['1024x600', 982, 457],
     ['1920x600', 1029, 478],
     ['600x800', 552, 257],
@@ -525,7 +525,7 @@ function fitCases() {
     const random = mulberry32(seed);
     for (let i = 0; i < 16; i++) {
         const stageW = randomBetween(random, 600, 1920);
-        const stageH = randomBetween(random, 300, 1080);
+        const stageH = randomBetween(random, 375, 1080);
         cases.push({ label: `seed ${seed} stage ${Math.round(stageW)}x${Math.round(stageH)}`, table: getTableDimensions(stageW, stageH) });
     }
     return cases;

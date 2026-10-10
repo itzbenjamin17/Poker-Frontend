@@ -27,7 +27,7 @@ const viewports = [
     { name: 'Tablet', width: 1024, height: 768 },
     { name: 'Laptop', width: 1366, height: 768 },
     { name: 'Desktop', width: 1920, height: 1080 },
-    { name: 'MobileLandscape_Min', width: 650, height: 300 },
+    { name: 'MobileLandscape_Min', width: 667, height: 375 },
     { name: 'Desktop_MinHeight', width: 1024, height: 600 },
     { name: 'DesktopWide_MinHeight', width: 1920, height: 600 },
     { name: 'Portrait_MinWidth', width: 600, height: 800 },
@@ -68,9 +68,6 @@ const PNG_PREFIX: Record<Scenario, string> = {
     splitPot: 'splitPot',
     regular: 'regular',
 };
-
-/** `regular` at this viewport has a 301x140 felt: felt containment is report-only there (known limitation, D5). */
-const REGULAR_REPORT_ONLY_VIEWPORT = 'MobileLandscape_Min';
 
 const HERO_LAST_COUNTS = [3, 6, 10];
 const HERO_LAST_VIEWPORTS = ['Tablet', 'MobileLandscape_Min', 'Desktop'];
@@ -159,11 +156,11 @@ if (unknownChecks.length > 0) {
 
 /**
  * Which checks fail a case. Everything gates, except the `regular` (flop) scenario, which gates felt
- * containment (G) at seven viewports only, and keeps the pre-existing overlap checks (A-F) report-only.
+ * containment (G) across all viewports and keeps the pre-existing overlap checks (A-F) report-only.
  */
-function gatingChecksFor(scenario: Scenario, viewport: string): Check[] {
+function gatingChecksFor(scenario: Scenario): Check[] {
     if (scenario !== 'regular') return ALL_CHECKS;
-    return viewport === REGULAR_REPORT_ONLY_VIEWPORT ? ['S'] : ['G', 'S'];
+    return ['G', 'S'];
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -970,7 +967,7 @@ async function runScenario(
             const { violations: found, minClearance, minPair } = analyze(measurement, count, heroLast);
             // LAYOUT_CHECKS drops unlisted checks entirely, before the gating split.
             const kept = found.filter((v) => !checkFilter || checkFilter.includes(v.check));
-            const gatingChecks = gatingChecksFor(scenario, vp.name);
+            const gatingChecks = gatingChecksFor(scenario);
             const violations = kept.filter((v) => gatingChecks.includes(v.check));
             const reportOnlyViolations = kept.filter((v) => !gatingChecks.includes(v.check));
             fs.mkdirSync(outDir, { recursive: true });

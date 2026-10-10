@@ -116,6 +116,30 @@ describe('PokerRoomLayout', () => {
         expect(screen.getByText('Table Content')).toBeInTheDocument();
     });
 
+    it('gates sub-667x375 mobile landscape viewports (e.g. 650x300) and allows 667x375+', () => {
+        window.innerWidth = 650;
+        window.innerHeight = 300;
+
+        render(
+            <PokerRoomLayout
+                header={<RoomHeader brandTitle="POKER" wsStatus="connected" onLeave={vi.fn()} />}
+                stage={<RoomStage><div>Table Content</div></RoomStage>}
+            />
+        );
+
+        expect(screen.getByTestId('rotate-prompt')).toBeInTheDocument();
+        expect(screen.queryByText('Table Content')).not.toBeInTheDocument();
+
+        act(() => {
+            window.innerWidth = 667;
+            window.innerHeight = 375;
+            window.dispatchEvent(new Event('resize'));
+        });
+
+        expect(screen.queryByTestId('rotate-prompt')).not.toBeInTheDocument();
+        expect(screen.getByText('Table Content')).toBeInTheDocument();
+    });
+
     it('renders reconnect overlay when wsStatus is disconnected while keeping header leave action interactive', async () => {
         const user = userEvent.setup();
         const onLeaveSpy = vi.fn();

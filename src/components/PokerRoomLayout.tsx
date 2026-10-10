@@ -44,9 +44,10 @@ export function RoomDock({ children, className, ...rest }: RoomDockProps) {
     );
 }
 
-const MIN_PORTRAIT_WIDTH = 600;
-const MIN_DESKTOP_HEIGHT = 600; // Increased pragmatically
-const MIN_MOBILE_HEIGHT = 300;
+export const MIN_PORTRAIT_WIDTH = 600;
+export const MIN_DESKTOP_HEIGHT = 600; // Increased pragmatically
+export const MIN_MOBILE_WIDTH = 667; // Increased pragmatically (iPhone SE landscape floor)
+export const MIN_MOBILE_HEIGHT = 375; // Increased pragmatically (iPhone SE landscape floor)
 
 // eslint-disable-next-line react-refresh/only-export-components
 export function useOrientationGating() {
@@ -76,11 +77,13 @@ export function useOrientationGating() {
     // Portrait gate (phones)
     const isGatedPortrait = isPortrait && dimensions.width < MIN_PORTRAIT_WIDTH;
     
-    // Landscape/Desktop height gates
+    // Landscape/Desktop gates
     const isGatedDesktopHeight = dimensions.width >= 1024 && dimensions.height < MIN_DESKTOP_HEIGHT;
-    const isGatedMobileHeight = dimensions.width < 1024 && dimensions.height < MIN_MOBILE_HEIGHT;
+    const isGatedMobile = !isPortrait && dimensions.width < 1024 && (
+        dimensions.width < MIN_MOBILE_WIDTH || dimensions.height < MIN_MOBILE_HEIGHT
+    );
 
-    const isGated = isGatedPortrait || isGatedDesktopHeight || isGatedMobileHeight;
+    const isGated = isGatedPortrait || isGatedDesktopHeight || isGatedMobile;
 
     return {
         dimensions,
