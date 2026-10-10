@@ -155,7 +155,7 @@ export function safeMarginPx(scale: number): number {
  * sit inside the ellipse's bounding box can still be far outside the ellipse.
  */
 export function ellipseInsetDistance(p: { x: number; y: number }, a: number, b: number): number {
-    if (!(a > 0) || !(b > 0)) return -Math.hypot(p.x, p.y);
+    if (!(a > 0) || !(b > 0)) return -Math.sqrt(p.x * p.x + p.y * p.y);
 
     const px = Math.abs(p.x);
     const py = Math.abs(p.y);
@@ -163,26 +163,29 @@ export function ellipseInsetDistance(p: { x: number; y: number }, a: number, b: 
 
     let tx = Math.SQRT1_2;
     let ty = Math.SQRT1_2;
+    const a2MinusB2 = a * a - b * b;
     for (let i = 0; i < 8; i++) {
         const x = a * tx;
         const y = b * ty;
-        const ex = ((a * a - b * b) * tx ** 3) / a;
-        const ey = ((b * b - a * a) * ty ** 3) / b;
+        const ex = (a2MinusB2 * tx * tx * tx) / a;
+        const ey = (-a2MinusB2 * ty * ty * ty) / b;
         const rx = x - ex;
         const ry = y - ey;
         const qx = px - ex;
         const qy = py - ey;
-        const r = Math.hypot(rx, ry);
-        const q = Math.hypot(qx, qy);
+        const r = Math.sqrt(rx * rx + ry * ry);
+        const q = Math.sqrt(qx * qx + qy * qy);
         if (q === 0) break;
         tx = Math.min(1, Math.max(0, ((qx * r) / q + ex) / a));
         ty = Math.min(1, Math.max(0, ((qy * r) / q + ey) / b));
-        const t = Math.hypot(tx, ty);
+        const t = Math.sqrt(tx * tx + ty * ty);
         tx /= t;
         ty /= t;
     }
 
-    const distance = Math.hypot(px - a * tx, py - b * ty);
+    const dx = px - a * tx;
+    const dy = py - b * ty;
+    const distance = Math.sqrt(dx * dx + dy * dy);
     return inside ? distance : -distance;
 }
 
@@ -329,6 +332,23 @@ export type PartShape =
 const CIRCLE_SAMPLES = 24;
 const CAP_SAMPLES = 12;
 
+const CIRCLE_UNIT_POINTS: readonly Point[] = Array.from({ length: CIRCLE_SAMPLES }, (_, k) => {
+    const theta = (k / CIRCLE_SAMPLES) * Math.PI * 2;
+    return { x: Math.cos(theta), y: Math.sin(theta) };
+});
+
+function precomputeCapUnitPoints(from: number): readonly Point[] {
+    return Array.from({ length: CAP_SAMPLES + 1 }, (_, k) => {
+        const theta = from + (k / CAP_SAMPLES) * Math.PI;
+        return { x: Math.cos(theta), y: Math.sin(theta) };
+    });
+}
+
+const CAP_LEFT = precomputeCapUnitPoints(Math.PI / 2);
+const CAP_RIGHT = precomputeCapUnitPoints(-Math.PI / 2);
+const CAP_TOP = precomputeCapUnitPoints(Math.PI);
+const CAP_BOTTOM = precomputeCapUnitPoints(0);
+
 /**
  * Extreme points of a part. The signed distance to a convex set is concave, so for a convex part
  * the minimum margin is attained on its boundary: corners for a rect, the two end caps for a pill
@@ -336,10 +356,8 @@ const CAP_SAMPLES = 12;
  */
 export function sampleShape(shape: PartShape): Point[] {
     if (shape.kind === 'circle') {
-        return Array.from({ length: CIRCLE_SAMPLES }, (_, k) => {
-            const theta = (k / CIRCLE_SAMPLES) * Math.PI * 2;
-            return { x: shape.cx + shape.r * Math.cos(theta), y: shape.cy + shape.r * Math.sin(theta) };
-        });
+        const { cx, cy, r } = shape;
+        return CIRCLE_UNIT_POINTS.map((u) => ({ x: cx + r * u.x, y: cy + r * u.y }));
     }
     if (shape.kind === 'rect') {
         return [
@@ -354,19 +372,18 @@ export function sampleShape(shape: PartShape): Point[] {
     const r = Math.min(shape.w, shape.h) / 2;
     const horizontal = shape.w >= shape.h;
     const points: Point[] = [];
-    const capCentres = horizontal
+    const caps = horizontal
         ? [
-            { c: { x: shape.x + r, y: shape.y + shape.h / 2 }, from: Math.PI / 2 },
-            { c: { x: shape.x + shape.w - r, y: shape.y + shape.h / 2 }, from: -Math.PI / 2 },
+            { cx: shape.x + r, cy: shape.y + shape.h / 2, unit: CAP_LEFT },
+            { cx: shape.x + shape.w - r, cy: shape.y + shape.h / 2, unit: CAP_RIGHT },
         ]
         : [
-            { c: { x: shape.x + shape.w / 2, y: shape.y + r }, from: Math.PI },
-            { c: { x: shape.x + shape.w / 2, y: shape.y + shape.h - r }, from: 0 },
+            { cx: shape.x + shape.w / 2, cy: shape.y + r, unit: CAP_TOP },
+            { cx: shape.x + shape.w / 2, cy: shape.y + shape.h - r, unit: CAP_BOTTOM },
         ];
-    for (const { c, from } of capCentres) {
-        for (let k = 0; k <= CAP_SAMPLES; k++) {
-            const theta = from + (k / CAP_SAMPLES) * Math.PI;
-            points.push({ x: c.x + r * Math.cos(theta), y: c.y + r * Math.sin(theta) });
+    for (const { cx, cy, unit } of caps) {
+        for (let k = 0; k < unit.length; k++) {
+            points.push({ x: cx + r * unit[k].x, y: cy + r * unit[k].y });
         }
     }
     return points;
@@ -709,6 +726,29 @@ export function seatAngleSpan(opponentCount: number): number {
     return clamp(180 + (opponentCount - 2) * 10, 180, 240);
 }
 
+const CUMULATIVE_CACHE_LIMIT = 512;
+const cumulativeCache = new Map<string, Float64Array>();
+
+function getCumulativeArcLengths(startAngle: number, span: number, radiusX: number, radiusY: number): Float64Array {
+    const ratio = radiusY > 0 ? radiusX / radiusY : 0;
+    const key = `${startAngle}|${span}|${ratio.toFixed(6)}`;
+    const cached = cumulativeCache.get(key);
+    if (cached) return cached;
+
+    const stepRad = (span * Math.PI) / 180 / ANGLE_SAMPLES;
+    const startRad = (startAngle * Math.PI) / 180;
+    const cumulative = new Float64Array(ANGLE_SAMPLES + 1);
+    for (let k = 1; k <= ANGLE_SAMPLES; k++) {
+        const mid = startRad + (k - 0.5) * stepRad;
+        const dx = ratio * TABLE_ASPECT * Math.sin(mid);
+        const dy = (radiusY > 0 ? 1 : 0) * VERTICAL_SPACING_WEIGHT * Math.cos(mid);
+        cumulative[k] = cumulative[k - 1] + Math.sqrt(dx * dx + dy * dy) * stepRad;
+    }
+    if (cumulativeCache.size >= CUMULATIVE_CACHE_LIMIT) cumulativeCache.clear();
+    cumulativeCache.set(key, cumulative);
+    return cumulative;
+}
+
 /**
  * Angle (degrees, screen clockwise) of an opponent on the ellipse. Seats are spaced evenly by weighted arc length in
  * the real 2.15:1 table proportions, so the near-vertical sides of the ellipse are not squeezed the way an equal
@@ -722,15 +762,7 @@ export function getSeatAngle(
     radiusX: number,
     radiusY: number,
 ): number {
-    const stepRad = (span * Math.PI) / 180 / ANGLE_SAMPLES;
-    const startRad = (startAngle * Math.PI) / 180;
-    const cumulative = [0];
-    for (let k = 1; k <= ANGLE_SAMPLES; k++) {
-        const mid = startRad + (k - 0.5) * stepRad;
-        const dx = radiusX * TABLE_ASPECT * Math.sin(mid);
-        const dy = radiusY * VERTICAL_SPACING_WEIGHT * Math.cos(mid);
-        cumulative.push(cumulative[k - 1] + Math.hypot(dx, dy) * stepRad);
-    }
+    const cumulative = getCumulativeArcLengths(startAngle, span, radiusX, radiusY);
 
     const target = (opponentIndex / (opponentCount - 1)) * cumulative[ANGLE_SAMPLES];
     let k = 1;
@@ -776,8 +808,9 @@ function legacyEllipse(tier: TableTier): SeatEllipse {
             : { cx: 50, cy: 46, rx: 42, ry: 40 };
 }
 
-const FIT_CACHE_LIMIT = 256;
+const FIT_CACHE_LIMIT = 512;
 const fitCache = new Map<string, SeatEllipse>();
+const fitDetailedCache = new Map<string, SeatEllipseFit>();
 
 /**
  * `fitSeatEllipse` memoised by its inputs (a pure function of the table size, the player count, the tier and the
@@ -883,6 +916,16 @@ export function fitSeatEllipseDetailed(
         return { ellipse, start: { rx: ellipse.rx, ry: ellipse.ry }, shrink: 1 };
     }
 
+    const cacheKey = `${table.width}x${table.height}|${scale.overall}|${scale.avatar}|${scale.opponentCard}|${scale.text}|${scale.spacing}|${tier}|${opponentCount}`;
+    const cached = fitDetailedCache.get(cacheKey);
+    if (cached) {
+        return {
+            ellipse: { ...cached.ellipse },
+            start: { ...cached.start },
+            shrink: cached.shrink,
+        };
+    }
+
     const cy = FIT_CENTRE_Y[tier];
     const margin = safeMarginPx(scale.overall);
     const radius = avatarDiameter(opponentAvatarSize(tier), scale.avatar) / 2;
@@ -900,7 +943,14 @@ export function fitSeatEllipseDetailed(
     ) {
         shrink *= FIT_SHRINK_STEP;
     }
-    return { ellipse: { cx: 50, cy, rx: rx * shrink, ry: ry * shrink }, start: { rx, ry }, shrink };
+    const result: SeatEllipseFit = { ellipse: { cx: 50, cy, rx: rx * shrink, ry: ry * shrink }, start: { rx, ry }, shrink };
+    if (fitDetailedCache.size >= FIT_CACHE_LIMIT) fitDetailedCache.clear();
+    fitDetailedCache.set(cacheKey, result);
+    return {
+        ellipse: { ...result.ellipse },
+        start: { ...result.start },
+        shrink: result.shrink,
+    };
 }
 /**
  * Smallest signed distance (px, positive inside) from any extreme point of the hero's footprint to the felt. The hero

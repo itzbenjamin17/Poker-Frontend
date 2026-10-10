@@ -413,11 +413,20 @@ describe('CardUI cornerIndex mode (opponent seat cards)', () => {
     });
 
     it('keeps every font at 8px or more and the whole face inside the card, for every card width from 18 to 80px', () => {
+        let rerenderFn: ((ui: React.ReactNode) => void) | undefined;
         for (let cw = 18; cw <= 80; cw++) {
             const scale = cw / 48;
             const compact = isCompactCardScale(scale);
-            const { unmount } = render(<CardUI card="TC" scale={scale} compact={compact} cornerIndex />);
-            const card = screen.getByRole('img', { name: 'Ten of Clubs' });
+            const ui = <CardUI card="TC" scale={scale} compact={compact} cornerIndex />;
+            if (!rerenderFn) {
+                rerenderFn = render(ui).rerender;
+            } else {
+                rerenderFn(ui);
+            }
+            const card = cw === 18
+                ? screen.getByRole('img', { name: 'Ten of Clubs' })
+                : screen.getByTestId('card');
+            expect(card, `card ${cw}px`).toHaveAttribute('aria-label', 'Ten of Clubs');
             for (const font of glyphFonts(card)) expect(font, `card ${cw}px`).toBeGreaterThanOrEqual(8);
 
             // The corner block fits the strip the front card leaves uncovered.
@@ -436,7 +445,6 @@ describe('CardUI cornerIndex mode (opponent seat cards)', () => {
                 })
                 .reduce((sum, h) => sum + h, 0);
             expect(stacked, `card ${cw}px`).toBeLessThanOrEqual(height - 2 * padding + 1e-9);
-            unmount();
         }
     });
 

@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { http, HttpResponse } from 'msw';
@@ -32,8 +32,8 @@ describe('JoinRoomForm', () => {
         const submitButton = screen.getByRole('button', { name: new RegExp(BTN_JOIN, 'i') });
 
         // Submit with whitespace-only room name
-        await user.type(roomInput, '   ');
-        await user.type(playerInput, 'Player1');
+        fireEvent.change(roomInput, { target: { value: '   ' } });
+        fireEvent.change(playerInput, { target: { value: 'Player1' } });
         await user.click(submitButton);
 
         expect(mockOnError).toHaveBeenCalledWith('Room name is required.');
@@ -41,10 +41,8 @@ describe('JoinRoomForm', () => {
         expect(mockSetLoading).not.toHaveBeenCalled();
 
         // Now fill room name but whitespace player alias
-        await user.clear(roomInput);
-        await user.type(roomInput, 'ValidRoom');
-        await user.clear(playerInput);
-        await user.type(playerInput, '   ');
+        fireEvent.change(roomInput, { target: { value: 'ValidRoom' } });
+        fireEvent.change(playerInput, { target: { value: '   ' } });
         await user.click(submitButton);
 
         expect(mockOnError).toHaveBeenCalledWith('Player alias is required.');
@@ -66,8 +64,8 @@ describe('JoinRoomForm', () => {
         const playerInput = screen.getByLabelText(/player alias/i);
         const submitButton = screen.getByRole('button', { name: new RegExp(BTN_JOIN, 'i') });
 
-        await user.type(roomInput, '  PokerNight  ');
-        await user.type(playerInput, '  CardShark  ');
+        fireEvent.change(roomInput, { target: { value: '  PokerNight  ' } });
+        fireEvent.change(playerInput, { target: { value: '  CardShark  ' } });
         await user.click(submitButton);
 
         await waitFor(() => {
@@ -103,8 +101,8 @@ describe('JoinRoomForm', () => {
         const playerInput = screen.getByLabelText(/player alias/i);
         const submitButton = screen.getByRole('button', { name: new RegExp(BTN_JOIN, 'i') });
 
-        await user.type(roomInput, 'NonExistent');
-        await user.type(playerInput, 'Player');
+        fireEvent.change(roomInput, { target: { value: 'NonExistent' } });
+        fireEvent.change(playerInput, { target: { value: 'Player' } });
         await user.click(submitButton);
 
         await waitFor(() => {

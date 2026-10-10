@@ -79,12 +79,16 @@ describe('seat layout preservation: numbering, uniqueness, symmetry', () => {
     it('numbers opponents clockwise after the hero (left, then top, then right) with unique mirrored seats', () => {
         const seed = 1357911;
         const random = mulberry32(seed);
+        const { result, rerender } = renderHook(
+            ({ dims, total }) => useSeatLayout(dims, total),
+            { initialProps: { dims: TIER_TABLES[0], total: 6 } },
+        );
         for (let iteration = 0; iteration < 120; iteration++) {
             const dims = TIER_TABLES[randomInt(random, 0, TIER_TABLES.length - 1)];
             const total = randomInt(random, 3, 10);
             const heroIndex = randomInt(random, 0, total - 1);
             const label = `seed ${seed}, iteration ${iteration}: ${dims.width}x${dims.height}, total ${total}, hero ${heroIndex}`;
-            const { result } = renderHook(() => useSeatLayout(dims, total));
+            rerender({ dims, total });
             const opponents = opponentsClockwise(result.current.getSeatPosition, total, heroIndex);
             const n = opponents.length;
 
@@ -179,10 +183,14 @@ describe('seat layout preservation: one continuous ellipse', () => {
         // over-determined from 8 players (7 opponents, 4 distinct positions) upwards.
         const heights = [190, 240, 280, 330, 380, 419, 470, 558, 700, 840];
         let checked = 0;
+        const { result, rerender } = renderHook(
+            ({ dims, total }) => useSeatLayout(dims, total),
+            { initialProps: { dims: STANDARD, total: 8 } },
+        );
         for (const height of heights) {
             const dims = { width: Math.round(height * TABLE_ASPECT), height };
             for (let total = 8; total <= 10; total++) {
-                const { result } = renderHook(() => useSeatLayout(dims, total));
+                rerender({ dims, total });
                 const opponents = opponentsClockwise(result.current.getSeatPosition, total, 0)
                     // Seats pinned by a sanity clamp are not on the ellipse.
                     .filter((s) => s.top > 4 && s.top < 72 && s.left > 4 && s.left < 96);
@@ -215,10 +223,14 @@ describe('seat layout preservation: tier and scale derivation', () => {
     it('derives the tier from the table width (720 / 1100), independent of height', () => {
         const seed = 2468;
         const random = mulberry32(seed);
+        const { result, rerender } = renderHook(
+            ({ dims, total }) => useSeatLayout(dims, total),
+            { initialProps: { dims: STANDARD, total: 6 } },
+        );
         for (let i = 0; i < 80; i++) {
             const width = Math.round(randomBetween(random, 300, 1600));
             const height = Math.round(randomBetween(random, 150, 700));
-            const { result } = renderHook(() => useSeatLayout({ width, height }, randomInt(random, 3, 10)));
+            rerender({ dims: { width, height }, total: randomInt(random, 3, 10) });
             const expected = width < 720 ? 'compact' : width >= 1100 ? 'wide' : 'standard';
             expect(result.current.tableTier, `seed ${seed}, ${width}x${height}`).toBe(expected);
             expect(result.current.isCompactTable).toBe(expected === 'compact');
@@ -229,12 +241,16 @@ describe('seat layout preservation: tier and scale derivation', () => {
     it('derives the overall scale from the table height (height / 430) wherever it is unclamped before and after the fix', () => {
         const seed = 8642;
         const random = mulberry32(seed);
+        const { result, rerender } = renderHook(
+            ({ dims, total }) => useSeatLayout(dims, total),
+            { initialProps: { dims: STANDARD, total: 6 } },
+        );
         for (let i = 0; i < 80; i++) {
             // 172..494: above the old 0.4 floor, below the 1.15 ceiling (the new floor is 0.3).
             const height = randomBetween(random, 174, 492);
             const width = randomBetween(random, 300, 1500);
             const total = randomInt(random, 3, 10);
-            const { result } = renderHook(() => useSeatLayout({ width, height }, total));
+            rerender({ dims: { width, height }, total });
             expect(result.current.tableScale.overall, `seed ${seed}, ${width}x${height}`).toBeCloseTo(height / BASE_TABLE_HEIGHT, 8);
             expect(result.current.scale).toBe(result.current.tableScale.overall);
         }
@@ -246,11 +262,15 @@ describe('seat layout preservation: seat description and card placement', () => 
         const seed = 97531;
         const random = mulberry32(seed);
         let belowSeen = 0;
+        const { result, rerender } = renderHook(
+            ({ dims, total }) => useSeatLayout(dims, total),
+            { initialProps: { dims: TIER_TABLES[0], total: 6 } },
+        );
         for (let iteration = 0; iteration < 120; iteration++) {
             const dims = TIER_TABLES[randomInt(random, 0, TIER_TABLES.length - 1)];
             const total = randomInt(random, 2, 10);
             const heroIndex = randomInt(random, 0, total - 1);
-            const { result } = renderHook(() => useSeatLayout(dims, total));
+            rerender({ dims, total });
             const opponentCount = total - 1;
             for (const seat of opponentsClockwise(result.current.getSeatPosition, total, heroIndex)) {
                 const label = `seed ${seed}, iteration ${iteration}: ${dims.width}x${dims.height}, total ${total}, seat ${seat.left}/${seat.top}`;
@@ -267,9 +287,13 @@ describe('seat layout preservation: seat description and card placement', () => 
     });
 
     it('describes panel placement, side and vertical zone from the seat coordinates', () => {
+        const { result, rerender } = renderHook(
+            ({ dims, total }) => useSeatLayout(dims, total),
+            { initialProps: { dims: TIER_TABLES[0], total: 6 } },
+        );
         for (const dims of TIER_TABLES) {
             for (let total = 2; total <= 10; total++) {
-                const { result } = renderHook(() => useSeatLayout(dims, total));
+                rerender({ dims, total });
                 for (const seat of seatsOf(result.current.getSeatPosition, total, 0)) {
                     const label = `${dims.width}x${dims.height}, total ${total}, seat ${seat.left}/${seat.top}`;
                     expect(seat.panelPlacement, label).toBe(seat.left < 30 ? 'left' : seat.left > 70 ? 'right' : 'centre');

@@ -79,7 +79,7 @@ function randomSpec(random: () => number): SeatSpec {
     };
 }
 
-function renderSeat(spec: SeatSpec) {
+function renderSeat(spec: SeatSpec, rerenderFn?: (ui: React.ReactNode) => void) {
     const villain = makePlayer({
         status: spec.status,
         currentBet: spec.bet,
@@ -108,7 +108,7 @@ function renderSeat(spec: SeatSpec) {
             }],
         } as unknown as GameState
         : null;
-    render(
+    const ui = (
         <OpponentSeats
             orderedPlayers={[makePlayer({ id: 'hero', name: 'Hero' }), villain]}
             currentPlayerId={undefined}
@@ -119,9 +119,14 @@ function renderSeat(spec: SeatSpec) {
             isCompactTable={spec.compact}
             nowMs={0}
             tableScale={uniform(spec.scale)}
-        />,
+        />
     );
-    return { villain, showdown };
+    if (rerenderFn) {
+        rerenderFn(ui);
+        return { villain, showdown, rerender: rerenderFn };
+    }
+    const view = render(ui);
+    return { villain, showdown, rerender: view.rerender };
 }
 
 const hasGoldDecoration = (avatar: HTMLElement) =>
@@ -132,14 +137,22 @@ describe('opponent seat preservation', () => {
     it('keeps test ids, roles and accessible names for random opponent states', () => {
         const seed = 20260811;
         const random = mulberry32(seed);
+        let rerenderFn: ((ui: React.ReactNode) => void) | undefined;
         for (let iteration = 0; iteration < 70; iteration++) {
             const spec = randomSpec(random);
             const label = `seed ${seed}, iteration ${iteration}: ${JSON.stringify(spec)}`;
-            renderSeat(spec);
+            rerenderFn = renderSeat(spec, rerenderFn).rerender;
 
             // Seat root, trigger button, pod, avatar, chip badge.
-            expect(screen.getByRole('group', { name: 'Villain seat' }), label).toBe(screen.getByTestId('opponent-seat-p-2'));
-            expect(screen.getByRole('button', { name: 'Villain seat details' }), label).toBeInTheDocument();
+            const seatEl = screen.getByTestId('opponent-seat-p-2');
+            if (iteration === 0) {
+                expect(screen.getByRole('group', { name: 'Villain seat' }), label).toBe(seatEl);
+                expect(screen.getByRole('button', { name: 'Villain seat details' }), label).toBeInTheDocument();
+            } else {
+                expect(seatEl, label).toHaveAttribute('role', 'group');
+                expect(seatEl, label).toHaveAttribute('aria-label', 'Villain seat');
+                expect(seatEl.querySelector('button[aria-label="Villain seat details"]'), label).not.toBeNull();
+            }
             expect(screen.getAllByTestId('player-pod'), label).toHaveLength(1);
             expect(screen.getAllByTestId('player-avatar'), label).toHaveLength(1);
             expect(screen.getAllByTestId('seat-chip-badge'), label).toHaveLength(1);
@@ -177,7 +190,6 @@ describe('opponent seat preservation', () => {
                 expect(screen.queryAllByLabelText('Hidden Card'), label).toHaveLength(0);
                 expect(screen.queryAllByTestId('card'), label).toHaveLength(0);
             }
-            cleanup();
         }
     });
 
@@ -185,24 +197,29 @@ describe('opponent seat preservation', () => {
         const seed = 424344;
         const random = mulberry32(seed);
         const user = userEvent.setup();
+        let rerenderFn: ((ui: React.ReactNode) => void) | undefined;
         for (let iteration = 0; iteration < 12; iteration++) {
             const spec = randomSpec(random);
             const label = `seed ${seed}, iteration ${iteration}: ${JSON.stringify(spec)}`;
-            renderSeat(spec);
-            const button = screen.getByRole('button', { name: 'Villain seat details' });
+            rerenderFn = renderSeat(spec, rerenderFn).rerender;
+            const seatEl = screen.getByTestId('opponent-seat-p-2');
+            const button = iteration === 0
+                ? screen.getByRole('button', { name: 'Villain seat details' })
+                : (seatEl.querySelector('button[aria-label="Villain seat details"]') as HTMLElement);
             expect(button, label).toHaveAttribute('aria-expanded', 'false');
-            expect(screen.queryByRole('region', { name: 'Villain expanded details' }), label).toBeNull();
+            expect(seatEl.querySelector('[role="region"][aria-label="Villain expanded details"]'), label).toBeNull();
 
             await user.click(button);
             expect(button, label).toHaveAttribute('aria-expanded', 'true');
-            const region = screen.getByRole('region', { name: 'Villain expanded details' });
+            const region = iteration === 0
+                ? screen.getByRole('region', { name: 'Villain expanded details' })
+                : (seatEl.querySelector('[role="region"][aria-label="Villain expanded details"]') as HTMLElement);
             expect(within(region).getByText('Stack'), label).toBeInTheDocument();
             expect(within(region).getByText('Status'), label).toBeInTheDocument();
 
             await user.click(button);
             expect(button, label).toHaveAttribute('aria-expanded', 'false');
-            expect(screen.queryByRole('region', { name: 'Villain expanded details' }), label).toBeNull();
-            cleanup();
+            expect(seatEl.querySelector('[role="region"][aria-label="Villain expanded details"]'), label).toBeNull();
         }
     });
 
@@ -210,6 +227,7 @@ describe('opponent seat preservation', () => {
         const seed = 112233;
         const random = mulberry32(seed);
         let checked = 0;
+        let rerenderFn: ((ui: React.ReactNode) => void) | undefined;
         for (let iteration = 0; iteration < 40; iteration++) {
             const spec: SeatSpec = {
                 ...randomSpec(random),
@@ -218,7 +236,7 @@ describe('opponent seat preservation', () => {
                 reveal: true,
             };
             const label = `seed ${seed}, iteration ${iteration}: ${JSON.stringify(spec)}`;
-            renderSeat(spec);
+            rerenderFn = renderSeat(spec, rerenderFn).rerender;
 
             expect(screen.getByTestId('seat-winner-crown'), label).toBeInTheDocument();
             expect(hasGoldDecoration(screen.getByTestId('player-avatar')), label).toBe(true);
@@ -234,7 +252,6 @@ describe('opponent seat preservation', () => {
             expect(other.className, label).toMatch(/\bopacity-\d+\b/);
             expect(other.className, label).toMatch(/grayscale/);
             checked++;
-            cleanup();
         }
         expect(checked).toBe(40);
     });
@@ -242,6 +259,7 @@ describe('opponent seat preservation', () => {
     it('presents a non-winner without crown, gold decoration, highlight or dimming', () => {
         const seed = 556677;
         const random = mulberry32(seed);
+        let rerenderFn: ((ui: React.ReactNode) => void) | undefined;
         for (let iteration = 0; iteration < 30; iteration++) {
             const spec: SeatSpec = {
                 ...randomSpec(random),
@@ -250,7 +268,7 @@ describe('opponent seat preservation', () => {
                 reveal: true,
             };
             const label = `seed ${seed}, iteration ${iteration}: ${JSON.stringify(spec)}`;
-            renderSeat(spec);
+            rerenderFn = renderSeat(spec, rerenderFn).rerender;
             expect(screen.queryByTestId('seat-winner-crown'), label).toBeNull();
             expect(hasGoldDecoration(screen.getByTestId('player-avatar')), label).toBe(false);
             for (const name of ['Ace of Hearts', 'King of Hearts']) {
@@ -259,13 +277,12 @@ describe('opponent seat preservation', () => {
                 expect(card.className, label).not.toMatch(/\bopacity-\d+\b/);
                 expect(card.className, label).not.toMatch(/grayscale/);
             }
-            cleanup();
         }
     });
 });
 
 describe('hero seat preservation', () => {
-    const renderHero = (scale: number, extra: Partial<Player> = {}, handRank?: string) => {
+    const renderHero = (scale: number, extra: Partial<Player> = {}, handRank?: string, rerenderFn?: (ui: React.ReactNode) => void) => {
         const hero = makePlayer({ id: 'hero', name: 'Hero', currentBet: 50, isReadyForNextHand: true, ...extra });
         const showdown = handRank
             ? ({
@@ -280,7 +297,7 @@ describe('hero seat preservation', () => {
                 players: [{ ...hero, holeCards: ['AS', 'KS'], handRank }],
             } as unknown as GameState)
             : null;
-        return render(
+        const ui = (
             <HeroSeat
                 player={hero}
                 showdown={showdown}
@@ -288,43 +305,50 @@ describe('hero seat preservation', () => {
                 isCompactTable={false}
                 nowMs={0}
                 tableScale={uniform(scale)}
-            />,
+            />
         );
+        if (rerenderFn) {
+            rerenderFn(ui);
+            return { rerender: rerenderFn };
+        }
+        return render(ui);
     };
 
     it('stays pinned at 50% / 86% and keeps hero cards at the heroCard x lg pixel size', () => {
         const seed = 8080;
         const random = mulberry32(seed);
+        let rerenderFn: ((ui: React.ReactNode) => void) | undefined;
         for (let iteration = 0; iteration < 40; iteration++) {
             const scale = randomBetween(random, 0.3, 1.15);
             const label = `seed ${seed}, iteration ${iteration}, scale ${scale}`;
-            renderHero(scale);
+            rerenderFn = renderHero(scale, {}, undefined, rerenderFn).rerender;
             expect(screen.getByTestId('hero-seat'), label).toHaveStyle({ left: '50%', top: '86%' });
-            const cards = within(screen.getByTestId('hero-cards')).getAllByRole('img');
+            const heroCards = screen.getByTestId('hero-cards');
+            const cards = iteration === 0
+                ? within(heroCards).getAllByRole('img')
+                : within(heroCards).getAllByTestId('card');
             expect(cards, label).toHaveLength(2);
             for (const card of cards) {
                 expect(card.style.width, label).toBe(`${Math.round(scale * 1.1 * 48)}px`);
                 expect(card.style.height, label).toBe(`${Math.round(scale * 1.1 * 64)}px`);
             }
             const radius = avatarDiameter('md', scale) / 2;
-            const heroCards = screen.getByTestId('hero-cards');
             expect(heroCards.style.top, label).toBe(`${radius}px`);
             expect(heroCards.style.transform, label).toBe(`translate(${radius + scale * 16 + 4}px, -50%)`);
             expect(screen.getByTestId('player-pod'), label).toHaveStyle({ width: `${2 * radius}px`, height: `${2 * radius}px` });
-            cleanup();
         }
     });
 
     it('keeps the hero rank, bet and status to the left of the avatar', () => {
+        let rerenderFn: ((ui: React.ReactNode) => void) | undefined;
         for (const scale of [0.47, 0.66, 1, 1.15]) {
-            renderHero(scale, {}, 'FLUSH');
+            rerenderFn = renderHero(scale, {}, 'FLUSH', rerenderFn).rerender;
             for (const id of ['seat-hand-rank', 'seat-bet', 'seat-status']) {
                 const el = screen.getByTestId(id);
                 const details = el.closest('[data-testid="seat-details"]');
                 expect(details, `${id} at scale ${scale}`).not.toBeNull();
                 expect(details).toHaveAttribute('data-details-placement', 'left');
             }
-            cleanup();
         }
     });
 });

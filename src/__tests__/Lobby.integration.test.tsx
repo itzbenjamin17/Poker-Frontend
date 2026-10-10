@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { render, screen, waitFor, within, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi } from 'vitest'
 import Lobby from '../Lobby'
@@ -19,8 +19,8 @@ describe('Lobby Integration', () => {
     const joinRoomInput = getByLabelText(/room name/i)
     const joinPlayerInput = getByLabelText(/player alias/i)
 
-    await user.type(joinRoomInput, 'POKER123')
-    await user.type(joinPlayerInput, 'TestPlayer')
+    fireEvent.change(joinRoomInput, { target: { value: 'POKER123' } })
+    fireEvent.change(joinPlayerInput, { target: { value: 'TestPlayer' } })
 
     const joinButton = getByRole('button', { name: /join game/i })
     await user.click(joinButton)
@@ -54,8 +54,8 @@ describe('Lobby Integration', () => {
     const joinRoomInput = getByLabelText(/room name/i)
     const joinPlayerInput = getByLabelText(/player alias/i)
 
-    await user.type(joinRoomInput, 'NONEXISTENT')
-    await user.type(joinPlayerInput, 'TestPlayer')
+    fireEvent.change(joinRoomInput, { target: { value: 'NONEXISTENT' } })
+    fireEvent.change(joinPlayerInput, { target: { value: 'TestPlayer' } })
 
     await user.click(getByRole('button', { name: /join game/i }))
 
@@ -74,26 +74,11 @@ describe('Lobby Integration', () => {
     const createRegion = screen.getByRole('region', { name: /create table/i })
     const { getByLabelText, getByRole } = within(createRegion)
 
-    await user.type(getByLabelText(/room name/i), 'NEWROOM')
-    await user.type(getByLabelText(/player alias/i), 'HostPlayer')
-    
-    const smallBlindInput = getByLabelText(/small blind/i)
-    await user.type(smallBlindInput, '10', {
-      initialSelectionStart: 0,
-      initialSelectionEnd: (smallBlindInput as HTMLInputElement).value.length
-    })
-
-    const bigBlindInput = getByLabelText(/big blind/i)
-    await user.type(bigBlindInput, '20', {
-      initialSelectionStart: 0,
-      initialSelectionEnd: (bigBlindInput as HTMLInputElement).value.length
-    })
-
-    const buyInInput = getByLabelText(/buy-in amount/i)
-    await user.type(buyInInput, '1000', {
-      initialSelectionStart: 0,
-      initialSelectionEnd: (buyInInput as HTMLInputElement).value.length
-    })
+    fireEvent.change(getByLabelText(/room name/i), { target: { value: 'NEWROOM' } })
+    fireEvent.change(getByLabelText(/player alias/i), { target: { value: 'HostPlayer' } })
+    fireEvent.change(getByLabelText(/small blind/i), { target: { value: '10' } })
+    fireEvent.change(getByLabelText(/big blind/i), { target: { value: '20' } })
+    fireEvent.change(getByLabelText(/buy-in amount/i), { target: { value: '1000' } })
 
     await user.click(getByRole('button', { name: /create game/i }))
 
@@ -114,39 +99,25 @@ describe('Lobby Integration', () => {
     const createRegion = screen.getByRole('region', { name: /create table/i })
     const { getByLabelText, getByRole } = within(createRegion)
 
-    await user.type(getByLabelText(/room name/i), 'BOUNDROOM')
-    await user.type(getByLabelText(/player alias/i), 'HostPlayer')
+    fireEvent.change(getByLabelText(/room name/i), { target: { value: 'BOUNDROOM' } })
+    fireEvent.change(getByLabelText(/player alias/i), { target: { value: 'HostPlayer' } })
 
     // 1. Big blind less than 2x small blind (custom business rule validation)
     const smallBlindInput = getByLabelText(/small blind/i)
-    await user.type(smallBlindInput, '10', {
-      initialSelectionStart: 0,
-      initialSelectionEnd: (smallBlindInput as HTMLInputElement).value.length
-    })
-
     const bigBlindInput = getByLabelText(/big blind/i)
-    await user.type(bigBlindInput, '15', {
-      initialSelectionStart: 0,
-      initialSelectionEnd: (bigBlindInput as HTMLInputElement).value.length
-    })
+    const buyInInput = getByLabelText(/buy-in amount/i)
+
+    fireEvent.change(smallBlindInput, { target: { value: '10' } })
+    fireEvent.change(bigBlindInput, { target: { value: '15' } })
 
     await user.click(getByRole('button', { name: /create game/i }))
     await waitFor(() => {
       expect(screen.getByText(/Big blind must be at least 2×/i)).toBeInTheDocument()
     })
 
-    // Fix big blind
-    await user.type(bigBlindInput, '40', {
-      initialSelectionStart: 0,
-      initialSelectionEnd: (bigBlindInput as HTMLInputElement).value.length
-    })
-
-    // 2. Buy-in less than big blind (custom business rule validation)
-    const buyInInput = getByLabelText(/buy-in amount/i)
-    await user.type(buyInInput, '30', {
-      initialSelectionStart: 0,
-      initialSelectionEnd: (buyInInput as HTMLInputElement).value.length
-    })
+    // Fix big blind and set buy-in less than big blind
+    fireEvent.change(bigBlindInput, { target: { value: '40' } })
+    fireEvent.change(buyInInput, { target: { value: '30' } })
 
     await user.click(getByRole('button', { name: /create game/i }))
     await waitFor(() => {

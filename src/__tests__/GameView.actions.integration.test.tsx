@@ -193,21 +193,29 @@ describe('GameView - Actions & Flows Integration', () => {
     });
 
     it('redirects to lobby (calls onLeave) on hydration 403 error', async () => {
+        vi.useFakeTimers({ shouldAdvanceTime: true });
         const onLeaveSpy = vi.fn();
+        try {
+            server.use(
+                http.get('/api/room/ROOM123', () => new HttpResponse(
+                    JSON.stringify({ message: 'Seat has expired' }),
+                    { status: 403, headers: { 'Content-Type': 'application/json' } }
+                ))
+            );
 
-        server.use(
-            http.get('/api/room/ROOM123', () => new HttpResponse(
-                JSON.stringify({ message: 'Seat has expired' }),
-                { status: 403, headers: { 'Content-Type': 'application/json' } }
-            ))
-        );
+            render(<GameView auth={mockAuth} onLeave={onLeaveSpy} />);
 
-        render(<GameView auth={mockAuth} onLeave={onLeaveSpy} />);
+            await waitFor(() => {
+                expect(screen.getByText(/Session expired\. Returning to lobby/i)).toBeInTheDocument();
+            });
 
-        // Should trigger redirect
-        await waitFor(() => {
+            await act(async () => {
+                vi.advanceTimersByTime(3000);
+            });
             expect(onLeaveSpy).toHaveBeenCalledTimes(1);
-        }, { timeout: 4000 });
+        } finally {
+            vi.useRealTimers();
+        }
     });
 
     it('prompts confirmation when leaving the table', async () => {

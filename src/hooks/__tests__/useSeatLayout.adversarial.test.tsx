@@ -46,6 +46,7 @@ describe('Adversarial Verification: useSeatLayout & Geometry Decoupling', () => 
         });
 
         it('LiveTableStage renders HeroSeat at (50%, 86%) across all player counts (2-10) and hero positions', () => {
+            let view: ReturnType<typeof render> | null = null;
             for (let total = 2; total <= 10; total++) {
                 const players: Player[] = Array.from({ length: total }, (_, i) => ({
                     id: `p-${i}`,
@@ -70,7 +71,7 @@ describe('Adversarial Verification: useSeatLayout & Geometry Decoupling', () => 
                 };
 
                 for (let hIdx = 0; hIdx < total; hIdx++) {
-                    const { unmount } = render(
+                    const ui = (
                         <LiveTableStage
                             nowMs={Date.now()}
                             gameState={mockGameState}
@@ -78,17 +79,25 @@ describe('Adversarial Verification: useSeatLayout & Geometry Decoupling', () => 
                             myPlayerId={`p-${hIdx}`}
                         />
                     );
+                    if (!view) {
+                        view = render(ui);
+                    } else {
+                        view.rerender(ui);
+                    }
 
                     const heroEl = screen.getByTestId('hero-seat');
                     expect(heroEl).toBeInTheDocument();
-                    expect(heroEl).toHaveAccessibleName(`Player_${hIdx} hero seat`);
+                    if (total === 2 && hIdx === 0) {
+                        expect(heroEl).toHaveAccessibleName(`Player_${hIdx} hero seat`);
+                    } else {
+                        expect(heroEl).toHaveAttribute('aria-label', `Player_${hIdx} hero seat`);
+                    }
                     expect(heroEl.style.left).toBe('50%');
                     expect(heroEl.style.top).toBe('86%');
                     expect(screen.getAllByTestId(/^opponent-seat-/)).toHaveLength(total - 1);
-
-                    unmount();
                 }
             }
+            view?.unmount();
         });
     });
 
@@ -96,9 +105,8 @@ describe('Adversarial Verification: useSeatLayout & Geometry Decoupling', () => 
     describe('2. Ellipse Geometry Bounds (2 through 10 players)', () => {
         it('keeps all opponent seats inside the sanity bound [2, 98] x [2, 80] (it never engages) and cards facing inwards (or below, top centre)', () => {
             for (let total = 2; total <= 10; total++) {
+                const { result } = renderHook(() => useSeatLayout(STANDARD, total));
                 for (let heroIndex = 0; heroIndex < total; heroIndex++) {
-                    const { result } = renderHook(() => useSeatLayout(STANDARD, total));
-
                     for (let seatIdx = 0; seatIdx < total; seatIdx++) {
                         const pos = result.current.getSeatPosition(seatIdx, total, heroIndex);
 
@@ -132,9 +140,8 @@ describe('Adversarial Verification: useSeatLayout & Geometry Decoupling', () => 
     describe('3. Turn-Order Clockwise Monotonicity & Symmetry', () => {
         it('verifies turn order progresses strictly clockwise around the table for 3 through 10 players', () => {
             for (let total = 3; total <= 10; total++) {
+                const { result } = renderHook(() => useSeatLayout(STANDARD, total));
                 for (let heroIndex = 0; heroIndex < total; heroIndex++) {
-                    const { result } = renderHook(() => useSeatLayout(STANDARD, total));
-
                     for (let step = 0; step < total; step++) {
                         const currentIdx = (heroIndex + step) % total;
                         const nextIdx = (heroIndex + step + 1) % total;

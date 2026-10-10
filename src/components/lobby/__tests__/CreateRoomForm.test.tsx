@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { http, HttpResponse } from 'msw';
@@ -32,18 +32,10 @@ describe('CreateRoomForm', () => {
         const smallBlindInput = screen.getByLabelText(/small blind/i) as HTMLInputElement;
         const bigBlindInput = screen.getByLabelText(/big blind/i) as HTMLInputElement;
 
-        await user.type(roomInput, 'Test Room');
-        await user.type(playerInput, 'Player1');
-
-        // Set invalid blinds (big blind 15 < 2x small blind 10)
-        await user.type(smallBlindInput, '10', {
-            initialSelectionStart: 0,
-            initialSelectionEnd: smallBlindInput.value.length,
-        });
-        await user.type(bigBlindInput, '15', {
-            initialSelectionStart: 0,
-            initialSelectionEnd: bigBlindInput.value.length,
-        });
+        fireEvent.change(roomInput, { target: { value: 'Test Room' } });
+        fireEvent.change(playerInput, { target: { value: 'Player1' } });
+        fireEvent.change(smallBlindInput, { target: { value: '10' } });
+        fireEvent.change(bigBlindInput, { target: { value: '15' } });
 
         const submitButton = screen.getByRole('button', { name: /create game/i });
         await user.click(submitButton);
@@ -70,20 +62,11 @@ describe('CreateRoomForm', () => {
         const bigBlindInput = screen.getByLabelText(/big blind/i) as HTMLInputElement;
         const buyInInput = screen.getByLabelText(/buy-in/i) as HTMLInputElement;
 
-        await user.type(roomInput, 'Vip High Stakes');
-        await user.type(playerInput, 'CardShark');
-        await user.type(smallBlindInput, '50', {
-            initialSelectionStart: 0,
-            initialSelectionEnd: smallBlindInput.value.length,
-        });
-        await user.type(bigBlindInput, '100', {
-            initialSelectionStart: 0,
-            initialSelectionEnd: bigBlindInput.value.length,
-        });
-        await user.type(buyInInput, '2000', {
-            initialSelectionStart: 0,
-            initialSelectionEnd: buyInInput.value.length,
-        });
+        fireEvent.change(roomInput, { target: { value: 'Vip High Stakes' } });
+        fireEvent.change(playerInput, { target: { value: 'CardShark' } });
+        fireEvent.change(smallBlindInput, { target: { value: '50' } });
+        fireEvent.change(bigBlindInput, { target: { value: '100' } });
+        fireEvent.change(buyInInput, { target: { value: '2000' } });
 
         const submitButton = screen.getByRole('button', { name: /create game/i });
         await user.click(submitButton);
@@ -120,8 +103,8 @@ describe('CreateRoomForm', () => {
         const roomInput = screen.getByLabelText(/room name/i);
         const playerInput = screen.getByLabelText(/player alias/i);
 
-        await user.type(roomInput, 'Duplicate Room');
-        await user.type(playerInput, 'Alice');
+        fireEvent.change(roomInput, { target: { value: 'Duplicate Room' } });
+        fireEvent.change(playerInput, { target: { value: 'Alice' } });
 
         const submitButton = screen.getByRole('button', { name: /create game/i });
         await user.click(submitButton);
