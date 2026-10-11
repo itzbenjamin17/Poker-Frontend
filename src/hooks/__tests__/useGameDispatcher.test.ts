@@ -190,6 +190,21 @@ describe('useGameDispatcher', () => {
         expect(claimWinSpy).toHaveBeenCalledWith('GAME123', 'test-token');
     });
 
+    it('dispatch CLAIM_WIN resets claimPending to false and sets notification when pokerApi.claimWin rejects with 403', async () => {
+        const error = Object.assign(new Error('Cannot claim win right now.'), { status: 403 });
+        vi.mocked(pokerApi.claimWin).mockRejectedValue(error);
+        const { result } = renderHook(() => useGameDispatcher(), {
+            wrapper: createWrapper(),
+        });
+
+        await act(async () => {
+            await result.current.dispatch({ type: 'CLAIM_WIN' });
+        });
+
+        expect(session.getSnapshot().claimPending).toBe(false);
+        expect(session.getSnapshot().notification).toBe('Cannot claim win right now.');
+    });
+
     it('dispatch LEAVE_GAME calls leaveGame and leaveRoom', async () => {
         const leaveGameSpy = vi.mocked(pokerApi.leaveGame).mockResolvedValue();
         const leaveRoomSpy = vi.mocked(pokerApi.leaveRoom).mockResolvedValue();
@@ -209,6 +224,28 @@ describe('useGameDispatcher', () => {
         expect(leaveGameSpy).toHaveBeenCalledWith('GAME123', 'test-token');
         expect(leaveRoomSpy).toHaveBeenCalledWith('ROOM123', 'test-token');
         expect(onLeave).toHaveBeenCalled();
+    });
+
+    it('dispatch LEAVE_GAME still calls leaveRoom and onLeave when leaveGame rejects with a network/500 error', async () => {
+        const error = Object.assign(new Error('Network failure'), { status: 500 });
+        const leaveGameSpy = vi.mocked(pokerApi.leaveGame).mockRejectedValue(error);
+        const leaveRoomSpy = vi.mocked(pokerApi.leaveRoom).mockResolvedValue();
+        const clearShowdownSpy = vi.spyOn(session, 'clearShowdownTimers');
+        session.applyPrivateState({ playerId: 'p-1', holeCards: ['AS', 'KS'] });
+
+        const { result } = renderHook(() => useGameDispatcher(), {
+            wrapper: createWrapper(),
+        });
+
+        await act(async () => {
+            await result.current.dispatch({ type: 'LEAVE_GAME' });
+        });
+
+        expect(leaveGameSpy).toHaveBeenCalledWith('GAME123', 'test-token');
+        expect(leaveRoomSpy).toHaveBeenCalledWith('ROOM123', 'test-token');
+        expect(clearShowdownSpy).toHaveBeenCalled();
+        expect(session.getSnapshot().privateState).toBeNull();
+        expect(onLeave).toHaveBeenCalledTimes(1);
     });
 
     it('dispatch LEAVE_REVIEW clears persisted game-end snapshot and calls onLeave even if REST fails', async () => {

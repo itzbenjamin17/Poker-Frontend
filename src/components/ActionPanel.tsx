@@ -72,6 +72,7 @@ export function ActionPanel({
         setPrevTurn(isMyTurn);
         if (!isMyTurn) {
             setAmountAction(null);
+            setPendingAction(null);
         }
     }
 
@@ -128,24 +129,21 @@ export function ActionPanel({
         : Math.max(minBetAmount, (gameState.currentBet || 0) - (me?.currentBet ?? 0) + 1);
     const availableChips = me?.chips ?? 0;
     const callAmount = Math.max(0, (gameState.currentBet || 0) - (me?.currentBet ?? 0));
-    const callExceedsStack = callAmount > availableChips;
+    const clamp = (val: number) => Math.min(availableChips, Math.max(minRaiseAmount, val));
 
+    const defaultRaiseAmount = availableChips > 0 ? Math.min(minRaiseAmount, availableChips) : minRaiseAmount;
     const rawRaise = raiseAmount.trim();
-    const parsedRaiseAmount = rawRaise === '' ? minRaiseAmount : Number.parseInt(rawRaise, 10);
+    const parsedRaiseAmount = rawRaise === '' ? defaultRaiseAmount : Number.parseInt(rawRaise, 10);
     let computedRaiseError: string | null = null;
 
     if (rawRaise !== '' && !/^\d+$/.test(rawRaise)) {
         computedRaiseError = 'Enter a whole number.';
     } else if (!Number.isFinite(parsedRaiseAmount) || parsedRaiseAmount <= 0) {
         computedRaiseError = 'Amount must be greater than 0.';
-    } else if (parsedRaiseAmount < minRaiseAmount) {
-        if (actionType === 'RAISE' && parsedRaiseAmount === availableChips) {
-            computedRaiseError = `Minimum raise is ${minRaiseAmount.toLocaleString()} . Your full stack is smaller, use All In${callExceedsStack ? '' : ' or Call'}.`;
-        } else {
-            computedRaiseError = actionType === 'BET'
-                ? `Bet amount must be at least ${minBetAmount.toLocaleString()} .`
-                : `Minimum raise is ${minRaiseAmount.toLocaleString()} .`;
-        }
+    } else if (parsedRaiseAmount < minRaiseAmount && parsedRaiseAmount < availableChips) {
+        computedRaiseError = actionType === 'BET'
+            ? `Bet amount must be at least ${minBetAmount.toLocaleString()} .`
+            : `Minimum raise is ${minRaiseAmount.toLocaleString()} .`;
     } else if (parsedRaiseAmount > availableChips) {
         computedRaiseError = `You only have ${availableChips.toLocaleString()} .`;
     } else if (parsedRaiseAmount > 10_000_000) {
@@ -171,6 +169,15 @@ export function ActionPanel({
     const canCall = legalActions.has('CALL');
     const canAllIn = legalActions.has('ALL_IN');
     const canBetOrRaise = legalActions.has(actionType);
+
+    const [prevRaiseError, setPrevRaiseError] = useState(raiseError);
+    if (prevRaiseError !== raiseError) {
+        setPrevRaiseError(raiseError);
+        if (raiseError && canBetOrRaise) {
+            setAmountAction(actionType);
+        }
+    }
+
     const isRaising = showControls && canBetOrRaise && amountAction === actionType;
 
     const sectionMotion = prefersReducedMotion
@@ -216,7 +223,7 @@ export function ActionPanel({
                                         <Button
                                             variant="outline"
                                             size="xs"
-                                            onClick={() => onRaiseChange(String(Math.max(minRaiseAmount, Math.min(availableChips, bigBlind * 3))))}
+                                            onClick={() => onRaiseChange(String(clamp(bigBlind * 3)))}
                                             disabled={isActionPending}
                                         >
                                             3BB
@@ -224,7 +231,7 @@ export function ActionPanel({
                                         <Button
                                             variant="outline"
                                             size="xs"
-                                            onClick={() => onRaiseChange(String(Math.max(minRaiseAmount, Math.min(availableChips, Math.floor((gameState.pot || 0) / 2)))))}
+                                            onClick={() => onRaiseChange(String(clamp(Math.floor((gameState.pot || 0) / 2))))}
                                             disabled={isActionPending}
                                         >
                                             1/2 POT
@@ -232,7 +239,7 @@ export function ActionPanel({
                                         <Button
                                             variant="outline"
                                             size="xs"
-                                            onClick={() => onRaiseChange(String(Math.max(minRaiseAmount, Math.min(availableChips, gameState.pot || 0))))}
+                                            onClick={() => onRaiseChange(String(clamp(gameState.pot || 0)))}
                                             disabled={isActionPending}
                                         >
                                             POT
@@ -240,7 +247,7 @@ export function ActionPanel({
                                         <Button
                                             variant="outline"
                                             size="xs"
-                                            onClick={() => onRaiseChange(String(availableChips))}
+                                            onClick={() => onRaiseChange(String(clamp(availableChips)))}
                                             disabled={isActionPending}
                                         >
                                             MAX
@@ -268,8 +275,8 @@ export function ActionPanel({
                                             className="w-24 sm:w-32 md:w-36 cursor-pointer accent-gold-secondary h-1.5"
                                             value={parsedRaiseAmount}
                                             onChange={e => onRaiseChange(e.target.value)}
-                                            min={minRaiseAmount}
-                                            max={Math.max(minRaiseAmount, availableChips)}
+                                            min={defaultRaiseAmount}
+                                            max={Math.max(defaultRaiseAmount, availableChips)}
                                             step={1}
                                         />
                                     </div>
@@ -294,8 +301,6 @@ export function ActionPanel({
                                             onClick={() => {
                                                 if (!canSubmitRaise || isActionPending) return;
                                                 handleAction(actionType, parsedRaiseAmount);
-                                                onRaiseChange('');
-                                                setAmountAction(null);
                                             }}
                                             className={cn(
                                                 'select-none rounded-xl font-headline font-extrabold uppercase tracking-wider transition-all duration-150 flex items-center justify-center',
@@ -351,7 +356,10 @@ export function ActionPanel({
                                         size={controlButtonSize}
                                         aria-expanded="false"
                                         aria-controls="amount-action-controls"
-                                        onClick={() => setAmountAction('BET')}
+                                        onClick={() => {
+                                            onRaiseChange(raiseAmount);
+                                            setAmountAction('BET');
+                                        }}
                                         disabled={isActionPending}
                                     >
                                         {BTN_BET}
@@ -364,7 +372,10 @@ export function ActionPanel({
                                         size={controlButtonSize}
                                         aria-expanded="false"
                                         aria-controls="amount-action-controls"
-                                        onClick={() => setAmountAction('RAISE')}
+                                        onClick={() => {
+                                            onRaiseChange(raiseAmount);
+                                            setAmountAction('RAISE');
+                                        }}
                                         disabled={isActionPending}
                                     >
                                         {BTN_RAISE}

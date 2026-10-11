@@ -61,12 +61,7 @@ export function useGameWebSocket(options: UseGameWebSocketOptions = {}) {
             stompClientRef.current = transport.getClient();
         }
 
-        const unsubConnect = session.onConnect(() => {
-            // Sync on connect (catch missed updates during reconnect)
-            if (gameEndedRef.current || session.getSnapshot().isGameOver) return;
-            const currentRoom = roomStateRef.current ?? session.getSnapshot().roomState;
-            if (!currentRoom?.gameStarted) return;
-
+        const syncGameState = () => {
             const syncTime = session.now();
             void pokerApi.getGameState(auth.roomId, auth.token)
                 .then((snapshot) => {
@@ -97,6 +92,48 @@ export function useGameWebSocket(options: UseGameWebSocketOptions = {}) {
                     const code = getErrorStatusCode(err);
                     if (code !== 404) logger.warn('Private state re-sync failed after connect:', err);
                 });
+        };
+
+        const unsubConnect = session.onConnect(() => {
+            // Sync on connect (catch missed updates during reconnect)
+            if (gameEndedRef.current || session.getSnapshot().isGameOver) return;
+            const currentRoom = roomStateRef.current ?? session.getSnapshot().roomState;
+            if (!currentRoom?.gameStarted) {
+                if (typeof pokerApi.getRoomInfo === 'function') {
+                    void Promise.resolve(pokerApi.getRoomInfo(auth.roomId, auth.token))
+                        .then((roomData) => {
+                            if (gameEndedRef.current || session.getSnapshot().isGameOver) return;
+                            if (!roomData || typeof roomData !== 'object' || !Array.isArray(roomData.players)) return;
+                            const updatedRoom = {
+                                roomId: roomData.roomId ?? auth.roomId,
+                                roomName: roomData.roomName,
+                                players: roomData.players.map((p: { name: string; isHost: boolean; joinedAt?: string }) => ({
+                                    name: p.name,
+                                    isHost: p.isHost,
+                                    joinedAt: p.joinedAt,
+                                })),
+                                maxPlayers: roomData.maxPlayers,
+                                buyIn: roomData.buyIn,
+                                smallBlind: roomData.smallBlind,
+                                bigBlind: roomData.bigBlind,
+                                canStartGame: roomData.canStartGame,
+                                gameStarted: roomData.gameStarted,
+                            };
+                            session.setRoomState(updatedRoom);
+                            if (updatedRoom.gameStarted) {
+                                syncGameState();
+                            }
+                        })
+                        .catch((err) => {
+                            if (gameEndedRef.current || session.getSnapshot().isGameOver) return;
+                            const code = getErrorStatusCode(err);
+                            if (code !== 404) logger.warn('Room info re-sync failed after connect:', err);
+                        });
+                }
+                return;
+            }
+
+            syncGameState();
         });
 
         const unsubSocketError = onSocketError ? session.onSocketError(onSocketError) : undefined;

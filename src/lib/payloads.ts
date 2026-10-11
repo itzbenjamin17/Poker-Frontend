@@ -1,4 +1,4 @@
-import type { IncomingGameStatePayload, IncomingPrivateStatePayload } from '../types';
+import type { IncomingGameStatePayload, IncomingPrivateStatePayload, RoomUpdate } from '../types';
 import {
     ERROR_INVALID_FORMAT,
     ERROR_SYSTEM,
@@ -56,6 +56,28 @@ export function isPrivateStatePayload(value: unknown): value is IncomingPrivateS
     );
 }
 
+export function isRoomUpdatePayload(value: unknown): value is RoomUpdate {
+    if (!isObject(value) || typeof value.message !== 'string') return false;
+    if (value.message === 'ROOM_CLOSED') {
+        return value.data == null || isObject(value.data);
+    }
+    if (
+        value.message === 'ROOM_CREATED' ||
+        value.message === 'PLAYER_JOINED' ||
+        value.message === 'PLAYER_LEFT'
+    ) {
+        if (!isObject(value.data)) return false;
+        const data = value.data;
+        return (
+            (data.roomId == null || typeof data.roomId === 'string') &&
+            (data.roomName == null || typeof data.roomName === 'string') &&
+            Array.isArray(data.players) &&
+            data.players.every((p) => isObject(p) && typeof p.name === 'string')
+        );
+    }
+    return false;
+}
+
 export function getErrorStatusCode(error: unknown): number | undefined {
     if (!isObject(error)) return undefined;
     return typeof error.status === 'number' ? error.status : undefined;
@@ -67,7 +89,9 @@ export function normalizeErrorMessage(message: string | null): string | null {
     if (msg.includes('Cannot deserialize') || msg.includes('JSON parse error') || msg.includes('HttpMessageNotReadable')) {
         return ERROR_INVALID_FORMAT;
     }
-    if (msg.includes('Internal Server Error') || msg.includes('500')) return ERROR_TECHNICAL;
+    if (/internal server error/i.test(msg) || /\b(?:status(?:\s+code)?|http|error)\s*:?\s*500\b/i.test(msg)) {
+        return ERROR_TECHNICAL;
+    }
     if (msg.includes('java.lang') || msg.includes('org.springframework')) return ERROR_SYSTEM;
     const MAX_LENGTH = 80;
     return msg.length > MAX_LENGTH ? msg.substring(0, MAX_LENGTH - 3) + '...' : msg;

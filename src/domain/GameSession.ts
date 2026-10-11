@@ -14,6 +14,7 @@ import {
     isGameStatePayload,
     isGameEndPayload,
     isPrivateStatePayload,
+    isRoomUpdatePayload,
     normalizeErrorMessage,
 } from '../lib/payloads';
 import {
@@ -276,12 +277,10 @@ export class GameSession {
         if (isBetRaiseError) {
             this.updateSnapshot(() => ({
                 error: { message: normalized },
-                notification: RAISE_ERROR_FORBIDDEN_BET,
             }));
+            this.setNotification(RAISE_ERROR_FORBIDDEN_BET);
         } else {
-            this.updateSnapshot(() => ({
-                notification: normalized,
-            }));
+            this.setNotification(normalized);
         }
 
         for (const listener of this.socketErrorListeners) {
@@ -292,6 +291,7 @@ export class GameSession {
     public scheduleRedirect(message: string): void {
         if (this.snapshot.isGameOver) return;
         const cleanMsg = normalizeErrorMessage(message);
+        this.clearNotificationTimer();
         this.updateSnapshot(() => ({
             notification: cleanMsg,
             loadingStatus: cleanMsg || STATUS_RETURNING,
@@ -304,7 +304,12 @@ export class GameSession {
 
     private handleRoomMessage(body: string): void {
         try {
-            const update = JSON.parse(body) as RoomUpdate;
+            const parsed: unknown = JSON.parse(body);
+            if (!isRoomUpdatePayload(parsed)) {
+                logger.warn('Ignoring invalid room update payload:', body);
+                return;
+            }
+            const update: RoomUpdate = parsed;
 
             if (update.message === 'ROOM_CLOSED') {
                 if (this.snapshot.isGameOver) return;
@@ -320,17 +325,17 @@ export class GameSession {
                 update.message === 'PLAYER_JOINED' ||
                 update.message === 'PLAYER_LEFT'
             ) {
-                this.updateSnapshot(() => ({
+                this.updateSnapshot((prev) => ({
                     roomState: {
-                        roomId: update.data.roomId ?? this.auth.roomId,
-                        roomName: update.data.roomName,
+                        roomId: update.data.roomId ?? prev.roomState?.roomId ?? this.auth.roomId,
+                        roomName: update.data.roomName ?? prev.roomState?.roomName,
                         players: update.data.players,
-                        maxPlayers: update.data.maxPlayers,
-                        buyIn: update.data.buyIn,
-                        smallBlind: update.data.smallBlind,
-                        bigBlind: update.data.bigBlind,
-                        canStartGame: update.data.canStartGame,
-                        gameStarted: update.data.gameStarted,
+                        maxPlayers: update.data.maxPlayers ?? prev.roomState?.maxPlayers,
+                        buyIn: update.data.buyIn ?? prev.roomState?.buyIn,
+                        smallBlind: update.data.smallBlind ?? prev.roomState?.smallBlind,
+                        bigBlind: update.data.bigBlind ?? prev.roomState?.bigBlind,
+                        canStartGame: update.data.canStartGame ?? prev.roomState?.canStartGame,
+                        gameStarted: update.data.gameStarted ?? prev.roomState?.gameStarted,
                     },
                 }));
             }
@@ -364,8 +369,9 @@ export class GameSession {
             messageType === 'AUTO_ADVANCE_START' ||
             messageType === 'AUTO_ADVANCE_COMPLETE'
         ) {
-            if (messageText) {
-                this.setNotification(normalizeErrorMessage(messageText));
+            const cleanNotification = messageText?.trim();
+            if (cleanNotification) {
+                this.setNotification(cleanNotification);
             }
             return;
         }
@@ -393,6 +399,7 @@ export class GameSession {
         this.cancelActionLocks();
         this.clearRedirectTimer();
         this.clearShowdownTimers();
+        this.clearNotificationTimer();
 
         const endMsg = normalizeErrorMessage(payload.message ?? GAME_FINISHED_FALLBACK);
         const winnerName = typeof payload.winner === 'string' ? payload.winner : null;
@@ -542,10 +549,13 @@ export class GameSession {
             nextShowdownResult = data;
             this.scheduleShowdownHide(data);
         } else if (data.phase === 'SHOWDOWN') {
-            const currentShowdownResult = previousState?.phase === 'SHOWDOWN' ? previousState : null;
+            const currentShowdownResult =
+                this.snapshot.showdownResult ?? (previousState?.phase === 'SHOWDOWN' ? previousState : null);
             if (currentShowdownResult && currentShowdownResult.winners && currentShowdownResult.winners.length > 0) {
-                const mergedShowdownResult = {
+                const mergedShowdownResult: GameState = {
                     ...currentShowdownResult,
+                    claimWinAvailable: data.claimWinAvailable,
+                    claimWinPlayerName: data.claimWinPlayerName,
                     isReadyCountdownActive: data.isReadyCountdownActive,
                     readyCountdownDeadlineEpochMs: data.readyCountdownDeadlineEpochMs,
                     players: currentShowdownResult.players.map((p) => {
@@ -560,6 +570,7 @@ export class GameSession {
                         };
                     }),
                 };
+                data = mergedShowdownResult;
                 nextShowdown = mergedShowdownResult;
                 nextShowdownResult = mergedShowdownResult;
             } else {
@@ -586,6 +597,7 @@ export class GameSession {
             showdown: nextShowdown,
             showdownResult: nextShowdownResult,
             myPlayerId,
+            claimPending: false,
         }));
     }
 
@@ -672,6 +684,7 @@ export class GameSession {
             }
         }
         this.clearShowdownTimers();
+        this.clearNotificationTimer();
         this.updateSnapshot(() => ({
             gameEndResult: result,
             isGameOver: result !== null,

@@ -14,6 +14,7 @@ vi.mock('../../services/api', async (importOriginal) => {
     return {
         ...actual,
         pokerApi: {
+            getRoomInfo: vi.fn(),
             getGameState: vi.fn(),
             getPrivateState: vi.fn(),
             leaveRoom: vi.fn(),
@@ -49,6 +50,7 @@ describe('useGameWebSocket', () => {
         activeSubscriptions.clear();
         vi.useFakeTimers();
 
+        vi.mocked(pokerApi.getRoomInfo).mockResolvedValue({} as never);
         vi.mocked(pokerApi.getGameState).mockResolvedValue({});
         vi.mocked(pokerApi.getPrivateState).mockResolvedValue({});
 
@@ -283,6 +285,47 @@ describe('useGameWebSocket', () => {
 
         expect(pokerApi.getGameState).not.toHaveBeenCalled();
         expect(pokerApi.getPrivateState).not.toHaveBeenCalled();
+    });
+
+    it('fetches getRoomInfo and updates roomState when WebSocket connects/reconnects while roomState.gameStarted is false', async () => {
+        session.setRoomState({
+            roomId: 'ROOM123',
+            roomName: 'LobbyRoom',
+            players: [{ name: 'TestPlayer', isHost: true }],
+            maxPlayers: 6,
+            buyIn: 1000,
+            smallBlind: 10,
+            bigBlind: 20,
+            canStartGame: false,
+            gameStarted: false,
+        });
+
+        vi.mocked(pokerApi.getRoomInfo).mockResolvedValue({
+            roomId: 'ROOM123',
+            roomName: 'LobbyRoom',
+            players: [
+                { name: 'TestPlayer', isHost: true, joinedAt: '2026-01-01T00:00:00Z' },
+                { name: 'NewOpponent', isHost: false, joinedAt: '2026-01-01T00:00:05Z' },
+            ],
+            currentPlayers: 2,
+            hostName: 'TestPlayer',
+            createdAt: '2026-01-01T00:00:00Z',
+            maxPlayers: 6,
+            buyIn: 1000,
+            smallBlind: 10,
+            bigBlind: 20,
+            canStartGame: true,
+            gameStarted: false,
+        });
+
+        renderHook(() => useGameWebSocket({ onSocketError }), {
+            wrapper: createWrapper(),
+        });
+        await act(async () => { vi.advanceTimersByTime(10); });
+
+        expect(pokerApi.getRoomInfo).toHaveBeenCalledWith('ROOM123', 'test-token');
+        expect(session.getSnapshot().roomState?.players).toHaveLength(2);
+        expect(session.getSnapshot().roomState?.canStartGame).toBe(true);
     });
 
     it('fetches game state and private state on connect when game has started', async () => {

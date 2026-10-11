@@ -79,6 +79,14 @@ describe('lib/game - formatHandRank', () => {
         expect(formatHandRank('FULL_HOUSE', ['10H', '10D', '10C', '9S', '9D'])).toBe('Full House (10s full of 9s)');
         expect(formatHandRank('FULL_HOUSE', ['9H', '9D', '9C', '10S', '10D'])).toBe('Full House (9s full of 10s)');
     });
+
+    it('formats lowercase suits and ranks accurately for pairs and flushes', () => {
+        expect(formatHandRank('ONE_PAIR', ['Ah', 'Ad', 'Ks', 'Qc', 'Jd'])).toBe('One Pair (Aces)');
+        expect(formatHandRank('TWO_PAIR', ['Ah', 'Ad', 'Ks', 'Kd', 'Qc'])).toBe('Two Pair (Aces & Kings)');
+        expect(formatHandRank('FLUSH', ['Ah', 'Kh', '9h', '5h', '2h'])).toBe('Flush, Hearts');
+        expect(formatHandRank('ROYAL_FLUSH', ['Ah', 'Kh', 'Qh', 'Jh', '10h'])).toBe('Royal Flush, Hearts');
+        expect(formatHandRank('STRAIGHT_FLUSH', ['9d', '8d', '7d', '6d', '5d'])).toBe('Straight Flush (9 High, Diamonds)');
+    });
 });
 
 describe('lib/game - formatHandRankShort (seat label ladder)', () => {

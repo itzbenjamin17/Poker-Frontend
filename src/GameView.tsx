@@ -40,6 +40,13 @@ function GameViewInner() {
     } = useGameContext();
 
     const [raiseAmount, setRaiseAmount] = useState('');
+    const [prevTurnPlayerId, setPrevTurnPlayerId] = useState(gameState?.currentPlayerId);
+    if (prevTurnPlayerId !== gameState?.currentPlayerId) {
+        setPrevTurnPlayerId(gameState?.currentPlayerId);
+        if (raiseAmount !== '') {
+            setRaiseAmount('');
+        }
+    }
     const [nowMs, setNowMs] = useState(() => Date.now());
 
     // Table sizing, scale and seat layout are owned by LiveTableStage (measured stage).
@@ -79,7 +86,7 @@ function GameViewInner() {
         return <LoadingView status={loadingStatus} onLeave={onLeave} />;
     }
 
-    if (!gameState) {
+    if (!gameState || !roomState) {
         // Show lobby if room is known but game hasn't started yet
         if (roomState && !roomState.gameStarted) {
             return (

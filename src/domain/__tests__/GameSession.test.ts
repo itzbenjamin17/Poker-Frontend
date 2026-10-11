@@ -162,6 +162,39 @@ describe('GameSession Domain Store', () => {
             clock.tick(3000);
             expect(onLeave).toHaveBeenCalledTimes(1);
         });
+
+        it('ignores malformed room update payloads without corrupting roomState', () => {
+            const { session, transport } = createSession();
+            session.connect();
+
+            transport.simulateMessage('/room/room-123', {
+                message: 'ROOM_CREATED',
+                data: {
+                    roomId: 'room-123',
+                    roomName: 'Valid Room',
+                    players: [{ name: 'Hero', isHost: true }],
+                    gameStarted: false,
+                },
+            });
+
+            const validRoomState = session.getSnapshot().roomState;
+            expect(validRoomState?.roomName).toBe('Valid Room');
+            expect(validRoomState?.players).toEqual([{ name: 'Hero', isHost: true }]);
+
+            // Malformed frame 1: data is null
+            transport.simulateMessage('/room/room-123', {
+                message: 'PLAYER_JOINED',
+                data: null,
+            });
+            expect(session.getSnapshot().roomState).toBe(validRoomState);
+
+            // Malformed frame 2: players is not an array
+            transport.simulateMessage('/room/room-123', {
+                message: 'PLAYER_JOINED',
+                data: { roomId: 'room-123', roomName: 'Bad', players: 'bad' },
+            });
+            expect(session.getSnapshot().roomState).toBe(validRoomState);
+        });
     });
 
     describe('Showdown Countdowns & Controllable Clock Ticks', () => {
@@ -296,6 +329,101 @@ describe('GameSession Domain Store', () => {
             expect(session.getSnapshot().gameState?.phase).toBe('PRE_FLOP');
             expect(session.getSnapshot().showdown).toBeNull();
         });
+
+        it('preserves showdown winners, handRank, bestHand, and holeCards across multiple ready-up updates without winners', () => {
+            const { session, transport } = createSession(new TestClock(10_000));
+            session.connect();
+            transport.simulateStatus('connected');
+
+            // Initial SHOWDOWN with winners, handRank, bestHand, and revealed holeCards
+            transport.simulateMessage('/game/room-123', {
+                phase: 'SHOWDOWN',
+                pot: 600,
+                pots: [600],
+                currentBet: 0,
+                communityCards: ['Ah', 'Ad', 'Kc', '2s', '7d'],
+                maxPlayers: 3,
+                currentPlayerName: '',
+                currentPlayerId: '',
+                winners: ['Alice'],
+                isReadyCountdownActive: true,
+                readyCountdownDeadlineEpochMs: 25_000,
+                players: [
+                    {
+                        id: 'p1',
+                        name: 'Alice',
+                        chips: 1600,
+                        currentBet: 0,
+                        hasFolded: false,
+                        status: 'ACTIVE',
+                        isWinner: true,
+                        holeCards: ['As', 'Kh'],
+                        handRank: 'FULL_HOUSE',
+                        bestHand: ['Ah', 'Ad', 'As', 'Kc', 'Kh'],
+                        isReadyForNextHand: false,
+                    },
+                    {
+                        id: 'p2',
+                        name: 'Bob',
+                        chips: 700,
+                        currentBet: 0,
+                        hasFolded: false,
+                        status: 'ACTIVE',
+                        isWinner: false,
+                        holeCards: ['Qh', 'Qd'],
+                        handRank: 'TWO_PAIR',
+                        bestHand: ['Ah', 'Ad', 'Qh', 'Qd', 'Kc'],
+                        isReadyForNextHand: false,
+                    },
+                ],
+            } as IncomingGameStatePayload);
+
+            // First ready-up update (Alice clicks Ready, winners omitted by backend)
+            transport.simulateMessage('/game/room-123', {
+                phase: 'SHOWDOWN',
+                pot: 0,
+                currentBet: 0,
+                communityCards: ['Ah', 'Ad', 'Kc', '2s', '7d'],
+                maxPlayers: 3,
+                currentPlayerName: '',
+                currentPlayerId: '',
+                isReadyCountdownActive: true,
+                readyCountdownDeadlineEpochMs: 25_000,
+                players: [
+                    { id: 'p1', name: 'Alice', chips: 1600, currentBet: 0, hasFolded: false, status: 'ACTIVE', isReadyForNextHand: true },
+                    { id: 'p2', name: 'Bob', chips: 700, currentBet: 0, hasFolded: false, status: 'ACTIVE', isReadyForNextHand: false },
+                ],
+            } as IncomingGameStatePayload);
+
+            // Second ready-up update (Bob clicks Ready, winners omitted by backend)
+            transport.simulateMessage('/game/room-123', {
+                phase: 'SHOWDOWN',
+                pot: 0,
+                currentBet: 0,
+                communityCards: ['Ah', 'Ad', 'Kc', '2s', '7d'],
+                maxPlayers: 3,
+                currentPlayerName: '',
+                currentPlayerId: '',
+                isReadyCountdownActive: true,
+                readyCountdownDeadlineEpochMs: 25_000,
+                players: [
+                    { id: 'p1', name: 'Alice', chips: 1600, currentBet: 0, hasFolded: false, status: 'ACTIVE', isReadyForNextHand: true },
+                    { id: 'p2', name: 'Bob', chips: 700, currentBet: 0, hasFolded: false, status: 'ACTIVE', isReadyForNextHand: true },
+                ],
+            } as IncomingGameStatePayload);
+
+            const { showdownResult, showdown, gameState } = session.getSnapshot();
+            expect(showdownResult?.winners).toEqual(['Alice']);
+            expect(showdownResult?.pot).toBe(600);
+            expect(showdownResult?.players[0].handRank).toBe('FULL_HOUSE');
+            expect(showdownResult?.players[0].bestHand).toEqual(['Ah', 'Ad', 'As', 'Kc', 'Kh']);
+            expect(showdownResult?.players[0].holeCards).toEqual(['As', 'Kh']);
+            expect(showdownResult?.players[0].isReadyForNextHand).toBe(true);
+            expect(showdownResult?.players[1].holeCards).toEqual(['Qh', 'Qd']);
+            expect(showdownResult?.players[1].isReadyForNextHand).toBe(true);
+            expect(showdown?.winners).toEqual(['Alice']);
+            expect(gameState?.winners).toEqual(['Alice']);
+        });
     });
 
     describe('Action Locks & Disconnection / Error Cancellation', () => {
@@ -424,6 +552,41 @@ describe('GameSession Domain Store', () => {
 
             clock.tick(1);
             expect(session.getSnapshot().notification).toBeNull();
+        });
+
+        it('does not allow an earlier notification timer to overwrite ROOM_CLOSED (HOST_LEFT) notification', () => {
+            const { session, transport, clock } = createSession(new TestClock(1000));
+            session.connect();
+            transport.simulateStatus('connected');
+
+            session.setNotification('Minor toast', 4000);
+            expect(session.getSnapshot().notification).toBe('Minor toast');
+
+            clock.tick(2000);
+
+            transport.simulateMessage('/room/room-123', {
+                message: 'ROOM_CLOSED',
+                data: { roomId: 'room-123' },
+            });
+            expect(session.getSnapshot().notification).toBe(HOST_LEFT);
+
+            // Advance another 2000ms (t=4000ms total, when 'Minor toast' timer would have fired, < 3000ms redirect)
+            clock.tick(2000);
+            expect(session.getSnapshot().notification).toBe(HOST_LEFT);
+        });
+
+        it('does not allow an earlier notification timer to prematurely clear a subsequent handleActionError notification', () => {
+            const { session, clock } = createSession(new TestClock(1000));
+
+            session.setNotification('Minor toast', 4000);
+            clock.tick(2000);
+
+            session.handleActionError('Action rejected by server');
+            expect(session.getSnapshot().notification).toBe('Action rejected by server');
+
+            // Advance 2000ms (when 'Minor toast' 4000ms timer would have expired)
+            clock.tick(2000);
+            expect(session.getSnapshot().notification).toBe('Action rejected by server');
         });
     });
 

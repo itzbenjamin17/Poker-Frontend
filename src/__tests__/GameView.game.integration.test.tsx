@@ -231,5 +231,135 @@ describe('GameView - Game Table Integration', () => {
     expect(within(rivalDetailsPanel).getByText(/folded/i)).toBeInTheDocument()
     expect(within(opponentSeat).queryByText(/small blind/i)).not.toBeInTheDocument()
   })
+
+  it('displays HOST_LEFT status when ROOM_CLOSED arrives during an active hand', async () => {
+    server.use(
+      http.get('/api/room/ROOM123', () => HttpResponse.json({
+        roomId: 'ROOM123',
+        roomName: 'Poker Table',
+        players: [
+          { name: 'TestPlayer', isHost: false },
+          { name: 'Opponent', isHost: true },
+        ],
+        gameStarted: true,
+      })),
+      http.get('/api/game/ROOM123/state', () => HttpResponse.json({
+        gameId: 'ROOM123',
+        phase: 'PRE_FLOP',
+        pot: 30,
+        communityCards: [],
+        currentPlayerId: 'p-1',
+        currentPlayerName: 'TestPlayer',
+        legalActions: ['FOLD', 'CALL'],
+        players: [
+          { id: 'p-1', name: 'TestPlayer', chips: 980, currentBet: 20, status: 'ACTIVE' },
+          { id: 'p-2', name: 'Opponent', chips: 990, currentBet: 10, status: 'ACTIVE' },
+        ],
+      })),
+      http.get('/api/game/ROOM123/private-state', () => HttpResponse.json({
+        playerId: 'p-1',
+        holeCards: ['AS', 'KS'],
+      })),
+    )
+
+    render(<GameView auth={mockAuth} />)
+
+    expect(await screen.findByLabelText('Total Pot')).toBeInTheDocument()
+    await MockStompClient.waitForSubscription('/room/ROOM123')
+
+    await act(async () => {
+      MockStompClient.simulateMessage('/room/ROOM123', {
+        message: 'ROOM_CLOSED',
+        data: { roomId: 'ROOM123' },
+      })
+    })
+
+    expect(await screen.findByText(/Host left the lobby\. Returning to main lobby\.\.\./i)).toBeInTheDocument()
+  })
+
+  it('retains showdown winner announcement and revealed opponent hole cards in the rendered table across multiple ready-up updates', async () => {
+    server.use(
+      http.get('/api/room/ROOM123', () => HttpResponse.json({
+        roomId: 'ROOM123',
+        roomName: 'Poker Table',
+        players: [
+          { name: 'TestPlayer', isHost: true },
+          { name: 'Opponent', isHost: false },
+          { name: 'Rival', isHost: false },
+        ],
+        gameStarted: true,
+      })),
+      http.get('/api/game/ROOM123/state', () => HttpResponse.json({
+        gameId: 'ROOM123',
+        phase: 'SHOWDOWN',
+        pot: 300,
+        communityCards: ['AH', 'KD', 'QC', 'JS', '2C'],
+        currentPlayerId: null,
+        currentPlayerName: null,
+        winners: ['Opponent'],
+        isReadyCountdownActive: true,
+        readyCountdownDeadlineEpochMs: Date.now() + 30000,
+        players: [
+          { id: 'p-1', name: 'TestPlayer', chips: 700, currentBet: 0, status: 'ACTIVE', isReadyForNextHand: false },
+          { id: 'p-2', name: 'Opponent', chips: 1300, currentBet: 0, status: 'ACTIVE', isWinner: true, handRank: 'ONE_PAIR', bestHand: ['AH', 'AD', 'KD', 'QC', 'JS'], holeCards: ['AD', '9S'], isReadyForNextHand: false },
+          { id: 'p-3', name: 'Rival', chips: 1000, currentBet: 0, status: 'ACTIVE', isReadyForNextHand: false },
+        ],
+      })),
+      http.get('/api/game/ROOM123/private-state', () => HttpResponse.json({
+        playerId: 'p-1',
+        holeCards: ['2H', '7D'],
+      })),
+    )
+
+    render(<GameView auth={mockAuth} />)
+
+    expect(await screen.findByRole('region', { name: /round result/i })).toBeInTheDocument()
+    expect(screen.getByText(/Opponent/)).toBeInTheDocument()
+    await MockStompClient.waitForSubscription('/game/ROOM123')
+
+    // First ready-up broadcast without winners or revealed holeCards
+    await act(async () => {
+      MockStompClient.simulateMessage('/game/ROOM123', {
+        gameId: 'ROOM123',
+        phase: 'SHOWDOWN',
+        pot: 0,
+        communityCards: ['AH', 'KD', 'QC', 'JS', '2C'],
+        currentPlayerId: null,
+        currentPlayerName: null,
+        isReadyCountdownActive: true,
+        readyCountdownDeadlineEpochMs: Date.now() + 28000,
+        players: [
+          { id: 'p-1', name: 'TestPlayer', chips: 700, currentBet: 0, status: 'ACTIVE', isReadyForNextHand: true },
+          { id: 'p-2', name: 'Opponent', chips: 1300, currentBet: 0, status: 'ACTIVE', isReadyForNextHand: false },
+          { id: 'p-3', name: 'Rival', chips: 1000, currentBet: 0, status: 'ACTIVE', isReadyForNextHand: false },
+        ],
+      })
+    })
+
+    // Second ready-up broadcast without winners or revealed holeCards
+    await act(async () => {
+      MockStompClient.simulateMessage('/game/ROOM123', {
+        gameId: 'ROOM123',
+        phase: 'SHOWDOWN',
+        pot: 0,
+        communityCards: ['AH', 'KD', 'QC', 'JS', '2C'],
+        currentPlayerId: null,
+        currentPlayerName: null,
+        isReadyCountdownActive: true,
+        readyCountdownDeadlineEpochMs: Date.now() + 26000,
+        players: [
+          { id: 'p-1', name: 'TestPlayer', chips: 700, currentBet: 0, status: 'ACTIVE', isReadyForNextHand: true },
+          { id: 'p-2', name: 'Opponent', chips: 1300, currentBet: 0, status: 'ACTIVE', isReadyForNextHand: true },
+          { id: 'p-3', name: 'Rival', chips: 1000, currentBet: 0, status: 'ACTIVE', isReadyForNextHand: false },
+        ],
+      })
+    })
+
+    const roundResult = screen.getByRole('region', { name: /round result/i })
+    expect(roundResult).toBeInTheDocument()
+    expect(within(roundResult).getByText(/Opponent/)).toBeInTheDocument()
+    const opponentSeat = screen.getByRole('group', { name: /opponent seat/i })
+    expect(within(opponentSeat).getByRole('img', { name: /ace of diamonds/i })).toBeInTheDocument()
+  })
 })
 

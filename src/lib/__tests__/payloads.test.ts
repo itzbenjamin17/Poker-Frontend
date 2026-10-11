@@ -4,6 +4,7 @@ import {
     isGameStatePayload,
     isGameEndPayload,
     isPrivateStatePayload,
+    isRoomUpdatePayload,
     getErrorStatusCode,
     normalizeErrorMessage,
 } from '../payloads';
@@ -127,6 +128,32 @@ describe('lib/payloads - Type Guards and Normalizers', () => {
         });
     });
 
+    describe('isRoomUpdatePayload', () => {
+        it('returns true for valid ROOM_CLOSED and PLAYER_JOINED payloads', () => {
+            expect(isRoomUpdatePayload({ message: 'ROOM_CLOSED' })).toBe(true);
+            expect(isRoomUpdatePayload({ message: 'ROOM_CLOSED', data: { roomId: 'room-1' } })).toBe(true);
+            expect(
+                isRoomUpdatePayload({
+                    message: 'PLAYER_JOINED',
+                    data: {
+                        roomId: 'room-1',
+                        roomName: 'Table 1',
+                        players: [{ name: 'Alice', isHost: true }],
+                    },
+                })
+            ).toBe(true);
+        });
+
+        it('returns false for malformed room update payloads', () => {
+            expect(isRoomUpdatePayload(null)).toBe(false);
+            expect(isRoomUpdatePayload({ message: 'UNKNOWN_EVENT', data: {} })).toBe(false);
+            expect(isRoomUpdatePayload({ message: 'PLAYER_JOINED', data: null })).toBe(false);
+            expect(isRoomUpdatePayload({ message: 'PLAYER_JOINED', data: { players: 'bad' } })).toBe(false);
+            expect(isRoomUpdatePayload({ message: 'PLAYER_JOINED', data: { roomName: 123, players: [] } })).toBe(false);
+            expect(isRoomUpdatePayload({ message: 'PLAYER_JOINED', data: { players: [{ name: 123 }] } })).toBe(false);
+        });
+    });
+
     describe('getErrorStatusCode', () => {
         it('extracts number status code from error object', () => {
             expect(getErrorStatusCode({ status: 404 })).toBe(404);
@@ -155,7 +182,14 @@ describe('lib/payloads - Type Guards and Normalizers', () => {
 
         it('normalizes 500 and internal server errors', () => {
             expect(normalizeErrorMessage('Internal Server Error')).toBe(ERROR_TECHNICAL);
+            expect(normalizeErrorMessage('HTTP 500 Internal Server Error')).toBe(ERROR_TECHNICAL);
             expect(normalizeErrorMessage('Request failed with status code 500')).toBe(ERROR_TECHNICAL);
+        });
+
+        it('does not treat chip amounts containing 500 as server 500 errors', () => {
+            expect(normalizeErrorMessage('Minimum raise is 500 chips')).toBe('Minimum raise is 500 chips');
+            expect(normalizeErrorMessage('Buy-in must be at least 500')).toBe('Buy-in must be at least 500');
+            expect(normalizeErrorMessage('Insufficient chips to call 1500')).toBe('Insufficient chips to call 1500');
         });
 
         it('normalizes internal java / spring stack traces', () => {

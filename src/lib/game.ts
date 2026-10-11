@@ -19,19 +19,20 @@ const suitNames: Record<string, string> = {
 };
 
 export function formatHandRank(handRank?: string, bestHand?: string[]): string | null {
-    if (!handRank || handRank.toUpperCase() === 'NO_HAND') return null;
+    if (!handRank || handRank.trim().toUpperCase() === 'NO_HAND') return null;
     
-    const hr = handRank.toUpperCase();
+    const hr = handRank.trim().toUpperCase().replace(/\s+/g, '_');
     
     if (!bestHand || bestHand.length === 0) {
         return hr.replace(/_/g, ' ');
     }
 
-    const ranks = bestHand.map(c => {
+    const normalizedCards = bestHand.map(c => c.trim().toUpperCase());
+    const ranks = normalizedCards.map(c => {
         const val = c.slice(0, -1);
         return val === '10' ? 'T' : val;
     });
-    const suits = bestHand.map(c => c.slice(-1));
+    const suits = normalizedCards.map(c => c.slice(-1));
     
     const rankCounts: Record<string, number> = {};
     for (const r of ranks) {

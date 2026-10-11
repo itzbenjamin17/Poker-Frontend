@@ -82,16 +82,23 @@ export function useGameDispatcher() {
                 contextDispatch({ type: 'SET_CLAIM_PENDING', payload: true });
                 await pokerApi.claimWin(targetGameId, auth.token);
             } else if (command.type === 'LEAVE_GAME') {
-                try {
-                    if (gameState?.gameId) {
-                        await pokerApi.leaveGame(gameState.gameId, auth.token);
-                    }
-                    await pokerApi.leaveRoom(auth.roomId, auth.token);
-                } catch (err) {
+                const logUnexpectedLeaveError = (op: string, err: unknown) => {
                     const code = getErrorStatusCode(err);
                     if (code !== 404 && code !== 403) {
-                        throw err;
+                        logger.warn(`LEAVE_GAME ${op} failed:`, err);
                     }
+                };
+                if (gameState?.gameId) {
+                    try {
+                        await pokerApi.leaveGame(gameState.gameId, auth.token);
+                    } catch (err) {
+                        logUnexpectedLeaveError('leaveGame', err);
+                    }
+                }
+                try {
+                    await pokerApi.leaveRoom(auth.roomId, auth.token);
+                } catch (err) {
+                    logUnexpectedLeaveError('leaveRoom', err);
                 }
                 clearShowdownTimers();
                 contextDispatch({ type: 'SET_PRIVATE', payload: null });
@@ -110,6 +117,9 @@ export function useGameDispatcher() {
                 return;
             }
         } catch (err) {
+            if (command.type === 'CLAIM_WIN') {
+                contextDispatch({ type: 'SET_CLAIM_PENDING', payload: false });
+            }
             logger.error(`Failed ${command.type}:`, err);
             const msg = normalizeErrorMessage(err instanceof Error ? err.message : 'Operation failed');
             contextDispatch({ type: 'SET_NOTIFICATION', payload: msg });

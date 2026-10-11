@@ -16,4 +16,12 @@ describe('NotificationBanner', () => {
         expect(banner).toHaveAttribute('aria-live', 'assertive')
         expect(screen.getByText('Dealer buttons updated!')).toBeInTheDocument()
     })
+
+    it('immediately removes the alert from the DOM when rerendered with null', () => {
+        const { rerender } = render(<NotificationBanner notification="Temporary alert" />)
+        expect(screen.getByRole('alert')).toBeInTheDocument()
+
+        rerender(<NotificationBanner notification={null} />)
+        expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    })
 })
