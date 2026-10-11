@@ -39,29 +39,22 @@ function GameViewInner() {
         gameEndResult,
     } = useGameContext();
 
-    const [raiseAmount, setRaiseAmount] = useState('');
-    const [prevTurnPlayerId, setPrevTurnPlayerId] = useState(gameState?.currentPlayerId);
-    if (prevTurnPlayerId !== gameState?.currentPlayerId) {
-        setPrevTurnPlayerId(gameState?.currentPlayerId);
-        if (raiseAmount !== '') {
-            setRaiseAmount('');
-        }
-    }
     const [nowMs, setNowMs] = useState(() => Date.now());
 
     // Table sizing, scale and seat layout are owned by LiveTableStage (measured stage).
 
     // ── Disconnect countdown clock ──────────────────────────────────────────────
+    const hasDisconnectedPlayer = Boolean(gameState?.players?.some(p => p.status === 'DISCONNECTED'));
+    const hasReadyCountdown = gameState?.phase === 'SHOWDOWN' && Boolean(gameState?.isReadyCountdownActive);
+
     useEffect(() => {
-        const hasDisconnected = Boolean(gameState?.players.some(p => p.status === 'DISCONNECTED'));
-        const hasReadyCountdown = gameState?.phase === 'SHOWDOWN' && Boolean(gameState.isReadyCountdownActive);
-        if (!hasDisconnected && !hasReadyCountdown) return;
+        if (!hasDisconnectedPlayer && !hasReadyCountdown) return;
 
         const update = () => setNowMs(Date.now());
         update();
         const id = window.setInterval(update, 1000);
         return () => window.clearInterval(id);
-    }, [gameState]);
+    }, [hasDisconnectedPlayer, hasReadyCountdown]);
 
     // ── Session hydration ───────────────────────────────────────────────────────
     useSessionHydration();
@@ -166,17 +159,13 @@ function GameViewInner() {
                 notification={notification}
                 wsStatus={wsStatus}
                 nowMs={nowMs}
-                raiseAmount={raiseAmount}
                 raiseError={dispatcher.error?.message ?? null}
                 onAction={(action, amount) => dispatcher.dispatch({ type: 'PLAY_ACTION', action, amount })}
                 onReady={() => dispatcher.dispatch({ type: 'READY' })}
                 onUnready={() => dispatcher.dispatch({ type: 'UNREADY' })}
                 onClaimWin={() => dispatcher.dispatch({ type: 'CLAIM_WIN' })}
                 onLeaveGame={() => dispatcher.dispatch({ type: 'LEAVE_GAME' })}
-                onRaiseChange={(val) => {
-                    setRaiseAmount(val);
-                    dispatcher.clearError();
-                }}
+                onClearRaiseError={() => dispatcher.clearError()}
                 isActionPending={dispatcher.isPending('PLAY_ACTION') || dispatcher.isPending('READY') || dispatcher.isPending('UNREADY') || dispatcher.isPending('START_GAME') || dispatcher.isPending('CLAIM_WIN') || dispatcher.isPending('LEAVE_GAME')}
                 hasShellHeader={true}
             />
@@ -186,10 +175,12 @@ function GameViewInner() {
 
 // ─── Public export ─────────────────────────────────────────────────────────────
 
-export default function GameView({ auth, onLeave, session }: GameViewProps) {
+export function GameView({ auth, onLeave, session }: GameViewProps) {
     return (
         <GameProvider auth={auth} onLeave={onLeave} session={session}>
             <GameViewInner />
         </GameProvider>
     );
 }
+
+export default GameView;

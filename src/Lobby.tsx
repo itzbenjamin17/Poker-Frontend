@@ -54,8 +54,6 @@ export default function Lobby({
         };
     }, []);
 
-    const loading = isCreating || isJoining;
-
     return (
         <div className="min-h-screen pt-24 pb-32 px-6 flex flex-col items-center justify-center">
             <AnimatePresence>
@@ -103,7 +101,8 @@ export default function Lobby({
                     <CreateRoomForm
                         onAuth={onAuth}
                         onError={setError}
-                        loading={loading}
+                        isSubmitting={isCreating}
+                        disabled={isJoining}
                         setLoading={setIsCreating}
                     />
                 </motion.div>
@@ -117,7 +116,8 @@ export default function Lobby({
                     <JoinRoomForm
                         onAuth={onAuth}
                         onError={setError}
-                        loading={loading}
+                        isSubmitting={isJoining}
+                        disabled={isCreating}
                         setLoading={setIsJoining}
                     />
                 </motion.div>

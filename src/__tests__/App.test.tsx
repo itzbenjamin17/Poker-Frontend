@@ -86,7 +86,7 @@ describe('App', () => {
 
         render(<App />);
 
-        expect(screen.getByTestId('game-view')).toBeInTheDocument();
+        expect(await screen.findByTestId('game-view')).toBeInTheDocument();
         expect(screen.getByText('Game View Component for CardMaster')).toBeInTheDocument();
         expect(screen.queryByTestId('lobby-view')).not.toBeInTheDocument();
 

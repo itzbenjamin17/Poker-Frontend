@@ -103,4 +103,123 @@ describe('OpponentSeats', () => {
         const upperPopover = screen.getByRole('region', { name: 'Player_5 expanded details' });
         expect(upperPopover).toHaveAttribute('data-placement', 'bottom');
     });
+
+    it('displays the opponent full name inside the expanded details region and keeps PlayerPod sr-only announcements outside the toggle button', async () => {
+        const user = userEvent.setup();
+        const tableDimensions = { width: 900, height: 419 };
+        const players: Player[] = [
+            {
+                id: 'p-1',
+                name: 'HeroPlayer',
+                chips: 1000,
+                status: 'ACTIVE',
+                currentBet: 0,
+                hasFolded: false,
+                isReadyForNextHand: false,
+            },
+            {
+                id: 'p-2',
+                name: 'Maximilian_LongName_99',
+                chips: 1250,
+                status: 'FOLDED',
+                currentBet: 40,
+                hasFolded: true,
+                isReadyForNextHand: false,
+            },
+        ];
+        const { result } = renderHook(() => useSeatLayout(tableDimensions, players.length));
+        const tableScale = getTableScale(tableDimensions, players.length);
+
+        render(
+            <OpponentSeats
+                orderedPlayers={players}
+                currentPlayerId="p-2"
+                myPlayerId="p-1"
+                showdown={null}
+                heroIndex={0}
+                getSeatPosition={result.current.getSeatPosition}
+                isCompactTable={result.current.isCompactTable}
+                nowMs={100000}
+                tableScale={tableScale}
+                tableDimensions={tableDimensions}
+            />,
+        );
+
+        const toggleBtn = screen.getByRole('button', { name: 'Maximilian_LongName_99 seat details' });
+        const seatGroup = screen.getByRole('group', { name: 'Maximilian_LongName_99 seat' });
+        const pod = within(seatGroup).getByTestId('player-pod');
+
+        // PlayerPod must NOT be inside the toggle button (which has aria-label that would hide sr-only descendants)
+        expect(toggleBtn).not.toContainElement(pod);
+        expect(within(seatGroup).getByText('Active turn')).toHaveClass('sr-only');
+        expect(within(seatGroup).getByText('Folded')).toHaveClass('sr-only');
+
+        await user.click(toggleBtn);
+        const popover = screen.getByRole('region', { name: 'Maximilian_LongName_99 expanded details' });
+        expect(within(popover).getByText('Player')).toBeInTheDocument();
+        expect(within(popover).getByText('Maximilian_LongName_99')).toBeInTheDocument();
+    });
+
+    it('passes bestHand from showdown to HeroSeat PlayerPod so hero hand rank includes kickers/details', () => {
+        const tableDimensions = { width: 900, height: 419 };
+        const players: Player[] = [
+            {
+                id: 'p-1',
+                name: 'Hero',
+                chips: 1500,
+                status: 'ACTIVE',
+                currentBet: 0,
+                hasFolded: false,
+                isReadyForNextHand: false,
+            },
+            {
+                id: 'p-2',
+                name: 'Villain',
+                chips: 500,
+                status: 'ACTIVE',
+                currentBet: 0,
+                hasFolded: false,
+                isReadyForNextHand: false,
+            },
+        ];
+        const { result } = renderHook(() => useSeatLayout(tableDimensions, players.length));
+        const showdownState: GameState = {
+            gameId: 'g-1',
+            phase: 'SHOWDOWN',
+            pot: 200,
+            communityCards: ['QS', 'JC', 'JH', '3S', '2D'],
+            currentPlayerId: 'p-1',
+            currentPlayerName: 'Hero',
+            currentBet: 0,
+            maxPlayers: 6,
+            players: [
+                {
+                    ...players[0],
+                    isWinner: true,
+                    holeCards: ['QD', 'AH'],
+                    handRank: 'TWO_PAIR',
+                    bestHand: ['QS', 'QD', 'JC', 'JH', 'AH'],
+                },
+                players[1],
+            ],
+        };
+
+        render(
+            <TablePlayers
+                orderedPlayers={players}
+                currentPlayerId="p-1"
+                myPlayerId="p-1"
+                showdown={showdownState}
+                privateState={{ holeCards: ['QD', 'AH'] }}
+                getSeatPosition={result.current.getSeatPosition}
+                isCompactTable={false}
+                nowMs={100000}
+                tableScale={result.current.tableScale}
+                tableDimensions={tableDimensions}
+            />,
+        );
+
+        const heroSeat = screen.getByTestId('hero-seat');
+        expect(within(heroSeat).getByTestId('seat-hand-rank')).toHaveTextContent('Two Pair (Queens & Jacks)');
+    });
 });

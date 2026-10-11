@@ -11,8 +11,16 @@ export const NAV_TABLES = 'Tables';
 // ─── Auth / Session ───────────────────────────────────────────────────────────
 export const AUTH_KEY = 'poker-auth';
 export const SESSION_RESTORING = 'Restoring your seat...';
+export const SESSION_RESTORE_FAILED = "Your session couldn't be restored.";
 export const SESSION_EXPIRED = 'Session expired. Returning to lobby...';
 export const SESSION_SEAT_GONE = 'Your seat is no longer active. Returning to lobby...';
+export const BTN_RETURN_TO_LOBBY = 'RETURN TO LOBBY';
+
+// ─── Error Boundary ───────────────────────────────────────────────────────────
+export const ERROR_BOUNDARY_HEADING = 'Something went wrong';
+export const ERROR_BOUNDARY_MESSAGE = 'An unexpected application error occurred.';
+export const BTN_TRY_AGAIN = 'Try Again';
+export const BTN_RELOAD = 'Reload';
 
 // ─── Connection ───────────────────────────────────────────────────────────────
 export const STATUS_CONNECTING = 'Connecting...';
@@ -106,8 +114,22 @@ export const RAISE_ERROR_FORBIDDEN_BET = 'That bet size is not allowed. Adjust t
 // ─── Raise validation ────────────────────────────────────────────────────────
 export const RAISE_VALIDATION_WHOLE_NUMBER = 'Enter a whole number.';
 export const RAISE_VALIDATION_POSITIVE = 'Amount must be greater than 0.';
-export const RAISE_VALIDATION_BET_MIN = 'Bet amount must be at least 1 chip.';
 export const RAISE_VALIDATION_MAX = 'Amount cannot exceed 10,000,000 chips.';
+export const formatBetMinError = (minBetAmount: number) => `Bet amount must be at least ${minBetAmount.toLocaleString()}.`;
+export const formatRaiseMinError = (minRaiseAmount: number) => `Minimum raise is ${minRaiseAmount.toLocaleString()}.`;
+export const formatAvailableChipsError = (availableChips: number) => `You only have ${availableChips.toLocaleString()}.`;
+
+// ─── Lobby validation & seat labels ──────────────────────────────────────────
+export const LABEL_PLAYER = 'Player';
+export const VALIDATION_ROOM_NAME_REQUIRED = 'Room name is required.';
+export const VALIDATION_PLAYER_ALIAS_REQUIRED = 'Player alias is required.';
+export const VALIDATION_BIG_BLIND_MIN_RATIO = 'Big blind must be at least 2× the small blind.';
+export const VALIDATION_BUY_IN_MIN_BIG_BLIND = 'Buy-in must be at least the big blind amount.';
+export const formatRoomNameMaxError = (max: number) => `Room name must be at most ${max} characters.`;
+export const formatPlayerAliasMaxError = (max: number) => `Alias must be at most ${max} characters.`;
+export const formatSmallBlindRangeError = (min: number, max: number) => `Small blind must be between ${min} and ${max.toLocaleString()}.`;
+export const formatBigBlindRangeError = (min: number, max: number) => `Big blind must be between ${min} and ${max.toLocaleString()}.`;
+export const formatBuyInRangeError = (min: number, max: number) => `Buy-in must be between $${min} and $${max.toLocaleString()}.`;
 
 // ─── Error normalizer fallbacks ───────────────────────────────────────────────
 export const ERROR_INVALID_FORMAT = 'Invalid request format. Please try again.';

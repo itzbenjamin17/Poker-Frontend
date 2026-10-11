@@ -1,8 +1,11 @@
+import { Suspense, lazy } from 'react';
 import Lobby from './Lobby';
-import GameView from './GameView';
 import { ErrorBoundary } from './components/ErrorBoundary';
-
+import { LoadingView } from './components/LoadingView';
+import { SESSION_RESTORING } from './constants/strings';
 import { useAuthSession } from './hooks/useAuthSession';
+
+const GameView = lazy(() => import('./GameView'));
 
 export default function App() {
     const { auth, setAuth, clearAuth, authError, clearAuthError } = useAuthSession();
@@ -23,7 +26,7 @@ export default function App() {
                 </nav>
             )}
 
-            <ErrorBoundary>
+            <ErrorBoundary onReset={clearAuth}>
                 {!auth ? (
                     <Lobby
                         onAuth={setAuth}
@@ -31,7 +34,9 @@ export default function App() {
                         onClearInitialError={clearAuthError}
                     />
                 ) : (
-                    <GameView auth={auth} onLeave={clearAuth} />
+                    <Suspense fallback={<LoadingView status={SESSION_RESTORING} onLeave={clearAuth} />}>
+                        <GameView auth={auth} onLeave={clearAuth} />
+                    </Suspense>
                 )}
             </ErrorBoundary>
         </div>

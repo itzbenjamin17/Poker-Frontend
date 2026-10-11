@@ -39,6 +39,42 @@ describe('TablePots', () => {
         expect(screen.getByText('2,000')).toBeInTheDocument();
         expect(screen.getByText('RIVER')).toBeInTheDocument();
     });
+
+    it('resets side-pot view back to main pot when a new hand starts with a single pot', async () => {
+        const user = userEvent.setup();
+        const { rerender } = render(
+            <TablePots
+                displayedPot={3500}
+                mainPot={2000}
+                sidePots={[1500]}
+                uncalledAmount={0}
+                phase="RIVER"
+            />
+        );
+
+        // Open side pots view during multi-pot hand
+        const sidePotToggle = screen.getByTestId('side-pot-chip');
+        expect(sidePotToggle).toHaveAttribute('aria-expanded', 'false');
+        await user.click(sidePotToggle);
+
+        expect(screen.getByText(`${LABEL_SIDE_POT_PREFIX} 1`)).toBeInTheDocument();
+        expect(screen.queryByTestId('table-pot')).not.toBeInTheDocument();
+
+        // Next hand begins with a single pot (no side pots, no uncalled amount)
+        rerender(
+            <TablePots
+                displayedPot={30}
+                mainPot={30}
+                sidePots={[]}
+                uncalledAmount={0}
+                phase="PRE_FLOP"
+            />
+        );
+
+        expect(screen.getByTestId('table-pot')).toBeInTheDocument();
+        expect(screen.getByLabelText('Total Pot')).toHaveTextContent('30');
+        expect(screen.queryByRole('button', { name: /hide pot details/i })).not.toBeInTheDocument();
+    });
 });
 
 describe('PotBreakdown', () => {

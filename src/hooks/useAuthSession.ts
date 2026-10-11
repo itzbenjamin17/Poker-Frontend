@@ -1,9 +1,8 @@
 import { useState, useCallback, useEffect } from 'react';
 import { logger } from '../security/logger';
 import { isJwtValid } from '../services/api';
+import { AUTH_KEY, SESSION_RESTORE_FAILED } from '../constants/strings';
 import type { AuthResponse } from '../types';
-
-const AUTH_KEY = 'poker-auth';
 
 /** Validate that a parsed auth object has all required fields. */
 function isValidAuth(obj: unknown): obj is AuthResponse {
@@ -16,54 +15,77 @@ function isValidAuth(obj: unknown): obj is AuthResponse {
     );
 }
 
-
-let initialAuthError: string | null = null;
-
-function loadAuthFromStorage(): AuthResponse | null {
-    const saved = localStorage.getItem(AUTH_KEY);
-    if (!saved) return null;
+function safeGetStorageItem(key: string): string | null {
     try {
-        const parsed = JSON.parse(saved);
-        if (!isValidAuth(parsed)) {
-            logger.warn('Invalid auth shape in localStorage — clearing.');
-            localStorage.removeItem(AUTH_KEY);
-            initialAuthError = "Your session couldn't be restored.";
-            return null;
-        }
-        if (!isJwtValid(parsed.token)) {
-            logger.warn('Stored JWT is expired — clearing session.');
-            localStorage.removeItem(AUTH_KEY);
-            initialAuthError = "Your session couldn't be restored.";
-            return null;
-        }
-        return parsed;
+        return localStorage.getItem(key);
     } catch (e) {
-        logger.error('Failed to parse saved auth:', e);
-        localStorage.removeItem(AUTH_KEY);
-        initialAuthError = "Your session couldn't be restored.";
+        logger.warn('Failed to read from localStorage:', e);
         return null;
     }
 }
 
+function safeSetStorageItem(key: string, value: string): void {
+    try {
+        localStorage.setItem(key, value);
+    } catch (e) {
+        logger.warn('Failed to write to localStorage:', e);
+    }
+}
+
+function safeRemoveStorageItem(key: string): void {
+    try {
+        localStorage.removeItem(key);
+    } catch (e) {
+        logger.warn('Failed to remove from localStorage:', e);
+    }
+}
+
+function loadAuthStateFromStorage(): { auth: AuthResponse | null; authError: string | null } {
+    const saved = safeGetStorageItem(AUTH_KEY);
+    if (!saved) return { auth: null, authError: null };
+    try {
+        const parsed = JSON.parse(saved);
+        if (!isValidAuth(parsed)) {
+            logger.warn('Invalid auth shape in localStorage — clearing.');
+            safeRemoveStorageItem(AUTH_KEY);
+            return { auth: null, authError: SESSION_RESTORE_FAILED };
+        }
+        if (!isJwtValid(parsed.token)) {
+            logger.warn('Stored JWT is expired — clearing session.');
+            safeRemoveStorageItem(AUTH_KEY);
+            return { auth: null, authError: SESSION_RESTORE_FAILED };
+        }
+        return { auth: parsed, authError: null };
+    } catch (e) {
+        logger.error('Failed to parse saved auth:', e);
+        safeRemoveStorageItem(AUTH_KEY);
+        return { auth: null, authError: SESSION_RESTORE_FAILED };
+    }
+}
+
 export function useAuthSession() {
-    const [auth, setAuthState] = useState<AuthResponse | null>(loadAuthFromStorage);
-    const [authError, setAuthError] = useState<string | null>(initialAuthError);
+    const [sessionState, setSessionState] = useState(loadAuthStateFromStorage);
 
     const setAuth = useCallback((data: AuthResponse) => {
-        setAuthState(data);
-        localStorage.setItem(AUTH_KEY, JSON.stringify(data));
+        setSessionState((prev) => ({ ...prev, auth: data }));
+        safeSetStorageItem(AUTH_KEY, JSON.stringify(data));
     }, []);
 
     const clearAuth = useCallback(() => {
-        setAuthState(null);
-        localStorage.removeItem(AUTH_KEY);
+        setSessionState((prev) => ({ ...prev, auth: null }));
+        safeRemoveStorageItem(AUTH_KEY);
+    }, []);
+
+    const clearAuthError = useCallback(() => {
+        setSessionState((prev) => ({ ...prev, authError: null }));
     }, []);
 
     // Listen for cross-tab changes and global expiry events
     useEffect(() => {
         const handleStorage = (e: StorageEvent) => {
             if (e.key === AUTH_KEY) {
-                setAuthState(loadAuthFromStorage());
+                const next = loadAuthStateFromStorage();
+                setSessionState((prev) => ({ ...prev, auth: next.auth }));
             }
         };
         const handleAuthExpired = () => {
@@ -78,5 +100,11 @@ export function useAuthSession() {
         };
     }, [clearAuth]);
 
-    return { auth, setAuth, clearAuth, authError, clearAuthError: () => setAuthError(null) };
+    return {
+        auth: sessionState.auth,
+        setAuth,
+        clearAuth,
+        authError: sessionState.authError,
+        clearAuthError,
+    };
 }

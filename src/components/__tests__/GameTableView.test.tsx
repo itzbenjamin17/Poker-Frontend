@@ -114,6 +114,30 @@ describe('GameTableView', () => {
 
             expect(screen.getByText(`${WAITING_RECONNECT_PREFIX}Villain${WAITING_RECONNECT_SUFFIX}`)).toBeInTheDocument();
         });
+
+        it('renders the disconnected opponent name (not Hero) in the reconnect banner when Hero is the active turn player', () => {
+            const disconnectedOpponent: Player = {
+                ...opponentPlayer,
+                status: 'DISCONNECTED',
+            };
+            const stateWithHeroTurnAndDisconnectedVillain: GameState = {
+                ...mockGameState,
+                currentPlayerId: 'p-1',
+                currentPlayerName: 'Hero',
+                players: [defaultPlayer, disconnectedOpponent],
+            };
+
+            render(
+                <GameTableView
+                    {...defaultProps}
+                    gameState={stateWithHeroTurnAndDisconnectedVillain}
+                    isCompactTable={false}
+                />
+            );
+
+            expect(screen.getByText(`${WAITING_RECONNECT_PREFIX}Villain${WAITING_RECONNECT_SUFFIX}`)).toBeInTheDocument();
+            expect(screen.queryByText(`${WAITING_RECONNECT_PREFIX}Hero${WAITING_RECONNECT_SUFFIX}`)).not.toBeInTheDocument();
+        });
     });
 
     describe('Short-viewport chrome', () => {

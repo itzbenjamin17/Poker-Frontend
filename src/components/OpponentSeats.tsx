@@ -16,6 +16,7 @@ import {
 } from '../lib/tableGeometry';
 import type { AvatarSize, TableDimensions, TableScale } from '../lib/tableGeometry';
 import type { Player, SeatPosition, GameState } from '../types';
+import { LABEL_PLAYER } from '../constants/strings';
 
 /** Narrowest expanded panel (px); 176px at scale 1 would be unreadable at the scale floor. */
 const MIN_PANEL_WIDTH_PX = 120;
@@ -142,14 +143,7 @@ export function OpponentSeats({
                         )}
                         style={{ left: `${seat.left}%`, top: `${seat.top}%` }}
                     >
-                        <button
-                            type="button"
-                            aria-label={`${p.name} seat details`}
-                            aria-expanded={isExpanded}
-                            aria-controls={`opponent-seat-details-${playerKey}`}
-                            onClick={() => setExpandedOpponentId((current) => current === playerKey ? null : playerKey)}
-                            className="rounded-full text-left outline-none focus-visible:ring-2 focus-visible:ring-emerald-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
-                        >
+                        <div className="relative">
                             <PlayerPod
                                 player={p}
                                 isCurrent={currentPlayerId === p.id}
@@ -169,7 +163,15 @@ export function OpponentSeats({
                                 handRankTier={labelTier}
                                 handRankPlacement={labelUnderCards ? 'external' : 'details'}
                             />
-                        </button>
+                            <button
+                                type="button"
+                                aria-label={`${p.name} seat details`}
+                                aria-expanded={isExpanded}
+                                aria-controls={`opponent-seat-details-${playerKey}`}
+                                onClick={() => setExpandedOpponentId((current) => current === playerKey ? null : playerKey)}
+                                className="absolute inset-0 z-30 rounded-full text-left cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-emerald-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
+                            />
+                        </div>
 
                         {canRenderCards && (
                             <div
@@ -296,6 +298,10 @@ export function OpponentSeats({
                                     className="grid grid-cols-2 uppercase tracking-[0.12em]"
                                     style={{ gap: `${Math.round(spacing * 8)}px`, fontSize: `${panelFont}px` }}
                                 >
+                                    <div className="col-span-2">
+                                        <dt className="text-zinc-500">{LABEL_PLAYER}</dt>
+                                        <dd style={ddStyle} className="font-bold text-white break-words normal-case">{p.name}</dd>
+                                    </div>
                                     <div>
                                         <dt className="text-zinc-500">Stack</dt>
                                         <dd style={ddStyle} className="font-bold text-gold-secondary">{p.chips.toLocaleString()}</dd>

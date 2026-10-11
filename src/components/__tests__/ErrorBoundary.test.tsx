@@ -56,11 +56,12 @@ describe('ErrorBoundary', () => {
         spyConsole.mockRestore();
     });
 
-    test('clicking Try Again resets the error state', () => {
+    test('clicking Try Again invokes onReset and resets the error state', () => {
         const spyConsole = vi.spyOn(console, 'error').mockImplementation(() => {});
+        const onReset = vi.fn();
 
         const { rerender } = render(
-            <ErrorBoundary>
+            <ErrorBoundary onReset={onReset}>
                 <ThrowingComponent shouldThrow={true} />
             </ErrorBoundary>
         );
@@ -71,13 +72,14 @@ describe('ErrorBoundary', () => {
 
         // Rerender with component fixed (shouldThrow = false)
         rerender(
-            <ErrorBoundary>
+            <ErrorBoundary onReset={onReset}>
                 <ThrowingComponent shouldThrow={false} />
             </ErrorBoundary>
         );
 
         fireEvent.click(tryAgainBtn);
 
+        expect(onReset).toHaveBeenCalledTimes(1);
         expect(screen.queryByText('Something went wrong')).not.toBeInTheDocument();
         expect(screen.getByText('Working Fine')).toBeInTheDocument();
 

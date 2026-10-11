@@ -10,33 +10,39 @@ import {
     BTN_JOINING,
     ERROR_JOIN_FALLBACK,
 } from '../../constants/strings';
-import { VALIDATION } from './validation';
+import { VALIDATION, validateJoin } from './validation';
 import type { AuthResponse } from '../../types';
 
 interface JoinRoomFormProps {
     onAuth: (data: AuthResponse) => void;
     onError: (msg: string | null) => void;
-    loading: boolean;
+    isSubmitting?: boolean;
+    loading?: boolean;
+    disabled?: boolean;
     setLoading: (loading: boolean) => void;
 }
 
-export function JoinRoomForm({ onAuth, onError, loading, setLoading }: JoinRoomFormProps) {
+export function JoinRoomForm({ onAuth, onError, isSubmitting, loading = false, disabled = false, setLoading }: JoinRoomFormProps) {
     const [joinData, setJoinData] = useState({
         roomName: '',
         playerName: '',
     });
 
+    const submitting = isSubmitting ?? loading;
+    const isDisabled = submitting || disabled;
+
     const handleJoin = async (e: React.FormEvent) => {
         e.preventDefault();
         onError(null);
 
+        const validationError = validateJoin(joinData);
+        if (validationError) {
+            onError(validationError);
+            return;
+        }
+
         const roomName = joinData.roomName.trim();
         const playerName = joinData.playerName.trim();
-
-        if (!roomName) { onError('Room name is required.'); return; }
-        if (roomName.length > VALIDATION.roomName.max) { onError(`Room name must be at most ${VALIDATION.roomName.max} characters.`); return; }
-        if (!playerName) { onError('Player alias is required.'); return; }
-        if (playerName.length > VALIDATION.playerName.max) { onError(`Alias must be at most ${VALIDATION.playerName.max} characters.`); return; }
 
         setLoading(true);
         try {
@@ -61,7 +67,7 @@ export function JoinRoomForm({ onAuth, onError, loading, setLoading }: JoinRoomF
                     <Key aria-hidden="true" className="text-gold-secondary/20 w-10 h-10" />
                 </div>
 
-                <form onSubmit={handleJoin} className="space-y-6">
+                <form onSubmit={handleJoin} noValidate className="space-y-6">
                     <Input
                         label="Room Name"
                         placeholder="Enter Room Name"
@@ -82,9 +88,9 @@ export function JoinRoomForm({ onAuth, onError, loading, setLoading }: JoinRoomF
                         size="xl"
                         className="w-full"
                         type="submit"
-                        disabled={loading}
+                        disabled={isDisabled}
                     >
-                        {loading ? BTN_JOINING : BTN_JOIN}
+                        {submitting ? BTN_JOINING : BTN_JOIN}
                         <ArrowRight aria-hidden="true" className="w-5 h-5 ml-2" />
                     </Button>
                 </form>

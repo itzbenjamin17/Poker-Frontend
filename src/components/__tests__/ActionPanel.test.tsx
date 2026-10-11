@@ -166,7 +166,7 @@ describe('ActionPanel', () => {
         });
 
         await user.click(screen.getByRole('button', { name: /^raise$/i }));
-        expect(screen.getByText(/You only have 100/i)).toBeInTheDocument();
+        expect(screen.getByRole('alert')).toHaveTextContent('You only have 100.');
 
         rerender(
             <ActionPanel
@@ -187,7 +187,7 @@ describe('ActionPanel', () => {
             />,
         );
         await user.click(screen.getByRole('button', { name: /^raise$/i }));
-        expect(screen.getByText(/Minimum raise is 11/i)).toBeInTheDocument();
+        expect(screen.getByRole('alert')).toHaveTextContent('Minimum raise is 11.');
     });
 
     it('triggers onAction callback correctly when clicked', async () => {

@@ -84,6 +84,10 @@ export function TablePots({
 }: TablePotsProps) {
     const [viewingSidePots, setViewingSidePots] = useState(false);
     const hasMultiplePots = sidePots.length > 0 || uncalledAmount > 0;
+    if (!hasMultiplePots && viewingSidePots) {
+        setViewingSidePots(false);
+    }
+    const isViewingSidePots = viewingSidePots && hasMultiplePots;
     
     // Base sizes that will be multiplied by scale
     const baseIconSize = 16;
@@ -112,7 +116,7 @@ export function TablePots({
                 style={{ gap: `${scale * 6}px` }}
             >
                 
-                {!viewingSidePots ? (
+                {!isViewingSidePots ? (
                     <>
                         {/* Main/Displayed Pot */}
                         <div 

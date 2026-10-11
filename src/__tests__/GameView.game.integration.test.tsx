@@ -361,5 +361,134 @@ describe('GameView - Game Table Integration', () => {
     const opponentSeat = screen.getByRole('group', { name: /opponent seat/i })
     expect(within(opponentSeat).getByRole('img', { name: /ace of diamonds/i })).toBeInTheDocument()
   })
+
+  it('does not tear down and recreate the 1s countdown interval on every WebSocket frame when hasDisconnectedPlayer stays true', async () => {
+    server.use(
+      http.get('/api/room/ROOM123', () => HttpResponse.json({
+        roomId: 'ROOM123',
+        roomName: 'Poker Table',
+        players: [
+          { name: 'TestPlayer', isHost: true },
+          { name: 'Opponent', isHost: false },
+          { name: 'DisconnectedGuy', isHost: false },
+        ],
+        gameStarted: true,
+      })),
+      http.get('/api/game/ROOM123/state', () => HttpResponse.json({
+        gameId: 'ROOM123',
+        phase: 'PRE_FLOP',
+        pot: 30,
+        communityCards: [],
+        currentPlayerId: 'p-1',
+        currentPlayerName: 'TestPlayer',
+        legalActions: ['FOLD', 'CHECK', 'RAISE'],
+        players: [
+          { id: 'p-1', name: 'TestPlayer', chips: 980, currentBet: 20, status: 'ACTIVE' },
+          { id: 'p-2', name: 'Opponent', chips: 980, currentBet: 20, status: 'ACTIVE' },
+          { id: 'p-3', name: 'DisconnectedGuy', chips: 990, currentBet: 10, status: 'DISCONNECTED', disconnectDeadlineEpochMs: Date.now() + 60000 },
+        ],
+      })),
+      http.get('/api/game/ROOM123/private-state', () => HttpResponse.json({
+        playerId: 'p-1',
+        holeCards: ['AS', 'KS'],
+      })),
+    )
+
+    render(<GameView auth={mockAuth} />)
+    expect(await screen.findByLabelText('Total Pot')).toBeInTheDocument()
+    await MockStompClient.waitForSubscription('/game/ROOM123')
+
+    const setIntervalSpy = vi.spyOn(window, 'setInterval')
+    try {
+      setIntervalSpy.mockClear()
+
+      // Incoming frame with a new players array reference, but DisconnectedGuy is still DISCONNECTED
+      await act(async () => {
+        MockStompClient.simulateMessage('/game/ROOM123', {
+          gameId: 'ROOM123',
+          phase: 'FLOP',
+          pot: 50,
+          communityCards: ['2C', '7D', '9H'],
+          currentPlayerId: 'p-2',
+          currentPlayerName: 'Opponent',
+          players: [
+            { id: 'p-1', name: 'TestPlayer', chips: 970, currentBet: 0, status: 'ACTIVE' },
+            { id: 'p-2', name: 'Opponent', chips: 970, currentBet: 0, status: 'ACTIVE' },
+            { id: 'p-3', name: 'DisconnectedGuy', chips: 990, currentBet: 0, status: 'DISCONNECTED', disconnectDeadlineEpochMs: Date.now() + 58000 },
+          ],
+        })
+      })
+
+      expect(setIntervalSpy).not.toHaveBeenCalledWith(expect.any(Function), 1000)
+    } finally {
+      setIntervalSpy.mockRestore()
+    }
+  })
+
+  it('resets raiseAmount when phase changes even if currentPlayerId remains the local player', async () => {
+    const user = userEvent.setup()
+
+    server.use(
+      http.get('/api/room/ROOM123', () => HttpResponse.json({
+        roomId: 'ROOM123',
+        roomName: 'Poker Table',
+        bigBlind: 20,
+        players: [
+          { name: 'TestPlayer', isHost: true },
+          { name: 'Opponent', isHost: false },
+        ],
+        gameStarted: true,
+      })),
+      http.get('/api/game/ROOM123/state', () => HttpResponse.json({
+        gameId: 'ROOM123',
+        phase: 'PRE_FLOP',
+        pot: 40,
+        currentBet: 20,
+        communityCards: [],
+        currentPlayerId: 'p-1',
+        currentPlayerName: 'TestPlayer',
+        legalActions: ['FOLD', 'CHECK', 'RAISE'],
+        players: [
+          { id: 'p-1', name: 'TestPlayer', chips: 980, currentBet: 20, status: 'ACTIVE' },
+          { id: 'p-2', name: 'Opponent', chips: 980, currentBet: 20, status: 'ACTIVE' },
+        ],
+      })),
+      http.get('/api/game/ROOM123/private-state', () => HttpResponse.json({
+        playerId: 'p-1',
+        holeCards: ['AS', 'KS'],
+      })),
+    )
+
+    render(<GameView auth={mockAuth} />)
+    expect(await screen.findByLabelText('Total Pot')).toBeInTheDocument()
+    await MockStompClient.waitForSubscription('/game/ROOM123')
+
+    // Open Raise drawer and select MAX (980)
+    await user.click(await screen.findByRole('button', { name: /^raise$/i }))
+    await user.click(screen.getByRole('button', { name: /^max$/i }))
+    expect(screen.getByLabelText(/raise amount/i)).toHaveValue('980')
+
+    // Phase advances to FLOP and it is still p-1's turn first to act
+    await act(async () => {
+      MockStompClient.simulateMessage('/game/ROOM123', {
+        gameId: 'ROOM123',
+        phase: 'FLOP',
+        pot: 40,
+        currentBet: 0,
+        communityCards: ['2C', '7D', '9H'],
+        currentPlayerId: 'p-1',
+        currentPlayerName: 'TestPlayer',
+        legalActions: ['FOLD', 'CHECK', 'BET'],
+        players: [
+          { id: 'p-1', name: 'TestPlayer', chips: 980, currentBet: 0, status: 'ACTIVE' },
+          { id: 'p-2', name: 'Opponent', chips: 980, currentBet: 0, status: 'ACTIVE' },
+        ],
+      })
+    })
+
+    // Open Bet drawer on FLOP: raiseAmount should have reset to default minBet (20), not stale 980
+    await user.click(await screen.findByRole('button', { name: /^bet$/i }))
+    expect(screen.getByLabelText(/raise amount/i)).toHaveValue('20')
+  })
 })
 

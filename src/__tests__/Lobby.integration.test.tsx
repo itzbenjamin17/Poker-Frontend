@@ -124,4 +124,105 @@ describe('Lobby Integration', () => {
       expect(screen.getByText(/Buy-in must be at least/i)).toBeInTheDocument()
     })
   })
+
+  it('allows clearing Small Blind, Big Blind, and Buy-In with Backspace and submitting newly typed numbers', async () => {
+    const handleAuth = vi.fn()
+    const user = userEvent.setup()
+    let submittedPayload: Record<string, unknown> | null = null
+
+    server.use(
+      http.post('/api/room/create', async ({ request }) => {
+        submittedPayload = (await request.json()) as Record<string, unknown>
+        return HttpResponse.json({
+          message: 'Room created successfully',
+          data: {
+            token: 'mock-jwt-token',
+            playerName: String(submittedPayload.playerName),
+            roomId: 'ABCD',
+          },
+        })
+      })
+    )
+
+    render(<Lobby onAuth={handleAuth} />)
+
+    const createRegion = screen.getByRole('region', { name: /create table/i })
+    const { getByLabelText, getByRole } = within(createRegion)
+
+    const roomInput = getByLabelText(/room name/i)
+    const playerInput = getByLabelText(/player alias/i)
+    const smallBlindInput = getByLabelText(/small blind/i) as HTMLInputElement
+    const bigBlindInput = getByLabelText(/big blind/i) as HTMLInputElement
+    const buyInInput = getByLabelText(/buy-in amount/i) as HTMLInputElement
+
+    await user.type(roomInput, 'ClearTestRoom')
+    await user.type(playerInput, 'BackspaceUser')
+
+    await user.clear(smallBlindInput)
+    expect(smallBlindInput.value).toBe('')
+    await user.type(smallBlindInput, '25')
+
+    await user.clear(bigBlindInput)
+    expect(bigBlindInput.value).toBe('')
+    await user.type(bigBlindInput, '50')
+
+    await user.clear(buyInInput)
+    expect(buyInInput.value).toBe('')
+    await user.type(buyInInput, '2000')
+
+    await user.click(getByRole('button', { name: /create game/i }))
+
+    await waitFor(() => {
+      expect(submittedPayload).toEqual({
+        roomName: 'ClearTestRoom',
+        playerName: 'BackspaceUser',
+        maxPlayers: 6,
+        smallBlind: 25,
+        bigBlind: 50,
+        buyIn: 2000,
+      })
+    })
+  })
+
+  it('keeps Create button text as CREATE GAME (disabled) while joinRoom is pending', async () => {
+    const user = userEvent.setup()
+    let resolveJoin!: () => void
+
+    server.use(
+      http.post('/api/room/join', async ({ request }) => {
+        const { playerName, roomName } = (await request.json()) as { playerName: string; roomName: string }
+        await new Promise<void>((resolve) => {
+          resolveJoin = resolve
+        })
+        return HttpResponse.json({
+          message: 'Successfully joined room',
+          data: {
+            token: 'mock-jwt-token',
+            playerName,
+            roomId: roomName,
+          },
+        })
+      })
+    )
+
+    render(<Lobby onAuth={vi.fn()} />)
+
+    const quickJoinRegion = screen.getByRole('region', { name: /quick join/i })
+    const createRegion = screen.getByRole('region', { name: /create table/i })
+
+    await user.type(within(quickJoinRegion).getByLabelText(/room name/i), 'POKER123')
+    await user.type(within(quickJoinRegion).getByLabelText(/player alias/i), 'Joiner')
+
+    await user.click(within(quickJoinRegion).getByRole('button', { name: /join game/i }))
+
+    // Join button shows JOINING..., Create button remains CREATE GAME (disabled, not CREATING...)
+    const joinBtn = await within(quickJoinRegion).findByRole('button', { name: /joining\.\.\./i })
+    expect(joinBtn).toBeDisabled()
+
+    const createBtn = within(createRegion).getByRole('button', { name: /create game/i })
+    expect(createBtn).toBeDisabled()
+    expect(within(createRegion).queryByRole('button', { name: /creating\.\.\./i })).not.toBeInTheDocument()
+
+    resolveJoin()
+  })
 })

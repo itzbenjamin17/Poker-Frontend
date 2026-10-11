@@ -79,7 +79,8 @@ export function HeroSeat({
                 scale={avatarScale}
                 textScale={tableScale.text}
                 detailsPlacement="left"
-                handRank={showdownPlayer?.handRank}
+                handRank={showdownPlayer?.handRank ?? player.handRank}
+                bestHand={showdownPlayer?.bestHand ?? player.bestHand}
             />
 
             {canRenderCards && (

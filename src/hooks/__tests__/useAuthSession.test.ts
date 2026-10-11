@@ -156,4 +156,65 @@ describe('useAuthSession', () => {
         expect(result.current.auth).toBeNull();
         expect(localStorage.getItem('poker-auth')).toBeNull();
     });
+
+    it('does not leak authError from an expired token on mount 1 into mount 2 after storage is cleared', async () => {
+        const expiredAuth = {
+            token: createJwt({ exp: Math.floor(Date.now() / 1000) - 3600 }),
+            roomId: 'room-1',
+            playerName: 'Alice',
+            message: 'Success',
+        };
+        localStorage.setItem('poker-auth', JSON.stringify(expiredAuth));
+
+        const { useAuthSession } = await import('../useAuthSession');
+        const mount1 = renderHook(() => useAuthSession());
+        expect(mount1.result.current.authError).toBe("Your session couldn't be restored.");
+        mount1.unmount();
+
+        // Storage was cleared by mount 1; a fresh mount of the same module must not inherit authError
+        const mount2 = renderHook(() => useAuthSession());
+        expect(mount2.result.current.auth).toBeNull();
+        expect(mount2.result.current.authError).toBeNull();
+    });
+
+    it('survives localStorage SecurityError and QuotaExceededError while keeping auth state in memory', async () => {
+        const { useAuthSession } = await import('../useAuthSession');
+
+        const getItemSpy = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+            throw new DOMException('Access is denied', 'SecurityError');
+        });
+        const setItemSpy = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+            throw new DOMException('Quota exceeded', 'QuotaExceededError');
+        });
+        const removeItemSpy = vi.spyOn(Storage.prototype, 'removeItem').mockImplementation(() => {
+            throw new DOMException('Access is denied', 'SecurityError');
+        });
+
+        try {
+            const { result } = renderHook(() => useAuthSession());
+            expect(result.current.auth).toBeNull();
+            expect(result.current.authError).toBeNull();
+
+            const newAuth = {
+                token: createJwt({ exp: Math.floor(Date.now() / 1000) + 3600 }),
+                roomId: 'room-mem',
+                playerName: 'InMemoryUser',
+                message: 'Ok',
+            };
+
+            act(() => {
+                result.current.setAuth(newAuth);
+            });
+            expect(result.current.auth).toEqual(newAuth);
+
+            act(() => {
+                result.current.clearAuth();
+            });
+            expect(result.current.auth).toBeNull();
+        } finally {
+            getItemSpy.mockRestore();
+            setItemSpy.mockRestore();
+            removeItemSpy.mockRestore();
+        }
+    });
 });

@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { cn } from '../lib/cn';
 import { Button } from './UI';
 import { ActionPanel } from './ActionPanel';
@@ -30,14 +31,15 @@ export interface GameTableViewProps {
     isCompactTable?: boolean;
     isMobileLandscape?: boolean;
     nowMs: number;
-    raiseAmount: string;
+    raiseAmount?: string;
     raiseError: string | null;
     onAction: (action: PokerAction, amount?: number) => void;
     onReady: () => void;
     onUnready?: () => void;
     onClaimWin: () => void;
     onLeaveGame: () => void;
-    onRaiseChange: (val: string) => void;
+    onRaiseChange?: (val: string) => void;
+    onClearRaiseError?: () => void;
     isActionPending: boolean;
     hasShellHeader?: boolean;
 }
@@ -65,6 +67,7 @@ export function GameTableView({
     onClaimWin,
     onLeaveGame,
     onRaiseChange,
+    onClearRaiseError,
     isActionPending,
     hasShellHeader = false,
 }: GameTableViewProps) {
@@ -72,22 +75,36 @@ export function GameTableView({
     const isMobileLandscape = propIsMobileLandscape ?? detectedMobileLandscape;
     const isCompactTable = propIsCompactTable ?? isCompactViewport;
 
+    const effectivePlayerName = playerName ?? auth?.playerName;
+    const players = gameState?.players;
+
+    const orderedPlayers = useMemo(() => {
+        if (!players) return [];
+        const myIndex = players.findIndex(
+            (p) => p.id === myPlayerId || (effectivePlayerName && p.name === effectivePlayerName)
+        );
+        return myIndex <= 0
+            ? players
+            : [...players.slice(myIndex), ...players.slice(0, myIndex)];
+    }, [players, myPlayerId, effectivePlayerName]);
+
+    const readyEligiblePlayers = useMemo(
+        () => players ? players.filter((player) => player.status !== 'OUT' && player.status !== 'DISCONNECTED') : [],
+        [players]
+    );
+
     if (!gameState || !roomState) return null;
 
-    const effectivePlayerName = playerName ?? auth?.playerName;
     const me = gameState.players.find((p) => p.id === myPlayerId);
-    const myIndex = gameState.players.findIndex(
-        (p) => p.id === myPlayerId || (effectivePlayerName && p.name === effectivePlayerName)
-    );
-    const orderedPlayers = myIndex <= 0
-        ? gameState.players
-        : [...gameState.players.slice(myIndex), ...gameState.players.slice(0, myIndex)];
 
     const isMyTurn = gameState.currentPlayerId === myPlayerId;
     const isSelfDisconnected = me?.status === 'DISCONNECTED';
     const isReadyCountdownActive = Boolean(gameState.isReadyCountdownActive);
-    const isWaitingForReconnect = Boolean(gameState.players.some((p) => p.status === 'DISCONNECTED'));
     const currentTurnPlayer = gameState.players.find((p) => p.id === gameState.currentPlayerId);
+    const disconnectedPlayer = currentTurnPlayer?.status === 'DISCONNECTED'
+        ? currentTurnPlayer
+        : gameState.players.find((p) => p.status === 'DISCONNECTED');
+    const isWaitingForReconnect = Boolean(disconnectedPlayer);
 
     const canClaimWin = Boolean(
         gameState.claimWinAvailable &&
@@ -97,9 +114,6 @@ export function GameTableView({
     const isReadyEligible = Boolean(me && me.status !== 'OUT' && me.status !== 'DISCONNECTED');
     const amReadyForNextHand = Boolean(me?.isReadyForNextHand);
 
-    const readyEligiblePlayers = gameState.players.filter(
-        (player) => player.status !== 'OUT' && player.status !== 'DISCONNECTED'
-    );
     const readyCount = readyEligiblePlayers.filter((player) => player.isReadyForNextHand).length;
     const readyEligibleCount = readyEligiblePlayers.length;
 
@@ -178,11 +192,11 @@ export function GameTableView({
             </RoomStage>
 
             {/* Waiting for reconnect banner */}
-            {isWaitingForReconnect && currentTurnPlayer && !isCompactTable && (
+            {isWaitingForReconnect && disconnectedPlayer && !isCompactTable && (
                 <div className={cn('px-4 md:px-8 pb-3', bottomCanvasWidthClass)}>
                     <div className="mx-auto max-w-3xl bg-amber-500/20 border border-amber-300/40 rounded-xl px-4 py-3 text-center backdrop-blur-md">
                         <p className="text-amber-200 font-headline font-bold uppercase tracking-wider text-xs md:text-sm">
-                            {WAITING_RECONNECT_PREFIX}{currentTurnPlayer.name}{WAITING_RECONNECT_SUFFIX}
+                            {WAITING_RECONNECT_PREFIX}{disconnectedPlayer.name}{WAITING_RECONNECT_SUFFIX}
                         </p>
                     </div>
                 </div>
@@ -224,6 +238,7 @@ export function GameTableView({
                         raiseAmount={raiseAmount}
                         raiseError={raiseError}
                         onRaiseChange={onRaiseChange}
+                        onClearRaiseError={onClearRaiseError}
                         onAction={onAction}
                         isActionPending={isActionPending}
                         readyCountdownSecondsRemaining={readyCountdownSecondsRemaining}
