@@ -40,7 +40,7 @@ The frontend expects a compatible backend at `http://localhost:8080` and proxies
 ```
 frontend-poker/
 ├── docs/
-│   ├── adr/                      # Architectural Decision Records (ADR-0001, ADR-0002)
+│   ├── adr/                      # Architectural Decision Records (ADR-0001 – ADR-0003)
 │   ├── agents/                   # Agent workflow guidelines (domain, issue tracking, labels)
 │   └── ai/
 │       └── PROJECT.md            # Canonical project context (this file)
@@ -51,14 +51,20 @@ frontend-poker/
 ├── src/
 │   ├── main.tsx                  # Application entry point
 │   ├── App.tsx                   # Root auth, router, and session restoration
-│   ├── Lobby.tsx                 # Room creation and join forms
+│   ├── Lobby.tsx                 # Lobby page hosting the create/join room forms
 │   ├── GameView.tsx              # Live game container (WebSocket orchestration & view switching)
 │   ├── types.ts                  # Shared domain types, interfaces, and state models
 │   ├── index.css                 # Theme tokens, font variables, and global CSS
+│   ├── assets/                   # Static images (hero art, logos)
 │   ├── components/
+│   │   ├── lobby/
+│   │   │   ├── CreateRoomForm.tsx# Create-table form (room name, alias, blinds, max players, buy-in)
+│   │   │   ├── JoinRoomForm.tsx  # Quick-join form (room name, alias)
+│   │   │   └── validation.ts     # Lobby form validation rules
 │   │   ├── ActionPanel.tsx       # Betting slider, quick-bet buttons, and player actions
 │   │   ├── BoardCluster.tsx      # Centered table area (pots and community cards)
 │   │   ├── CommunityCardsArea.tsx# Flop, Turn, and River card slots
+│   │   ├── ErrorBoundary.tsx     # Top-level render error fallback
 │   │   ├── GameLobbyView.tsx     # Pre-game room lobby, player readiness, seat count
 │   │   ├── GameReviewView.tsx    # End-of-hand recap and hand history review sheet
 │   │   ├── GameTableView.tsx     # Active game table container
@@ -79,12 +85,16 @@ frontend-poker/
 │   ├── constants/
 │   │   └── strings.ts            # UI copy, accessible labels, and display strings
 │   ├── context/
-│   │   └── GameProvider.tsx      # Shared React context for game state and dispatchers
+│   │   ├── GameContext.ts        # Context type, `Action` union, and `useGameContext` accessor
+│   │   └── GameProvider.tsx      # Bridges the `GameSession` store into React via `useSyncExternalStore`
+│   ├── domain/
+│   │   ├── GameSession.ts        # In-process game store: payload application, action lock, showdown/room-closed timers
+│   │   └── clock.ts              # `Clock` port with `SystemClock` (prod) and `TestClock` (deterministic tests)
 │   ├── hooks/
 │   │   ├── useAuthSession.ts     # JWT storage in localStorage (`poker-auth`)
 │   │   ├── useElementSize.ts     # ResizeObserver hook for container dimension measurement
 │   │   ├── useGameDispatcher.ts  # Game action dispatching with pending state management
-│   │   ├── useGameWebSocket.ts   # STOMP subscription, frame handling, and auto-reconnect
+│   │   ├── useGameWebSocket.ts   # Transport lifecycle: subscriptions, frame handling, and auto-reconnect
 │   │   ├── useNotification.ts    # Toast notification state and timeouts
 │   │   ├── useSeatLayout.ts      # Parametric ellipse seating calculations wrapping `tableGeometry.ts`
 │   │   ├── useSessionHydration.ts# REST snapshot hydration on initial load with fallback
@@ -95,11 +105,28 @@ frontend-poker/
 │   │   ├── layoutChecks.ts       # Geometry measurement and overlap detection utilities
 │   │   ├── payloads.ts           # WebSocket frame payload decoders and type guards
 │   │   └── tableGeometry.ts      # Parametric ellipse math, footprint fitting, and scaling tiers
-│   └── services/
-│       └── api.ts                # REST client (`fetch`) and STOMP client factory
+│   ├── security/
+│   │   └── logger.ts             # Dev-only console logger (silent in production builds)
+│   ├── services/
+│   │   ├── api.ts                # REST client (`fetch`), `handleApiError`, and STOMP client factory
+│   │   └── transport.ts          # `GameTransport` port with `StompTransportAdapter` and `InMemoryTransportAdapter`
+│   └── test/
+│       ├── mocks/                # MSW `handlers.ts`/`server.ts` and STOMP mock (`stomp.ts`)
+│       ├── fixtures.ts           # Shared domain test fixtures
+│       ├── prng.ts               # Seeded PRNG for deterministic tests
+│       └── setup.ts              # Vitest global setup
 ```
 
 ## Architecture
+
+### Game Session and Transport Port
+
+Per ADR `0003`, game state lives outside React:
+
+1. **`GameSession` (`src/domain/GameSession.ts`)**: A plain TypeScript store that owns room/game/private state, applies decoded payloads, enforces the action lock, and runs lifecycle timers (showdown fallback, room-closed redirect) through an injected `Clock`. It exposes `subscribe`/`getSnapshot` for `useSyncExternalStore`.
+2. **`GameTransport` port (`src/services/transport.ts`)**: `connect`, `disconnect`, `subscribe`, `publish`, `onStatusChange` (plus optional `onError`/`isConnected`). `StompTransportAdapter` wraps `@stomp/stompjs` in production; `InMemoryTransportAdapter` backs tests and the provider default.
+3. **React bridge**: `GameProvider` constructs (or accepts an injected) `GameSession` and maps legacy `Action` dispatches onto session methods. Presentational views (`GameTableView`, `GameLobbyView`, `GameReviewView`) receive explicit props from `GameView`.
+4. **Testability**: Full game flows and timer transitions can be tested in Node with `TestClock` + `InMemoryTransportAdapter`, without JSDOM. E2E tests intercept sockets with Playwright `page.routeWebSocket()` rather than production backdoors.
 
 ### Real-Time Flow
 
@@ -161,7 +188,7 @@ The table layout is fully decoupled from browser viewport globals (`window.inner
 The testing strategy uses a strict two-tier architecture to balance thoroughness with fast CI feedback:
 
 ### 1. Fast CI Layer (~1–2 minutes)
-- **Unit & Component Tests**: Run via `npx vitest run`. Covers 46 test suites and 459+ unit tests (pure geometric math in `tableGeometry.test.ts`, hook lifecycle, component rendering, and state dispatchers).
+- **Unit & Component Tests**: Run via `npx vitest run`. Covers 49 test files (pure geometric math in `tableGeometry.test.ts`, `GameSession` domain flows, hook lifecycle, component rendering, and state dispatchers).
 - **Type Checking**: Run via `npx tsc -p tsconfig.app.json --noEmit`. Zero TypeScript errors allowed.
 - **Linting**: Run via `npm run lint`. Baseline ceiling enforced (0 errors, 1 warning ceiling).
 - **Production Build**: Run via `npm run build`. Builds production assets in < 500ms.
@@ -180,6 +207,7 @@ The testing strategy uses a strict two-tier architecture to balance thoroughness
 
 - [ADR-0001: Adaptive table-first game page](file:///c:/Users/benja/IdeaProjects/frontend-poker/docs/adr/0001-adaptive-table-first-game-page.md): Establishes the live table as the primary experience, landscape-first constraints, and the three-tier responsive model.
 - [ADR-0002: Parametric seat ellipse and containment architecture](file:///c:/Users/benja/IdeaProjects/frontend-poker/docs/adr/0002-parametric-seat-ellipse-containment.md): Details the closed-form parametric ellipse model, container dimension sync, dynamic seat footprint fitting (`fitSeatEllipse`), and zero-gating-violation layout invariants.
+- [ADR-0003: In-process GameSession store and GameTransport port](file:///c:/Users/benja/IdeaProjects/frontend-poker/docs/adr/0003-in-process-game-session-and-transport-port.md): Moves game state and lifecycle timers into a standalone `GameSession` consumed via `useSyncExternalStore`, decouples real-time I/O behind `GameTransport`, and replaces E2E backdoors with Playwright WebSocket interception.
 
 ## Domain Glossary
 
