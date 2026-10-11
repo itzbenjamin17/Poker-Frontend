@@ -8,7 +8,15 @@ export class MockStompClient {
   onConnect: () => void = () => {}
   onWebSocketClose: () => void = () => {}
   onStompError: (frame: { headers: Record<string, string>; body?: string }) => void = () => {}
+  beforeConnect: () => void = () => {}
+  debug: (str: string) => void = () => {}
   connected = true
+
+  constructor(config?: Record<string, unknown>) {
+    if (config) {
+      Object.assign(this, config);
+    }
+  }
 
   activate() {
     MockStompClient.activeInstance = this;

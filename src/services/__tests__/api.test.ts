@@ -39,6 +39,22 @@ describe('api service', () => {
             const token = createJwt({ sub: 'player-1', name: 'Alice' });
             expect(isJwtValid(token)).toBe(true);
         });
+
+        it('returns false when decoded payload is a non-object primitive or array', () => {
+            const primitiveToken = `eyJhbGciOiJIUzI1NiJ9.${toBase64Url('"just-a-string"')}.sig`;
+            const numberToken = `eyJhbGciOiJIUzI1NiJ9.${toBase64Url('12345')}.sig`;
+            const arrayToken = `eyJhbGciOiJIUzI1NiJ9.${toBase64Url('[1,2,3]')}.sig`;
+            expect(isJwtValid(primitiveToken)).toBe(false);
+            expect(isJwtValid(numberToken)).toBe(false);
+            expect(isJwtValid(arrayToken)).toBe(false);
+        });
+
+        it('correctly decodes unpadded Base64Url payload requiring = padding', () => {
+            const token = createJwt({ sub: 'a', exp: Math.floor(Date.now() / 1000) + 3600 });
+            const payloadPart = token.split('.')[1];
+            expect(payloadPart.includes('=')).toBe(false);
+            expect(isJwtValid(token)).toBe(true);
+        });
     });
 
     describe('fetchApi auth-expired event handling via pokerApi', () => {
@@ -83,26 +99,54 @@ describe('api service', () => {
             );
         });
 
-        it('dispatches auth-expired and throws status 403 when server returns 403', async () => {
+        it('does not dispatch auth-expired on 403 domain rejection and throws status 403 with server message', async () => {
             const validToken = createJwt({ exp: Math.floor(Date.now() / 1000) + 3600 });
 
             server.use(
-                http.get('/api/room/:roomId', () => {
-                    return new HttpResponse(null, { status: 403 });
+                http.post('/api/room/:roomId/start-game', () => {
+                    return HttpResponse.json(
+                        { message: 'Only the room host can start the game' },
+                        { status: 403 }
+                    );
                 })
             );
 
-            await expect(pokerApi.getRoomInfo('room-1', validToken)).rejects.toMatchObject({
+            await expect(pokerApi.startGame('room-1', validToken)).rejects.toMatchObject({
                 status: 403,
+                message: 'Only the room host can start the game',
             });
 
-            expect(dispatchSpy).toHaveBeenCalledWith(
+            expect(dispatchSpy).not.toHaveBeenCalledWith(
                 expect.objectContaining({ type: 'auth-expired' })
             );
         });
     });
 
     describe('error normalization', () => {
+        it('throws status 408 ApiError when request times out after 15 seconds', async () => {
+            vi.useFakeTimers();
+            const validToken = createJwt({ exp: Math.floor(Date.now() / 1000) + 3600 });
+            const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation((_url, init) => {
+                return new Promise((_resolve, reject) => {
+                    init?.signal?.addEventListener('abort', () => {
+                        reject(new DOMException('The operation was aborted.', 'AbortError'));
+                    });
+                });
+            });
+
+            try {
+                const promise = pokerApi.getRoomInfo('room-1', validToken);
+                const assertion = expect(promise).rejects.toMatchObject({
+                    status: 408,
+                    message: 'Request timed out. Please try again.',
+                });
+                await vi.advanceTimersByTimeAsync(15000);
+                await assertion;
+            } finally {
+                fetchSpy.mockRestore();
+                vi.useRealTimers();
+            }
+        });
         it('handles network failure (TypeError) with status 0 and connection message', async () => {
             const validToken = createJwt({ exp: Math.floor(Date.now() / 1000) + 3600 });
             const fetchSpy = vi.spyOn(globalThis, 'fetch').mockRejectedValueOnce(new TypeError('Failed to fetch'));
@@ -233,6 +277,137 @@ describe('api service', () => {
                 status: 404,
                 message: 'Room not found',
             });
+        });
+
+        it('throws status 500 ApiError when auth endpoint returns malformed or empty data envelope', async () => {
+            server.use(
+                http.post('/api/room/join', () => {
+                    return HttpResponse.json({ message: 'OK', data: null }, { status: 200 });
+                })
+            );
+
+            await expect(pokerApi.joinRoom({
+                roomName: 'Room99',
+                playerName: 'Bob',
+            })).rejects.toMatchObject({
+                status: 500,
+            });
+        });
+    });
+
+    describe('createStompClient and logger security', () => {
+        it('does not log raw STOMP CONNECT frames or Bearer tokens to console.log by default', async () => {
+            const { createStompClient } = await import('../api');
+            const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+            const debugSpy = vi.spyOn(console, 'debug').mockImplementation(() => {});
+
+            try {
+                const secretToken = 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiAliceJ9.secret-signature';
+                const client = createStompClient(secretToken);
+
+                client.debug(`>>> CONNECT\nAuthorization:Bearer ${secretToken}\naccept-version:1.2,1.1,1.0\n\n\0`);
+
+                expect(logSpy).not.toHaveBeenCalled();
+                expect(debugSpy).not.toHaveBeenCalled();
+            } finally {
+                logSpy.mockRestore();
+                debugSpy.mockRestore();
+            }
+        });
+
+        it('redacts Bearer tokens and holeCards when VITE_DEBUG_STOMP=true is enabled', async () => {
+            vi.stubEnv('VITE_DEBUG_STOMP', 'true');
+            const { createStompClient } = await import('../api');
+            const debugSpy = vi.spyOn(console, 'debug').mockImplementation(() => {});
+
+            try {
+                const secretToken = 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiAliceJ9.secret-signature';
+                const client = createStompClient(secretToken);
+
+                client.debug(`>>> CONNECT\nAuthorization:Bearer ${secretToken}\naccept-version:1.2,1.1,1.0\n\n\0`);
+                client.debug('<<< MESSAGE\ndestination:/user/queue/private\n\n{"holeCards":["AS","KS"]}\0');
+
+                expect(debugSpy).toHaveBeenCalledTimes(2);
+                expect(debugSpy.mock.calls[0][0]).not.toContain(secretToken);
+                expect(debugSpy.mock.calls[0][0]).toContain('Bearer [REDACTED]');
+                expect(debugSpy.mock.calls[1][0]).not.toContain('AS');
+                expect(debugSpy.mock.calls[1][0]).toContain('[STOMP /user/queue/private frame redacted]');
+            } finally {
+                debugSpy.mockRestore();
+                vi.unstubAllEnvs();
+            }
+        });
+
+        it('redacts Bearer tokens and sensitive object keys in logger output', async () => {
+            const { logger } = await import('../../security/logger');
+            const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+            const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+            try {
+                const secretToken = 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiAliceJ9.secret-signature';
+                logger.log(`Header Authorization: Bearer ${secretToken}`, {
+                    token: secretToken,
+                    password: 'my-secret-password',
+                    holeCards: ['AS', 'KS'],
+                    safeField: 'visible',
+                });
+
+                expect(logSpy).toHaveBeenCalledTimes(1);
+                const [loggedMsg, loggedObj] = logSpy.mock.calls[0];
+                expect(loggedMsg).not.toContain(secretToken);
+                expect(loggedMsg).toContain('Bearer [REDACTED]');
+                expect(loggedObj).toEqual({
+                    token: '[REDACTED]',
+                    password: '[REDACTED]',
+                    holeCards: '[REDACTED]',
+                    safeField: 'visible',
+                });
+
+                logger.warn('Private frame: {"holeCards":["AH","KH"]}');
+                expect(warnSpy).toHaveBeenCalledTimes(1);
+                expect(warnSpy.mock.calls[0][0]).not.toContain('AH');
+            } finally {
+                logSpy.mockRestore();
+                warnSpy.mockRestore();
+            }
+        });
+
+        it('dispatches auth-expired and deactivates client in beforeConnect when JWT is expired', async () => {
+            const { createStompClient } = await import('../api');
+            const dispatchSpy = vi.spyOn(window, 'dispatchEvent');
+            try {
+                const expiredToken = createJwt({ exp: Math.floor(Date.now() / 1000) - 60 });
+                const client = createStompClient(expiredToken);
+                const deactivateSpy = vi.spyOn(client, 'deactivate');
+
+                await client.beforeConnect(client);
+
+                expect(dispatchSpy).toHaveBeenCalledWith(
+                    expect.objectContaining({ type: 'auth-expired' })
+                );
+                expect(deactivateSpy).toHaveBeenCalledTimes(1);
+            } finally {
+                dispatchSpy.mockRestore();
+            }
+        });
+
+        it('does not dispatch auth-expired or deactivate client in beforeConnect when JWT is valid', async () => {
+            const { createStompClient } = await import('../api');
+            const dispatchSpy = vi.spyOn(window, 'dispatchEvent');
+            try {
+                const validToken = createJwt({ exp: Math.floor(Date.now() / 1000) + 3600 });
+                const client = createStompClient(validToken);
+                const deactivateSpy = vi.spyOn(client, 'deactivate');
+
+                await client.beforeConnect(client);
+
+                expect(dispatchSpy).not.toHaveBeenCalledWith(
+                    expect.objectContaining({ type: 'auth-expired' })
+                );
+                expect(deactivateSpy).not.toHaveBeenCalled();
+            } finally {
+                dispatchSpy.mockRestore();
+            }
         });
     });
 });

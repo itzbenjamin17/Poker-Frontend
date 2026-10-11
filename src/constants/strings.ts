@@ -112,6 +112,8 @@ export const RAISE_VALIDATION_MAX = 'Amount cannot exceed 10,000,000 chips.';
 export const ERROR_INVALID_FORMAT = 'Invalid request format. Please try again.';
 export const ERROR_TECHNICAL = 'Technical difficulties.';
 export const ERROR_SYSTEM = 'A system error occurred. Please try again.';
+export const ERROR_REQUEST_TIMEOUT = 'Request timed out. Please try again.';
+export const ERROR_MALFORMED_AUTH = 'Malformed authentication response from server.';
 
 // ─── Waiting / Reconnect ─────────────────────────────────────────────────────
 export const WAITING_RECONNECT_PREFIX = 'Waiting for ';

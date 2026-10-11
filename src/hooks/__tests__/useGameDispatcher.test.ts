@@ -192,9 +192,13 @@ describe('useGameDispatcher', () => {
         expect(onLeave).toHaveBeenCalled();
     });
 
-    it('dispatch LEAVE_REVIEW calls onLeave even if REST fails', async () => {
+    it('dispatch LEAVE_REVIEW clears persisted game-end snapshot and calls onLeave even if REST fails', async () => {
         vi.mocked(pokerApi.leaveGame).mockRejectedValue(new Error('404 Not Found'));
         vi.mocked(pokerApi.leaveRoom).mockRejectedValue(new Error('404 Not Found'));
+        localStorage.setItem(
+            'poker-game-end:ROOM123',
+            JSON.stringify({ winnerName: 'TestPlayer', isForfeit: false, message: 'TestPlayer wins!' })
+        );
 
         const { result } = renderHook(() => useGameDispatcher(publisherAdapter));
 
@@ -202,6 +206,7 @@ describe('useGameDispatcher', () => {
             await result.current.dispatch({ type: 'LEAVE_REVIEW' });
         });
 
+        expect(localStorage.getItem('poker-game-end:ROOM123')).toBeNull();
         expect(clearShowdownTimers).toHaveBeenCalled();
         expect(dispatch).toHaveBeenCalledWith({ type: 'CLEAR_GAME_STATE' });
         expect(onLeave).toHaveBeenCalled();

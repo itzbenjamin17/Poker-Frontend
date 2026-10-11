@@ -11,6 +11,7 @@ export interface TransportSubscription {
 export interface GameTransport {
     connect(): void;
     disconnect(): void;
+    forceReconnect?(): void;
     subscribe(destination: string, handler: (message: string) => void): TransportSubscription;
     publish(destination: string, body: string): void;
     onStatusChange(listener: (status: TransportStatus) => void): () => void;
@@ -26,6 +27,7 @@ export class StompTransportAdapter implements GameTransport {
     private statusListeners: Set<(status: TransportStatus) => void> = new Set();
     private errorListeners: Set<(error: string) => void> = new Set();
     private currentStatus: TransportStatus = 'disconnected';
+    private isActive = false;
     private nextSubId = 1;
     private subscriptions: Map<
         number,
@@ -52,12 +54,17 @@ export class StompTransportAdapter implements GameTransport {
 
     private setupClientCallbacks(): void {
         this.client.onConnect = () => {
+            this.isActive = true;
             logger.log('Connected to WebSocket');
             this.resubscribeAll();
             this.setStatus('connected');
         };
 
         this.client.onWebSocketClose = () => {
+            for (const entry of this.subscriptions.values()) {
+                entry.stompSub = undefined;
+            }
+            if (!this.isActive) return;
             logger.warn('WebSocket closed — will reconnect automatically');
             this.setStatus('reconnecting');
         };
@@ -65,6 +72,16 @@ export class StompTransportAdapter implements GameTransport {
         this.client.onStompError = (frame) => {
             const errorMsg = frame?.headers?.['message'] || frame?.body || 'STOMP transport error';
             logger.warn('STOMP error:', errorMsg);
+            if (/authorization token|unauthorized|expired|invalid.*token/i.test(errorMsg)) {
+                this.isActive = false;
+                this.setStatus('disconnected');
+                if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+                    window.dispatchEvent(new Event('auth-expired'));
+                }
+                void this.client.deactivate();
+                this.notifyError(errorMsg);
+                return;
+            }
             this.setStatus('reconnecting');
             this.notifyError(errorMsg);
         };
@@ -72,6 +89,7 @@ export class StompTransportAdapter implements GameTransport {
 
     private resubscribeAll(): void {
         for (const entry of this.subscriptions.values()) {
+            entry.stompSub?.unsubscribe();
             entry.stompSub = this.client.subscribe(entry.destination, (msg) => {
                 entry.handler(msg.body);
             });
@@ -92,25 +110,39 @@ export class StompTransportAdapter implements GameTransport {
     }
 
     public connect(): void {
+        this.isActive = true;
         this.client.activate();
     }
 
     public forceReconnect(): void {
+        this.isActive = true;
         if (typeof (this.client as unknown as { forceDisconnect?: () => void }).forceDisconnect === 'function') {
             (this.client as unknown as { forceDisconnect: () => void }).forceDisconnect();
+        }
+        if (typeof this.client.deactivate === 'function') {
+            const result = this.client.deactivate({ force: true }) as Promise<void> | undefined;
+            if (result && typeof result.then === 'function') {
+                void result.finally(() => {
+                    if (this.isActive) {
+                        this.client.activate();
+                    }
+                });
+                return;
+            }
         }
         this.client.activate();
     }
 
     public disconnect(): void {
+        this.isActive = false;
         this.setStatus('disconnected');
         for (const entry of this.subscriptions.values()) {
-            if (entry.stompSub) {
+            if (entry.stompSub && this.client.connected) {
                 entry.stompSub.unsubscribe();
-                entry.stompSub = undefined;
             }
+            entry.stompSub = undefined;
         }
-        this.client.deactivate();
+        void this.client.deactivate();
     }
 
     public subscribe(destination: string, handler: (message: string) => void): TransportSubscription {
@@ -124,12 +156,14 @@ export class StompTransportAdapter implements GameTransport {
             handler,
         };
 
-        try {
-            entry.stompSub = this.client.subscribe(destination, (msg) => {
-                handler(msg.body);
-            });
-        } catch {
-            // If client is not yet connected, resubscribeAll will subscribe on onConnect
+        if (this.client.connected) {
+            try {
+                entry.stompSub = this.client.subscribe(destination, (msg) => {
+                    handler(msg.body);
+                });
+            } catch {
+                // If client is not yet connected, resubscribeAll will subscribe on onConnect
+            }
         }
 
         this.subscriptions.set(id, entry);

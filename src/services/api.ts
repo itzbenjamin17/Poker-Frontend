@@ -1,5 +1,7 @@
 import { Client } from '@stomp/stompjs';
 import type { ApiResponse, AuthResponse, RoomDataResponse, TokenResponse } from '../types';
+import { logger } from '../security/logger';
+import { ERROR_MALFORMED_AUTH, ERROR_REQUEST_TIMEOUT } from '../constants/strings';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api';
 const REQUEST_TIMEOUT_MS = 15000;
@@ -44,6 +46,17 @@ export async function getErrorMessage(res: Response, fallback: string): Promise<
 }
 
 function normalizeAuthResponse(res: ApiResponse<TokenResponse>): AuthResponse {
+    if (
+        !res ||
+        typeof res !== 'object' ||
+        !res.data ||
+        typeof res.data !== 'object' ||
+        typeof res.data.token !== 'string' ||
+        typeof res.data.roomId !== 'string' ||
+        typeof res.data.playerName !== 'string'
+    ) {
+        throw buildApiError(500, ERROR_MALFORMED_AUTH);
+    }
     return {
         message: res.message,
         token: res.data.token,
@@ -52,14 +65,24 @@ function normalizeAuthResponse(res: ApiResponse<TokenResponse>): AuthResponse {
     };
 }
 
-/** Decode JWT payload and check exp claim. Returns false if expired. */
+/** Decode JWT payload and check exp claim. Returns false if expired or malformed. */
 export function isJwtValid(token: string): boolean {
     try {
         const parts = token.split('.');
         if (parts.length !== 3) return false;
-        const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
-        if (typeof payload.exp === 'number') {
-            return payload.exp * 1000 > Date.now();
+        const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+        if (!base64 || base64.length % 4 === 1) return false;
+        const padded = base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), '=');
+        const payload: unknown = JSON.parse(atob(padded));
+        if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+            return false;
+        }
+        const record = payload as Record<string, unknown>;
+        if (typeof record.exp === 'number') {
+            return record.exp * 1000 > Date.now();
+        }
+        if (record.exp !== undefined) {
+            return false;
         }
         return true;
     } catch {
@@ -71,9 +94,21 @@ export function isJwtValid(token: string): boolean {
  * Shared fetch wrapper: injects headers, ngrok bypass (dev), handles network errors.
  */
 async function fetchApi<T>(url: string, options: RequestInit & { token?: string }): Promise<T> {
-    const { token, headers, ...rest } = options;
+    const { token, headers, signal: externalSignal, ...rest } = options;
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+    let timedOut = false;
+    const timeoutId = setTimeout(() => {
+        timedOut = true;
+        controller.abort();
+    }, REQUEST_TIMEOUT_MS);
+    const onExternalAbort = () => controller.abort();
+    if (externalSignal) {
+        if (externalSignal.aborted) {
+            controller.abort();
+        } else {
+            externalSignal.addEventListener('abort', onExternalAbort, { once: true });
+        }
+    }
 
     try {
         const mergedHeaders: Record<string, string> = {
@@ -96,10 +131,11 @@ async function fetchApi<T>(url: string, options: RequestInit & { token?: string 
         });
 
         if (!response.ok) {
-            if (response.status === 401 || response.status === 403) {
+            const errorMessage = await getErrorMessage(response, 'Request failed');
+            if (response.status === 401) {
                 window.dispatchEvent(new Event('auth-expired'));
             }
-            throw buildApiError(response.status, await getErrorMessage(response, 'Request failed'));
+            throw buildApiError(response.status, errorMessage);
         }
 
         // Return empty object/null for 204 or responses without JSON
@@ -110,12 +146,16 @@ async function fetchApi<T>(url: string, options: RequestInit & { token?: string 
         }
         return null as T;
     } catch (e) {
+        if (timedOut) {
+            throw buildApiError(408, ERROR_REQUEST_TIMEOUT);
+        }
         if (e instanceof TypeError) {
             throw buildApiError(0, 'Unable to reach the server. Check your connection.');
         }
         throw e;
     } finally {
         clearTimeout(timeoutId);
+        externalSignal?.removeEventListener('abort', onExternalAbort);
     }
 }
 
@@ -175,16 +215,21 @@ export const pokerApi = {
 };
 
 export function createStompClient(token: string) {
-    return new Client({
+    const client = new Client({
         brokerURL: getWebSocketUrl(),
         connectHeaders: {
             Authorization: `Bearer ${token}`,
         },
-        debug: (str) => {
-            if (import.meta.env.DEV) {
-                console.log(str);
+        beforeConnect: () => {
+            if (!isJwtValid(token)) {
+                window.dispatchEvent(new Event('auth-expired'));
+                void client.deactivate();
             }
+        },
+        debug: (str) => {
+            logger.debug(str);
         },
         reconnectDelay: 5000,
     });
+    return client;
 }

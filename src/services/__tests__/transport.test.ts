@@ -183,10 +183,11 @@ describe('GameTransport - StompTransportAdapter', () => {
         expect(errors).toEqual(['Connection refused', 'STOMP transport error']);
     });
 
-    it('subscribes and unwraps incoming STOMP message body', () => {
+    it('subscribes and unwraps incoming STOMP message body when connected', () => {
         const handler = vi.fn();
         let stompCallback: (msg: { body: string }) => void = () => {};
 
+        mockClient.connected = true;
         mockClient.subscribe.mockImplementation((...args: any[]) => {
             stompCallback = args[1];
             return { unsubscribe: vi.fn() };
@@ -199,6 +200,86 @@ describe('GameTransport - StompTransportAdapter', () => {
         expect(handler).toHaveBeenCalledWith('breaking news');
 
         sub.unsubscribe();
+    });
+
+    it('defers client.subscribe while disconnected and unsubscribes stale stompSub before resubscribing on reconnect', () => {
+        const handler = vi.fn();
+        const firstUnsub = vi.fn();
+        const secondUnsub = vi.fn();
+
+        mockClient.connected = false;
+        transport.subscribe('/topic/news', handler);
+        expect(mockClient.subscribe).not.toHaveBeenCalled();
+
+        mockClient.connected = true;
+        mockClient.subscribe.mockReturnValueOnce({ unsubscribe: firstUnsub });
+        mockClient.onConnect?.();
+        expect(mockClient.subscribe).toHaveBeenCalledTimes(1);
+
+        // If onConnect fires again, previous stompSub should be unsubscribed before overwriting
+        mockClient.subscribe.mockReturnValueOnce({ unsubscribe: secondUnsub });
+        mockClient.onConnect?.();
+        expect(firstUnsub).toHaveBeenCalledTimes(1);
+        expect(mockClient.subscribe).toHaveBeenCalledTimes(2);
+    });
+
+    it('does not flip status back to reconnecting when onWebSocketClose fires after disconnect()', () => {
+        const statusChanges: TransportStatus[] = [];
+        transport.onStatusChange((s) => statusChanges.push(s));
+
+        transport.connect();
+        mockClient.connected = true;
+        mockClient.onConnect?.();
+        expect(statusChanges).toEqual(['connected']);
+
+        transport.disconnect();
+        mockClient.connected = false;
+        mockClient.onWebSocketClose?.();
+
+        expect(statusChanges).toEqual(['connected', 'disconnected']);
+    });
+
+    it('deactivates client and halts reconnecting when onStompError reports an invalid authorization token', () => {
+        const statusChanges: TransportStatus[] = [];
+        const errors: string[] = [];
+        transport.onStatusChange((s) => statusChanges.push(s));
+        transport.onError?.((err) => errors.push(err));
+
+        transport.connect();
+        mockClient.onStompError?.({
+            headers: { message: 'Invalid WebSocket authorization token' },
+            body: '',
+        });
+
+        expect(statusChanges).toEqual(['disconnected']);
+        expect(mockClient.deactivate).toHaveBeenCalledTimes(1);
+        expect(errors).toEqual(['Invalid WebSocket authorization token']);
+
+        // Subsequent onWebSocketClose should not flip status back to reconnecting
+        mockClient.onWebSocketClose?.();
+        expect(statusChanges).toEqual(['disconnected']);
+    });
+
+    it('deactivates with force: true and reactivates client on forceReconnect when deactivate returns a Promise', async () => {
+        let resolveDeactivate!: () => void;
+        mockClient.forceDisconnect = vi.fn();
+        mockClient.deactivate = vi.fn().mockImplementation(
+            () => new Promise<void>((resolve) => {
+                resolveDeactivate = resolve;
+            })
+        );
+
+        transport.forceReconnect();
+
+        expect(mockClient.forceDisconnect).toHaveBeenCalledTimes(1);
+        expect(mockClient.deactivate).toHaveBeenCalledWith({ force: true });
+        expect(mockClient.activate).not.toHaveBeenCalled();
+
+        resolveDeactivate();
+        await Promise.resolve();
+        await Promise.resolve();
+
+        expect(mockClient.activate).toHaveBeenCalledTimes(1);
     });
 
     it('publishes messages using client.publish', () => {

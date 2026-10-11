@@ -168,4 +168,55 @@ describe('GameProvider and useGameContext', () => {
         // Room state is retained
         expect(screen.getByTestId('room-name')).toHaveTextContent('High Roller Suite');
     });
+
+    it('clears persisted poker-game-end snapshot when LEAVE_REVIEW is triggered from GameReviewView and unmounts GameProvider', async () => {
+        const { useState } = await import('react');
+        const { useGameDispatcher } = await import('../../hooks/useGameDispatcher');
+        const { GameReviewView } = await import('../../components/GameReviewView');
+        const user = userEvent.setup();
+
+        localStorage.setItem(
+            `poker-game-end:${auth.roomId}`,
+            JSON.stringify({
+                winnerName: 'Player1',
+                isForfeit: false,
+                message: 'Player1 wins!',
+            })
+        );
+
+        function ReviewConsumer() {
+            const ctx = useGameContext();
+            const { dispatch } = useGameDispatcher({
+                publish: () => {},
+                isConnected: () => true,
+            });
+            return (
+                <GameReviewView
+                    gameEndResult={ctx.gameEndResult}
+                    gameState={ctx.gameState}
+                    onLeave={() => {
+                        void dispatch({ type: 'LEAVE_REVIEW' });
+                    }}
+                />
+            );
+        }
+
+        function Host() {
+            const [mounted, setMounted] = useState(true);
+            if (!mounted) return <div data-testid="unmounted">Lobby</div>;
+            return (
+                <GameProvider auth={auth} onLeave={() => setMounted(false)}>
+                    <ReviewConsumer />
+                </GameProvider>
+            );
+        }
+
+        render(<Host />);
+        expect(localStorage.getItem(`poker-game-end:${auth.roomId}`)).not.toBeNull();
+
+        await user.click(screen.getByRole('button', { name: /leave/i }));
+
+        expect(screen.getByTestId('unmounted')).toBeInTheDocument();
+        expect(localStorage.getItem(`poker-game-end:${auth.roomId}`)).toBeNull();
+    });
 });

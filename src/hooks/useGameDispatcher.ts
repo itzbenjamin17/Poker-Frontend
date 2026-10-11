@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { pokerApi } from '../services/api';
+import { savePersistedGameEnd } from '../services/gameEndStorage';
 import { useGameContext } from '../context/GameContext';
 import { normalizeErrorMessage, getErrorStatusCode } from '../lib/payloads';
 import { logger } from '../security/logger';
@@ -139,6 +140,7 @@ export function useGameDispatcher(publisher: PublisherAdapter) {
                     .catch((err) => logger.warn('LEAVE_REVIEW leaveRoom failed:', err));
 
                 clearShowdownTimers();
+                savePersistedGameEnd(auth.roomId, null);
                 contextDispatch({ type: 'CLEAR_GAME_STATE' });
                 onLeave?.();
                 return;
