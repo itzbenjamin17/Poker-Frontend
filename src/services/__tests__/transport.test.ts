@@ -1,5 +1,6 @@
 // @vitest-environment node
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import type { Client } from '@stomp/stompjs';
 import {
     InMemoryTransportAdapter,
     StompTransportAdapter,
@@ -237,6 +238,58 @@ describe('GameTransport - StompTransportAdapter', () => {
         mockClient.onWebSocketClose?.();
 
         expect(statusChanges).toEqual(['connected', 'disconnected']);
+    });
+
+    it('ignores late onConnect after disconnect(), deactivates the client, and does not re-enable reconnects', () => {
+        const statusChanges: TransportStatus[] = [];
+        transport.onStatusChange((s) => statusChanges.push(s));
+        transport.subscribe('/topic/news', vi.fn());
+
+        transport.connect();
+        transport.disconnect();
+        expect(statusChanges).toEqual(['disconnected']);
+        mockClient.deactivate.mockClear();
+
+        // Simulate an in-flight handshake completing after disconnect()
+        mockClient.connected = true;
+        mockClient.onConnect?.();
+
+        expect(statusChanges).toEqual(['disconnected']);
+        expect(mockClient.subscribe).not.toHaveBeenCalled();
+        expect(mockClient.deactivate).toHaveBeenCalledTimes(1);
+
+        // Subsequent WebSocket close must not flip status to 'reconnecting'
+        mockClient.connected = false;
+        mockClient.onWebSocketClose?.();
+        expect(statusChanges).toEqual(['disconnected']);
+    });
+
+    it('transitions status from reconnecting to disconnected when beforeConnect deactivates on an expired token', async () => {
+        const clientWithBeforeConnect = {
+            ...mockClient,
+            beforeConnect: vi.fn(() => {
+                void clientWithBeforeConnect.deactivate();
+            }),
+        };
+        const adapter = new StompTransportAdapter(clientWithBeforeConnect as unknown as Client);
+        const statusChanges: TransportStatus[] = [];
+        adapter.onStatusChange((s) => statusChanges.push(s));
+
+        adapter.connect();
+        clientWithBeforeConnect.connected = true;
+        clientWithBeforeConnect.onConnect?.();
+        clientWithBeforeConnect.connected = false;
+        clientWithBeforeConnect.onWebSocketClose?.();
+        expect(statusChanges).toEqual(['connected', 'reconnecting']);
+
+        // Next reconnect attempt triggers beforeConnect, which deactivates the client
+        await (clientWithBeforeConnect.beforeConnect as () => Promise<void>)();
+
+        expect(statusChanges).toEqual(['connected', 'reconnecting', 'disconnected']);
+
+        // Subsequent WebSocket close does not re-enter reconnecting
+        clientWithBeforeConnect.onWebSocketClose?.();
+        expect(statusChanges).toEqual(['connected', 'reconnecting', 'disconnected']);
     });
 
     it('deactivates client and halts reconnecting when onStompError reports an invalid authorization token', () => {

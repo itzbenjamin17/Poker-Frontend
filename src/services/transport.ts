@@ -27,7 +27,7 @@ export class StompTransportAdapter implements GameTransport {
     private statusListeners: Set<(status: TransportStatus) => void> = new Set();
     private errorListeners: Set<(error: string) => void> = new Set();
     private currentStatus: TransportStatus = 'disconnected';
-    private isActive = false;
+    private isActive = true;
     private nextSubId = 1;
     private subscriptions: Map<
         number,
@@ -53,8 +53,37 @@ export class StompTransportAdapter implements GameTransport {
     }
 
     private setupClientCallbacks(): void {
+        const existingBeforeConnect = this.client.beforeConnect;
+        this.client.beforeConnect = async () => {
+            let deactivated = false;
+            const origDeactivate =
+                typeof this.client.deactivate === 'function'
+                    ? this.client.deactivate.bind(this.client)
+                    : undefined;
+            if (origDeactivate) {
+                this.client.deactivate = ((...args: Parameters<Client['deactivate']>) => {
+                    deactivated = true;
+                    return origDeactivate(...args);
+                }) as Client['deactivate'];
+            }
+            try {
+                await existingBeforeConnect?.(this.client);
+            } finally {
+                if (origDeactivate) {
+                    this.client.deactivate = origDeactivate;
+                }
+            }
+            if (deactivated) {
+                this.isActive = false;
+                this.setStatus('disconnected');
+            }
+        };
+
         this.client.onConnect = () => {
-            this.isActive = true;
+            if (!this.isActive) {
+                void this.client.deactivate();
+                return;
+            }
             logger.log('Connected to WebSocket');
             this.resubscribeAll();
             this.setStatus('connected');

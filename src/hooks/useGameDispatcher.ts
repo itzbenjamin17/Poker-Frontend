@@ -101,6 +101,7 @@ export function useGameDispatcher() {
                     logUnexpectedLeaveError('leaveRoom', err);
                 }
                 clearShowdownTimers();
+                savePersistedGameEnd(auth.roomId, null);
                 contextDispatch({ type: 'SET_PRIVATE', payload: null });
                 onLeave?.();
             } else if (command.type === 'LEAVE_REVIEW') {

@@ -232,6 +232,10 @@ describe('useGameDispatcher', () => {
         const leaveRoomSpy = vi.mocked(pokerApi.leaveRoom).mockResolvedValue();
         const clearShowdownSpy = vi.spyOn(session, 'clearShowdownTimers');
         session.applyPrivateState({ playerId: 'p-1', holeCards: ['AS', 'KS'] });
+        localStorage.setItem(
+            'poker-game-end:ROOM123',
+            JSON.stringify({ winnerName: 'TestPlayer', isForfeit: false, message: 'TestPlayer wins!' })
+        );
 
         const { result } = renderHook(() => useGameDispatcher(), {
             wrapper: createWrapper(),
@@ -243,6 +247,7 @@ describe('useGameDispatcher', () => {
 
         expect(leaveGameSpy).toHaveBeenCalledWith('GAME123', 'test-token');
         expect(leaveRoomSpy).toHaveBeenCalledWith('ROOM123', 'test-token');
+        expect(localStorage.getItem('poker-game-end:ROOM123')).toBeNull();
         expect(clearShowdownSpy).toHaveBeenCalled();
         expect(session.getSnapshot().privateState).toBeNull();
         expect(onLeave).toHaveBeenCalledTimes(1);
