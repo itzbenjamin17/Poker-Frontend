@@ -36,7 +36,7 @@ export function RoomDock({ children, className, ...rest }: RoomDockProps) {
         <section
             aria-label="Room dock"
             data-testid="room-dock"
-            className={cn('shrink-0 w-full overflow-visible', className)}
+            className={cn('shrink-0 w-full min-h-16 overflow-visible', className)}
             {...rest}
         >
             {children}
@@ -45,6 +45,7 @@ export function RoomDock({ children, className, ...rest }: RoomDockProps) {
 }
 
 export const MIN_PORTRAIT_WIDTH = 600;
+export const MIN_PORTRAIT_HEIGHT = 800;
 export const MIN_DESKTOP_HEIGHT = 600; // Increased pragmatically
 export const MIN_MOBILE_WIDTH = 667; // Increased pragmatically (iPhone SE landscape floor)
 export const MIN_MOBILE_HEIGHT = 375; // Increased pragmatically (iPhone SE landscape floor)
@@ -74,8 +75,10 @@ export function useOrientationGating() {
 
     const isPortrait = dimensions.height > dimensions.width;
     
-    // Portrait gate (phones)
-    const isGatedPortrait = isPortrait && dimensions.width < MIN_PORTRAIT_WIDTH;
+    // Portrait gate (phones and short squarish windows)
+    const isGatedPortrait = isPortrait && (
+        dimensions.width < MIN_PORTRAIT_WIDTH || dimensions.height < MIN_PORTRAIT_HEIGHT
+    );
     
     // Landscape/Desktop gates
     const isGatedDesktopHeight = dimensions.width >= 1024 && dimensions.height < MIN_DESKTOP_HEIGHT;
@@ -84,12 +87,16 @@ export function useOrientationGating() {
     );
 
     const isGated = isGatedPortrait || isGatedDesktopHeight || isGatedMobile;
+    const isMobileLandscape = !isPortrait && dimensions.height < 500;
+    const isCompactViewport = dimensions.width < 960 || dimensions.height < 640;
 
     return {
         dimensions,
         isPortrait,
         isBelowWidth: isGatedPortrait,
         isGated,
+        isMobileLandscape,
+        isCompactViewport,
     };
 }
 
@@ -142,7 +149,7 @@ export function PokerRoomLayout({
         <div
             data-testid="poker-room-layout"
             className={cn(
-                'isolate flex h-screen h-[100dvh] w-full max-w-full flex-col relative overflow-hidden overscroll-none select-none bg-surface',
+                'isolate flex h-dvh w-full max-w-full flex-col relative overflow-hidden overscroll-none select-none bg-surface',
                 'pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]',
                 className
             )}

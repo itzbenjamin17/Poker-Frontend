@@ -176,4 +176,72 @@ describe('PokerRoomLayout', () => {
 
         expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     });
+
+    it('avoids orientation gating discontinuity when widening a short portrait window (600x601 -> 650x601 -> 667x601) while allowing 600x800+', () => {
+        // 600x601 is portrait (height > width) but below MIN_PORTRAIT_HEIGHT (800), so it must be gated
+        window.innerWidth = 600;
+        window.innerHeight = 601;
+
+        render(
+            <PokerRoomLayout
+                header={<RoomHeader brandTitle="POKER" wsStatus="connected" onLeave={vi.fn()} />}
+                stage={<RoomStage><div>Table Content</div></RoomStage>}
+            />
+        );
+
+        expect(screen.getByTestId('rotate-prompt')).toBeInTheDocument();
+
+        // Widening to 650x601 (landscape below 667px) remains gated (no playable -> blocked regression)
+        act(() => {
+            window.innerWidth = 650;
+            window.innerHeight = 601;
+            window.dispatchEvent(new Event('resize'));
+        });
+        expect(screen.getByTestId('rotate-prompt')).toBeInTheDocument();
+
+        // Widening to 667x601 meets landscape minimum (667x375) and becomes playable
+        act(() => {
+            window.innerWidth = 667;
+            window.innerHeight = 601;
+            window.dispatchEvent(new Event('resize'));
+        });
+        expect(screen.queryByTestId('rotate-prompt')).not.toBeInTheDocument();
+        expect(screen.getByText('Table Content')).toBeInTheDocument();
+
+        // 600x800 meets portrait minimum (600x800) and is playable
+        act(() => {
+            window.innerWidth = 600;
+            window.innerHeight = 800;
+            window.dispatchEvent(new Event('resize'));
+        });
+        expect(screen.queryByTestId('rotate-prompt')).not.toBeInTheDocument();
+        expect(screen.getByText('Table Content')).toBeInTheDocument();
+    });
+
+    it('renders RotatePrompt on gated portrait viewports and transitions cleanly to RoomStage and RoomDock on supported desktop viewports', () => {
+        window.innerWidth = 390;
+        window.innerHeight = 844;
+
+        render(
+            <PokerRoomLayout
+                header={<RoomHeader brandTitle="POKER" wsStatus="connected" onLeave={vi.fn()} />}
+                stage={<RoomStage><div>Table Content</div></RoomStage>}
+                dock={<RoomDock><div>Action Dock Content</div></RoomDock>}
+            />
+        );
+
+        expect(screen.getByTestId('rotate-prompt')).toBeInTheDocument();
+        expect(screen.queryByRole('region', { name: /room dock/i })).not.toBeInTheDocument();
+
+        act(() => {
+            window.innerWidth = 1024;
+            window.innerHeight = 768;
+            window.dispatchEvent(new Event('resize'));
+        });
+
+        expect(screen.queryByTestId('rotate-prompt')).not.toBeInTheDocument();
+        expect(screen.getByTestId('poker-room-layout')).toBeInTheDocument();
+        expect(screen.getByRole('region', { name: /room stage/i })).toHaveTextContent('Table Content');
+        expect(screen.getByRole('region', { name: /room dock/i })).toHaveTextContent('Action Dock Content');
+    });
 });

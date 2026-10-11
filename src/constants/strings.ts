@@ -76,6 +76,7 @@ export const LABEL_UNCALLED = 'Uncalled';
 // ─── Ready Countdown ─────────────────────────────────────────────────────────
 export const READY_PROMPT = 'Round complete. Confirm READY to continue.';
 export const BTN_READY = 'READY';
+export const BTN_UNREADY = 'WAITING... (UNREADY)';
 export const BTN_READY_CONFIRMED = 'READY CONFIRMED';
 export const LABEL_PLAYERS_READY_SUFFIX = 'players ready';
 

@@ -3,7 +3,7 @@ import { Button } from './UI';
 import { ActionPanel } from './ActionPanel';
 import { ResultDock } from './ResultDock';
 import { NotificationBanner } from './NotificationBanner';
-import { RoomStage, RoomDock } from './PokerRoomLayout';
+import { RoomStage, RoomDock, useOrientationGating } from './PokerRoomLayout';
 import { LiveTableStage } from './LiveTableStage';
 
 import type { GameState, PokerAction, RoomState, WsStatus } from '../types';
@@ -54,8 +54,8 @@ export function GameTableView({
     claimPending = false,
     notification = null,
     wsStatus = 'connected',
-    isCompactTable = false,
-    isMobileLandscape = false,
+    isCompactTable: propIsCompactTable,
+    isMobileLandscape: propIsMobileLandscape,
     nowMs,
     raiseAmount,
     raiseError,
@@ -68,6 +68,10 @@ export function GameTableView({
     isActionPending,
     hasShellHeader = false,
 }: GameTableViewProps) {
+    const { isMobileLandscape: detectedMobileLandscape, isCompactViewport } = useOrientationGating();
+    const isMobileLandscape = propIsMobileLandscape ?? detectedMobileLandscape;
+    const isCompactTable = propIsCompactTable ?? isCompactViewport;
+
     if (!gameState || !roomState) return null;
 
     const effectivePlayerName = playerName ?? auth?.playerName;
@@ -190,11 +194,23 @@ export function GameTableView({
                 data-phase={gameState.phase}
                 className={cn(
                     isMobileLandscape ? 'h-16' : isCompactTable ? 'h-24' : 'h-28',
-                    gameState.phase === 'SHOWDOWN' && 'short:h-12',
                 )}
             >
-                {gameState.phase === 'SHOWDOWN' ? (
-                    <ResultDock showdownResult={showdownResult} isReady={amReadyForNextHand} onReady={onReady} onUnready={onUnready} isMobileLandscape={isMobileLandscape} onLeaveGame={onLeaveGame} />
+                {gameState.phase === 'SHOWDOWN' && showdownResult ? (
+                    <ResultDock
+                        showdownResult={showdownResult}
+                        isReady={amReadyForNextHand}
+                        isReadyEligible={isReadyEligible}
+                        isActionPending={isActionPending}
+                        isReadyCountdownActive={isReadyCountdownActive}
+                        readyCountdownSecondsRemaining={readyCountdownSecondsRemaining}
+                        readyCount={readyCount}
+                        readyEligibleCount={readyEligibleCount}
+                        onReady={onReady}
+                        onUnready={onUnready}
+                        isMobileLandscape={isMobileLandscape}
+                        onLeaveGame={onLeaveGame}
+                    />
                 ) : (
                     <ActionPanel
                         gameState={gameState}

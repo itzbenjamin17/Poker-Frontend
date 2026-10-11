@@ -1,6 +1,6 @@
 import { HeroSeat } from './HeroSeat';
 import { OpponentSeats } from './OpponentSeats';
-import type { TableScale } from '../lib/tableGeometry';
+import type { TableDimensions, TableScale } from '../lib/tableGeometry';
 import type { Player, SeatPosition, GameState } from '../types';
 
 export interface TablePlayersProps {
@@ -13,6 +13,7 @@ export interface TablePlayersProps {
     isCompactTable: boolean;
     nowMs: number;
     tableScale: TableScale;
+    tableDimensions?: TableDimensions;
 }
 
 export function TablePlayers({
@@ -25,6 +26,7 @@ export function TablePlayers({
     isCompactTable,
     nowMs,
     tableScale,
+    tableDimensions,
 }: TablePlayersProps) {
     const heroIndex = orderedPlayers.findIndex((p) => p.id === myPlayerId);
     const heroPlayer = heroIndex >= 0 ? orderedPlayers[heroIndex] : undefined;
@@ -41,6 +43,7 @@ export function TablePlayers({
                 isCompactTable={isCompactTable}
                 nowMs={nowMs}
                 tableScale={tableScale}
+                tableDimensions={tableDimensions}
             />
             {heroPlayer && (
                 <HeroSeat

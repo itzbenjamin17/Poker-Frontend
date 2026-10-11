@@ -60,8 +60,6 @@ describe('GameTableView', () => {
         claimPending: false,
         notification: null,
         wsStatus: 'connected' as const,
-        isCompactTable: false,
-        isMobileLandscape: false,
         nowMs: 100000,
         raiseAmount: '40',
         raiseError: null,
@@ -75,6 +73,8 @@ describe('GameTableView', () => {
 
     beforeEach(() => {
         vi.clearAllMocks();
+        window.innerWidth = 1024;
+        window.innerHeight = 768;
     });
 
     describe('Item 18: Disconnect Overlay & Reconnect Banner', () => {
@@ -156,6 +156,64 @@ describe('GameTableView', () => {
             const dock = screen.getByRole('region', { name: /room dock/i });
             expect(dock).toBeInTheDocument();
             expect(dock).toHaveAttribute('data-is-compact', 'false');
+        });
+
+        it('derives isMobileLandscape and isCompactTable from mobile landscape viewport dimensions and renders mobile Leave button in ActionPanel', () => {
+            window.innerWidth = 740;
+            window.innerHeight = 360;
+
+            render(<GameTableView {...defaultProps} hasShellHeader={true} />);
+
+            const dock = screen.getByRole('region', { name: /room dock/i });
+            expect(dock).toHaveAttribute('data-is-compact', 'true');
+
+            const actionDock = screen.getByRole('region', { name: /action dock/i });
+            expect(actionDock).toBeInTheDocument();
+            expect(screen.getByRole('button', { name: /^leave$/i })).toBeInTheDocument();
+        });
+
+        it('forwards ready eligibility and countdown props to ResultDock during SHOWDOWN', () => {
+            const bustedHero: Player = { ...defaultPlayer, status: 'OUT', chips: 0 };
+            const showdownState: GameState = {
+                ...mockGameState,
+                phase: 'SHOWDOWN',
+                winners: ['Villain'],
+                winningsPerPlayer: 100,
+                isReadyCountdownActive: true,
+                readyCountdownDeadlineEpochMs: 112000,
+                players: [bustedHero, { ...opponentPlayer, isReadyForNextHand: true }],
+            };
+
+            render(
+                <GameTableView
+                    {...defaultProps}
+                    gameState={showdownState}
+                    showdownResult={showdownState}
+                />,
+            );
+
+            expect(screen.queryByRole('button', { name: /^ready$/i })).not.toBeInTheDocument();
+            expect(screen.getByText(/12s/i)).toBeInTheDocument();
+        });
+
+        it('falls back to ActionPanel during SHOWDOWN when showdownResult is null', () => {
+            const showdownState: GameState = {
+                ...mockGameState,
+                phase: 'SHOWDOWN',
+                isReadyCountdownActive: true,
+                readyCountdownDeadlineEpochMs: 112000,
+            };
+
+            render(
+                <GameTableView
+                    {...defaultProps}
+                    gameState={showdownState}
+                    showdownResult={null}
+                />,
+            );
+
+            expect(screen.queryByRole('region', { name: /round result/i })).not.toBeInTheDocument();
+            expect(screen.getByRole('region', { name: /action dock/i })).toBeInTheDocument();
         });
     });
 

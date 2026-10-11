@@ -8,18 +8,40 @@ import {
     SHOWDOWN_POT_SPLIT, SHOWDOWN_WON_WITH_PREFIX, SHOWDOWN_WON_ROUND,
     ARIA_ROUND_RESULT,
     BTN_LEAVE_TABLE,
+    BTN_READY,
+    BTN_UNREADY,
+    LABEL_PLAYERS_READY_SUFFIX,
 } from '../constants/strings';
 
 interface ResultDockProps {
     showdownResult: GameState | null;
     isReady?: boolean;
+    isReadyEligible?: boolean;
+    isActionPending?: boolean;
+    isReadyCountdownActive?: boolean;
+    readyCountdownSecondsRemaining?: number;
+    readyCount?: number;
+    readyEligibleCount?: number;
     onReady?: () => void;
     onUnready?: () => void;
     isMobileLandscape?: boolean;
     onLeaveGame?: () => void;
 }
 
-export function ResultDock({ showdownResult, isReady, onReady, onUnready, isMobileLandscape, onLeaveGame }: ResultDockProps) {
+export function ResultDock({
+    showdownResult,
+    isReady,
+    isReadyEligible = true,
+    isActionPending = false,
+    isReadyCountdownActive = false,
+    readyCountdownSecondsRemaining = 0,
+    readyCount = 0,
+    readyEligibleCount = 0,
+    onReady,
+    onUnready,
+    isMobileLandscape,
+    onLeaveGame,
+}: ResultDockProps) {
     if (!showdownResult) return null;
 
     const winners = showdownResult.winners ?? [];
@@ -78,29 +100,45 @@ export function ResultDock({ showdownResult, isReady, onReady, onUnready, isMobi
                 </div>
 
                 <div className="flex items-center gap-2 shrink-0">
+                    {isReadyCountdownActive && (
+                        <div className="flex items-center gap-1.5 text-xs">
+                            <span className="text-white font-headline font-bold tabular-nums">
+                                {readyCountdownSecondsRemaining}s
+                            </span>
+                            {readyEligibleCount > 0 && (
+                                <span className="text-zinc-400 text-[10px] uppercase tracking-widest">
+                                    ({readyCount}/{readyEligibleCount} {LABEL_PLAYERS_READY_SUFFIX})
+                                </span>
+                            )}
+                        </div>
+                    )}
                     {isMobileLandscape && onLeaveGame && (
                         <Button variant="ghost" size="xs" onClick={onLeaveGame} className="text-red-400 hover:text-red-300 hover:bg-red-400/10 px-2 py-1 short:py-0.5">
                             {BTN_LEAVE_TABLE}
                         </Button>
                     )}
-                    {isReady ? (
-                        <Button
-                            variant="secondary"
-                            size={isMobileLandscape ? 'xs' : 'sm'}
-                            onClick={onUnready}
-                            className="bg-white/10 text-white/70 hover:bg-white/20 border-white/10 short:px-3 short:py-0.5 short:text-xs"
-                        >
-                            WAITING... (UNREADY)
-                        </Button>
-                    ) : (
-                        <Button
-                            variant="primary"
-                            size={isMobileLandscape ? 'xs' : 'sm'}
-                            onClick={onReady}
-                            className="short:px-3 short:py-0.5 short:text-xs"
-                        >
-                            READY
-                        </Button>
+                    {isReadyEligible && (
+                        isReady ? (
+                            <Button
+                                variant="secondary"
+                                size={isMobileLandscape ? 'xs' : 'sm'}
+                                onClick={onUnready}
+                                disabled={isActionPending}
+                                className="bg-white/10 text-white/70 hover:bg-white/20 border-white/10 short:px-3 short:py-0.5 short:text-xs"
+                            >
+                                {BTN_UNREADY}
+                            </Button>
+                        ) : (
+                            <Button
+                                variant="primary"
+                                size={isMobileLandscape ? 'xs' : 'sm'}
+                                onClick={onReady}
+                                disabled={isActionPending}
+                                className="short:px-3 short:py-0.5 short:text-xs"
+                            >
+                                {BTN_READY}
+                            </Button>
+                        )
                     )}
                 </div>
             </div>

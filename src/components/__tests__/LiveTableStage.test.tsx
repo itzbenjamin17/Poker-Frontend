@@ -185,4 +185,52 @@ describe('LiveTableStage', () => {
         // @ts-expect-error hero index is derived from myPlayerId only
         render(<LiveTableStage {...defaultProps} heroIndex={0} />);
     });
+
+    it('passes measured tableDimensions to OpponentSeats without querying the DOM during render', () => {
+        measured.width = 1920;
+        measured.height = 927;
+
+        const players: Player[] = Array.from({ length: 8 }, (_, idx) => ({
+            id: `p-${idx + 1}`,
+            name: `Player ${idx + 1}`,
+            chips: 1000,
+            status: 'ACTIVE',
+            currentBet: 0,
+            hasFolded: false,
+            isReadyForNextHand: false,
+            holeCards: ['AH', 'KH'],
+            handRank: 'FLUSH',
+        }));
+
+        const showdownState: GameState = {
+            ...mockGameState,
+            phase: 'SHOWDOWN',
+            maxPlayers: 8,
+            players,
+        };
+
+        const querySelectorSpy = vi.spyOn(document, 'querySelector');
+        try {
+            render(
+                <LiveTableStage
+                    {...defaultProps}
+                    gameState={showdownState}
+                    orderedPlayers={players}
+                    myPlayerId="p-1"
+                    showdown={showdownState}
+                />,
+            );
+
+            expect(querySelectorSpy).not.toHaveBeenCalledWith('[data-testid="table-surface"]');
+
+            // Top-centre opponent in an 8-player table is p-5 (index 4).
+            // At 1920x927 stage (table ~1855x863), scale is clamped at 1.15; only the real tableDimensions
+            // provide enough board clearance for seatHandRankFits to keep the hand rank visible (not sr-only).
+            const topSeat = screen.getByTestId('opponent-seat-p-5');
+            const handRank = within(topSeat).getByTestId('seat-hand-rank');
+            expect(handRank).not.toHaveClass('sr-only');
+        } finally {
+            querySelectorSpy.mockRestore();
+        }
+    });
 });

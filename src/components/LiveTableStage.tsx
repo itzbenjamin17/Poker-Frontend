@@ -98,6 +98,7 @@ export function LiveTableStage({
                     isCompactTable={isCompactTable}
                     nowMs={nowMs}
                     tableScale={tableScale}
+                    tableDimensions={tableDimensions}
                 />
 
                 {heroPlayer && (

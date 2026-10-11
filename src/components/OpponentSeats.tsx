@@ -92,10 +92,8 @@ export function OpponentSeats({
         return null;
     };
 
-    const surfaceEl = typeof document !== 'undefined' ? document.querySelector<HTMLElement>('[data-testid="table-surface"]') : null;
-    const surfaceHeight = surfaceEl?.offsetHeight ?? surfaceEl?.clientHeight;
-    const resolvedTableHeight = tableDimensions?.height ?? (surfaceHeight && surfaceHeight > 0 ? surfaceHeight : tableScale.overall * BASE_TABLE_HEIGHT);
-    const resolvedTableWidth = tableDimensions?.width ?? (surfaceEl?.offsetWidth ?? resolvedTableHeight * TABLE_ASPECT);
+    const resolvedTableHeight = tableDimensions?.height ?? tableScale.overall * BASE_TABLE_HEIGHT;
+    const resolvedTableWidth = tableDimensions?.width ?? resolvedTableHeight * TABLE_ASPECT;
     const effectiveTable: TableDimensions = { width: resolvedTableWidth, height: resolvedTableHeight };
 
     return (
@@ -268,22 +266,28 @@ export function OpponentSeats({
                             </div>
                         )}
 
-                        {isExpanded && (
+                        {isExpanded && (() => {
+                            const openUpward = seat.verticalZone === 'bottom' || seat.top > 55;
+                            return (
                             <motion.div
                                 id={`opponent-seat-details-${playerKey}`}
                                 role="region"
                                 aria-label={`${p.name} expanded details`}
-                                initial={{ opacity: 0, y: 6 }}
+                                data-placement={openUpward ? 'top' : 'bottom'}
+                                initial={{ opacity: 0, y: openUpward ? -6 : 6 }}
                                 animate={{ opacity: 1, y: 0 }}
-                                exit={{ opacity: 0, y: 4 }}
+                                exit={{ opacity: 0, y: openUpward ? -4 : 4 }}
                                 transition={{ duration: 0.18, ease: 'easeOut' }}
                                 className={cn(
-                                    'absolute top-full rounded-lg border border-white/10 bg-surface-high/95 text-left shadow-[0_14px_45px_rgba(0,0,0,0.35)] backdrop-blur-md',
+                                    'absolute rounded-lg border border-white/10 bg-surface-high/95 text-left shadow-[0_14px_45px_rgba(0,0,0,0.35)] backdrop-blur-md',
+                                    openUpward ? 'bottom-full mb-1.5' : 'top-full mt-1.5',
                                     seat.panelPlacement === 'right' && 'right-0',
                                     seat.panelPlacement === 'left' && 'left-0',
                                 )}
                                 style={{
-                                    marginTop: `${Math.round(spacing * 8)}px`,
+                                    ...(openUpward
+                                        ? { marginBottom: `${Math.round(spacing * 8)}px` }
+                                        : { marginTop: `${Math.round(spacing * 8)}px` }),
                                     width: `${panelWidth}px`,
                                     padding: `${Math.round(spacing * 12)}px`,
                                 }}
@@ -320,7 +324,8 @@ export function OpponentSeats({
                                     )}
                                 </dl>
                             </motion.div>
-                        )}
+                            );
+                        })()}
                     </div>
                 );
             })}

@@ -22,7 +22,7 @@ export function RotatePrompt({
             aria-label="Rotate device prompt"
             data-testid="rotate-prompt"
             className={cn(
-                'h-[100dvh] h-screen w-full flex flex-col items-center justify-center gap-6 bg-surface px-6 text-center select-none overscroll-none',
+                'h-dvh w-full flex flex-col items-center justify-center gap-6 bg-surface px-6 text-center select-none overscroll-none',
                 className
             )}
         >
