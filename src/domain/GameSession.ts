@@ -20,6 +20,7 @@ import {
     HOST_LEFT,
     GAME_FINISHED_FALLBACK,
     RAISE_ERROR_FORBIDDEN_BET,
+    STATUS_RETURNING,
 } from '../constants/strings';
 import { logger } from '../security/logger';
 import { SystemClock, type Clock, type TimerHandle } from './clock';
@@ -41,14 +42,17 @@ export interface GameSessionOptions {
 
 export class GameSession {
     private readonly auth: AuthResponse;
-    private readonly transport: GameTransport;
+    private transport: GameTransport;
     private readonly clock: Clock;
-    private readonly onLeave?: () => void;
+    private onLeave?: () => void;
 
     private listeners = new Set<() => void>();
+    private connectListeners = new Set<() => void>();
+    private socketErrorListeners = new Set<(message: string) => void>();
     private subscriptions: TransportSubscription[] = [];
     private unsubStatus?: () => void;
     private unsubError?: () => void;
+    private lastStateSyncTime = 0;
 
     private actionTimeoutTimers = new Map<string, TimerHandle>();
     private notificationTimer: TimerHandle | null = null;
@@ -92,14 +96,44 @@ export class GameSession {
         });
     }
 
+    public setOnLeave = (onLeave?: () => void): void => {
+        this.onLeave = onLeave;
+    };
+
     public getSnapshot = (): SessionSnapshot => {
         return this.snapshot;
+    };
+
+    public getTransport = (): GameTransport => {
+        return this.transport;
+    };
+
+    public getLastStateSyncTime = (): number => {
+        return this.lastStateSyncTime;
+    };
+
+    public now = (): number => {
+        return this.clock.now();
     };
 
     public subscribe = (listener: () => void): (() => void) => {
         this.listeners.add(listener);
         return () => {
             this.listeners.delete(listener);
+        };
+    };
+
+    public onConnect = (listener: () => void): (() => void) => {
+        this.connectListeners.add(listener);
+        return () => {
+            this.connectListeners.delete(listener);
+        };
+    };
+
+    public onSocketError = (listener: (message: string) => void): (() => void) => {
+        this.socketErrorListeners.add(listener);
+        return () => {
+            this.socketErrorListeners.delete(listener);
         };
     };
 
@@ -126,7 +160,25 @@ export class GameSession {
 
     // ── Transport Lifecycle & Subscriptions ───────────────────────────────────────
 
-    public connect(): void {
+    private cleanupSubscriptions(): void {
+        for (const sub of this.subscriptions) {
+            sub.unsubscribe();
+        }
+        this.subscriptions = [];
+
+        this.unsubStatus?.();
+        this.unsubStatus = undefined;
+        this.unsubError?.();
+        this.unsubError = undefined;
+    }
+
+    public connect(transportOverride?: GameTransport): void {
+        if (transportOverride && transportOverride !== this.transport) {
+            this.transport = transportOverride;
+        }
+
+        this.cleanupSubscriptions();
+
         this.unsubStatus = this.transport.onStatusChange((status: TransportStatus) => {
             this.handleStatusChange(status);
         });
@@ -156,16 +208,7 @@ export class GameSession {
         this.clearShowdownTimers();
         this.clearNotificationTimer();
         this.clearRedirectTimer();
-
-        for (const sub of this.subscriptions) {
-            sub.unsubscribe();
-        }
-        this.subscriptions = [];
-
-        this.unsubStatus?.();
-        this.unsubStatus = undefined;
-        this.unsubError?.();
-        this.unsubError = undefined;
+        this.cleanupSubscriptions();
 
         this.updateSnapshot(() => ({
             wsStatus: 'disconnected',
@@ -187,19 +230,22 @@ export class GameSession {
         this.updateSnapshot(() => ({
             wsStatus: status,
         }));
+
+        if (status === 'connected') {
+            for (const listener of this.connectListeners) {
+                listener();
+            }
+        }
     }
 
     private handleTransportError(errorMsg: string): void {
         if (this.snapshot.isGameOver) return;
 
-        // STOMP errors immediately cancel in-flight action locks and publish error notification
-        this.cancelActionLocks();
-
-        const normalized = normalizeErrorMessage(errorMsg) || 'Error occurred';
         this.updateSnapshot(() => ({
             wsStatus: 'reconnecting',
-            notification: normalized,
         }));
+
+        this.handleActionError(errorMsg);
     }
 
     // ── Message Handlers ──────────────────────────────────────────────────────────
@@ -221,7 +267,7 @@ export class GameSession {
         }
     }
 
-    private handleActionError(message: string): void {
+    public handleActionError(message: string): void {
         this.cancelActionLocks();
 
         const normalized = normalizeErrorMessage(message) || 'Error occurred';
@@ -237,6 +283,23 @@ export class GameSession {
                 notification: normalized,
             }));
         }
+
+        for (const listener of this.socketErrorListeners) {
+            listener(message);
+        }
+    }
+
+    public scheduleRedirect(message: string): void {
+        if (this.snapshot.isGameOver) return;
+        const cleanMsg = normalizeErrorMessage(message);
+        this.updateSnapshot(() => ({
+            notification: cleanMsg,
+            loadingStatus: cleanMsg || STATUS_RETURNING,
+        }));
+        this.clearRedirectTimer();
+        this.redirectTimer = this.clock.setTimeout(() => {
+            this.onLeave?.();
+        }, ROOM_CLOSED_REDIRECT_MS);
     }
 
     private handleRoomMessage(body: string): void {
@@ -246,14 +309,9 @@ export class GameSession {
             if (update.message === 'ROOM_CLOSED') {
                 if (this.snapshot.isGameOver) return;
                 this.updateSnapshot(() => ({
-                    notification: HOST_LEFT,
-                    loadingStatus: HOST_LEFT,
                     roomState: null,
                 }));
-                this.clearRedirectTimer();
-                this.redirectTimer = this.clock.setTimeout(() => {
-                    this.onLeave?.();
-                }, ROOM_CLOSED_REDIRECT_MS);
+                this.scheduleRedirect(HOST_LEFT);
                 return;
             }
 
@@ -319,6 +377,7 @@ export class GameSession {
 
         if (this.snapshot.isGameOver) return;
 
+        this.lastStateSyncTime = this.clock.now();
         this.applyGameState(parsed);
     }
 
@@ -331,12 +390,12 @@ export class GameSession {
     }): void {
         if (this.snapshot.isGameOver) return;
 
+        this.cancelActionLocks();
         this.clearRedirectTimer();
         this.clearShowdownTimers();
 
         const endMsg = normalizeErrorMessage(payload.message ?? GAME_FINISHED_FALLBACK);
         const winnerName = typeof payload.winner === 'string' ? payload.winner : null;
-        const winnerChips = typeof payload.winnerChips === 'number' ? payload.winnerChips : undefined;
         const isForfeit = payload.isForfeit === true;
 
         let finalGameState: GameState | undefined = undefined;
@@ -361,6 +420,13 @@ export class GameSession {
             };
         }
 
+        const stateForWinner = finalGameState ?? this.snapshot.gameState;
+        const fallbackWinnerChips = winnerName
+            ? stateForWinner?.players.find((p) => p.name === winnerName)?.chips
+            : undefined;
+        const winnerChips =
+            typeof payload.winnerChips === 'number' ? payload.winnerChips : fallbackWinnerChips;
+
         const gameEndResult: GameEndResult = {
             winnerName,
             winnerChips,
@@ -381,8 +447,12 @@ export class GameSession {
 
     // ── Public State Mutation Methods ─────────────────────────────────────────────
 
-    public applyGameState(payload: IncomingGameStatePayload): void {
+    public applyGameState(payload: IncomingGameStatePayload, syncTime?: number): void {
         if (this.snapshot.isGameOver) return;
+
+        if (typeof syncTime === 'number' && syncTime > this.lastStateSyncTime) {
+            this.lastStateSyncTime = syncTime;
+        }
 
         // Any incoming game state clears in-flight action locks
         this.cancelActionLocks();
@@ -592,10 +662,14 @@ export class GameSession {
         if (result?.finalState) {
             const fs = result.finalState;
             if (fs.phase === 'SHOWDOWN' && fs.pot === 0 && this.snapshot.gameState && this.snapshot.gameState.pot > 0) {
-                fs.pot = this.snapshot.gameState.pot;
-                fs.pots = this.snapshot.gameState.pots;
+                nextGameState = {
+                    ...fs,
+                    pot: this.snapshot.gameState.pot,
+                    pots: this.snapshot.gameState.pots,
+                };
+            } else {
+                nextGameState = fs;
             }
-            nextGameState = fs;
         }
         this.clearShowdownTimers();
         this.updateSnapshot(() => ({

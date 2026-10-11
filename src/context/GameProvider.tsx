@@ -16,7 +16,7 @@ import {
     type GameContextValue,
 } from './GameContext';
 import { GameSession } from '../domain/GameSession';
-import { InMemoryTransportAdapter, type GameTransport } from '../services/transport';
+import { StompTransportAdapter, type GameTransport } from '../services/transport';
 import { loadPersistedGameEnd, savePersistedGameEnd } from '../services/gameEndStorage';
 import type { Clock } from '../domain/clock';
 
@@ -46,12 +46,18 @@ export function GameProvider({
         const persistedGameEnd = loadPersistedGameEnd(auth.roomId);
         return new GameSession({
             auth,
-            transport: transportProp ?? new InMemoryTransportAdapter(),
+            transport: transportProp ?? new StompTransportAdapter(auth.token),
             clock,
             initialGameEndResult: persistedGameEnd,
             onLeave,
         });
     }, [sessionProp, auth, transportProp, clock, onLeave]);
+
+    useEffect(() => {
+        if (onLeave) {
+            session.setOnLeave(onLeave);
+        }
+    }, [session, onLeave]);
 
     // React external store subscription
     const state = useSyncExternalStore(
@@ -122,9 +128,12 @@ export function GameProvider({
         isHydrated: state.isHydrated,
         isGameOver: state.isGameOver,
         gameEndResult: state.gameEndResult,
+        pendingActions: state.pendingActions,
+        error: state.error,
         auth,
         onLeave,
         session,
+        transport: session.getTransport(),
         dispatch,
         applyIncomingGameState,
         applyIncomingPrivateState,

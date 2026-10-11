@@ -1,13 +1,13 @@
+import { createElement, type ReactNode } from 'react';
 import { renderHook, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { useGameWebSocket } from '../useGameWebSocket';
-import { useGameContext } from '../../context/GameContext';
+import { GameProvider } from '../../context/GameProvider';
+import { GameSession } from '../../domain/GameSession';
 import { pokerApi } from '../../services/api';
+import { StompTransportAdapter, InMemoryTransportAdapter } from '../../services/transport';
 import { MockStompClient, activeSubscriptions } from '../../test/mocks/stomp';
-
-vi.mock('../../context/GameContext', () => ({
-    useGameContext: vi.fn(),
-}));
+import { HOST_LEFT } from '../../constants/strings';
 
 vi.mock('../../services/api', async (importOriginal) => {
     const actual = await importOriginal<typeof import('../../services/api')>();
@@ -30,11 +30,19 @@ describe('useGameWebSocket', () => {
         message: 'Success',
     };
     const onLeave = vi.fn();
-    const dispatch = vi.fn();
-    const applyIncomingGameState = vi.fn();
-    const applyIncomingPrivateState = vi.fn();
-    const clearShowdownTimers = vi.fn();
     const onSocketError = vi.fn();
+    let session: GameSession;
+
+    function createWrapper(customSession = session) {
+        return function Wrapper({ children }: { children: ReactNode }) {
+            return createElement(GameProvider, {
+                auth: mockAuth,
+                onLeave,
+                session: customSession,
+                children,
+            });
+        };
+    }
 
     beforeEach(() => {
         vi.clearAllMocks();
@@ -44,27 +52,12 @@ describe('useGameWebSocket', () => {
         vi.mocked(pokerApi.getGameState).mockResolvedValue({});
         vi.mocked(pokerApi.getPrivateState).mockResolvedValue({});
 
-        vi.mocked(useGameContext).mockReturnValue({
+        session = new GameSession({
             auth: mockAuth,
+            transport: new StompTransportAdapter(mockAuth.token),
             onLeave,
-            dispatch,
-            applyIncomingGameState,
-            applyIncomingPrivateState,
-            clearShowdownTimers,
-            roomState: null,
-            gameState: null,
-            privateState: null,
-            showdown: null,
-            showdownResult: null,
-            notification: null,
-            loadingStatus: 'Connected',
-            myPlayerId: 'p-1',
-            claimPending: false,
-            wsStatus: 'connected',
-            isHydrated: true,
-            isGameOver: false,
-            gameEndResult: null,
         });
+        session.setHydrated(true);
     });
 
     afterEach(() => {
@@ -72,7 +65,9 @@ describe('useGameWebSocket', () => {
     });
 
     it('subscribes to channels on connection', async () => {
-        const { result } = renderHook(() => useGameWebSocket({ onSocketError }));
+        const { result } = renderHook(() => useGameWebSocket({ onSocketError }), {
+            wrapper: createWrapper(),
+        });
 
         expect(result.current).toBeDefined();
 
@@ -82,10 +77,13 @@ describe('useGameWebSocket', () => {
 
         expect(activeSubscriptions.has('/user/queue/private')).toBe(true);
         expect(activeSubscriptions.has('/room/ROOM123')).toBe(true);
+        expect(activeSubscriptions.has('/game/ROOM123')).toBe(true);
     });
 
-    it('handles ROOM_CLOSED updates by dispatching actions and scheduling redirect', async () => {
-        renderHook(() => useGameWebSocket({ onSocketError }));
+    it('handles ROOM_CLOSED updates by updating session state and scheduling redirect', async () => {
+        renderHook(() => useGameWebSocket({ onSocketError }), {
+            wrapper: createWrapper(),
+        });
 
         await act(async () => {
             vi.advanceTimersByTime(10);
@@ -97,14 +95,9 @@ describe('useGameWebSocket', () => {
             });
         });
 
-        expect(dispatch).toHaveBeenCalledWith({
-            type: 'SET_NOTIFICATION',
-            payload: expect.any(String),
-        });
-        expect(dispatch).toHaveBeenCalledWith({
-            type: 'SET_LOADING_STATUS',
-            payload: expect.any(String),
-        });
+        expect(session.getSnapshot().notification).toBe(HOST_LEFT);
+        expect(session.getSnapshot().loadingStatus).toBe(HOST_LEFT);
+        expect(session.getSnapshot().roomState).toBeNull();
 
         act(() => {
             vi.advanceTimersByTime(3000);
@@ -114,7 +107,9 @@ describe('useGameWebSocket', () => {
     });
 
     it('handles incoming private state and action errors', async () => {
-        renderHook(() => useGameWebSocket({ onSocketError }));
+        renderHook(() => useGameWebSocket({ onSocketError }), {
+            wrapper: createWrapper(),
+        });
 
         await act(async () => {
             vi.advanceTimersByTime(10);
@@ -127,6 +122,7 @@ describe('useGameWebSocket', () => {
             });
         });
         expect(onSocketError).toHaveBeenCalledWith('Invalid Raise Amount');
+        expect(session.getSnapshot().error?.message).toBe('Invalid Raise Amount');
 
         const privatePayload = {
             playerId: 'p-1',
@@ -135,11 +131,14 @@ describe('useGameWebSocket', () => {
         act(() => {
             MockStompClient.simulateMessage('/user/queue/private', privatePayload);
         });
-        expect(applyIncomingPrivateState).toHaveBeenCalledWith(privatePayload);
+        expect(session.getSnapshot().privateState).toEqual({ holeCards: ['AS', 'KS'] });
+        expect(session.getSnapshot().myPlayerId).toBe('p-1');
     });
 
     it('resubscribes to private channel after STOMP reconnect', async () => {
-        const { result } = renderHook(() => useGameWebSocket({ onSocketError }));
+        const { result } = renderHook(() => useGameWebSocket({ onSocketError }), {
+            wrapper: createWrapper(),
+        });
 
         await act(async () => {
             vi.advanceTimersByTime(10);
@@ -172,8 +171,10 @@ describe('useGameWebSocket', () => {
         expect(activeSubscriptions.has('/user/queue/private')).toBe(true);
     });
 
-    it('dispatches SET_GAME_END_RESULT with snapshot on GAME_END frame', async () => {
-        renderHook(() => useGameWebSocket({ onSocketError }));
+    it('updates gameEndResult with snapshot on GAME_END frame', async () => {
+        renderHook(() => useGameWebSocket({ onSocketError }), {
+            wrapper: createWrapper(),
+        });
         await act(async () => { vi.advanceTimersByTime(10); });
 
         const gameEndPayload = {
@@ -187,32 +188,29 @@ describe('useGameWebSocket', () => {
                 pot: 1000,
                 players: [{ id: 'p-1', name: 'Player1', chips: 500 }],
                 communityCards: ['AS', 'KS', 'QS', 'JS', 'TS'],
-            }
+            },
         };
 
         act(() => {
             MockStompClient.simulateMessage('/game/ROOM123', gameEndPayload);
         });
 
-        expect(dispatch).toHaveBeenCalledWith({
-            type: 'SET_GAME_END_RESULT',
-            payload: {
-                winnerName: 'Player1',
-                winnerChips: 500,
-                isForfeit: false,
-                message: 'Player1 wins!',
-                finalState: expect.objectContaining({ phase: 'SHOWDOWN' }),
-            }
+        expect(session.getSnapshot().isGameOver).toBe(true);
+        expect(session.getSnapshot().gameEndResult).toEqual({
+            winnerName: 'Player1',
+            winnerChips: 500,
+            isForfeit: false,
+            message: 'Player1 wins!',
+            finalState: expect.objectContaining({ phase: 'SHOWDOWN' }),
         });
     });
 
     it('ignores subsequent game updates after game end', async () => {
-        vi.mocked(useGameContext).mockReturnValue({
-            ...vi.mocked(useGameContext)(),
-            gameEndResult: { winnerName: 'Player1', isForfeit: false, message: 'Done' }
-        } as any);
+        session.setGameEndResult({ winnerName: 'Player1', isForfeit: false, message: 'Done' });
 
-        renderHook(() => useGameWebSocket({ onSocketError }));
+        renderHook(() => useGameWebSocket({ onSocketError }), {
+            wrapper: createWrapper(),
+        });
         await act(async () => { vi.advanceTimersByTime(10); });
 
         act(() => {
@@ -220,23 +218,22 @@ describe('useGameWebSocket', () => {
                 phase: 'PRE_FLOP',
                 pot: 0,
                 players: [],
-                communityCards: []
+                communityCards: [],
             });
         });
 
-        expect(applyIncomingGameState).not.toHaveBeenCalled();
+        expect(session.getSnapshot().gameState).toBeNull();
     });
 
     it('does not schedule redirect on 403 after game end', async () => {
-        vi.mocked(useGameContext).mockReturnValue({
-            ...vi.mocked(useGameContext)(),
-            gameEndResult: { winnerName: 'Player1', isForfeit: false, message: 'Done' }
-        } as any);
+        session.setGameEndResult({ winnerName: 'Player1', isForfeit: false, message: 'Done' });
 
         // Mock pokerApi.getGameState to reject with 403
         vi.mocked(pokerApi.getGameState).mockRejectedValue({ status: 403 });
 
-        renderHook(() => useGameWebSocket({ onSocketError }));
+        renderHook(() => useGameWebSocket({ onSocketError }), {
+            wrapper: createWrapper(),
+        });
 
         // Advance timers to trigger onConnect
         await act(async () => {
@@ -249,12 +246,11 @@ describe('useGameWebSocket', () => {
     });
 
     it('ignores ROOM_CLOSED after game end', async () => {
-        vi.mocked(useGameContext).mockReturnValue({
-            ...vi.mocked(useGameContext)(),
-            gameEndResult: { winnerName: 'Player1', isForfeit: false, message: 'Done' }
-        } as any);
+        session.setGameEndResult({ winnerName: 'Player1', isForfeit: false, message: 'Done' });
 
-        renderHook(() => useGameWebSocket({ onSocketError }));
+        renderHook(() => useGameWebSocket({ onSocketError }), {
+            wrapper: createWrapper(),
+        });
         await act(async () => { vi.advanceTimersByTime(10); });
 
         act(() => {
@@ -263,27 +259,26 @@ describe('useGameWebSocket', () => {
             });
         });
 
-        expect(dispatch).not.toHaveBeenCalledWith({ type: 'SET_ROOM', payload: null });
+        expect(session.getSnapshot().roomState).not.toBeNull();
         expect(onLeave).not.toHaveBeenCalled();
     });
 
     it('does not fetch game state or private state on connect when room has not started', async () => {
-        vi.mocked(useGameContext).mockReturnValue({
-            ...vi.mocked(useGameContext)(),
-            roomState: {
-                roomId: 'ROOM123',
-                roomName: 'LobbyRoom',
-                players: [],
-                maxPlayers: 6,
-                buyIn: 1000,
-                smallBlind: 10,
-                bigBlind: 20,
-                canStartGame: false,
-                gameStarted: false,
-            },
-        } as any);
+        session.setRoomState({
+            roomId: 'ROOM123',
+            roomName: 'LobbyRoom',
+            players: [],
+            maxPlayers: 6,
+            buyIn: 1000,
+            smallBlind: 10,
+            bigBlind: 20,
+            canStartGame: false,
+            gameStarted: false,
+        });
 
-        renderHook(() => useGameWebSocket({ onSocketError }));
+        renderHook(() => useGameWebSocket({ onSocketError }), {
+            wrapper: createWrapper(),
+        });
         await act(async () => { vi.advanceTimersByTime(10); });
 
         expect(pokerApi.getGameState).not.toHaveBeenCalled();
@@ -291,22 +286,21 @@ describe('useGameWebSocket', () => {
     });
 
     it('fetches game state and private state on connect when game has started', async () => {
-        vi.mocked(useGameContext).mockReturnValue({
-            ...vi.mocked(useGameContext)(),
-            roomState: {
-                roomId: 'ROOM123',
-                roomName: 'ActiveRoom',
-                players: [],
-                maxPlayers: 6,
-                buyIn: 1000,
-                smallBlind: 10,
-                bigBlind: 20,
-                canStartGame: false,
-                gameStarted: true,
-            },
-        } as any);
+        session.setRoomState({
+            roomId: 'ROOM123',
+            roomName: 'ActiveRoom',
+            players: [],
+            maxPlayers: 6,
+            buyIn: 1000,
+            smallBlind: 10,
+            bigBlind: 20,
+            canStartGame: false,
+            gameStarted: true,
+        });
 
-        renderHook(() => useGameWebSocket({ onSocketError }));
+        renderHook(() => useGameWebSocket({ onSocketError }), {
+            wrapper: createWrapper(),
+        });
         await act(async () => { vi.advanceTimersByTime(10); });
 
         expect(pokerApi.getGameState).toHaveBeenCalledWith('ROOM123', 'test-token');
@@ -314,7 +308,9 @@ describe('useGameWebSocket', () => {
     });
 
     it('handles STOMP error frame by updating ws status and calling onSocketError', async () => {
-        renderHook(() => useGameWebSocket({ onSocketError }));
+        renderHook(() => useGameWebSocket({ onSocketError }), {
+            wrapper: createWrapper(),
+        });
         await act(async () => { vi.advanceTimersByTime(10); });
 
         act(() => {
@@ -324,45 +320,23 @@ describe('useGameWebSocket', () => {
             });
         });
 
-        expect(dispatch).toHaveBeenCalledWith({
-            type: 'SET_WS_STATUS',
-            payload: 'reconnecting',
-        });
+        expect(session.getSnapshot().wsStatus).toBe('reconnecting');
+        expect(session.getSnapshot().notification).toBe('Subscription rejected by broker');
         expect(onSocketError).toHaveBeenCalledWith('Subscription rejected by broker');
     });
 
     it('ignores STOMP error after game end when connected', async () => {
-        let currentEndResult: any = null;
-        vi.mocked(useGameContext).mockImplementation(() => ({
-            auth: mockAuth,
-            onLeave,
-            dispatch,
-            applyIncomingGameState,
-            applyIncomingPrivateState,
-            clearShowdownTimers,
-            roomState: null,
-            gameState: null,
-            privateState: null,
-            showdown: null,
-            showdownResult: null,
-            notification: null,
-            loadingStatus: 'Connected',
-            myPlayerId: 'p-1',
-            claimPending: false,
-            wsStatus: 'connected',
-            isHydrated: true,
-            isGameOver: false,
-            gameEndResult: currentEndResult,
-        }));
-
-        const { rerender } = renderHook(() => useGameWebSocket({ onSocketError }));
+        const { rerender } = renderHook(() => useGameWebSocket({ onSocketError }), {
+            wrapper: createWrapper(),
+        });
         await act(async () => { vi.advanceTimersByTime(10); });
 
         // Simulate game end while connected
-        currentEndResult = { winnerName: 'Player1', isForfeit: false, message: 'Done' };
+        act(() => {
+            session.setGameEndResult({ winnerName: 'Player1', isForfeit: false, message: 'Done' });
+        });
         rerender();
 
-        dispatch.mockClear();
         onSocketError.mockClear();
 
         act(() => {
@@ -371,15 +345,14 @@ describe('useGameWebSocket', () => {
             });
         });
 
-        expect(dispatch).not.toHaveBeenCalledWith({
-            type: 'SET_WS_STATUS',
-            payload: 'reconnecting',
-        });
+        expect(session.getSnapshot().wsStatus).toBe('connected');
         expect(onSocketError).not.toHaveBeenCalled();
     });
 
     it('handles STOMP error frame with body fallback when message header is missing', async () => {
-        renderHook(() => useGameWebSocket({ onSocketError }));
+        renderHook(() => useGameWebSocket({ onSocketError }), {
+            wrapper: createWrapper(),
+        });
         await act(async () => { vi.advanceTimersByTime(10); });
 
         act(() => {
@@ -388,36 +361,37 @@ describe('useGameWebSocket', () => {
             });
         });
 
-        expect(dispatch).toHaveBeenCalledWith({
-            type: 'SET_WS_STATUS',
-            payload: 'reconnecting',
-        });
+        expect(session.getSnapshot().wsStatus).toBe('reconnecting');
         expect(onSocketError).toHaveBeenCalledWith('Internal broker connection failure');
     });
 
     it('handles STOMP error frame with default fallback when both header and body are missing', async () => {
-        renderHook(() => useGameWebSocket({ onSocketError }));
+        renderHook(() => useGameWebSocket({ onSocketError }), {
+            wrapper: createWrapper(),
+        });
         await act(async () => { vi.advanceTimersByTime(10); });
 
         act(() => {
             MockStompClient.simulateStompError({});
         });
 
-        expect(dispatch).toHaveBeenCalledWith({
-            type: 'SET_WS_STATUS',
-            payload: 'reconnecting',
-        });
+        expect(session.getSnapshot().wsStatus).toBe('reconnecting');
         expect(onSocketError).toHaveBeenCalledWith('STOMP transport error');
     });
 
     it('works seamlessly with InMemoryTransportAdapter', async () => {
-        const inMemoryTransport = new (await import('../../services/transport')).InMemoryTransportAdapter();
-        renderHook(() => useGameWebSocket({ onSocketError, transport: inMemoryTransport }));
-
-        expect(dispatch).toHaveBeenCalledWith({
-            type: 'SET_WS_STATUS',
-            payload: 'connected',
+        const inMemoryTransport = new InMemoryTransportAdapter();
+        renderHook(() => useGameWebSocket({ onSocketError, transport: inMemoryTransport }), {
+            wrapper: createWrapper(),
         });
+
+        expect(session.getSnapshot().wsStatus).toBe('connected');
+
+        // Verify zero duplicate subscriptions
+        const subscriptions = inMemoryTransport.getSubscriptions();
+        expect(subscriptions.get('/room/ROOM123')?.size).toBe(1);
+        expect(subscriptions.get('/game/ROOM123')?.size).toBe(1);
+        expect(subscriptions.get('/user/queue/private')?.size).toBe(1);
 
         // Test packet injection
         act(() => {
@@ -426,10 +400,7 @@ describe('useGameWebSocket', () => {
             }));
         });
 
-        expect(dispatch).toHaveBeenCalledWith({
-            type: 'SET_ROOM',
-            payload: null,
-        });
+        expect(session.getSnapshot().roomState).toBeNull();
 
         // Test error injection
         act(() => {

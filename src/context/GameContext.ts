@@ -1,5 +1,6 @@
 import { createContext, useContext } from 'react';
 import type { GameSession } from '../domain/GameSession';
+import type { GameTransport } from '../services/transport';
 import type {
     AuthResponse,
     GameState,
@@ -24,6 +25,8 @@ export interface GameContextState {
     isHydrated: boolean;
     isGameOver: boolean;
     gameEndResult: GameEndResult | null;
+    pendingActions?: ReadonlySet<string>;
+    error?: { message: string } | null;
 }
 
 export type Action =
@@ -41,6 +44,7 @@ export interface GameContextValue extends GameContextState {
     auth: AuthResponse;
     onLeave?: () => void;
     session?: GameSession;
+    transport?: GameTransport;
     dispatch: React.Dispatch<Action>;
     applyIncomingGameState: (payload: IncomingGameStatePayload) => void;
     applyIncomingPrivateState: (payload: IncomingPrivateStatePayload) => void;

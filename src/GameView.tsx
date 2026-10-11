@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import type { AuthResponse } from './types';
 import type { GameSession } from './domain/GameSession';
 import { GameProvider } from './context/GameProvider';
@@ -60,29 +60,8 @@ function GameViewInner() {
     useSessionHydration();
 
     // ── WebSocket & Dispatcher ──────────────────────────────────────────────────
-    const dispatcherRef = useRef<ReturnType<typeof useGameDispatcher> | null>(null);
-    const handleSocketError = useCallback((msg: string) => {
-        dispatcherRef.current?.onSocketError(msg);
-    }, []);
-
-    const { stompClientRef, transportRef } = useGameWebSocket({ onSocketError: handleSocketError });
-
-    const publisherAdapter = useMemo(() => ({
-        publish: (dest: string, body: string) => {
-            if (transportRef.current) {
-                transportRef.current.publish(dest, body);
-            } else {
-                stompClientRef.current?.publish({ destination: dest, body });
-            }
-        },
-        isConnected: () => transportRef.current?.isConnected?.() ?? stompClientRef.current?.connected ?? false
-    }), [transportRef, stompClientRef]);
-
-    const dispatcher = useGameDispatcher(publisherAdapter);
-    
-    useEffect(() => {
-        dispatcherRef.current = dispatcher;
-    }, [dispatcher]);
+    useGameWebSocket();
+    const dispatcher = useGameDispatcher();
 
     // ── Routing (no hooks below this line) ──────────────────────────────────────
 
@@ -191,7 +170,7 @@ function GameViewInner() {
                     setRaiseAmount(val);
                     dispatcher.clearError();
                 }}
-                isActionPending={dispatcher.isPending('PLAY_ACTION') || dispatcher.isPending('READY') || dispatcher.isPending('START_GAME') || dispatcher.isPending('CLAIM_WIN') || dispatcher.isPending('LEAVE_GAME')}
+                isActionPending={dispatcher.isPending('PLAY_ACTION') || dispatcher.isPending('READY') || dispatcher.isPending('UNREADY') || dispatcher.isPending('START_GAME') || dispatcher.isPending('CLAIM_WIN') || dispatcher.isPending('LEAVE_GAME')}
                 hasShellHeader={true}
             />
         </PokerRoomLayout>

@@ -88,17 +88,15 @@ frontend-poker/
 │   │   ├── GameContext.ts        # Context type, `Action` union, and `useGameContext` accessor
 │   │   └── GameProvider.tsx      # Bridges the `GameSession` store into React via `useSyncExternalStore`
 │   ├── domain/
-│   │   ├── GameSession.ts        # In-process game store: payload application, action lock, showdown/room-closed timers
+│   │   ├── GameSession.ts        # Authoritative in-process game store: STOMP subscriptions, frame routing, action locks, and showdown/room-closed timers
 │   │   └── clock.ts              # `Clock` port with `SystemClock` (prod) and `TestClock` (deterministic tests)
 │   ├── hooks/
 │   │   ├── useAuthSession.ts     # JWT storage in localStorage (`poker-auth`)
 │   │   ├── useElementSize.ts     # ResizeObserver hook for container dimension measurement
-│   │   ├── useGameDispatcher.ts  # Game action dispatching with pending state management
-│   │   ├── useGameWebSocket.ts   # Transport lifecycle: subscriptions, frame handling, and auto-reconnect
-│   │   ├── useNotification.ts    # Toast notification state and timeouts
+│   │   ├── useGameDispatcher.ts  # Delegates STOMP commands to `GameSession` and executes REST room/game lifecycle commands
+│   │   ├── useGameWebSocket.ts   # Connects/disconnects `GameSession`, wake-up/online reconnects, and REST state resync on connect
 │   │   ├── useSeatLayout.ts      # Parametric ellipse seating calculations wrapping `tableGeometry.ts`
-│   │   ├── useSessionHydration.ts# REST snapshot hydration on initial load with fallback
-│   │   └── useShowdownTimers.ts  # Ready countdowns and auto-advance timers
+│   │   └── useSessionHydration.ts# REST snapshot hydration on initial load with fallback
 │   ├── lib/
 │   │   ├── cn.ts                 # Class merger utility (`clsx` + `tailwind-merge`)
 │   │   ├── game.ts               # Hand ranking evaluations, legal bet clamping, action helpers
@@ -109,6 +107,7 @@ frontend-poker/
 │   │   └── logger.ts             # Dev-only console logger (silent in production builds)
 │   ├── services/
 │   │   ├── api.ts                # REST client (`fetch`), `handleApiError`, and STOMP client factory
+│   │   ├── gameEndStorage.ts     # Persisted `poker-game-end:{roomId}` snapshot storage helpers
 │   │   └── transport.ts          # `GameTransport` port with `StompTransportAdapter` and `InMemoryTransportAdapter`
 │   └── test/
 │       ├── mocks/                # MSW `handlers.ts`/`server.ts` and STOMP mock (`stomp.ts`)
@@ -123,19 +122,19 @@ frontend-poker/
 
 Per ADR `0003`, game state lives outside React:
 
-1. **`GameSession` (`src/domain/GameSession.ts`)**: A plain TypeScript store that owns room/game/private state, applies decoded payloads, enforces the action lock, and runs lifecycle timers (showdown fallback, room-closed redirect) through an injected `Clock`. It exposes `subscribe`/`getSnapshot` for `useSyncExternalStore`.
-2. **`GameTransport` port (`src/services/transport.ts`)**: `connect`, `disconnect`, `subscribe`, `publish`, `onStatusChange` (plus optional `onError`/`isConnected`). `StompTransportAdapter` wraps `@stomp/stompjs` in production; `InMemoryTransportAdapter` backs tests and the provider default.
-3. **React bridge**: `GameProvider` constructs (or accepts an injected) `GameSession` and maps legacy `Action` dispatches onto session methods. Presentational views (`GameTableView`, `GameLobbyView`, `GameReviewView`) receive explicit props from `GameView`.
+1. **`GameSession` (`src/domain/GameSession.ts`)**: The single authoritative TypeScript store that owns STOMP topic subscriptions (`/room/{roomId}`, `/game/{roomId}`, `/user/queue/private`), incoming frame decoding and routing, room/game/private state, outgoing STOMP actions (`playAction`, `ready`, `unready`), action locks, and lifecycle timers (showdown fallback, room-closed redirect, notifications) through an injected `Clock`. It exposes `subscribe`/`getSnapshot` for `useSyncExternalStore`.
+2. **`GameTransport` port (`src/services/transport.ts`)**: `connect`, `disconnect`, `subscribe`, `publish`, `onStatusChange` (plus optional `onError`/`isConnected`/`forceReconnect`). `StompTransportAdapter` wraps `@stomp/stompjs` as the `GameProvider` default in production; `InMemoryTransportAdapter` backs deterministic unit/integration tests.
+3. **React bridge**: `GameProvider` constructs (or accepts an injected) `GameSession` with `StompTransportAdapter(auth.token)` by default, while `useGameWebSocket` manages `session.connect()`/`session.disconnect()`, wake-up reconnects, and REST state resync on connect, and `useGameDispatcher` delegates STOMP actions directly to `GameSession`. Presentational views (`GameTableView`, `GameLobbyView`, `GameReviewView`) receive explicit props from `GameView`.
 4. **Testability**: Full game flows and timer transitions can be tested in Node with `TestClock` + `InMemoryTransportAdapter`, without JSDOM. E2E tests intercept sockets with Playwright `page.routeWebSocket()` rather than production backdoors.
 
 ### Real-Time Flow
 
-1. **Hydration**: When the game room mounts, `useSessionHydration` fetches initial state snapshots via REST (`/api/rooms/{id}`, `/api/games/{id}`).
-2. **Subscriptions**: `useGameWebSocket` connects to the STOMP broker at `/ws` and subscribes to:
-   - `/room/{roomId}`: room status, seat assignments, readiness, and game start events.
-   - `/game/{gameId}`: public game states (phases, pots, community cards, turn active player).
-   - `/user/queue/private`: private player updates (hole cards, private errors).
-3. **Actions**: Gameplay actions (`CHECK`, `CALL`, `BET`, `RAISE`, `FOLD`) are dispatched via STOMP frames (`/app/game/{gameId}/action`). Room lifecycle actions (`join`, `start`, `leave`, `claim-win`) execute via authenticated REST endpoints.
+1. **Hydration**: When the game room mounts, `useSessionHydration` fetches initial state snapshots via REST (`/api/room/{id}`, `/api/game/{id}/state`, `/api/game/{id}/private-state`).
+2. **Subscriptions**: `useGameWebSocket` invokes `session.connect()`, and `GameSession` subscribes via `GameTransport` to:
+   - `/room/{roomId}`: room status, seat assignments, readiness, and room closed events.
+   - `/game/{roomId}`: public game states (phases, pots, community cards, turn active player) and `GAME_END` payloads.
+   - `/user/queue/private`: private player updates (hole cards, private `ACTION_ERROR` payloads).
+3. **Actions**: Gameplay actions (`CHECK`, `CALL`, `BET`, `RAISE`, `FOLD`, `ALL_IN`) and showdown readiness (`READY`, `UNREADY`) are dispatched via `GameSession` STOMP frames (`/app/{gameId}/action`, `/app/{gameId}/ready`, `/app/{gameId}/unready`). Room lifecycle actions (`join`, `start-game`, `leave`, `claim-win`) execute via authenticated REST endpoints in `useGameDispatcher`.
 4. **Resiliency**: Auto-reconnection handles transient network drops, tab visibility changes, and online events without creating UI freezes or infinite loops.
 
 ### Table Layout and Parametric Seating Geometry
@@ -188,9 +187,9 @@ The table layout is fully decoupled from browser viewport globals (`window.inner
 The testing strategy uses a strict two-tier architecture to balance thoroughness with fast CI feedback:
 
 ### 1. Fast CI Layer (~1–2 minutes)
-- **Unit & Component Tests**: Run via `npx vitest run`. Covers 49 test files (pure geometric math in `tableGeometry.test.ts`, `GameSession` domain flows, hook lifecycle, component rendering, and state dispatchers).
+- **Unit & Component Tests**: Run via `npx vitest run`. Covers 48 test files (pure geometric math in `tableGeometry.test.ts`, `GameSession` domain flows, hook lifecycle, component rendering, and state dispatchers).
 - **Type Checking**: Run via `npx tsc -p tsconfig.app.json --noEmit`. Zero TypeScript errors allowed.
-- **Linting**: Run via `npm run lint`. Baseline ceiling enforced (0 errors, 1 warning ceiling).
+- **Linting**: Run via `npm run lint`. Zero errors and zero warnings allowed.
 - **Production Build**: Run via `npm run build`. Builds production assets in < 500ms.
 - **Fast E2E Integration**: Run via `npx playwright test` against mocked or live backend. Ignores heavy layout specs via `playwright.config.ts`.
 
