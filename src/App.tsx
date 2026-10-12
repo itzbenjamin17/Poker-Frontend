@@ -8,7 +8,7 @@ import { useAuthSession } from './hooks/useAuthSession';
 const GameView = lazy(() => import('./GameView'));
 
 export default function App() {
-    const { auth, setAuth, clearAuth, authError, clearAuthError } = useAuthSession();
+    const { auth, setAuth, clearAuth } = useAuthSession();
 
     return (
         <div className="min-h-screen bg-surface selection:bg-emerald-primary selection:text-surface">
@@ -28,11 +28,7 @@ export default function App() {
 
             <ErrorBoundary onReset={clearAuth}>
                 {!auth ? (
-                    <Lobby
-                        onAuth={setAuth}
-                        initialError={authError}
-                        onClearInitialError={clearAuthError}
-                    />
+                    <Lobby onAuth={setAuth} />
                 ) : (
                     <Suspense fallback={<LoadingView status={SESSION_RESTORING} onLeave={clearAuth} />}>
                         <GameView auth={auth} onLeave={clearAuth} />

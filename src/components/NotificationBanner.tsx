@@ -25,7 +25,7 @@ export function NotificationBanner({ notification = null }: NotificationBannerPr
                     ? { duration: 0 }
                     : { type: 'spring', stiffness: 380, damping: 28 }
             }
-            className="fixed top-6 left-1/2 -translate-x-1/2 z-[100] bg-gold-secondary text-surface px-6 py-2.5 rounded-full font-headline font-bold shadow-lg max-w-[85vw] md:max-w-xl text-center pointer-events-none text-sm md:text-base border border-amber-300/20"
+            className="fixed top-16 md:top-20 short:top-10 left-1/2 -translate-x-1/2 z-[100] bg-gold-secondary text-surface px-6 py-2.5 rounded-full font-headline font-bold shadow-lg max-w-[85vw] md:max-w-xl text-center pointer-events-none text-sm md:text-base border border-amber-300/20"
         >
             {notification}
 

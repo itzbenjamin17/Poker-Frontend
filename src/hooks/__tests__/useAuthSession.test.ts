@@ -17,12 +17,11 @@ describe('useAuthSession', () => {
         vi.resetModules();
     });
 
-    it('returns null auth and null authError when no session is stored', async () => {
+    it('returns null auth when no session is stored', async () => {
         const { useAuthSession } = await import('../useAuthSession');
         const { result } = renderHook(() => useAuthSession());
 
         expect(result.current.auth).toBeNull();
-        expect(result.current.authError).toBeNull();
     });
 
     it('returns parsed auth object when valid session is stored', async () => {
@@ -38,10 +37,9 @@ describe('useAuthSession', () => {
         const { result } = renderHook(() => useAuthSession());
 
         expect(result.current.auth).toEqual(validAuth);
-        expect(result.current.authError).toBeNull();
     });
 
-    it('clears storage, sets authError, and returns null auth when stored JWT is expired', async () => {
+    it('clears storage and returns null auth when stored JWT is expired', async () => {
         const expiredAuth = {
             token: createJwt({ exp: Math.floor(Date.now() / 1000) - 3600 }),
             roomId: 'room-1',
@@ -55,10 +53,9 @@ describe('useAuthSession', () => {
 
         expect(result.current.auth).toBeNull();
         expect(localStorage.getItem('poker-auth')).toBeNull();
-        expect(result.current.authError).toBe("Your session couldn't be restored.");
     });
 
-    it('clears storage, sets authError, and returns null auth when storage has invalid shape', async () => {
+    it('clears storage and returns null auth when storage has invalid shape', async () => {
         localStorage.setItem('poker-auth', JSON.stringify({ token: '', roomId: 'room-1' }));
 
         const { useAuthSession } = await import('../useAuthSession');
@@ -66,7 +63,6 @@ describe('useAuthSession', () => {
 
         expect(result.current.auth).toBeNull();
         expect(localStorage.getItem('poker-auth')).toBeNull();
-        expect(result.current.authError).toBe("Your session couldn't be restored.");
     });
 
     it('writes to localStorage when setAuth is called', async () => {
@@ -157,26 +153,6 @@ describe('useAuthSession', () => {
         expect(localStorage.getItem('poker-auth')).toBeNull();
     });
 
-    it('does not leak authError from an expired token on mount 1 into mount 2 after storage is cleared', async () => {
-        const expiredAuth = {
-            token: createJwt({ exp: Math.floor(Date.now() / 1000) - 3600 }),
-            roomId: 'room-1',
-            playerName: 'Alice',
-            message: 'Success',
-        };
-        localStorage.setItem('poker-auth', JSON.stringify(expiredAuth));
-
-        const { useAuthSession } = await import('../useAuthSession');
-        const mount1 = renderHook(() => useAuthSession());
-        expect(mount1.result.current.authError).toBe("Your session couldn't be restored.");
-        mount1.unmount();
-
-        // Storage was cleared by mount 1; a fresh mount of the same module must not inherit authError
-        const mount2 = renderHook(() => useAuthSession());
-        expect(mount2.result.current.auth).toBeNull();
-        expect(mount2.result.current.authError).toBeNull();
-    });
-
     it('survives localStorage SecurityError and QuotaExceededError while keeping auth state in memory', async () => {
         const { useAuthSession } = await import('../useAuthSession');
 
@@ -193,7 +169,6 @@ describe('useAuthSession', () => {
         try {
             const { result } = renderHook(() => useAuthSession());
             expect(result.current.auth).toBeNull();
-            expect(result.current.authError).toBeNull();
 
             const newAuth = {
                 token: createJwt({ exp: Math.floor(Date.now() / 1000) + 3600 }),

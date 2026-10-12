@@ -128,7 +128,7 @@ export function GameTableView({
             aria-label="Live poker table"
             data-testid="game-table-view"
             className={cn(
-                'isolate flex w-full max-w-full flex-col relative overflow-hidden overscroll-none',
+                'flex w-full max-w-full flex-col relative overflow-hidden overscroll-none',
                 hasShellHeader ? 'flex-1 min-h-0 min-w-0' : 'h-[100dvh] min-h-[600px] md:h-screen',
             )}
         >

@@ -11,7 +11,6 @@ export const NAV_TABLES = 'Tables';
 // ─── Auth / Session ───────────────────────────────────────────────────────────
 export const AUTH_KEY = 'poker-auth';
 export const SESSION_RESTORING = 'Restoring your seat...';
-export const SESSION_RESTORE_FAILED = "Your session couldn't be restored.";
 export const SESSION_EXPIRED = 'Session expired. Returning to lobby...';
 export const SESSION_SEAT_GONE = 'Your seat is no longer active. Returning to lobby...';
 export const BTN_RETURN_TO_LOBBY = 'RETURN TO LOBBY';

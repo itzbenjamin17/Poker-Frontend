@@ -21,6 +21,7 @@ import {
     HOST_LEFT,
     GAME_FINISHED_FALLBACK,
     RAISE_ERROR_FORBIDDEN_BET,
+    SESSION_EXPIRED,
     STATUS_RETURNING,
 } from '../constants/strings';
 import { logger } from '../security/logger';
@@ -270,6 +271,14 @@ export class GameSession {
 
     public handleActionError(message: string): void {
         this.cancelActionLocks();
+
+        if (/game not found|room not found|no longer part of this game/i.test(message)) {
+            this.scheduleRedirect(SESSION_EXPIRED);
+            for (const listener of this.socketErrorListeners) {
+                listener(message);
+            }
+            return;
+        }
 
         const normalized = normalizeErrorMessage(message) || 'Error occurred';
         const isBetRaiseError = /bet|raise|insufficient|amount|chip/i.test(message);

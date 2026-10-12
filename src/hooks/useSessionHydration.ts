@@ -142,7 +142,8 @@ export function useSessionHydration() {
                             return;
                         }
                         if (statusCode === 404) {
-                            break;
+                            redirectToLobby(SESSION_EXPIRED);
+                            return;
                         } else {
                             logger.error('Game snapshot fetch error, retrying:', err);
                             dispatch({ type: 'SET_LOADING_STATUS', payload: STATUS_RECONNECTING_TABLE });

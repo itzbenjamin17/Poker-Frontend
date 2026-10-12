@@ -82,6 +82,7 @@ export function useGameDispatcher() {
                 contextDispatch({ type: 'SET_CLAIM_PENDING', payload: true });
                 await pokerApi.claimWin(targetGameId, auth.token);
             } else if (command.type === 'LEAVE_GAME') {
+                session?.disconnect();
                 const logUnexpectedLeaveError = (op: string, err: unknown) => {
                     const code = getErrorStatusCode(err);
                     if (code !== 404 && code !== 403) {

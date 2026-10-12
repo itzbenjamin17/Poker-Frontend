@@ -11,12 +11,8 @@ import { JoinRoomForm } from './components/lobby/JoinRoomForm';
 
 export default function Lobby({
     onAuth,
-    initialError,
-    onClearInitialError,
 }: {
     onAuth: (data: AuthResponse) => void;
-    initialError?: string | null;
-    onClearInitialError?: () => void;
 }) {
     const [isCreating, setIsCreating] = useState(false);
     const [isJoining, setIsJoining] = useState(false);
@@ -35,16 +31,6 @@ export default function Lobby({
             }, 5000);
         }
     };
-
-    useEffect(() => {
-        if (initialError) {
-            const timer = setTimeout(() => {
-                setError(initialError);
-                onClearInitialError?.();
-            }, 0);
-            return () => clearTimeout(timer);
-        }
-    }, [initialError, onClearInitialError]);
 
     useEffect(() => {
         return () => {

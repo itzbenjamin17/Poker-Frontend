@@ -10,10 +10,9 @@ vi.mock('../hooks/useAuthSession', () => ({
 }));
 
 vi.mock('../Lobby', () => ({
-    default: ({ onAuth, initialError }: { onAuth: (auth: any) => void; initialError?: string | null }) => (
+    default: ({ onAuth }: { onAuth: (auth: any) => void }) => (
         <div data-testid="lobby-view">
             <span>Lobby Component</span>
-            {initialError && <span data-testid="auth-error">{initialError}</span>}
             <button
                 type="button"
                 onClick={() =>
@@ -44,7 +43,6 @@ vi.mock('../GameView', () => ({
 describe('App', () => {
     const mockSetAuth = vi.fn();
     const mockClearAuth = vi.fn();
-    const mockClearAuthError = vi.fn();
 
     beforeEach(() => {
         vi.clearAllMocks();
@@ -58,8 +56,6 @@ describe('App', () => {
             auth: null,
             setAuth: mockSetAuth,
             clearAuth: mockClearAuth,
-            authError: null,
-            clearAuthError: mockClearAuthError,
         });
 
         render(<App />);
@@ -80,8 +76,6 @@ describe('App', () => {
             },
             setAuth: mockSetAuth,
             clearAuth: mockClearAuth,
-            authError: null,
-            clearAuthError: mockClearAuthError,
         });
 
         render(<App />);
@@ -103,8 +97,6 @@ describe('App', () => {
             auth: null,
             setAuth: mockSetAuth,
             clearAuth: mockClearAuth,
-            authError: null,
-            clearAuthError: mockClearAuthError,
         });
 
         render(<App />);
