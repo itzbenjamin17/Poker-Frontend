@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useContext } from 'react';
 import { cn } from '../lib/cn';
+import { Button } from './UI';
 import { RotatePrompt } from './RotatePrompt';
 import { GameContext } from '../context/GameContext';
+import { BTN_RETRY_CONNECTION, STATUS_RECOVERING_TABLE } from '../constants/strings';
 import type { WsStatus } from '../types';
 
 export { RotatePrompt } from './RotatePrompt';
@@ -107,11 +109,55 @@ export interface PokerRoomLayoutProps {
     children?: React.ReactNode;
     wsStatus?: WsStatus;
     isReconnecting?: boolean;
+    isRecovering?: boolean;
+    recoveryFailed?: boolean;
+    onRetryConnection?: () => void;
     showReconnectOverlay?: boolean;
     isCompact?: boolean;
     forceOrientation?: 'portrait' | 'landscape';
     className?: string;
     onLeave?: () => void;
+}
+
+export interface ReconnectOverlayProps {
+    recoveryFailed?: boolean;
+    onRetry?: () => void;
+    role?: 'status' | 'alert';
+    className?: string;
+}
+
+export function ReconnectOverlay({
+    recoveryFailed = false,
+    onRetry,
+    role = 'status',
+    className,
+}: ReconnectOverlayProps) {
+    return (
+        <div
+            className={cn(
+                'absolute inset-0 bg-surface/80 backdrop-blur-sm z-30 flex flex-col items-center justify-center gap-4 text-center select-none pointer-events-auto',
+                className,
+            )}
+            role={role}
+            aria-live="assertive"
+        >
+            <div
+                className="w-12 h-12 border-4 border-emerald-primary border-t-transparent rounded-full animate-spin motion-reduce:animate-none"
+                aria-hidden="true"
+            />
+            <h2 className="font-headline text-2xl font-bold text-white tracking-tight">
+                Connection lost
+            </h2>
+            <p className="text-zinc-400 text-sm uppercase tracking-widest animate-pulse motion-reduce:animate-none">
+                {STATUS_RECOVERING_TABLE}
+            </p>
+            {recoveryFailed && onRetry && (
+                <Button variant="primary" size="sm" onClick={onRetry}>
+                    {BTN_RETRY_CONNECTION}
+                </Button>
+            )}
+        </div>
+    );
 }
 
 export function PokerRoomLayout({
@@ -121,6 +167,9 @@ export function PokerRoomLayout({
     children,
     wsStatus,
     isReconnecting,
+    isRecovering,
+    recoveryFailed,
+    onRetryConnection,
     showReconnectOverlay = true,
     forceOrientation,
     className,
@@ -130,8 +179,14 @@ export function PokerRoomLayout({
     const { isGated } = useOrientationGating();
 
     const effectiveWsStatus = wsStatus ?? gameContext?.wsStatus ?? 'connected';
+    const effectiveIsRecovering = isRecovering ?? gameContext?.isRecovering ?? false;
+    const effectiveRecoveryFailed = recoveryFailed ?? gameContext?.recoveryFailed ?? false;
+    const effectiveOnRetry = onRetryConnection ?? gameContext?.retryConnection;
     const isDisconnectedOrReconnecting =
         isReconnecting ?? (effectiveWsStatus !== 'connected');
+    const shouldShowOverlay =
+        showReconnectOverlay &&
+        (isDisconnectedOrReconnecting || effectiveIsRecovering || effectiveRecoveryFailed);
 
     const gated =
         forceOrientation === 'portrait'
@@ -155,23 +210,11 @@ export function PokerRoomLayout({
             )}
         >
             {/* Reconnect overlay owned by the shell (below header with z-30, header has z-40) */}
-            {showReconnectOverlay && isDisconnectedOrReconnecting && (
-                <div
-                    className="absolute inset-0 bg-surface/80 backdrop-blur-sm z-30 flex flex-col items-center justify-center gap-4 text-center select-none pointer-events-auto"
-                    role="status"
-                    aria-live="assertive"
-                >
-                    <div
-                        className="w-12 h-12 border-4 border-emerald-primary border-t-transparent rounded-full animate-spin"
-                        aria-hidden="true"
-                    />
-                    <h2 className="font-headline text-2xl font-bold text-white tracking-tight">
-                        Connection lost
-                    </h2>
-                    <p className="text-zinc-400 text-sm uppercase tracking-widest animate-pulse">
-                        Reconnecting&hellip;
-                    </p>
-                </div>
+            {shouldShowOverlay && (
+                <ReconnectOverlay
+                    recoveryFailed={effectiveRecoveryFailed}
+                    onRetry={effectiveOnRetry}
+                />
             )}
 
             {/* Region 1: Fixed Header Region */}
@@ -189,3 +232,4 @@ export function PokerRoomLayout({
         </div>
     );
 }
+

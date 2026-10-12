@@ -1,6 +1,7 @@
 import { motion } from 'motion/react';
 import { cn } from '../lib/cn';
-import { CardUI, PlayerPod } from './GameUI';
+import { getShowdownHoleCardState } from '../lib/game';
+import { CardUI, HoleCardGroup, PlayerPod } from './GameUI';
 import { avatarDiameter, isCompactCardScale } from '../lib/tableGeometry';
 import type { AvatarSize, TableScale } from '../lib/tableGeometry';
 import type { Player, GameState } from '../types';
@@ -36,6 +37,13 @@ export function HeroSeat({
     const canRenderCards = player.status === 'ACTIVE' || player.status === 'ALL_IN' || player.status === 'DISCONNECTED';
     const shouldReveal = Boolean(showdownPlayer?.holeCards && showdownPlayer.holeCards.length > 0);
     const displayCards = shouldReveal ? showdownPlayer!.holeCards! : privateCards;
+    const effectiveBestHand = showdownPlayer?.bestHand ?? player.bestHand;
+    const { isCardHighlighted, isCardUnused, playsTheBoard } = getShowdownHoleCardState(
+        displayCards,
+        effectiveBestHand,
+        shouldReveal,
+        isShowdownWinner,
+    );
 
     // The hero is never thinned out by table density, so the avatar follows the overall scale.
     const avatarScale = tableScale.overall;
@@ -80,13 +88,15 @@ export function HeroSeat({
                 textScale={tableScale.text}
                 detailsPlacement="left"
                 handRank={showdownPlayer?.handRank ?? player.handRank}
-                bestHand={showdownPlayer?.bestHand ?? player.bestHand}
+                bestHand={effectiveBestHand}
             />
 
             {canRenderCards && (
-                <div
-                    data-testid="hero-cards"
-                    className="absolute z-10 flex flex-col items-center"
+                <HoleCardGroup
+                    testId="hero-cards"
+                    playerName={player.name}
+                    descriptionId={`hero-cards-board-plays-${player.id}`}
+                    playsTheBoard={playsTheBoard}
                     style={{
                         top: `${circleRadius}px`,
                         left: '50%',
@@ -95,8 +105,8 @@ export function HeroSeat({
                 >
                     <div className="flex justify-center" style={{ gap: `${cardScale * 4}px` }}>
                         {displayCards.map((c: string, ci: number) => {
-                            const isPartOfBestHand = isShowdownWinner && shouldReveal && showdownPlayer?.bestHand?.includes(c);
-                            const shouldDim = isShowdownWinner && shouldReveal && !isPartOfBestHand;
+                            const isHighlighted = isCardHighlighted(c);
+                            const shouldDim = isCardUnused(c);
                             return (
                                 <motion.div
                                     key={`hero-cards-${player.id}-${ci}`}
@@ -109,9 +119,9 @@ export function HeroSeat({
                                         scale={cardScale}
                                         size="lg"
                                         compact={compactCards}
+                                        unused={shouldDim}
                                         className={cn(
-                                            isPartOfBestHand && 'ring-2 ring-gold-secondary/70 shadow-[0_0_16px_rgba(252,211,77,0.3)]',
-                                            shouldDim && 'opacity-40 grayscale-[50%]',
+                                            isHighlighted && 'ring-2 ring-gold-secondary/70 shadow-[0_0_16px_rgba(252,211,77,0.3)]',
                                             'shadow-md',
                                         )}
                                     />
@@ -119,7 +129,7 @@ export function HeroSeat({
                             );
                         })}
                     </div>
-                </div>
+                </HoleCardGroup>
             )}
         </div>
     );

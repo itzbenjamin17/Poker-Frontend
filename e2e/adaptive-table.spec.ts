@@ -380,8 +380,8 @@ test.describe('Adaptive table-first foundation', () => {
         winners: ['Host'],
         winningsPerPlayer: 1000,
         players: [
-          { id: 'p-1', name: 'Host', chips: 1980, currentBet: 0, status: 'ACTIVE', handRank: 'TWO_PAIR', holeCards: ['AS', 'KS'], isWinner: true, chipsWon: 1000 },
-          { id: 'p-2', name: 'Player 2', chips: 990, currentBet: 0, status: 'ACTIVE' },
+          { id: 'p-1', name: 'Host', chips: 1980, currentBet: 0, status: 'ACTIVE', handRank: 'TWO_PAIR', holeCards: ['AS', '2D'], bestHand: ['AS', 'AH', 'KH', 'QD', 'JS'], isWinner: true, chipsWon: 1000 },
+          { id: 'p-2', name: 'Player 2', chips: 990, currentBet: 0, status: 'ACTIVE', handRank: 'HIGH_CARD', holeCards: ['3C', '4D'], bestHand: ['AH', 'KH', 'QD', 'JS', '2C'], isWinner: false },
           { id: 'p-3', name: 'Player 3', chips: 1000, currentBet: 0, status: 'ACTIVE' },
           { id: 'p-4', name: 'Player 4', chips: 1000, currentBet: 0, status: 'ACTIVE' },
           { id: 'p-5', name: 'Player 5', chips: 1000, currentBet: 0, status: 'ACTIVE' },
@@ -391,11 +391,26 @@ test.describe('Adaptive table-first foundation', () => {
     }));
     await hostPage.route('**/api/game/ROOM123/private-state', (route) => route.fulfill({
       contentType: 'application/json',
-      body: JSON.stringify({ playerId: 'p-1', holeCards: ['AS', 'KS'] }),
+      body: JSON.stringify({ playerId: 'p-1', holeCards: ['AS', '2D'] }),
     }));
 
     await hostPage.goto('/');
     await expect(hostPage.getByRole('region', { name: /round result/i })).toContainText(/host won/i);
+
+    // Visual regression: revealed showdown hole cards remain opaque (opacity: 1), unused cards use filter treatment,
+    // and board-only hole cards expose the accessible board-plays description.
+    const heroUsedCard = hostPage.getByRole('img', { name: 'Ace of Spades' });
+    const heroUnusedCard = hostPage.getByRole('img', { name: '2 of Diamonds' });
+    const boardOnlyOpponentCard = hostPage.getByRole('img', { name: '3 of Clubs' });
+    const boardOnlyOpponentGroup = hostPage.getByRole('group', { name: 'Player 2 hole cards' });
+
+    await expect(heroUsedCard).toHaveCSS('opacity', '1');
+    await expect(heroUnusedCard).toHaveCSS('opacity', '1');
+    await expect(boardOnlyOpponentCard).toHaveCSS('opacity', '1');
+    await expect(boardOnlyOpponentGroup).toHaveAccessibleDescription('Hole cards do not play; best hand is on the board.');
+
+    const unusedFilter = await heroUnusedCard.evaluate((el) => getComputedStyle(el).filter);
+    expect(unusedFilter).toContain('grayscale');
 
     for (const viewport of eligibleViewports) {
       await resizeAndSettle(hostPage, viewport);

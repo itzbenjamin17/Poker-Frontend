@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { motion } from 'motion/react';
 import { cn } from '../lib/cn';
-import { formatHandRank, formatHandRankShort } from '../lib/game';
-import { CardUI, PlayerHandRank, PlayerPod } from './GameUI';
+import { formatHandRank, formatHandRankShort, getShowdownHoleCardState } from '../lib/game';
+import { CardUI, HoleCardGroup, PlayerHandRank, PlayerPod } from './GameUI';
 import {
     BASE_TABLE_HEIGHT,
     OPPONENT_RANK_MIN_SCALE,
@@ -111,6 +111,13 @@ export function OpponentSeats({
                 const canRenderCards = p.status === 'ACTIVE' || p.status === 'ALL_IN' || p.status === 'DISCONNECTED';
                 const shouldReveal = Boolean(showdownPlayer?.holeCards && showdownPlayer.holeCards.length > 0);
                 const displayCards = shouldReveal ? showdownPlayer!.holeCards! : [];
+                const effectiveBestHand = showdownPlayer?.bestHand ?? p.bestHand;
+                const { isCardInBestHand, isCardHighlighted, isCardUnused, playsTheBoard } = getShowdownHoleCardState(
+                    displayCards,
+                    effectiveBestHand,
+                    shouldReveal,
+                    isShowdownWinner,
+                );
                 const blindText = getBlindText(p);
                 const cardsBelow = canRenderCards && seat.cardPlacement === 'below';
                 // Side seats put the label in its own row under the cards; everyone else keeps it under the avatar.
@@ -178,9 +185,11 @@ export function OpponentSeats({
                         </div>
 
                         {canRenderCards && (
-                            <div
-                                data-testid="seat-cards"
-                                className="absolute z-10 flex flex-col items-center"
+                            <HoleCardGroup
+                                testId="seat-cards"
+                                playerName={p.name}
+                                descriptionId={`seat-cards-board-plays-${playerKey}`}
+                                playsTheBoard={playsTheBoard}
                                 style={cardsBelow
                                     ? {
                                         top: `${circleRadius * 2 + cardsGap}px`,
@@ -197,12 +206,13 @@ export function OpponentSeats({
                             >
                                 {/* Fan: the front card is offset by `strip`, so the rear card's corner index (rank over suit) stays uncovered. */}
                                 <div className="flex justify-start">
-                                    {displayCards.length > 0
+                                     {displayCards.length > 0
                                         ? displayCards.map((c: string, ci: number) => {
-                                            const isPartOfBestHand = isShowdownWinner && shouldReveal && showdownPlayer?.bestHand?.includes(c);
-                                            const shouldDim = isShowdownWinner && shouldReveal && !isPartOfBestHand;
+                                            const isPartOfBestHand = isCardInBestHand(c);
+                                            const isHighlighted = isCardHighlighted(c);
+                                            const shouldDim = isCardUnused(c);
                                             const coveredOnLeft = Boolean(
-                                                shouldDim && ci > 0 && showdownPlayer?.bestHand?.includes(displayCards[ci - 1]),
+                                                shouldDim && ci > 0 && isCardInBestHand(displayCards[ci - 1]),
                                             );
                                             return (
                                                 <motion.div
@@ -219,10 +229,10 @@ export function OpponentSeats({
                                                         card={c}
                                                         scale={cardScale}
                                                         compact={compactCards}
+                                                        unused={shouldDim}
                                                         cornerIndex={coveredOnLeft ? 'right' : 'left'}
                                                         className={cn(
-                                                            isPartOfBestHand && 'ring-2 ring-gold-secondary/70 shadow-[0_0_16px_rgba(252,211,77,0.3)]',
-                                                            shouldDim && 'opacity-55 grayscale-[50%]',
+                                                            isHighlighted && 'ring-2 ring-gold-secondary/70 shadow-[0_0_16px_rgba(252,211,77,0.3)]',
                                                             'shadow-md',
                                                         )}
                                                     />
@@ -247,7 +257,7 @@ export function OpponentSeats({
                                             </div>
                                         ))}
                                 </div>
-                            </div>
+                            </HoleCardGroup>
                         )}
 
                         {labelUnderCards && handRankText && (

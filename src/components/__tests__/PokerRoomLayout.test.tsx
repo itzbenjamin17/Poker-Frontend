@@ -244,4 +244,42 @@ describe('PokerRoomLayout', () => {
         expect(screen.getByRole('region', { name: /room stage/i })).toHaveTextContent('Table Content');
         expect(screen.getByRole('region', { name: /room dock/i })).toHaveTextContent('Action Dock Content');
     });
+
+    it('renders Reconnecting / restoring table… and Retry connection button when recoveryFailed is true while preserving table stage content', async () => {
+        const user = userEvent.setup();
+        const onRetrySpy = vi.fn();
+
+        const { rerender } = render(
+            <PokerRoomLayout
+                wsStatus="connected"
+                isRecovering={false}
+                recoveryFailed={true}
+                onRetryConnection={onRetrySpy}
+                header={<RoomHeader brandTitle="POKER" wsStatus="connected" onLeave={vi.fn()} />}
+                stage={<RoomStage><div>Table Content Preserved</div></RoomStage>}
+            />
+        );
+
+        expect(screen.getByText('Table Content Preserved')).toBeInTheDocument();
+        expect(screen.getByText('Reconnecting / restoring table…')).toBeInTheDocument();
+        const retryBtn = screen.getByRole('button', { name: 'Retry connection' });
+        expect(retryBtn).toBeInTheDocument();
+
+        await user.click(retryBtn);
+        expect(onRetrySpy).toHaveBeenCalledTimes(1);
+
+        rerender(
+            <PokerRoomLayout
+                wsStatus="connected"
+                isRecovering={false}
+                recoveryFailed={false}
+                onRetryConnection={onRetrySpy}
+                header={<RoomHeader brandTitle="POKER" wsStatus="connected" onLeave={vi.fn()} />}
+                stage={<RoomStage><div>Table Content Preserved</div></RoomStage>}
+            />
+        );
+
+        expect(screen.queryByText('Reconnecting / restoring table…')).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'Retry connection' })).not.toBeInTheDocument();
+    });
 });

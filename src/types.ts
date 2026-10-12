@@ -180,5 +180,7 @@ export interface SessionSnapshot {
     gameEndResult: GameEndResult | null;
     pendingActions: ReadonlySet<string>;
     error: { message: string } | null;
+    isRecovering?: boolean;
+    recoveryFailed?: boolean;
 }
 

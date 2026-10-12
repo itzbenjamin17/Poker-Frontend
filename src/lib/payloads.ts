@@ -1,4 +1,10 @@
-import type { IncomingGameStatePayload, IncomingPrivateStatePayload, RoomUpdate } from '../types';
+import type {
+    IncomingGameStatePayload,
+    IncomingPrivateStatePayload,
+    RoomDataResponse,
+    RoomState,
+    RoomUpdate,
+} from '../types';
 import {
     ERROR_INVALID_FORMAT,
     ERROR_SYSTEM,
@@ -7,6 +13,38 @@ import {
 
 function isObject(value: unknown): value is Record<string, unknown> {
     return typeof value === 'object' && value !== null;
+}
+
+export function isRoomDataPayload(value: unknown): value is RoomDataResponse {
+    if (!isObject(value)) return false;
+    return (
+        (typeof value.roomId === 'string' || value.roomId === undefined) &&
+        Array.isArray(value.players) &&
+        value.players.every(
+            (p) => isObject(p) && typeof p.name === 'string' && typeof p.isHost === 'boolean',
+        )
+    );
+}
+
+export function mapRoomDataToRoomState(
+    roomData: RoomDataResponse,
+    fallbackRoomId?: string,
+): RoomState {
+    return {
+        roomId: roomData.roomId ?? fallbackRoomId ?? '',
+        roomName: roomData.roomName,
+        players: roomData.players.map((p) => ({
+            name: p.name,
+            isHost: p.isHost,
+            joinedAt: p.joinedAt,
+        })),
+        maxPlayers: roomData.maxPlayers,
+        buyIn: roomData.buyIn,
+        smallBlind: roomData.smallBlind,
+        bigBlind: roomData.bigBlind,
+        canStartGame: roomData.canStartGame,
+        gameStarted: roomData.gameStarted,
+    };
 }
 
 export function isGameStatePayload(value: unknown): value is IncomingGameStatePayload {

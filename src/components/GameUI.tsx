@@ -1,7 +1,8 @@
 import React from 'react';
 import { Crown } from 'lucide-react';
 import { cn } from '../lib/cn';
-import { formatHandRank, formatHandRankShort } from '../lib/game';
+import { formatHandRank, formatHandRankShort, SHOWDOWN_UNUSED_CARD_CLASS } from '../lib/game';
+import { SHOWDOWN_BOARD_PLAYS_TOOLTIP } from '../constants/strings';
 import {
     CARD_SIZE_MULTIPLIER,
     MIN_FONT_PX,
@@ -31,6 +32,8 @@ export interface CardUIProps {
     scale?: number;
     size?: CardSize;
     hidden?: boolean;
+    /** Whether this revealed hole card is excluded from the player's best 5-card hand at showdown. */
+    unused?: boolean;
     /** Single centred rank + suit face for cards too small for corner indices. */
     compact?: boolean;
     /**
@@ -38,6 +41,8 @@ export interface CardUIProps {
      * top-right), so a card overlapped by its neighbour still shows both glyphs in the uncovered strip.
      */
     cornerIndex?: boolean | 'left' | 'right';
+    title?: string;
+    ariaDescribedBy?: string;
     className?: string;
     style?: React.CSSProperties;
 }
@@ -47,8 +52,11 @@ export const CardUI: React.FC<CardUIProps> = ({
     scale = 1,
     size = 'md',
     hidden,
+    unused = false,
     compact = false,
     cornerIndex = false,
+    title,
+    ariaDescribedBy,
     className,
     style,
 }) => {
@@ -96,115 +104,127 @@ export const CardUI: React.FC<CardUIProps> = ({
     const suit = SUITS[suitKey] || { icon: '?', color: 'text-zinc-400', name: 'Unknown' };
     const rankName = RANKS[value] || value;
     const label = `${rankName} of ${suit.name}`;
-    
+
     const displayValue = value === 'T' ? '10' : value;
+    const unusedClass = unused ? SHOWDOWN_UNUSED_CARD_CLASS : undefined;
+
+    let paddingPx: number;
+    let layoutClass: string;
+    let faceContent: React.ReactNode;
 
     if (cornerIndex) {
         const index = cornerIndexMetrics(s, compact);
         const alignRight = cornerIndex === 'right';
+        paddingPx = index.paddingPx;
         const glyphs = (
             <div className={cn(alignRight ? 'self-end items-end' : 'self-start items-start', 'flex flex-col leading-none', suit.color)}>
                 <span data-testid="card-rank" className="font-bold leading-none" style={{ fontSize: `${index.rankFontPx}px` }}>{displayValue}</span>
                 <span data-testid="card-suit" className="leading-none" style={{ fontSize: `${index.suitFontPx}px` }}>{suit.icon}</span>
             </div>
         );
+
         if (compact) {
             // Tiny cards: the corner index is the whole face.
-            return (
-                <div
-                    data-testid="card"
-                    data-compact="true"
-                    role="img"
-                    aria-label={label}
-                    className={cn('bg-white rounded-md flex flex-col items-start shadow-xl relative overflow-hidden shrink-0 select-none', className)}
-                    style={{
-                        width: `${cardWidth}px`,
-                        height: `${cardHeight}px`,
-                        padding: `${index.paddingPx}px`,
-                        borderRadius: `${borderRadius}px`,
-                        ...style,
-                    }}
-                >
+            layoutClass = 'items-start';
+            faceContent = glyphs;
+        } else {
+            // Regular face: corner index, plus the centre suit and the mirrored index so the front card still looks like a
+            // full card. The centre suit shrinks (never below the font floor) when the card is too short for all of it.
+            const room = cardHeight - 2 * index.paddingPx - 2 * index.rankFontPx - index.suitFontPx;
+            const centreFont = Math.max(MIN_FONT_PX, Math.min(Math.round(s * 20), room));
+            layoutClass = 'items-center justify-between';
+            faceContent = (
+                <>
                     {glyphs}
-                </div>
+                    <div className={cn('leading-none', suit.color)} style={{ fontSize: `${centreFont}px` }}>{suit.icon}</div>
+                    <div className={cn('font-bold rotate-180 leading-none', alignRight ? 'self-start' : 'self-end', suit.color)} style={{ fontSize: `${index.rankFontPx}px` }}>{displayValue}</div>
+                    <div className={cn('absolute inset-0 flex items-center justify-center opacity-5 pointer-events-none text-4xl leading-none', suit.color)} style={{ fontSize: `${Math.round(s * 40)}px` }}>
+                        {suit.icon}
+                    </div>
+                </>
             );
         }
-
-        // Regular face: corner index, plus the centre suit and the mirrored index so the front card still looks like a
-        // full card. The centre suit shrinks (never below the font floor) when the card is too short for all of it.
-        const room = cardHeight - 2 * index.paddingPx - 2 * index.rankFontPx - index.suitFontPx;
-        const centreFont = Math.max(MIN_FONT_PX, Math.min(Math.round(s * 20), room));
-        return (
-            <div
-                data-testid="card"
-                role="img"
-                aria-label={label}
-                className={cn('bg-white rounded-md flex flex-col items-center justify-between shadow-xl relative overflow-hidden shrink-0 select-none', className)}
-                style={{
-                    width: `${cardWidth}px`,
-                    height: `${cardHeight}px`,
-                    padding: `${index.paddingPx}px`,
-                    borderRadius: `${borderRadius}px`,
-                    ...style,
-                }}
-            >
-                {glyphs}
-                <div className={cn('leading-none', suit.color)} style={{ fontSize: `${centreFont}px` }}>{suit.icon}</div>
-                <div className={cn('font-bold rotate-180 leading-none', alignRight ? 'self-start' : 'self-end', suit.color)} style={{ fontSize: `${index.rankFontPx}px` }}>{displayValue}</div>
-
-                {/* Subtle watermark */}
+    } else if (compact) {
+        const faceFont = fontPx(14, s);
+        paddingPx = Math.round(s * 2);
+        layoutClass = 'items-center justify-center';
+        faceContent = (
+            <>
+                <span data-testid="card-rank" className={cn('font-bold leading-none', suit.color)} style={{ fontSize: `${faceFont}px` }}>{displayValue}</span>
+                <span data-testid="card-suit" className={cn('leading-none', suit.color)} style={{ fontSize: `${faceFont}px` }}>{suit.icon}</span>
+            </>
+        );
+    } else {
+        paddingPx = Math.round(s * 4);
+        layoutClass = 'items-center justify-between';
+        faceContent = (
+            <>
+                <div data-testid="card-rank" className={cn('font-bold self-start leading-none', suit.color)} style={{ fontSize: `${Math.round(s * 12)}px` }}>{displayValue}</div>
+                <div data-testid="card-suit" className={cn('leading-none', suit.color)} style={{ fontSize: `${Math.round(s * 20)}px` }}>{suit.icon}</div>
+                <div className={cn('font-bold self-end rotate-180 leading-none', suit.color)} style={{ fontSize: `${Math.round(s * 12)}px` }}>{displayValue}</div>
                 <div className={cn('absolute inset-0 flex items-center justify-center opacity-5 pointer-events-none text-4xl leading-none', suit.color)} style={{ fontSize: `${Math.round(s * 40)}px` }}>
                     {suit.icon}
                 </div>
-            </div>
-        );
-    }
-
-    if (compact) {
-        const faceFont = fontPx(14, s);
-        return (
-            <div
-                data-testid="card"
-                data-compact="true"
-                role="img"
-                aria-label={label}
-                className={cn('bg-white rounded-md flex flex-col items-center justify-center shadow-xl relative overflow-hidden shrink-0 select-none', className)}
-                style={{
-                    width: `${cardWidth}px`,
-                    height: `${cardHeight}px`,
-                    padding: `${Math.round(s * 2)}px`,
-                    borderRadius: `${borderRadius}px`,
-                    ...style,
-                }}
-            >
-                <span data-testid="card-rank" className={cn('font-bold leading-none', suit.color)} style={{ fontSize: `${faceFont}px` }}>{displayValue}</span>
-                <span data-testid="card-suit" className={cn('leading-none', suit.color)} style={{ fontSize: `${faceFont}px` }}>{suit.icon}</span>
-            </div>
+            </>
         );
     }
 
     return (
         <div
             data-testid="card"
+            data-compact={compact ? 'true' : undefined}
             role="img"
             aria-label={label}
-            className={cn('bg-white rounded-md flex flex-col items-center justify-between shadow-xl relative overflow-hidden shrink-0 select-none', className)}
+            aria-describedby={ariaDescribedBy}
+            title={title}
+            className={cn('bg-white rounded-md flex flex-col shadow-xl relative overflow-hidden shrink-0 select-none', layoutClass, unusedClass, className)}
             style={{
                 width: `${cardWidth}px`,
                 height: `${cardHeight}px`,
-                padding: `${Math.round(s * 4)}px`,
+                padding: `${paddingPx}px`,
                 borderRadius: `${borderRadius}px`,
                 ...style,
             }}
         >
-            <div data-testid="card-rank" className={cn('font-bold self-start leading-none', suit.color)} style={{ fontSize: `${Math.round(s * 12)}px` }}>{displayValue}</div>
-            <div data-testid="card-suit" className={cn('leading-none', suit.color)} style={{ fontSize: `${Math.round(s * 20)}px` }}>{suit.icon}</div>
-            <div className={cn('font-bold self-end rotate-180 leading-none', suit.color)} style={{ fontSize: `${Math.round(s * 12)}px` }}>{displayValue}</div>
+            {faceContent}
+        </div>
+    );
+};
 
-            {/* Subtle watermark */}
-            <div className={cn('absolute inset-0 flex items-center justify-center opacity-5 pointer-events-none text-4xl leading-none', suit.color)} style={{ fontSize: `${Math.round(s * 40)}px` }}>
-                {suit.icon}
-            </div>
+export interface HoleCardGroupProps {
+    testId: 'hero-cards' | 'seat-cards';
+    playerName: string;
+    descriptionId: string;
+    playsTheBoard: boolean;
+    style: React.CSSProperties;
+    children: React.ReactNode;
+}
+
+export const HoleCardGroup: React.FC<HoleCardGroupProps> = ({
+    testId,
+    playerName,
+    descriptionId,
+    playsTheBoard,
+    style,
+    children,
+}) => {
+    const resolvedDescriptionId = playsTheBoard ? descriptionId : undefined;
+    return (
+        <div
+            role="group"
+            aria-label={`${playerName} hole cards`}
+            data-testid={testId}
+            title={playsTheBoard ? SHOWDOWN_BOARD_PLAYS_TOOLTIP : undefined}
+            aria-describedby={resolvedDescriptionId}
+            className="absolute z-10 flex flex-col items-center"
+            style={style}
+        >
+            {playsTheBoard && (
+                <span id={descriptionId} hidden>
+                    {SHOWDOWN_BOARD_PLAYS_TOOLTIP}
+                </span>
+            )}
+            {children}
         </div>
     );
 };

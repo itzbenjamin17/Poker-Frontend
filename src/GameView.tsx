@@ -37,6 +37,8 @@ function GameViewInner() {
         wsStatus,
         isHydrated,
         gameEndResult,
+        recoveryFailed,
+        retryConnection,
     } = useGameContext();
 
     const [nowMs, setNowMs] = useState(() => Date.now());
@@ -76,7 +78,7 @@ function GameViewInner() {
     }
 
     if (!isHydrated) {
-        return <LoadingView status={loadingStatus} onLeave={onLeave} />;
+        return <LoadingView status={loadingStatus} onRetry={recoveryFailed ? retryConnection : undefined} onLeave={onLeave} />;
     }
 
     if (!gameState || !roomState) {
@@ -123,10 +125,11 @@ function GameViewInner() {
                     />
                 }
                 wsStatus={wsStatus}
+                showReconnectOverlay={false}
                 onLeave={onLeave}
             >
                 <RoomStage>
-                    <LoadingView status={loadingStatus} />
+                    <LoadingView status={loadingStatus} onRetry={recoveryFailed ? retryConnection : undefined} />
                 </RoomStage>
             </PokerRoomLayout>
         );

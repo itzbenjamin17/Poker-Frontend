@@ -1,12 +1,12 @@
 import { useEffect, useRef } from 'react';
 import { pokerApi } from '../services/api';
 import { logger } from '../security/logger';
-import { SESSION_SEAT_GONE } from '../constants/strings';
 import { useGameContext } from '../context/GameContext';
 import {
     isGameStatePayload,
     isPrivateStatePayload,
-    getErrorStatusCode,
+    isRoomDataPayload,
+    mapRoomDataToRoomState,
 } from '../lib/payloads';
 import type { Client } from '@stomp/stompjs';
 import {
@@ -21,7 +21,7 @@ export interface UseGameWebSocketOptions {
 
 /**
  * Manages the real-time communication lifecycle via GameSession and GameTransport:
- * connect/disconnect, wake-up/online reconnection, and REST state resync on connect.
+ * connect/disconnect, wake-up/online reconnection, and deduplicated REST state recovery.
  */
 export function useGameWebSocket(options: UseGameWebSocketOptions = {}) {
     const {
@@ -43,7 +43,10 @@ export function useGameWebSocket(options: UseGameWebSocketOptions = {}) {
     // Keep refs in sync without re-triggering the main effect
     useEffect(() => {
         gameEndedRef.current = Boolean(gameEndResult) || isGameOver;
-    }, [gameEndResult, isGameOver]);
+        if (gameEndedRef.current) {
+            session?.cancelRecovery();
+        }
+    }, [gameEndResult, isGameOver, session]);
 
     useEffect(() => {
         roomStateRef.current = roomState;
@@ -55,88 +58,73 @@ export function useGameWebSocket(options: UseGameWebSocketOptions = {}) {
         // past server cleanup) has no live game to subscribe to.
         if (gameEndedRef.current || session.getSnapshot().isGameOver) return;
 
+        let disposed = false;
+
+        const isCancelled = () =>
+            disposed || gameEndedRef.current || session.getSnapshot().isGameOver;
+
         const transport = options.transport ?? session.getTransport();
         transportRef.current = transport;
         if (transport instanceof StompTransportAdapter) {
             stompClientRef.current = transport.getClient();
         }
 
-        const syncGameState = () => {
-            const syncTime = session.now();
-            void pokerApi.getGameState(auth.roomId, auth.token)
-                .then((snapshot) => {
-                    if (gameEndedRef.current || session.getSnapshot().isGameOver) return;
-                    if (isGameStatePayload(snapshot) && syncTime >= session.getLastStateSyncTime()) {
-                        session.applyGameState(snapshot, syncTime);
-                    }
-                })
-                .catch((err) => {
-                    if (gameEndedRef.current || session.getSnapshot().isGameOver) return;
-                    const code = getErrorStatusCode(err);
-                    if (code === 403) {
-                        session.scheduleRedirect(SESSION_SEAT_GONE);
-                        return;
-                    }
-                    if (code !== 404) logger.warn('State re-sync failed after connect:', err);
-                });
+        const executeRecoveryStep = async (): Promise<void> => {
+            let currentRoom = roomStateRef.current ?? session.getSnapshot().roomState;
 
-            void pokerApi.getPrivateState(auth.roomId, auth.token)
-                .then((privateSnapshot) => {
-                    if (gameEndedRef.current || session.getSnapshot().isGameOver) return;
-                    if (isPrivateStatePayload(privateSnapshot)) {
-                        session.applyPrivateState(privateSnapshot);
-                    }
-                })
-                .catch((err) => {
-                    if (gameEndedRef.current || session.getSnapshot().isGameOver) return;
-                    const code = getErrorStatusCode(err);
-                    if (code !== 404) logger.warn('Private state re-sync failed after connect:', err);
-                });
-        };
-
-        const unsubConnect = session.onConnect(() => {
-            // Sync on connect (catch missed updates during reconnect)
-            if (gameEndedRef.current || session.getSnapshot().isGameOver) return;
-            const currentRoom = roomStateRef.current ?? session.getSnapshot().roomState;
-            if (!currentRoom?.gameStarted) {
+            if (!currentRoom || !currentRoom.gameStarted) {
                 if (typeof pokerApi.getRoomInfo === 'function') {
-                    void Promise.resolve(pokerApi.getRoomInfo(auth.roomId, auth.token))
-                        .then((roomData) => {
-                            if (gameEndedRef.current || session.getSnapshot().isGameOver) return;
-                            if (!roomData || typeof roomData !== 'object' || !Array.isArray(roomData.players)) return;
-                            const updatedRoom = {
-                                roomId: roomData.roomId ?? auth.roomId,
-                                roomName: roomData.roomName,
-                                players: roomData.players.map((p: { name: string; isHost: boolean; joinedAt?: string }) => ({
-                                    name: p.name,
-                                    isHost: p.isHost,
-                                    joinedAt: p.joinedAt,
-                                })),
-                                maxPlayers: roomData.maxPlayers,
-                                buyIn: roomData.buyIn,
-                                smallBlind: roomData.smallBlind,
-                                bigBlind: roomData.bigBlind,
-                                canStartGame: roomData.canStartGame,
-                                gameStarted: roomData.gameStarted,
-                            };
-                            session.setRoomState(updatedRoom);
-                            if (updatedRoom.gameStarted) {
-                                syncGameState();
-                            }
-                        })
-                        .catch((err) => {
-                            if (gameEndedRef.current || session.getSnapshot().isGameOver) return;
-                            const code = getErrorStatusCode(err);
-                            if (code !== 404) logger.warn('Room info re-sync failed after connect:', err);
-                        });
+                    const roomData = await Promise.resolve(pokerApi.getRoomInfo(auth.roomId, auth.token));
+                    if (isCancelled()) return;
+                    if (isRoomDataPayload(roomData)) {
+                        const updatedRoom = mapRoomDataToRoomState(roomData, auth.roomId);
+                        roomStateRef.current = updatedRoom;
+                        session.setRoomState(updatedRoom);
+                        currentRoom = updatedRoom;
+                    }
                 }
+            }
+
+            if (isCancelled() || !currentRoom?.gameStarted) {
                 return;
             }
 
-            syncGameState();
-        });
+            const syncTime = session.now();
+            const syncRevision = session.getStateSyncRevision();
 
-        const unsubSocketError = onSocketError ? session.onSocketError(onSocketError) : undefined;
+            const publicPromise = Promise.resolve(pokerApi.getGameState(auth.roomId, auth.token)).then(
+                (snapshot) => {
+                    if (isCancelled()) return;
+                    if (
+                        isGameStatePayload(snapshot) &&
+                        session.getStateSyncRevision() === syncRevision &&
+                        syncTime >= session.getLastStateSyncTime()
+                    ) {
+                        session.applyGameState(snapshot, syncTime);
+                    }
+                }
+            );
+
+            const privatePromise = Promise.resolve(pokerApi.getPrivateState(auth.roomId, auth.token)).then(
+                (privateSnapshot) => {
+                    if (isCancelled()) return;
+                    if (isPrivateStatePayload(privateSnapshot)) {
+                        session.applyPrivateState(privateSnapshot);
+                    }
+                }
+            );
+
+            await Promise.all([publicPromise, privatePromise]);
+        };
+
+        const startRecoveryWorkflow = ({ resetBudget }: { resetBudget: boolean }) => {
+            if (isCancelled()) return;
+            void session.recoverState(executeRecoveryStep, { resetBudget });
+        };
+
+        const unsubConnect = session.onConnect(() => {
+            startRecoveryWorkflow({ resetBudget: true });
+        });
 
         const triggerReconnect = () => {
             if (typeof transport.forceReconnect === 'function') {
@@ -146,18 +134,33 @@ export function useGameWebSocket(options: UseGameWebSocketOptions = {}) {
             }
         };
 
+        const unsubManualRetry = session.onManualRetry(() => {
+            if (isCancelled()) return;
+            if (!transport.isConnected?.()) {
+                triggerReconnect();
+            }
+            startRecoveryWorkflow({ resetBudget: true });
+        });
+
+        const unsubSocketError = onSocketError ? session.onSocketError(onSocketError) : undefined;
+
         const handleWakeup = () => {
-            if (document.visibilityState === 'visible' && !transport.isConnected?.()) {
+            if (document.visibilityState !== 'visible') return;
+            if (isCancelled()) return;
+            if (!transport.isConnected?.()) {
                 logger.log('Tab woke up and WebSocket is disconnected. Forcing reconnect...');
                 triggerReconnect();
             }
+            startRecoveryWorkflow({ resetBudget: false });
         };
 
         const handleOnline = () => {
+            if (isCancelled()) return;
             if (!transport.isConnected?.()) {
                 logger.log('Browser came online. Forcing reconnect...');
                 triggerReconnect();
             }
+            startRecoveryWorkflow({ resetBudget: false });
         };
 
         document.addEventListener('visibilitychange', handleWakeup);
@@ -166,9 +169,12 @@ export function useGameWebSocket(options: UseGameWebSocketOptions = {}) {
         session.connect(options.transport);
 
         return () => {
+            disposed = true;
+            session.cancelRecovery();
             document.removeEventListener('visibilitychange', handleWakeup);
             window.removeEventListener('online', handleOnline);
             unsubConnect();
+            unsubManualRetry();
             unsubSocketError?.();
             session.disconnect();
         };
@@ -183,3 +189,4 @@ export function useGameWebSocket(options: UseGameWebSocketOptions = {}) {
 
     return { stompClientRef, transportRef };
 }
+

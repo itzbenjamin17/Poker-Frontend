@@ -11,6 +11,7 @@ import type {
     WsStatus,
 } from '../types';
 import {
+    getErrorStatusCode,
     isGameStatePayload,
     isGameEndPayload,
     isPrivateStatePayload,
@@ -22,6 +23,9 @@ import {
     GAME_FINISHED_FALLBACK,
     RAISE_ERROR_FORBIDDEN_BET,
     SESSION_EXPIRED,
+    SESSION_SEAT_GONE,
+    STATUS_CONNECTED,
+    STATUS_RECOVERING_TABLE,
     STATUS_RETURNING,
 } from '../constants/strings';
 import { logger } from '../security/logger';
@@ -31,6 +35,9 @@ import type { GameTransport, TransportStatus, TransportSubscription } from '../s
 const SHOWDOWN_FALLBACK_HIDE_MS = 65_000;
 const ROOM_CLOSED_REDIRECT_MS = 3_000;
 const ACTION_LOCK_TIMEOUT_MS = 3_000;
+const BASE_RETRY_DELAY_MS = 1_000;
+const MAX_RETRY_DELAY_MS = 8_000;
+const MAX_RECOVERY_RETRIES = 3;
 
 export interface GameSessionOptions {
     auth: AuthResponse;
@@ -50,17 +57,23 @@ export class GameSession {
 
     private listeners = new Set<() => void>();
     private connectListeners = new Set<() => void>();
+    private manualRetryListeners = new Set<() => void>();
     private socketErrorListeners = new Set<(message: string) => void>();
     private subscriptions: TransportSubscription[] = [];
     private unsubStatus?: () => void;
     private unsubError?: () => void;
     private lastStateSyncTime = 0;
+    private stateSyncRevision = 0;
 
     private actionTimeoutTimers = new Map<string, TimerHandle>();
     private notificationTimer: TimerHandle | null = null;
     private showdownTimer: TimerHandle | null = null;
     private showdownResultTimer: TimerHandle | null = null;
     private redirectTimer: TimerHandle | null = null;
+    private recoveryTimer: TimerHandle | null = null;
+    private inFlightRecovery: Promise<void> | null = null;
+    private recoveryRetryAttempt = 0;
+    private recoveryGeneration = 0;
 
     private snapshot: SessionSnapshot;
 
@@ -95,6 +108,8 @@ export class GameSession {
             gameEndResult: options.initialGameEndResult ?? null,
             pendingActions: new Set<string>(),
             error: null,
+            isRecovering: false,
+            recoveryFailed: false,
         });
     }
 
@@ -114,6 +129,10 @@ export class GameSession {
         return this.lastStateSyncTime;
     };
 
+    public getStateSyncRevision = (): number => {
+        return this.stateSyncRevision;
+    };
+
     public now = (): number => {
         return this.clock.now();
     };
@@ -130,6 +149,21 @@ export class GameSession {
         return () => {
             this.connectListeners.delete(listener);
         };
+    };
+
+    public onManualRetry = (listener: () => void): (() => void) => {
+        this.manualRetryListeners.add(listener);
+        return () => {
+            this.manualRetryListeners.delete(listener);
+        };
+    };
+
+    public retryConnection = (): void => {
+        if (this.snapshot.isGameOver) return;
+        this.clearRecoveryTimer();
+        for (const listener of this.manualRetryListeners) {
+            listener();
+        }
     };
 
     public onSocketError = (listener: (message: string) => void): (() => void) => {
@@ -210,6 +244,7 @@ export class GameSession {
         this.clearShowdownTimers();
         this.clearNotificationTimer();
         this.clearRedirectTimer();
+        this.cancelRecovery();
         this.cleanupSubscriptions();
 
         this.updateSnapshot(() => ({
@@ -301,6 +336,7 @@ export class GameSession {
         if (this.snapshot.isGameOver) return;
         const cleanMsg = normalizeErrorMessage(message);
         this.clearNotificationTimer();
+        this.cancelRecovery();
         this.updateSnapshot(() => ({
             notification: cleanMsg,
             loadingStatus: cleanMsg || STATUS_RETURNING,
@@ -392,6 +428,7 @@ export class GameSession {
 
         if (this.snapshot.isGameOver) return;
 
+        this.stateSyncRevision += 1;
         this.lastStateSyncTime = this.clock.now();
         this.applyGameState(parsed);
     }
@@ -409,6 +446,7 @@ export class GameSession {
         this.clearRedirectTimer();
         this.clearShowdownTimers();
         this.clearNotificationTimer();
+        this.cancelRecovery();
 
         const endMsg = normalizeErrorMessage(payload.message ?? GAME_FINISHED_FALLBACK);
         const winnerName = typeof payload.winner === 'string' ? payload.winner : null;
@@ -678,6 +716,158 @@ export class GameSession {
         }));
     }
 
+    public setRecoveryState(partial: {
+        isRecovering?: boolean;
+        recoveryFailed?: boolean;
+        loadingStatus?: string;
+    }): void {
+        this.updateSnapshot(() => partial);
+    }
+
+    public scheduleRecoveryRetry(callback: () => void, delayMs: number): void {
+        this.clearRecoveryTimer();
+        this.recoveryTimer = this.clock.setTimeout(() => {
+            this.recoveryTimer = null;
+            callback();
+        }, delayMs);
+    }
+
+    public clearRecoveryTimer = (): void => {
+        if (this.recoveryTimer !== null) {
+            this.clock.clearTimeout(this.recoveryTimer);
+            this.recoveryTimer = null;
+        }
+    };
+
+    public hasPendingRecoveryTimer = (): boolean => {
+        return this.recoveryTimer !== null;
+    };
+
+    public cancelRecovery = (): void => {
+        this.recoveryGeneration += 1;
+        this.inFlightRecovery = null;
+        this.recoveryRetryAttempt = 0;
+        this.clearRecoveryTimer();
+        this.updateSnapshot(() => ({
+            isRecovering: false,
+            recoveryFailed: false,
+        }));
+    };
+
+    public recoverState = (
+        step: () => Promise<void>,
+        options: { resetBudget: boolean } = { resetBudget: false },
+    ): Promise<void> => {
+        if (this.snapshot.isGameOver) return Promise.resolve();
+
+        const shouldResetBudget = options.resetBudget || Boolean(this.snapshot.recoveryFailed);
+        if (shouldResetBudget) {
+            this.recoveryRetryAttempt = 0;
+            this.clearRecoveryTimer();
+        }
+
+        if (this.inFlightRecovery) {
+            return this.inFlightRecovery;
+        }
+
+        if (!shouldResetBudget && this.hasPendingRecoveryTimer()) {
+            return Promise.resolve();
+        }
+
+        return this.runRecoveryAttempt(step);
+    };
+
+    private computeRecoveryBackoffMs(attempt: number): number {
+        const expDelay = Math.min(
+            MAX_RETRY_DELAY_MS,
+            BASE_RETRY_DELAY_MS * Math.pow(2, Math.max(0, attempt - 1)),
+        );
+        const jitter = Math.abs(Math.imul(this.clock.now() ^ attempt, 2654435761)) % 250;
+        return Math.min(MAX_RETRY_DELAY_MS, expDelay + jitter);
+    }
+
+    private runRecoveryAttempt(step: () => Promise<void>): Promise<void> {
+        if (this.snapshot.isGameOver) return Promise.resolve();
+        if (this.inFlightRecovery) return this.inFlightRecovery;
+
+        this.clearRecoveryTimer();
+        const generation = this.recoveryGeneration;
+        const showRecoveringOverlay =
+            this.recoveryRetryAttempt > 0 ||
+            Boolean(this.snapshot.isRecovering) ||
+            Boolean(this.snapshot.recoveryFailed);
+
+        this.updateSnapshot(() => ({
+            isRecovering: showRecoveringOverlay,
+            recoveryFailed: false,
+            loadingStatus: STATUS_RECOVERING_TABLE,
+        }));
+
+        let stepPromise: Promise<void>;
+        try {
+            stepPromise = Promise.resolve(step());
+        } catch (err) {
+            stepPromise = Promise.reject(err);
+        }
+
+        const attemptPromise = stepPromise
+            .then(() => {
+                if (this.recoveryGeneration !== generation || this.snapshot.isGameOver) return;
+                this.recoveryRetryAttempt = 0;
+                this.clearRecoveryTimer();
+                this.updateSnapshot(() => ({
+                    isRecovering: false,
+                    recoveryFailed: false,
+                    loadingStatus: STATUS_CONNECTED,
+                }));
+            })
+            .catch((err) => {
+                if (this.recoveryGeneration !== generation || this.snapshot.isGameOver) return;
+                const code = getErrorStatusCode(err);
+                if (code === 403) {
+                    this.recoveryRetryAttempt = 0;
+                    this.scheduleRedirect(SESSION_SEAT_GONE);
+                    return;
+                }
+                if (code === 404) {
+                    this.recoveryRetryAttempt = 0;
+                    this.scheduleRedirect(SESSION_EXPIRED);
+                    return;
+                }
+
+                logger.warn('State recovery attempt failed:', err);
+
+                if (this.recoveryRetryAttempt < MAX_RECOVERY_RETRIES) {
+                    this.recoveryRetryAttempt += 1;
+                    const delayMs = this.computeRecoveryBackoffMs(this.recoveryRetryAttempt);
+                    this.updateSnapshot(() => ({
+                        isRecovering: true,
+                        recoveryFailed: false,
+                        loadingStatus: STATUS_RECOVERING_TABLE,
+                    }));
+                    this.scheduleRecoveryRetry(() => {
+                        if (this.recoveryGeneration === generation && !this.snapshot.isGameOver) {
+                            void this.runRecoveryAttempt(step);
+                        }
+                    }, delayMs);
+                } else {
+                    this.updateSnapshot(() => ({
+                        isRecovering: false,
+                        recoveryFailed: true,
+                        loadingStatus: STATUS_RECOVERING_TABLE,
+                    }));
+                }
+            })
+            .finally(() => {
+                if (this.inFlightRecovery === attemptPromise) {
+                    this.inFlightRecovery = null;
+                }
+            });
+
+        this.inFlightRecovery = attemptPromise;
+        return attemptPromise;
+    }
+
     public setGameEndResult(result: GameEndResult | null): void {
         let nextGameState = this.snapshot.gameState;
         if (result?.finalState) {
@@ -694,6 +884,7 @@ export class GameSession {
         }
         this.clearShowdownTimers();
         this.clearNotificationTimer();
+        this.cancelRecovery();
         this.updateSnapshot(() => ({
             gameEndResult: result,
             isGameOver: result !== null,
@@ -707,6 +898,7 @@ export class GameSession {
     public clearGameState(): void {
         this.clearShowdownTimers();
         this.cancelActionLocks();
+        this.cancelRecovery();
         this.updateSnapshot(() => ({
             gameState: null,
             privateState: null,

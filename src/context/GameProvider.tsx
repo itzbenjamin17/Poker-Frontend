@@ -114,6 +114,10 @@ export function GameProvider({
         session.clearShowdownTimers();
     }, [session]);
 
+    const retryConnection = useCallback(() => {
+        session.retryConnection();
+    }, [session]);
+
     const value = useMemo<GameContextValue>(() => ({
         roomState: state.roomState,
         gameState: state.gameState,
@@ -130,6 +134,8 @@ export function GameProvider({
         gameEndResult: state.gameEndResult,
         pendingActions: state.pendingActions,
         error: state.error,
+        isRecovering: state.isRecovering,
+        recoveryFailed: state.recoveryFailed,
         auth,
         onLeave,
         session,
@@ -138,6 +144,7 @@ export function GameProvider({
         applyIncomingGameState,
         applyIncomingPrivateState,
         clearShowdownTimers,
+        retryConnection,
     }), [
         state,
         auth,
@@ -147,6 +154,7 @@ export function GameProvider({
         applyIncomingGameState,
         applyIncomingPrivateState,
         clearShowdownTimers,
+        retryConnection,
     ]);
 
     return <GameContext.Provider value={value}>{children}</GameContext.Provider>;

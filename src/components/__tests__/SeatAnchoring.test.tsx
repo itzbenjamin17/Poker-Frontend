@@ -669,16 +669,11 @@ describe('OpponentSeats card fan and label row', () => {
         expect((cards[1].parentElement as HTMLElement).style.marginLeft).toBe(`-${m.cardWidth - 12}px`);
     });
 
-    it('highlights best-hand cards and dims the others with the new opacity', () => {
+    it('stacks best-hand cards in front of unused cards at showdown', () => {
         const winner = makePlayer();
         renderSeat(winner, 0.9, { showdown: revealedFor(winner, { isWinner: true }, ['AH', 'QD', 'JD', 'TC', '9C']) });
         const best = screen.getByLabelText('Ace of Hearts');
         const other = screen.getByLabelText('King of Hearts');
-        expect(best.className).toContain('ring-gold-secondary');
-        expect(best.className).not.toMatch(/opacity-\d+/);
-        expect(other.className).toContain('opacity-55');
-        expect(other.className).toContain('grayscale-[50%]');
-        expect(other.className).not.toContain('opacity-40');
         expect((best.parentElement as HTMLElement).style.zIndex).toBe('2');
         expect((other.parentElement as HTMLElement).style.zIndex).toBe('1');
     });

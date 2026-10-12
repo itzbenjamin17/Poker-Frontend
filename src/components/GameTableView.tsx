@@ -1,11 +1,12 @@
-import { useMemo } from 'react';
+import { useContext, useMemo } from 'react';
 import { cn } from '../lib/cn';
 import { Button } from './UI';
 import { ActionPanel } from './ActionPanel';
 import { ResultDock } from './ResultDock';
 import { NotificationBanner } from './NotificationBanner';
-import { RoomStage, RoomDock, useOrientationGating } from './PokerRoomLayout';
+import { ReconnectOverlay, RoomStage, RoomDock, useOrientationGating } from './PokerRoomLayout';
 import { LiveTableStage } from './LiveTableStage';
+import { GameContext } from '../context/GameContext';
 
 import type { GameState, PokerAction, RoomState, WsStatus } from '../types';
 import {
@@ -26,6 +27,9 @@ export interface GameTableViewProps {
     claimPending?: boolean;
     notification?: string | null;
     wsStatus?: WsStatus;
+    isRecovering?: boolean;
+    recoveryFailed?: boolean;
+    onRetryConnection?: () => void;
 
     /** Chrome-density flags for ActionPanel/ResultDock only; the table layout never reads them. */
     isCompactTable?: boolean;
@@ -56,6 +60,9 @@ export function GameTableView({
     claimPending = false,
     notification = null,
     wsStatus = 'connected',
+    isRecovering,
+    recoveryFailed,
+    onRetryConnection,
     isCompactTable: propIsCompactTable,
     isMobileLandscape: propIsMobileLandscape,
     nowMs,
@@ -71,9 +78,16 @@ export function GameTableView({
     isActionPending,
     hasShellHeader = false,
 }: GameTableViewProps) {
+    const gameContext = useContext(GameContext);
     const { isMobileLandscape: detectedMobileLandscape, isCompactViewport } = useOrientationGating();
     const isMobileLandscape = propIsMobileLandscape ?? detectedMobileLandscape;
     const isCompactTable = propIsCompactTable ?? isCompactViewport;
+    const effectiveIsRecovering = isRecovering ?? gameContext?.isRecovering ?? false;
+    const effectiveRecoveryFailed = recoveryFailed ?? gameContext?.recoveryFailed ?? false;
+    const effectiveOnRetry = onRetryConnection ?? gameContext?.retryConnection;
+    const showStandaloneOverlay =
+        !hasShellHeader &&
+        (wsStatus !== 'connected' || effectiveIsRecovering || effectiveRecoveryFailed);
 
     const effectivePlayerName = playerName ?? auth?.playerName;
     const players = gameState?.players;
@@ -134,12 +148,13 @@ export function GameTableView({
         >
             <NotificationBanner notification={notification} />
 
-            {!hasShellHeader && wsStatus !== 'connected' && (
-                <div className="absolute inset-0 bg-surface/80 backdrop-blur-sm z-50 flex flex-col items-center justify-center gap-4 text-center select-none pointer-events-auto" role="alert" aria-live="assertive">
-                    <div className="w-12 h-12 border-4 border-emerald-primary border-t-transparent rounded-full animate-spin" aria-hidden="true" />
-                    <h2 className="font-headline text-2xl font-bold text-white tracking-tight">Connection lost</h2>
-                    <p className="text-zinc-400 text-sm uppercase tracking-widest animate-pulse">Reconnecting&hellip;</p>
-                </div>
+            {showStandaloneOverlay && (
+                <ReconnectOverlay
+                    role="alert"
+                    className="z-50"
+                    recoveryFailed={effectiveRecoveryFailed}
+                    onRetry={effectiveOnRetry}
+                />
             )}
 
             {/* Showdown Modal removed in favor of ResultDock */}

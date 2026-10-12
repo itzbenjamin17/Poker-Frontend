@@ -27,9 +27,11 @@ export const STATUS_CONNECTED = 'Connected.';
 export const STATUS_RECONNECTING = 'Reconnecting...';
 export const STATUS_SEAT_RESTORED = 'Seat restored. Syncing live updates...';
 export const STATUS_RECONNECTING_TABLE = 'Reconnecting to table...';
+export const STATUS_RECOVERING_TABLE = 'Reconnecting / restoring table…';
 export const STATUS_RETURNING = 'Returning...';
 export const STATUS_WAITING_CONNECTION = 'Waiting for table connection...';
 export const STATUS_SYSTEM_MALFUNCTION = 'System malfunction. Please refresh.';
+export const BTN_RETRY_CONNECTION = 'Retry connection';
 
 // ─── Lobby ────────────────────────────────────────────────────────────────────
 export const LOBBY_HERO_SUBTITLE = "Texas Hold'em";
@@ -101,6 +103,7 @@ export const SHOWDOWN_WON_ROUND = 'Won the round';
 export const SHOWDOWN_SHOW_DETAILS = 'Show result details';
 export const SHOWDOWN_HIDE_DETAILS = 'Hide result details';
 export const ARIA_ROUND_RESULT = 'Round Result';
+export const SHOWDOWN_BOARD_PLAYS_TOOLTIP = 'Hole cards do not play; best hand is on the board.';
 
 // ─── Notifications ────────────────────────────────────────────────────────────
 export const HOST_LEFT = 'Host left the lobby. Returning to main lobby...';

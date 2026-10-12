@@ -249,7 +249,7 @@ describe('opponent seat preservation', () => {
             expect(best.className, label).not.toMatch(/\bopacity-\d+\b/);
             expect(best.className, label).not.toMatch(/grayscale/);
             expect(other.className, label).not.toMatch(/ring-gold-secondary/);
-            expect(other.className, label).toMatch(/\bopacity-\d+\b/);
+            expect(other.className, label).not.toMatch(/\bopacity-\d+\b/);
             expect(other.className, label).toMatch(/grayscale/);
             checked++;
         }

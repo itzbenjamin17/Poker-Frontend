@@ -96,3 +96,38 @@ export function formatEndMessage(message?: string): string | null {
     if (!message || message.toUpperCase() === 'NO_HAND') return null;
     return message;
 }
+
+export const SHOWDOWN_UNUSED_CARD_CLASS = 'grayscale brightness-75 contrast-90';
+
+export function getShowdownHoleCardState(
+    holeCards: string[],
+    bestHand: string[] | undefined,
+    isRevealed: boolean,
+    isWinner: boolean,
+) {
+    if (!isRevealed || holeCards.length === 0) {
+        return {
+            isCardInBestHand: () => false,
+            isCardHighlighted: () => false,
+            isCardUnused: () => false,
+            playsTheBoard: false,
+        };
+    }
+
+    const hasExplicitBestHand = Array.isArray(bestHand) && bestHand.length > 0;
+    const isCardInBestHand = (card: string) =>
+        hasExplicitBestHand && bestHand.includes(card);
+    const isCardHighlighted = (card: string) =>
+        isWinner && isCardInBestHand(card);
+    const isCardUnused = (card: string) =>
+        hasExplicitBestHand && !bestHand.includes(card);
+    const playsTheBoard = hasExplicitBestHand && holeCards.every((c) => !bestHand.includes(c));
+
+    return {
+        isCardInBestHand,
+        isCardHighlighted,
+        isCardUnused,
+        playsTheBoard,
+    };
+}
+

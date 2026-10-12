@@ -222,4 +222,179 @@ describe('OpponentSeats', () => {
         const heroSeat = screen.getByTestId('hero-seat');
         expect(within(heroSeat).getByTestId('seat-hand-rank')).toHaveTextContent('Two Pair (Queens & Jacks)');
     });
+
+    it('exposes the board-only accessible description and tooltip on revealed card images and card groups without rendering a visible PLAYS THE BOARD label', () => {
+        const tableDimensions = { width: 900, height: 419 };
+        const players: Player[] = [
+            {
+                id: 'p-1',
+                name: 'Hero',
+                chips: 1000,
+                status: 'ACTIVE',
+                currentBet: 0,
+                hasFolded: false,
+                isReadyForNextHand: false,
+            },
+            {
+                id: 'p-2',
+                name: 'Villain',
+                chips: 1000,
+                status: 'ACTIVE',
+                currentBet: 0,
+                hasFolded: false,
+                isReadyForNextHand: false,
+            },
+        ];
+        const boardHand = ['AS', 'KS', 'QS', 'JS', 'TS'];
+        const { result } = renderHook(() => useSeatLayout(tableDimensions, players.length));
+        const showdownState: GameState = {
+            gameId: 'g-board-tie',
+            phase: 'SHOWDOWN',
+            pot: 400,
+            communityCards: boardHand,
+            currentPlayerId: 'p-1',
+            currentPlayerName: 'Hero',
+            currentBet: 0,
+            maxPlayers: 6,
+            winners: ['p-1', 'p-2'],
+            players: [
+                {
+                    ...players[0],
+                    isWinner: true,
+                    holeCards: ['2H', '3D'],
+                    handRank: 'ROYAL_FLUSH',
+                    bestHand: boardHand,
+                },
+                {
+                    ...players[1],
+                    isWinner: true,
+                    holeCards: ['4C', '5D'],
+                    handRank: 'ROYAL_FLUSH',
+                    bestHand: boardHand,
+                },
+            ],
+        };
+
+        render(
+            <TablePlayers
+                orderedPlayers={players}
+                currentPlayerId="p-1"
+                myPlayerId="p-1"
+                showdown={showdownState}
+                privateState={{ holeCards: ['2H', '3D'] }}
+                getSeatPosition={result.current.getSeatPosition}
+                isCompactTable={false}
+                nowMs={100000}
+                tableScale={result.current.tableScale}
+                tableDimensions={tableDimensions}
+            />,
+        );
+
+        const expectedDescription = 'Hole cards do not play; best hand is on the board.';
+
+        // Hero card group and individual card images
+        const heroCardsGroup = screen.getByRole('group', { name: 'Hero hole cards' });
+        expect(heroCardsGroup).toHaveAttribute('title', expectedDescription);
+        expect(heroCardsGroup).toHaveAccessibleDescription(expectedDescription);
+        for (const cardName of ['2 of Hearts', '3 of Diamonds']) {
+            const cardImg = screen.getByRole('img', { name: cardName });
+            expect(cardImg).not.toHaveAttribute('aria-describedby');
+        }
+
+        // Opponent card group and individual card images
+        const opponentCardsGroup = screen.getByRole('group', { name: 'Villain hole cards' });
+        expect(opponentCardsGroup).toHaveAttribute('title', expectedDescription);
+        expect(opponentCardsGroup).toHaveAccessibleDescription(expectedDescription);
+        for (const cardName of ['4 of Clubs', '5 of Diamonds']) {
+            const cardImg = screen.getByRole('img', { name: cardName });
+            expect(cardImg).not.toHaveAttribute('aria-describedby');
+        }
+
+        // No visible PLAYS THE BOARD label
+        expect(screen.queryByText(/plays the board/i)).toBeNull();
+    });
+
+    it('elevates contributing best-hand hole cards above unused hole cards for all revealed players while keeping the gold border winner-only', () => {
+        const tableDimensions = { width: 900, height: 419 };
+        const players: Player[] = [
+            {
+                id: 'p-1',
+                name: 'Hero',
+                chips: 1200,
+                status: 'ACTIVE',
+                currentBet: 0,
+                hasFolded: false,
+                isReadyForNextHand: false,
+            },
+            {
+                id: 'p-2',
+                name: 'LosingVillain',
+                chips: 800,
+                status: 'ACTIVE',
+                currentBet: 0,
+                hasFolded: false,
+                isReadyForNextHand: false,
+            },
+        ];
+        const { result } = renderHook(() => useSeatLayout(tableDimensions, players.length));
+        const showdownState: GameState = {
+            gameId: 'g-partial-play',
+            phase: 'SHOWDOWN',
+            pot: 400,
+            communityCards: ['AS', 'KS', 'QD', 'JC', '9H'],
+            currentPlayerId: 'p-1',
+            currentPlayerName: 'Hero',
+            currentBet: 0,
+            maxPlayers: 6,
+            winners: ['p-1'],
+            players: [
+                {
+                    ...players[0],
+                    isWinner: true,
+                    holeCards: ['AH', '2C'],
+                    handRank: 'ONE_PAIR',
+                    bestHand: ['AS', 'AH', 'KS', 'QD', 'JC'],
+                },
+                {
+                    ...players[1],
+                    isWinner: false,
+                    holeCards: ['KH', '3D'],
+                    handRank: 'ONE_PAIR',
+                    bestHand: ['KS', 'KH', 'AS', 'QD', 'JC'],
+                },
+            ],
+        };
+
+        render(
+            <TablePlayers
+                orderedPlayers={players}
+                currentPlayerId="p-1"
+                myPlayerId="p-1"
+                showdown={showdownState}
+                privateState={{ holeCards: ['AH', '2C'] }}
+                getSeatPosition={result.current.getSeatPosition}
+                isCompactTable={false}
+                nowMs={100000}
+                tableScale={result.current.tableScale}
+                tableDimensions={tableDimensions}
+            />,
+        );
+
+        // Losing opponent's used card ('KH' = King of Hearts, index 0) is elevated in front of unused card ('3D' = 3 of Diamonds, index 1)
+        const losingUsedCard = screen.getByRole('img', { name: 'King of Hearts' });
+        const losingUnusedCard = screen.getByRole('img', { name: '3 of Diamonds' });
+        expect(Number((losingUsedCard.parentElement as HTMLElement).style.zIndex)).toBeGreaterThan(
+            Number((losingUnusedCard.parentElement as HTMLElement).style.zIndex),
+        );
+        expect(losingUsedCard.className).not.toMatch(/ring-gold-secondary/);
+        expect(losingUnusedCard.className).toMatch(/grayscale/);
+
+        const winningUsedCard = screen.getByRole('img', { name: 'Ace of Hearts' });
+        expect(winningUsedCard.className).toMatch(/ring-gold-secondary/);
+
+        // Neither seat plays the board because each player uses one hole card
+        expect(screen.getByRole('group', { name: 'Hero hole cards' })).not.toHaveAttribute('title');
+        expect(screen.getByRole('group', { name: 'LosingVillain hole cards' })).not.toHaveAttribute('title');
+    });
 });
+

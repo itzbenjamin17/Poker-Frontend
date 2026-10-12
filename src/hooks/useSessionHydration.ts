@@ -6,6 +6,7 @@ import {
     isGameStatePayload,
     isPrivateStatePayload,
     getErrorStatusCode,
+    mapRoomDataToRoomState,
     normalizeErrorMessage,
 } from '../lib/payloads';
 import {
@@ -104,21 +105,7 @@ export function useSessionHydration() {
 
                 dispatch({
                     type: 'SET_ROOM',
-                    payload: {
-                        roomId: roomData.roomId,
-                        roomName: roomData.roomName,
-                        players: roomData.players.map((p: { name: string; isHost: boolean; joinedAt?: string }) => ({
-                            name: p.name,
-                            isHost: p.isHost,
-                            joinedAt: p.joinedAt,
-                        })),
-                        maxPlayers: roomData.maxPlayers,
-                        buyIn: roomData.buyIn,
-                        smallBlind: roomData.smallBlind,
-                        bigBlind: roomData.bigBlind,
-                        canStartGame: roomData.canStartGame,
-                        gameStarted: roomData.gameStarted,
-                    },
+                    payload: mapRoomDataToRoomState(roomData, auth.roomId),
                 });
 
                 if (!roomData.gameStarted) {

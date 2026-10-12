@@ -27,6 +27,8 @@ export interface GameContextState {
     gameEndResult: GameEndResult | null;
     pendingActions?: ReadonlySet<string>;
     error?: { message: string } | null;
+    isRecovering?: boolean;
+    recoveryFailed?: boolean;
 }
 
 export type Action =
@@ -49,6 +51,7 @@ export interface GameContextValue extends GameContextState {
     applyIncomingGameState: (payload: IncomingGameStatePayload) => void;
     applyIncomingPrivateState: (payload: IncomingPrivateStatePayload) => void;
     clearShowdownTimers: () => void;
+    retryConnection?: () => void;
 }
 
 export const GameContext = createContext<GameContextValue | null>(null);

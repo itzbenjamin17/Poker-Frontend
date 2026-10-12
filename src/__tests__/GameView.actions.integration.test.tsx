@@ -238,6 +238,10 @@ describe('GameView - Actions & Flows Integration', () => {
                 currentPlayerId: 'p-1',
                 currentPlayerName: 'TestPlayer',
                 players: [{ id: 'p-1', name: 'TestPlayer', chips: 1000, currentBet: 0, status: 'ACTIVE' }],
+            })),
+            http.get('/api/game/ROOM123/private-state', () => HttpResponse.json({
+                playerId: 'p-1',
+                holeCards: ['AS', 'KS'],
             }))
         );
 
@@ -267,6 +271,10 @@ describe('GameView - Actions & Flows Integration', () => {
                 currentPlayerId: 'p-1',
                 currentPlayerName: 'TestPlayer',
                 players: [{ id: 'p-1', name: 'TestPlayer', chips: 1000, currentBet: 0, status: 'ACTIVE' }],
+            })),
+            http.get('/api/game/ROOM123/private-state', () => HttpResponse.json({
+                playerId: 'p-1',
+                holeCards: ['AS', 'KS'],
             }))
         );
 
@@ -320,6 +328,10 @@ describe('GameView - Actions & Flows Integration', () => {
                     { id: 'p-1', name: 'TestPlayer', chips: 980, currentBet: 20, status: 'ACTIVE' },
                     { id: 'p-2', name: 'Opponent', chips: 990, currentBet: 20, status: 'ACTIVE' },
                 ],
+            })),
+            http.get('/api/game/ROOM123/private-state', () => HttpResponse.json({
+                playerId: 'p-1',
+                holeCards: ['AS', 'KS'],
             })),
             http.post('/api/game/ROOM123/leave', () => new HttpResponse(null, { status: 200 })),
             http.post('/api/room/ROOM123/leave', () => new HttpResponse(null, { status: 200 }))
@@ -428,6 +440,10 @@ describe('GameView - Actions & Flows Integration', () => {
                 currentPlayerId: 'p-1',
                 currentPlayerName: 'TestPlayer',
                 players: [{ id: 'p-1', name: 'TestPlayer', chips: 1000, currentBet: 0, status: 'ACTIVE' }],
+            })),
+            http.get('/api/game/ROOM123/private-state', () => HttpResponse.json({
+                playerId: 'p-1',
+                holeCards: ['AS', 'KS'],
             }))
         );
 
