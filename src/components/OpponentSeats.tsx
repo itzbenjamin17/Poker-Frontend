@@ -122,9 +122,13 @@ export function OpponentSeats({
                 const detailsOffsetTop = cardsBelow ? metrics.belowDetailsOffsetTop : 0;
                 const cardsGap = metrics.belowGap;
                 const rowLeft = seat.cardPlacement === 'left';
-                const fitsBoard = seatHandRankFits(seat, effectiveTable, tableScale, labelTier);
+                // The hand label has priority: it is tested alone, while bet/status lines must fit as well.
+                const fitsLabel = seatHandRankFits(seat, effectiveTable, tableScale, labelTier, 0);
+                // The status text can wrap to two lines (see statusBoxSize), so it reserves two.
+                const extraLines = (p.currentBet > 0 ? 1 : 0) + (p.status === 'DISCONNECTED' || p.isReadyForNextHand ? 2 : 0);
+                const fitsBoard = extraLines === 0 ? fitsLabel : seatHandRankFits(seat, effectiveTable, tableScale, labelTier, extraLines);
                 const statusFitsFelt = seatStatusFitsFelt(seat, effectiveTable, tableScale, labelTier);
-                const seatHideHandRank = hideHandRank || !fitsBoard;
+                const seatHideHandRank = hideHandRank || !fitsLabel;
                 const seatHideBet = !fitsBoard || (isCompactTable && labelUnderCards && Boolean(handRankText));
                 const seatHideStatus = !fitsBoard || !statusFitsFelt || (labelUnderCards && Boolean(handRankText));
 
@@ -197,6 +201,9 @@ export function OpponentSeats({
                                         ? displayCards.map((c: string, ci: number) => {
                                             const isPartOfBestHand = isShowdownWinner && shouldReveal && showdownPlayer?.bestHand?.includes(c);
                                             const shouldDim = isShowdownWinner && shouldReveal && !isPartOfBestHand;
+                                            const coveredOnLeft = Boolean(
+                                                shouldDim && ci > 0 && showdownPlayer?.bestHand?.includes(displayCards[ci - 1]),
+                                            );
                                             return (
                                                 <motion.div
                                                     key={`cards-${p.id}-${ci}`}
@@ -205,14 +212,14 @@ export function OpponentSeats({
                                                     transition={{ delay: ci * 0.08 }}
                                                     style={{
                                                         marginLeft: ci > 0 ? `-${cardOverlap}px` : '0',
-                                                        zIndex: ci,
+                                                        zIndex: isPartOfBestHand ? ci + displayCards.length : ci,
                                                     }}
                                                 >
                                                     <CardUI
                                                         card={c}
                                                         scale={cardScale}
                                                         compact={compactCards}
-                                                        cornerIndex
+                                                        cornerIndex={coveredOnLeft ? 'right' : 'left'}
                                                         className={cn(
                                                             isPartOfBestHand && 'ring-2 ring-gold-secondary/70 shadow-[0_0_16px_rgba(252,211,77,0.3)]',
                                                             shouldDim && 'opacity-55 grayscale-[50%]',

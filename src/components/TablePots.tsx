@@ -90,20 +90,20 @@ export function TablePots({
     const isViewingSidePots = viewingSidePots && hasMultiplePots;
     
     // Base sizes that will be multiplied by scale
-    const baseIconSize = 16;
-    const baseFontSize = 24;
-    const baseSmallFontSize = 10;
-    const basePaddingX = 24;
-    const basePaddingY = 8;
-    const baseGap = 12;
+    const baseIconSize = 12;
+    const baseFontSize = 15;
+    const baseSmallFontSize = 8;
+    const basePaddingX = 14;
+    const basePaddingY = 5;
+    const baseGap = 7;
 
     return (
-        <div className="flex flex-col items-center" style={{ gap: `${scale * 8}px` }}>
+        <div className="flex flex-col items-center" style={{ gap: `${scale * 6}px` }}>
             {/* Phase Label */}
             <span 
                 data-testid="pot-phase"
                 className="text-emerald-primary/60 font-bold uppercase tracking-[0.2em] animate-in fade-in duration-500"
-                style={{ fontSize: `${fontPx(10, textScale)}px` }}
+                style={{ fontSize: `${fontPx(8, textScale)}px` }}
             >
                 {phase.replace(/_/g, ' ')}
             </span>
@@ -113,7 +113,7 @@ export function TablePots({
                 role="region" 
                 aria-label="Pot Breakdown"
                 className="flex flex-wrap items-center justify-center transition-all duration-300" 
-                style={{ gap: `${scale * 6}px` }}
+                style={{ gap: `${scale * 5}px` }}
             >
                 
                 {!isViewingSidePots ? (
@@ -154,16 +154,16 @@ export function TablePots({
                                 onClick={() => setViewingSidePots(true)}
                                 className="bg-black/60 hover:bg-black/40 text-gold-secondary/80 hover:text-gold-secondary border border-gold-secondary/20 hover:border-gold-secondary/50 rounded-full flex items-center transition-colors"
                                 style={{
-                                    padding: `${scale * 6}px ${scale * 12}px`,
+                                    padding: `${scale * 5}px ${scale * 10}px`,
                                     gap: `${scale * 4}px`,
-                                    fontSize: `${fontPx(10, textScale)}px`
+                                    fontSize: `${fontPx(8, textScale)}px`
                                 }}
                             >
                                 <span className="font-bold uppercase tracking-widest">
                                     {sidePots.length > 0 ? `+${sidePots.length} Side Pot${sidePots.length > 1 ? 's' : ''}` : 'View Uncalled'}
                                 </span>
                                 <span className="sr-only">{' show pot details'}</span>
-                                <ChevronRight style={{ width: `${scale * 14}px`, height: `${scale * 14}px` }} />
+                                <ChevronRight style={{ width: `${scale * 11}px`, height: `${scale * 11}px` }} />
                             </button>
                         )}
                     </>
@@ -175,12 +175,12 @@ export function TablePots({
                             onClick={() => setViewingSidePots(false)}
                             className="bg-black/60 hover:bg-black/40 text-white/70 hover:text-white border border-white/10 hover:border-white/30 rounded-full flex items-center transition-colors"
                             style={{
-                                padding: `${scale * 6}px ${scale * 12}px`,
+                                padding: `${scale * 5}px ${scale * 10}px`,
                                 gap: `${scale * 4}px`,
-                                fontSize: `${fontPx(10, textScale)}px`
+                                fontSize: `${fontPx(8, textScale)}px`
                             }}
                         >
-                            <ChevronLeft style={{ width: `${scale * 14}px`, height: `${scale * 14}px` }} />
+                            <ChevronLeft style={{ width: `${scale * 11}px`, height: `${scale * 11}px` }} />
                             <span className="font-bold uppercase tracking-widest">Main Pot</span>
                             <span className="font-bold text-white/90">{mainPot.toLocaleString()}</span>
                             <span className="sr-only">{' hide pot details'}</span>
@@ -192,14 +192,14 @@ export function TablePots({
                                 key={`side-pot-${index}`} 
                                 className="bg-black/35 rounded-full border border-gold-secondary/30 backdrop-blur-md flex items-center animate-in fade-in zoom-in-95 duration-200"
                                 style={{
-                                    padding: `${scale * 6}px ${scale * 14}px`,
-                                    gap: `${scale * 8}px`
+                                    padding: `${scale * 5}px ${scale * 11}px`,
+                                    gap: `${scale * 6}px`
                                 }}
                             >
-                                <span className="text-white/70 font-bold uppercase tracking-widest" style={{ fontSize: `${fontPx(9, textScale)}px` }}>
+                                <span className="text-white/70 font-bold uppercase tracking-widest" style={{ fontSize: `${fontPx(7, textScale)}px` }}>
                                     {LABEL_SIDE_POT_PREFIX} {index + 1}
                                 </span>
-                                <span className="font-bold text-gold-secondary" style={{ fontSize: `${fontPx(14, textScale)}px` }}>
+                                <span className="font-bold text-gold-secondary" style={{ fontSize: `${fontPx(11, textScale)}px` }}>
                                     {amount.toLocaleString()}
                                 </span>
                             </div>
@@ -210,14 +210,14 @@ export function TablePots({
                             <div 
                                 className="bg-black/35 rounded-full border border-gold-secondary/30 backdrop-blur-md flex items-center animate-in fade-in zoom-in-95 duration-200"
                                 style={{
-                                    padding: `${scale * 6}px ${scale * 14}px`,
-                                    gap: `${scale * 8}px`
+                                    padding: `${scale * 5}px ${scale * 11}px`,
+                                    gap: `${scale * 6}px`
                                 }}
                             >
-                                <span className="text-white/70 font-bold uppercase tracking-widest" style={{ fontSize: `${fontPx(9, textScale)}px` }}>
+                                <span className="text-white/70 font-bold uppercase tracking-widest" style={{ fontSize: `${fontPx(7, textScale)}px` }}>
                                     {LABEL_UNCALLED}
                                 </span>
-                                <span className="font-bold text-gold-secondary" style={{ fontSize: `${fontPx(14, textScale)}px` }}>
+                                <span className="font-bold text-gold-secondary" style={{ fontSize: `${fontPx(11, textScale)}px` }}>
                                     {uncalledAmount.toLocaleString()}
                                 </span>
                             </div>

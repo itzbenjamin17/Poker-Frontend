@@ -984,12 +984,12 @@ export function getBoardClusterHalfHeight(scale: TableScale): number {
     const sp = scale.spacing;
     const st = scale.text;
     const sc = scale.overall;
-    const phaseH = fontPx(10, st) * 1.5;
-    const potH = fontPx(24, st) + 2 * (8 * sp);
-    const gapPhasePot = 8 * sp;
+    const phaseH = fontPx(8, st) * 1.5;
+    const potH = fontPx(15, st) + 2 * (5 * sp);
+    const gapPhasePot = 6 * sp;
     const gapPotsCards = 8 * sp;
     const cardsH = 64 * sc;
-    const sidePotExtra = 12 * sp;
+    const sidePotExtra = 8 * sp;
     const totalH = phaseH + gapPhasePot + potH + gapPotsCards + cardsH + sidePotExtra;
     return totalH / 2;
 }
@@ -1004,6 +1004,8 @@ export function seatHandRankFits(
     table: TableDimensions,
     scale: TableScale,
     tier: TableTier,
+    /** Extra detail lines (bet, status) rendered under the label; pass 0 to test the label alone. */
+    extraLines = 2,
 ): boolean {
     const isTopCentre = seat.left !== undefined && Math.abs(seat.left - 50) <= CENTRE_BAND && seat.top < 35;
     // Only 'below' seats and top-centre seats stack vertically directly above the central board cluster.
@@ -1026,7 +1028,7 @@ export function seatHandRankFits(
     const detailsOffset = seat.cardPlacement === 'below' ? metrics.belowDetailsOffsetTop : 0;
     const font = fontPx(9, scale.text);
     // When seat is directly above the board, details (hand rank, bet, status) hang below.
-    const detailsH = labelSize.height + 2 * (LINE_HEIGHT_EM * font);
+    const detailsH = labelSize.height + extraLines * (LINE_HEIGHT_EM * font);
     const labelTop = anchorY + (radius + 8 * scale.avatar + detailsOffset);
     const labelBottom = labelTop + detailsH;
 

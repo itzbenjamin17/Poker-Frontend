@@ -679,6 +679,8 @@ describe('OpponentSeats card fan and label row', () => {
         expect(other.className).toContain('opacity-55');
         expect(other.className).toContain('grayscale-[50%]');
         expect(other.className).not.toContain('opacity-40');
+        expect((best.parentElement as HTMLElement).style.zIndex).toBe('2');
+        expect((other.parentElement as HTMLElement).style.zIndex).toBe('1');
     });
 
     it('renders no cards for folded and inactive seats', () => {

@@ -34,10 +34,10 @@ export interface CardUIProps {
     /** Single centred rank + suit face for cards too small for corner indices. */
     compact?: boolean;
     /**
-     * Opponent seat cards: the rank sits over a small suit at the top-left, so a card overlapped by its neighbour still
-     * shows both glyphs in the strip the front card leaves uncovered. Hero and board cards leave this off.
+     * Opponent seat cards: the rank sits over a small suit in the top corner (`true` / `'left'` = top-left, `'right'` =
+     * top-right), so a card overlapped by its neighbour still shows both glyphs in the uncovered strip.
      */
-    cornerIndex?: boolean;
+    cornerIndex?: boolean | 'left' | 'right';
     className?: string;
     style?: React.CSSProperties;
 }
@@ -101,8 +101,9 @@ export const CardUI: React.FC<CardUIProps> = ({
 
     if (cornerIndex) {
         const index = cornerIndexMetrics(s, compact);
+        const alignRight = cornerIndex === 'right';
         const glyphs = (
-            <div className={cn('self-start flex flex-col items-start leading-none', suit.color)}>
+            <div className={cn(alignRight ? 'self-end items-end' : 'self-start items-start', 'flex flex-col leading-none', suit.color)}>
                 <span data-testid="card-rank" className="font-bold leading-none" style={{ fontSize: `${index.rankFontPx}px` }}>{displayValue}</span>
                 <span data-testid="card-suit" className="leading-none" style={{ fontSize: `${index.suitFontPx}px` }}>{suit.icon}</span>
             </div>
@@ -149,7 +150,7 @@ export const CardUI: React.FC<CardUIProps> = ({
             >
                 {glyphs}
                 <div className={cn('leading-none', suit.color)} style={{ fontSize: `${centreFont}px` }}>{suit.icon}</div>
-                <div className={cn('font-bold self-end rotate-180 leading-none', suit.color)} style={{ fontSize: `${index.rankFontPx}px` }}>{displayValue}</div>
+                <div className={cn('font-bold rotate-180 leading-none', alignRight ? 'self-start' : 'self-end', suit.color)} style={{ fontSize: `${index.rankFontPx}px` }}>{displayValue}</div>
 
                 {/* Subtle watermark */}
                 <div className={cn('absolute inset-0 flex items-center justify-center opacity-5 pointer-events-none text-4xl leading-none', suit.color)} style={{ fontSize: `${Math.round(s * 40)}px` }}>
