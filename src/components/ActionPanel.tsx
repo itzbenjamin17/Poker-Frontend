@@ -9,7 +9,7 @@ import {
     RAISE_VALIDATION_WHOLE_NUMBER, RAISE_VALIDATION_POSITIVE, RAISE_VALIDATION_MAX,
     formatBetMinError, formatRaiseMinError, formatAvailableChipsError,
 } from '../constants/strings';
-import type { GameState, Player, PokerAction } from '../types';
+import type { ActionError, GameState, Player, PokerAction } from '../types';
 
 type AmountAction = Extract<PokerAction, 'BET' | 'RAISE'>;
 
@@ -26,6 +26,7 @@ interface ActionPanelProps {
     isCompactTable: boolean;
     raiseAmount?: string;
     raiseError: string | null;
+    actionError?: ActionError | null;
     onRaiseChange?: (val: string) => void;
     onClearRaiseError?: () => void;
     onAction: (action: PokerAction, amount?: number) => void;
@@ -52,6 +53,7 @@ export function ActionPanel({
     isCompactTable,
     raiseAmount: controlledRaiseAmount,
     raiseError,
+    actionError,
     onRaiseChange,
     onClearRaiseError,
     onAction,
@@ -68,7 +70,9 @@ export function ActionPanel({
 }: ActionPanelProps) {
     const prefersReducedMotion = useReducedMotion();
     const [internalRaiseAmount, setInternalRaiseAmount] = useState('');
-    const [amountAction, setAmountAction] = useState<AmountAction | null>(null);
+    const [amountAction, setAmountAction] = useState<AmountAction | null>(
+        actionError?.action === 'BET' || actionError?.action === 'RAISE' ? actionError.action : null,
+    );
     const [pendingAction, setPendingAction] = useState<PokerAction | null>(null);
     const controlButtonSize: 'xs' | 'sm' | 'md' = isMobileLandscape ? 'xs' : isCompactTable ? 'sm' : 'md';
 
@@ -169,7 +173,8 @@ export function ActionPanel({
         computedRaiseError = RAISE_VALIDATION_MAX;
     }
 
-    const activeRaiseError = raiseError ?? computedRaiseError;
+    const activeRaiseError = (actionError?.action === actionType ? actionError.message : null) ?? raiseError ?? computedRaiseError;
+    const displayedError = actionError?.message ?? (amountAction === actionType ? activeRaiseError : null);
     const canSubmitRaise = !activeRaiseError;
     const hasError = Boolean(activeRaiseError);
 
@@ -189,12 +194,17 @@ export function ActionPanel({
     const canAllIn = legalActions.has('ALL_IN');
     const canBetOrRaise = legalActions.has(actionType);
 
+    const [prevActionError, setPrevActionError] = useState(actionError);
+    if (prevActionError !== actionError) {
+        setPrevActionError(actionError);
+        if (actionError && canBetOrRaise && actionError.action === actionType) {
+            setAmountAction(actionError.action);
+        }
+    }
     const [prevRaiseError, setPrevRaiseError] = useState(raiseError);
     if (prevRaiseError !== raiseError) {
         setPrevRaiseError(raiseError);
-        if (raiseError && canBetOrRaise) {
-            setAmountAction(actionType);
-        }
+        if (raiseError && canBetOrRaise) setAmountAction(actionType);
     }
 
     const isRaising = showControls && canBetOrRaise && amountAction === actionType;
@@ -338,15 +348,6 @@ export function ActionPanel({
                                     </div>
                                 </div>
 
-                                {activeRaiseError && (
-                                    <p
-                                        id="raise-amount-error"
-                                        role="alert"
-                                        className="text-center text-[10px] font-bold uppercase tracking-wider text-red-400 line-clamp-1 max-w-md"
-                                    >
-                                        {activeRaiseError}
-                                    </p>
-                                )}
                             </div>
                         ) : (
                             <div className={cn(
@@ -487,6 +488,15 @@ export function ActionPanel({
                     </motion.div>
                 )}
             </AnimatePresence>
+            {displayedError && (
+                <p
+                    id="raise-amount-error"
+                    role="alert"
+                    className="absolute bottom-0 left-1/2 w-[calc(100%-1rem)] min-w-0 -translate-x-1/2 overflow-hidden text-ellipsis whitespace-nowrap text-center text-[10px] font-bold text-red-400"
+                >
+                    {displayedError}
+                </p>
+            )}
             {isMobileLandscape && onLeaveGame && (
                 <div className="absolute right-2 top-1/2 -translate-y-1/2">
                     <Button variant="ghost" size="xs" onClick={onLeaveGame} className="text-red-400 hover:text-red-300 hover:bg-red-400/10 px-2 py-1">

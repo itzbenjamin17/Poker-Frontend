@@ -37,6 +37,7 @@ function renderActionPanel({
     isCompactTable = false,
     raiseAmount = '',
     raiseError = null,
+    actionError = null,
     onRaiseChange = vi.fn(),
     onAction = vi.fn(),
     isActionPending = false,
@@ -57,6 +58,7 @@ function renderActionPanel({
                 isCompactTable={isCompactTable}
                 raiseAmount={raiseAmount}
                 raiseError={raiseError}
+                actionError={actionError}
                 onRaiseChange={onRaiseChange}
                 onAction={onAction}
                 isActionPending={isActionPending}
@@ -67,6 +69,38 @@ function renderActionPanel({
 }
 
 describe('ActionPanel', () => {
+    it('keeps an unfamiliar check error in the Action Panel with its supplied wording', () => {
+        renderActionPanel({
+            gameState: { ...mockGameState, currentBet: 10, legalActions: ['FOLD', 'CHECK'] },
+            actionError: { type: 'ACTION_ERROR', code: 'FUTURE_RULE', action: 'CHECK', message: 'A new rule applies' },
+        });
+        expect(screen.getByRole('region', { name: 'Action dock' })).toHaveTextContent('A new rule applies');
+        expect(screen.getByRole('alert')).toHaveTextContent('A new rule applies');
+    });
+
+    it('shows a rejected action while the Hero is waiting', () => {
+        renderActionPanel({
+            isMyTurn: false,
+            actionError: { type: 'ACTION_ERROR', code: 'NOT_YOUR_TURN', action: 'FOLD', message: 'Wait for your turn' },
+        });
+        expect(screen.getByRole('region', { name: 'Action dock' })).toHaveTextContent('Wait for your turn');
+        expect(screen.getByRole('alert')).toHaveTextContent('Wait for your turn');
+    });
+
+    it('reveals the rejected raise control using its action and clears feedback on amount change', async () => {
+        const onClearRaiseError = vi.fn();
+        render(<ActionPanel
+            gameState={mockGameState} me={mockMe} isMyTurn isSelfDisconnected={false}
+            isReadyCountdownActive={false} isMobileLandscape={false} isCompactTable={false}
+            raiseError={null} actionError={{ type: 'ACTION_ERROR', code: 'UNKNOWN', action: 'RAISE', message: 'Use a different total' }}
+            onClearRaiseError={onClearRaiseError} onAction={vi.fn()} isActionPending={false}
+        />);
+        expect(screen.getByRole('alert')).toHaveTextContent('Use a different total');
+        expect(screen.getByLabelText(/raise amount/i)).toBeInTheDocument();
+        await userEvent.setup().click(screen.getByRole('button', { name: 'MAX' }));
+        expect(onClearRaiseError).toHaveBeenCalled();
+    });
+
     it('renders fold, check, and a progressive raise button on my turn', () => {
         renderActionPanel({
             gameState: { ...mockGameState, currentBet: 10, legalActions: ['FOLD', 'CHECK', 'RAISE'] },

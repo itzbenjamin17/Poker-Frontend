@@ -6,7 +6,6 @@ import { GameProvider } from '../../context/GameProvider';
 import { GameSession } from '../../domain/GameSession';
 import { InMemoryTransportAdapter } from '../../services/transport';
 import { pokerApi } from '../../services/api';
-import { RAISE_ERROR_FORBIDDEN_BET } from '../../constants/strings';
 import type { GameState } from '../../types';
 
 vi.mock('../../services/api', () => ({
@@ -294,7 +293,7 @@ describe('useGameDispatcher', () => {
         expect(session.getSnapshot().notification).toBeNull();
     });
 
-    it('onSocketError parses errors and updates error state', async () => {
+    it('onSocketError keeps transport failures in generic notifications', async () => {
         const { result } = renderHook(() => useGameDispatcher(), {
             wrapper: createWrapper(),
         });
@@ -303,8 +302,8 @@ describe('useGameDispatcher', () => {
             result.current.onSocketError('INSUFFICIENT_CHIPS');
         });
 
-        expect(result.current.error?.message).toBe('INSUFFICIENT_CHIPS');
-        expect(session.getSnapshot().notification).toBe(RAISE_ERROR_FORBIDDEN_BET);
+        expect(result.current.error).toBeNull();
+        expect(session.getSnapshot().notification).toBe('INSUFFICIENT_CHIPS');
 
         act(() => {
             result.current.onSocketError('SOME_OTHER_ERROR');

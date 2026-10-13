@@ -156,6 +156,13 @@ export type SeatPosition = {
 
 export type TableTier = 'compact' | 'standard' | 'wide';
 
+export interface ActionError {
+    type: 'ACTION_ERROR';
+    code: string;
+    action: PokerAction;
+    message: string;
+}
+
 export interface GameEndResult {
     winnerName: string | null;
     winnerChips?: number;
@@ -179,7 +186,7 @@ export interface SessionSnapshot {
     isGameOver: boolean;
     gameEndResult: GameEndResult | null;
     pendingActions: ReadonlySet<string>;
-    error: { message: string } | null;
+    error: ActionError | null;
     isRecovering?: boolean;
     recoveryFailed?: boolean;
 }

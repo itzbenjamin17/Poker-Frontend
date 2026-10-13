@@ -4,7 +4,7 @@ import { savePersistedGameEnd } from '../services/gameEndStorage';
 import { useGameContext } from '../context/GameContext';
 import { normalizeErrorMessage, getErrorStatusCode } from '../lib/payloads';
 import { logger } from '../security/logger';
-import type { PokerAction } from '../types';
+import type { ActionError, PokerAction } from '../types';
 
 export type GameCommand = 
     | { type: 'PLAY_ACTION'; action: PokerAction; amount?: number }
@@ -15,9 +15,7 @@ export type GameCommand =
     | { type: 'LEAVE_GAME' }
     | { type: 'LEAVE_REVIEW' };
 
-export interface DispatchError {
-    message: string;
-}
+export type DispatchError = ActionError;
 
 export function useGameDispatcher() {
     const {

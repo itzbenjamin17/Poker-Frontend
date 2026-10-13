@@ -14,6 +14,7 @@ import {
     getErrorStatusCode,
     isGameStatePayload,
     isGameEndPayload,
+    isActionErrorPayload,
     isPrivateStatePayload,
     isRoomUpdatePayload,
     normalizeErrorMessage,
@@ -21,7 +22,6 @@ import {
 import {
     HOST_LEFT,
     GAME_FINISHED_FALLBACK,
-    RAISE_ERROR_FORBIDDEN_BET,
     SESSION_EXPIRED,
     SESSION_SEAT_GONE,
     STATUS_CONNECTED,
@@ -291,8 +291,19 @@ export class GameSession {
         try {
             const parsed = JSON.parse(body);
 
-            if (parsed.type === 'ACTION_ERROR' && typeof parsed.message === 'string') {
-                this.handleActionError(parsed.message);
+            if (parsed?.type === 'ACTION_ERROR') {
+                if (!isActionErrorPayload(parsed)) {
+                    logger.warn('Invalid ACTION_ERROR contract:', body);
+                    return;
+                }
+                this.cancelActionLocks();
+                this.updateSnapshot(() => ({ error: parsed }));
+                if (parsed.code === 'GAME_NOT_FOUND') this.scheduleRedirect(SESSION_EXPIRED);
+                return;
+            }
+
+            if (parsed?.type === 'PLAYER_NOTIFICATION' && typeof parsed.message === 'string') {
+                this.setNotification(normalizeErrorMessage(parsed.message));
                 return;
             }
 
@@ -316,16 +327,7 @@ export class GameSession {
         }
 
         const normalized = normalizeErrorMessage(message) || 'Error occurred';
-        const isBetRaiseError = /bet|raise|insufficient|amount|chip/i.test(message);
-
-        if (isBetRaiseError) {
-            this.updateSnapshot(() => ({
-                error: { message: normalized },
-            }));
-            this.setNotification(RAISE_ERROR_FORBIDDEN_BET);
-        } else {
-            this.setNotification(normalized);
-        }
+        this.setNotification(normalized);
 
         for (const listener of this.socketErrorListeners) {
             listener(message);
@@ -641,6 +643,8 @@ export class GameSession {
 
         this.updateSnapshot(() => ({
             gameState: data,
+            error: data.phase !== previousState?.phase || data.gameId !== previousState?.gameId ||
+                data.currentPlayerName !== this.auth.playerName ? null : this.snapshot.error,
             showdown: nextShowdown,
             showdownResult: nextShowdownResult,
             myPlayerId,
@@ -901,6 +905,7 @@ export class GameSession {
         this.cancelRecovery();
         this.updateSnapshot(() => ({
             gameState: null,
+            error: null,
             privateState: null,
             showdown: null,
             showdownResult: null,

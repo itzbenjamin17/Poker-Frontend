@@ -120,10 +120,12 @@ describe('useGameWebSocket', () => {
         act(() => {
             MockStompClient.simulateMessage('/user/queue/private', {
                 type: 'ACTION_ERROR',
+                code: 'RAISE_AMOUNT_REQUIRED',
+                action: 'RAISE',
                 message: 'Invalid Raise Amount',
             });
         });
-        expect(onSocketError).toHaveBeenCalledWith('Invalid Raise Amount');
+        expect(onSocketError).not.toHaveBeenCalled();
         expect(session.getSnapshot().error?.message).toBe('Invalid Raise Amount');
 
         const privatePayload = {

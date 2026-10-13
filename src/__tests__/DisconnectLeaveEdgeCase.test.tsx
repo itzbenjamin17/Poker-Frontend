@@ -147,7 +147,9 @@ describe('Disconnect & Leave Edge Cases', () => {
 
         transport.simulateMessage('/user/queue/private', {
             type: 'ACTION_ERROR',
-            message: 'Game not found:',
+            code: 'GAME_NOT_FOUND',
+            action: 'CHECK',
+            message: 'Game unavailable',
         });
 
         // Should schedule redirect to lobby so the player is not stuck in a non-existent game

@@ -2,6 +2,7 @@ import { createContext, useContext } from 'react';
 import type { GameSession } from '../domain/GameSession';
 import type { GameTransport } from '../services/transport';
 import type {
+    ActionError,
     AuthResponse,
     GameState,
     GameEndResult,
@@ -26,7 +27,7 @@ export interface GameContextState {
     isGameOver: boolean;
     gameEndResult: GameEndResult | null;
     pendingActions?: ReadonlySet<string>;
-    error?: { message: string } | null;
+    error?: ActionError | null;
     isRecovering?: boolean;
     recoveryFailed?: boolean;
 }

@@ -4,7 +4,7 @@ import { GameSession } from '../GameSession';
 import { TestClock } from '../clock';
 import { InMemoryTransportAdapter } from '../../services/transport';
 import type { AuthResponse, IncomingGameStatePayload } from '../../types';
-import { RAISE_ERROR_FORBIDDEN_BET, HOST_LEFT } from '../../constants/strings';
+import { HOST_LEFT } from '../../constants/strings';
 
 describe('GameSession Domain Store', () => {
     const auth: AuthResponse = {
@@ -483,7 +483,7 @@ describe('GameSession Domain Store', () => {
             expect(session.getSnapshot().notification).toBe('Broker action rejected');
         });
 
-        it('handles private ACTION_ERROR by cancelling locks and normalizing raise errors', () => {
+        it('routes a structured private action error without rewriting its message', () => {
             const { session, transport } = createSession();
             session.connect();
             transport.simulateStatus('connected');
@@ -494,12 +494,53 @@ describe('GameSession Domain Store', () => {
             // Private error frame with chip/amount error
             transport.simulateMessage('/user/queue/private', {
                 type: 'ACTION_ERROR',
-                message: 'Insufficient chips to raise to 250',
+                code: 'MIN_RAISE',
+                action: 'RAISE',
+                message: 'Min raise: 50; yours: 25',
             });
 
             expect(session.getSnapshot().pendingActions.has('PLAY_ACTION')).toBe(false);
-            expect(session.getSnapshot().error?.message).toBe('Insufficient chips to raise to 250');
-            expect(session.getSnapshot().notification).toBe(RAISE_ERROR_FORBIDDEN_BET);
+            expect(session.getSnapshot().error).toEqual({ type: 'ACTION_ERROR', code: 'MIN_RAISE', action: 'RAISE', message: 'Min raise: 50; yours: 25' });
+            expect(session.getSnapshot().notification).toBeNull();
+        });
+
+        it('accepts an unfamiliar action-error code and replaces prior feedback', () => {
+            const { session, transport } = createSession();
+            session.connect();
+            transport.simulateMessage('/user/queue/private', { type: 'ACTION_ERROR', code: 'MIN_RAISE', action: 'RAISE', message: 'First' });
+            transport.simulateMessage('/user/queue/private', { type: 'ACTION_ERROR', code: 'FUTURE_RULE', action: 'CHECK', message: 'Future rule text' });
+            expect(session.getSnapshot().error?.message).toBe('Future rule text');
+            expect(session.getSnapshot().error?.action).toBe('CHECK');
+            expect(session.getSnapshot().notification).toBeNull();
+        });
+
+        it('keeps non-action private notifications in the technical notification surface', () => {
+            const { session, transport } = createSession();
+            session.connect();
+            transport.simulateMessage('/user/queue/private', {
+                type: 'PLAYER_NOTIFICATION', message: 'Ready countdown is not active.',
+            });
+            expect(session.getSnapshot().notification).toBe('Ready countdown is not active.');
+            expect(session.getSnapshot().error).toBeNull();
+        });
+
+        it.each([
+            { type: 'ACTION_ERROR', action: 'RAISE', message: 'Rule' },
+            { type: 'ACTION_ERROR', code: '', action: 'RAISE', message: 'Rule' },
+            { type: 'ACTION_ERROR', code: 4, action: 'RAISE', message: 'Rule' },
+            { type: 'ACTION_ERROR', code: 'RULE', message: 'Rule' },
+            { type: 'ACTION_ERROR', code: 'RULE', action: 'PUSH', message: 'Rule' },
+            { type: 'ACTION_ERROR', code: 'RULE', action: 2, message: 'Rule' },
+            { type: 'ACTION_ERROR', code: 'RULE', action: 'RAISE' },
+            { type: 'ACTION_ERROR', code: 'RULE', action: 'RAISE', message: '' },
+            { type: 'ACTION_ERROR', code: 'RULE', action: 'RAISE', message: 2 },
+            { type: 'ACTION_ERROR', code: 'RULE', action: 'RAISE', message: 'Rule', gameId: 'legacy' },
+        ])('rejects malformed action-error frames: %j', payload => {
+            const { session, transport } = createSession();
+            session.connect();
+            transport.simulateMessage('/user/queue/private', payload);
+            expect(session.getSnapshot().error).toBeNull();
+            expect(session.getSnapshot().notification).toBeNull();
         });
 
         it('unlocks action automatically when 3000ms timeout ticks on TestClock', () => {

@@ -162,7 +162,8 @@ function GameViewInner() {
                 notification={notification}
                 wsStatus={wsStatus}
                 nowMs={nowMs}
-                raiseError={dispatcher.error?.message ?? null}
+                raiseError={null}
+                actionError={dispatcher.error}
                 onAction={(action, amount) => dispatcher.dispatch({ type: 'PLAY_ACTION', action, amount })}
                 onReady={() => dispatcher.dispatch({ type: 'READY' })}
                 onUnready={() => dispatcher.dispatch({ type: 'UNREADY' })}

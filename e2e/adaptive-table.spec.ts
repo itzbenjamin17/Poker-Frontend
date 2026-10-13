@@ -212,7 +212,7 @@ test.describe('Adaptive table-first foundation', () => {
         playerId: 'p-1',
       }));
     }, { authToken: token });
-    await setupStompWebSocketMock(hostPage);
+    const stomp = await setupStompWebSocketMock(hostPage);
     await hostPage.route('**/api/room/ROOM123', (route) => route.fulfill({
       contentType: 'application/json',
       body: JSON.stringify({
@@ -257,6 +257,41 @@ test.describe('Adaptive table-first foundation', () => {
     for (const viewport of eligibleViewports) {
       await resizeAndSettle(hostPage, viewport);
       await expectAdaptiveTable(hostPage, viewport.width);
+    }
+
+    await stomp.waitForSubscription('/user/queue/private');
+    const feedback = 'Min raise: 50; yours: 25. Choose at least 50 more chips before submitting this raise to continue this hand. The attempted total must be higher than the previous wager. The minimum applies to the raise increment after matching the existing wager.';
+    for (const viewport of [eligibleViewports[0], eligibleViewports[3]]) {
+      await resizeAndSettle(hostPage, viewport);
+      await hostPage.waitForTimeout(350);
+      const dock = hostPage.getByRole('region', { name: /action dock/i });
+      const table = hostPage.getByRole('region', { name: /^poker table$/i });
+      const hero = hostPage.getByRole('group', { name: /host hero seat/i });
+      const before = { dock: await dock.boundingBox(), table: await table.boundingBox(), hero: await hero.boundingBox() };
+      stomp.sendMessage('/user/queue/private', { type: 'ACTION_ERROR', code: 'MIN_RAISE', action: 'RAISE', message: feedback });
+      const alert = hostPage.getByRole('alert');
+      await expect(alert).toHaveText(feedback);
+      await hostPage.waitForTimeout(350);
+      const fit = await alert.evaluate((element) => ({
+        clientWidth: element.clientWidth,
+        scrollWidth: element.scrollWidth,
+        lineHeight: Number.parseFloat(getComputedStyle(element).lineHeight),
+        height: element.getBoundingClientRect().height,
+      }));
+      expect(fit.height).toBeLessThanOrEqual(fit.lineHeight + 1);
+      if (viewport.width === 844) expect(fit.scrollWidth).toBeGreaterThan(fit.clientWidth);
+      else expect(fit.scrollWidth).toBeLessThanOrEqual(fit.clientWidth);
+      for (const [after, initial] of [
+        [await dock.boundingBox(), before.dock],
+        [await table.boundingBox(), before.table],
+        [await hero.boundingBox(), before.hero],
+      ]) {
+        expect(after).not.toBeNull();
+        expect(initial).not.toBeNull();
+        for (const key of ['x', 'y', 'width', 'height'] as const) {
+          expect(Math.abs(after![key] - initial![key])).toBeLessThan(1);
+        }
+      }
     }
   });
 

@@ -8,7 +8,7 @@ import { ReconnectOverlay, RoomStage, RoomDock, useOrientationGating } from './P
 import { LiveTableStage } from './LiveTableStage';
 import { GameContext } from '../context/GameContext';
 
-import type { GameState, PokerAction, RoomState, WsStatus } from '../types';
+import type { ActionError, GameState, PokerAction, RoomState, WsStatus } from '../types';
 import {
     BTN_LEAVE_TABLE, BTN_CLAIM_WIN, BTN_CLAIMING,
     WAITING_RECONNECT_PREFIX, WAITING_RECONNECT_SUFFIX,
@@ -37,6 +37,7 @@ export interface GameTableViewProps {
     nowMs: number;
     raiseAmount?: string;
     raiseError: string | null;
+    actionError?: ActionError | null;
     onAction: (action: PokerAction, amount?: number) => void;
     onReady: () => void;
     onUnready?: () => void;
@@ -68,6 +69,7 @@ export function GameTableView({
     nowMs,
     raiseAmount,
     raiseError,
+    actionError,
     onAction,
     onReady,
     onUnready,
@@ -252,6 +254,7 @@ export function GameTableView({
                         isCompactTable={isCompactTable}
                         raiseAmount={raiseAmount}
                         raiseError={raiseError}
+                        actionError={actionError}
                         onRaiseChange={onRaiseChange}
                         onClearRaiseError={onClearRaiseError}
                         onAction={onAction}

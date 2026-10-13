@@ -334,6 +334,8 @@ describe('GameProvider and useGameContext', () => {
         act(() => {
             transport.simulateMessage('/user/queue/private', {
                 type: 'ACTION_ERROR',
+                code: 'INSUFFICIENT_CHIPS',
+                action: 'RAISE',
                 message: 'Insufficient chips to raise',
             });
         });

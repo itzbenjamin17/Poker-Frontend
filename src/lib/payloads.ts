@@ -1,4 +1,5 @@
 import type {
+    ActionError,
     IncomingGameStatePayload,
     IncomingPrivateStatePayload,
     RoomDataResponse,
@@ -13,6 +14,16 @@ import {
 
 function isObject(value: unknown): value is Record<string, unknown> {
     return typeof value === 'object' && value !== null;
+}
+
+export function isActionErrorPayload(value: unknown): value is ActionError {
+    if (!isObject(value) || value.type !== 'ACTION_ERROR') return false;
+    return Object.keys(value).length === 4 &&
+        typeof value.code === 'string' && value.code.trim().length > 0 &&
+        /^[A-Z][A-Z0-9_]*$/.test(value.code) &&
+        typeof value.action === 'string' &&
+        ['FOLD', 'CHECK', 'CALL', 'BET', 'RAISE', 'ALL_IN'].includes(value.action) &&
+        typeof value.message === 'string' && value.message.trim().length > 0;
 }
 
 export function isRoomDataPayload(value: unknown): value is RoomDataResponse {
