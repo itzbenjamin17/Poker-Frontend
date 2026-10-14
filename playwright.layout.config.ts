@@ -4,8 +4,8 @@ import { defineConfig, devices } from '@playwright/test';
 export default defineConfig({
   testDir: './scripts/layout',
   testMatch: /layout-.*\.spec\.ts/,
-  fullyParallel: true,
-  workers: 4,
+  fullyParallel: false,
+  workers: 1,
   reporter: 'list',
   use: {
     baseURL: 'http://localhost:5173',

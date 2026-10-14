@@ -19,10 +19,7 @@ const screenshotDir = process.env.ARTIFACT_DIR
     ? path.resolve(process.env.ARTIFACT_DIR)
     : path.resolve(process.cwd(), 'test-results', 'layout-screenshots');
 
-// Clear screenshot directory
-if (fs.existsSync(screenshotDir)) {
-    fs.rmSync(screenshotDir, { recursive: true, force: true });
-}
+// Overwrite only screenshots produced by this suite; preserve unrelated artifacts.
 fs.mkdirSync(screenshotDir, { recursive: true });
 
 test.describe('Layout Screenshots 3 to 10 players', () => {
