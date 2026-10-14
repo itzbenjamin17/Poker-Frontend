@@ -71,7 +71,10 @@ export const Input = ({
                 {...props}
                 id={id}
                 aria-invalid={!!error}
-                aria-describedby={error ? errorId : propAriaDescribedBy}
+                aria-describedby={
+                    [propAriaDescribedBy, error ? errorId : undefined]
+                        .filter(Boolean).join(' ') || undefined
+                }
                 className={cn(
                     'w-full bg-surface-highest border-none rounded-lg p-4 text-white placeholder:text-white/20 focus:ring-1 focus:ring-emerald-primary/30 transition-all font-body outline-none',
                     error && 'ring-1 ring-red-500/50',

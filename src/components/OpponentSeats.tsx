@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { motion } from 'motion/react';
+import { motion, useReducedMotion } from 'motion/react';
 import { cn } from '../lib/cn';
 import { formatHandRank, formatHandRankShort, getShowdownHoleCardState } from '../lib/game';
 import { CardUI, HoleCardGroup, PlayerHandRank, PlayerPod } from './GameUI';
@@ -49,6 +49,7 @@ export function OpponentSeats({
     tableScale,
     tableDimensions,
 }: OpponentSeatsProps) {
+    const prefersReducedMotion = useReducedMotion();
     const [expandedOpponentId, setExpandedOpponentId] = useState<string | null>(null);
 
     const getDisconnectSecondsRemaining = (player: Player) => {
@@ -217,9 +218,9 @@ export function OpponentSeats({
                                             return (
                                                 <motion.div
                                                     key={`cards-${p.id}-${ci}`}
-                                                    initial={{ scale: 0.9, opacity: 0 }}
+                                                    initial={prefersReducedMotion ? false : { scale: 0.9, opacity: 0 }}
                                                     animate={{ scale: 1, opacity: 1 }}
-                                                    transition={{ delay: ci * 0.08 }}
+                                                    transition={{ delay: prefersReducedMotion ? 0 : ci * 0.08 }}
                                                     style={{
                                                         marginLeft: ci > 0 ? `-${cardOverlap}px` : '0',
                                                         zIndex: isPartOfBestHand ? ci + displayCards.length : ci,
@@ -293,9 +294,9 @@ export function OpponentSeats({
                                 role="region"
                                 aria-label={`${p.name} expanded details`}
                                 data-placement={openUpward ? 'top' : 'bottom'}
-                                initial={{ opacity: 0, y: openUpward ? -6 : 6 }}
+                                initial={prefersReducedMotion ? false : { opacity: 0, y: openUpward ? -6 : 6 }}
                                 animate={{ opacity: 1, y: 0 }}
-                                exit={{ opacity: 0, y: openUpward ? -4 : 4 }}
+                                exit={{ opacity: 0, y: prefersReducedMotion ? 0 : openUpward ? -4 : 4 }}
                                 transition={{ duration: 0.18, ease: 'easeOut' }}
                                 className={cn(
                                     'absolute rounded-lg border border-white/10 bg-surface-high/95 text-left shadow-[0_14px_45px_rgba(0,0,0,0.35)] backdrop-blur-md',
