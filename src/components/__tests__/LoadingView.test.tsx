@@ -4,11 +4,12 @@ import { describe, it, expect, vi } from 'vitest';
 import { LoadingView } from '../LoadingView';
 
 describe('LoadingView', () => {
-    it('renders with status role and aria-busy set to true', () => {
+    it('places the status role on the status paragraph', () => {
         render(<LoadingView status="Connecting to Game" />);
         const element = screen.getByRole('status');
         expect(element).toBeInTheDocument();
-        expect(element).toHaveAttribute('aria-busy', 'true');
+        expect(element.tagName).toBe('P');
+        expect(element).toHaveTextContent('Connecting to Game');
     });
 
     it('renders the status text in uppercase', () => {

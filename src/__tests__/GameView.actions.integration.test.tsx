@@ -5,7 +5,13 @@ import GameView from '../GameView';
 import { MockStompClient, activeSubscriptions } from '../test/mocks/stomp';
 import { http, HttpResponse } from 'msw';
 import { server } from '../test/mocks/server';
-import { mockAuth } from '../test/fixtures';
+import { createValidGameState, mockAuth } from '../test/fixtures';
+
+const auth = {
+    ...mockAuth,
+    roomId: 'ROOM123',
+    playerName: 'TestPlayer',
+};
 
 describe('GameView - Actions & Flows Integration', () => {
     beforeEach(() => {
@@ -27,7 +33,7 @@ describe('GameView - Actions & Flows Integration', () => {
                 ],
                 gameStarted: true,
             })),
-            http.get('/api/game/ROOM123/state', () => HttpResponse.json({
+            http.get('/api/game/ROOM123/state', () => HttpResponse.json(createValidGameState({
                 gameId: 'ROOM123',
                 phase: 'PRE_FLOP',
                 pot: 30,
@@ -40,14 +46,14 @@ describe('GameView - Actions & Flows Integration', () => {
                     { id: 'p-1', name: 'TestPlayer', chips: 980, currentBet: 20, status: 'ACTIVE', isBigBlind: true },
                     { id: 'p-2', name: 'Opponent', chips: 990, currentBet: 20, status: 'ACTIVE', isSmallBlind: true },
                 ],
-            })),
+            }))),
             http.get('/api/game/ROOM123/private-state', () => HttpResponse.json({
                 playerId: 'p-1',
                 holeCards: ['AS', 'KS'],
             }))
         );
 
-        render(<GameView auth={mockAuth} />);
+        render(<GameView auth={auth} />);
 
         // Wait for initial REST hydration to settle and game table to render
         expect(await screen.findByLabelText('Total Pot')).toBeInTheDocument();
@@ -87,7 +93,7 @@ describe('GameView - Actions & Flows Integration', () => {
                 ],
                 gameStarted: true,
             })),
-            http.get('/api/game/ROOM123/state', () => HttpResponse.json({
+            http.get('/api/game/ROOM123/state', () => HttpResponse.json(createValidGameState({
                 gameId: 'ROOM123',
                 phase: 'PRE_FLOP',
                 pot: 30,
@@ -100,14 +106,14 @@ describe('GameView - Actions & Flows Integration', () => {
                     { id: 'p-1', name: 'TestPlayer', chips: 980, currentBet: 20, status: 'ACTIVE', isBigBlind: true },
                     { id: 'p-2', name: 'Opponent', chips: 990, currentBet: 20, status: 'ACTIVE', isSmallBlind: true },
                 ],
-            })),
+            }))),
             http.get('/api/game/ROOM123/private-state', () => HttpResponse.json({
                 playerId: 'p-1',
                 holeCards: ['AS', 'KS'],
             }))
         );
 
-        render(<GameView auth={mockAuth} />);
+        render(<GameView auth={auth} />);
 
         // Wait for initial REST hydration to settle and game table to render
         expect(await screen.findByLabelText('Total Pot')).toBeInTheDocument();
@@ -143,7 +149,7 @@ describe('GameView - Actions & Flows Integration', () => {
                 ],
                 gameStarted: true,
             })),
-            http.get('/api/game/ROOM123/state', () => HttpResponse.json({
+            http.get('/api/game/ROOM123/state', () => HttpResponse.json(createValidGameState({
                 gameId: 'ROOM123',
                 phase: 'PRE_FLOP',
                 pot: 30,
@@ -154,14 +160,14 @@ describe('GameView - Actions & Flows Integration', () => {
                     { id: 'p-1', name: 'TestPlayer', chips: 980, currentBet: 20, status: 'ACTIVE' },
                     { id: 'p-2', name: 'Opponent', chips: 980, currentBet: 20, status: 'ACTIVE' },
                 ],
-            })),
+            }))),
             http.get('/api/game/ROOM123/private-state', () => HttpResponse.json({
                 playerId: 'p-1',
                 holeCards: ['AS', 'KS'],
             }))
         );
 
-        render(<GameView auth={mockAuth} />);
+        render(<GameView auth={auth} />);
 
         // Wait for initial REST hydration to settle and game table to render
         expect(await screen.findByLabelText('Total Pot')).toBeInTheDocument();
@@ -170,7 +176,7 @@ describe('GameView - Actions & Flows Integration', () => {
 
         // Simulate transitioning to Showdown state with winners using await act(async () => ...)
         await act(async () => {
-            MockStompClient.simulateMessage(`/game/ROOM123`, {
+            MockStompClient.simulateMessage(`/game/ROOM123`, createValidGameState({
                 gameId: 'ROOM123',
                 phase: 'SHOWDOWN',
                 pot: 1000,
@@ -183,7 +189,7 @@ describe('GameView - Actions & Flows Integration', () => {
                     { id: 'p-1', name: 'TestPlayer', chips: 1980, currentBet: 0, status: 'ACTIVE', holeCards: ['AS', 'KS'] },
                     { id: 'p-2', name: 'Opponent', chips: 980, currentBet: 0, status: 'ACTIVE', holeCards: ['2H', '3H'] },
                 ],
-            });
+            }));
         });
 
         const summary = await screen.findByRole('region', { name: /round result/i });
@@ -203,7 +209,7 @@ describe('GameView - Actions & Flows Integration', () => {
                 ))
             );
 
-            render(<GameView auth={mockAuth} onLeave={onLeaveSpy} />);
+            render(<GameView auth={auth} onLeave={onLeaveSpy} />);
 
             await waitFor(() => {
                 expect(screen.getByText(/Session expired\. Returning to lobby/i)).toBeInTheDocument();
@@ -229,7 +235,7 @@ describe('GameView - Actions & Flows Integration', () => {
                 players: [{ name: 'TestPlayer', isHost: true }],
                 gameStarted: true,
             })),
-            http.get('/api/game/ROOM123/state', () => HttpResponse.json({
+            http.get('/api/game/ROOM123/state', () => HttpResponse.json(createValidGameState({
                 gameId: 'ROOM123',
                 phase: 'PRE_FLOP',
                 pot: 0,
@@ -238,14 +244,14 @@ describe('GameView - Actions & Flows Integration', () => {
                 currentPlayerId: 'p-1',
                 currentPlayerName: 'TestPlayer',
                 players: [{ id: 'p-1', name: 'TestPlayer', chips: 1000, currentBet: 0, status: 'ACTIVE' }],
-            })),
+            }))),
             http.get('/api/game/ROOM123/private-state', () => HttpResponse.json({
                 playerId: 'p-1',
                 holeCards: ['AS', 'KS'],
             }))
         );
 
-        render(<GameView auth={mockAuth} />);
+        render(<GameView auth={auth} />);
         expect(await screen.findByLabelText('Total Pot')).toBeInTheDocument();
 
         const leaveBtn = await screen.findByRole('button', { name: /leave table/i });
@@ -262,7 +268,7 @@ describe('GameView - Actions & Flows Integration', () => {
                 players: [{ name: 'TestPlayer', isHost: true }],
                 gameStarted: true,
             })),
-            http.get('/api/game/ROOM123/state', () => HttpResponse.json({
+            http.get('/api/game/ROOM123/state', () => HttpResponse.json(createValidGameState({
                 gameId: 'ROOM123',
                 phase: 'PRE_FLOP',
                 pot: 0,
@@ -271,14 +277,14 @@ describe('GameView - Actions & Flows Integration', () => {
                 currentPlayerId: 'p-1',
                 currentPlayerName: 'TestPlayer',
                 players: [{ id: 'p-1', name: 'TestPlayer', chips: 1000, currentBet: 0, status: 'ACTIVE' }],
-            })),
+            }))),
             http.get('/api/game/ROOM123/private-state', () => HttpResponse.json({
                 playerId: 'p-1',
                 holeCards: ['AS', 'KS'],
             }))
         );
 
-        render(<GameView auth={mockAuth} />);
+        render(<GameView auth={auth} />);
         expect(await screen.findByLabelText('Total Pot')).toBeInTheDocument();
 
         // Initially connected, no overlay (wait for connection to complete)
@@ -316,7 +322,7 @@ describe('GameView - Actions & Flows Integration', () => {
                 }
                 return new HttpResponse(null, { status: 404 });
             }),
-            http.get('/api/game/ROOM123/state', () => HttpResponse.json({
+            http.get('/api/game/ROOM123/state', () => HttpResponse.json(createValidGameState({
                 gameId: 'ROOM123',
                 phase: 'PRE_FLOP',
                 pot: 30,
@@ -328,7 +334,7 @@ describe('GameView - Actions & Flows Integration', () => {
                     { id: 'p-1', name: 'TestPlayer', chips: 980, currentBet: 20, status: 'ACTIVE' },
                     { id: 'p-2', name: 'Opponent', chips: 990, currentBet: 20, status: 'ACTIVE' },
                 ],
-            })),
+            }))),
             http.get('/api/game/ROOM123/private-state', () => HttpResponse.json({
                 playerId: 'p-1',
                 holeCards: ['AS', 'KS'],
@@ -337,7 +343,7 @@ describe('GameView - Actions & Flows Integration', () => {
             http.post('/api/room/ROOM123/leave', () => new HttpResponse(null, { status: 200 }))
         );
 
-        render(<GameView auth={mockAuth} onLeave={onLeaveSpy} />);
+        render(<GameView auth={auth} onLeave={onLeaveSpy} />);
         expect(await screen.findByLabelText('Total Pot')).toBeInTheDocument();
 
         await MockStompClient.waitForSubscription('/game/ROOM123');
@@ -350,7 +356,8 @@ describe('GameView - Actions & Flows Integration', () => {
                 winner: 'TestPlayer',
                 winnerChips: 2000,
                 isForfeit: false,
-                finalState: {
+                finalState: createValidGameState({
+                    gameId: 'ROOM123',
                     phase: 'SHOWDOWN',
                     pot: 30,
                     players: [
@@ -358,7 +365,7 @@ describe('GameView - Actions & Flows Integration', () => {
                         { id: 'p-2', name: 'Opponent', chips: 0, currentBet: 0, status: 'ACTIVE' },
                     ],
                     communityCards: ['AH', 'KH', 'QD', 'JS', '2C'],
-                }
+                })
             });
         });
 
@@ -409,7 +416,7 @@ describe('GameView - Actions & Flows Integration', () => {
             http.get('/api/game/ROOM123/state', () => new HttpResponse(null, { status: 404 })),
         );
 
-        render(<GameView auth={mockAuth} onLeave={onLeaveSpy} />);
+        render(<GameView auth={auth} onLeave={onLeaveSpy} />);
 
         const gameOverTitle = await screen.findByRole('heading', { name: /game over/i });
         expect(gameOverTitle).toBeInTheDocument();
@@ -431,7 +438,7 @@ describe('GameView - Actions & Flows Integration', () => {
                 players: [{ name: 'TestPlayer', isHost: true }],
                 gameStarted: true,
             })),
-            http.get('/api/game/ROOM123/state', () => HttpResponse.json({
+            http.get('/api/game/ROOM123/state', () => HttpResponse.json(createValidGameState({
                 gameId: 'ROOM123',
                 phase: 'PRE_FLOP',
                 pot: 0,
@@ -440,14 +447,14 @@ describe('GameView - Actions & Flows Integration', () => {
                 currentPlayerId: 'p-1',
                 currentPlayerName: 'TestPlayer',
                 players: [{ id: 'p-1', name: 'TestPlayer', chips: 1000, currentBet: 0, status: 'ACTIVE' }],
-            })),
+            }))),
             http.get('/api/game/ROOM123/private-state', () => HttpResponse.json({
                 playerId: 'p-1',
                 holeCards: ['AS', 'KS'],
             }))
         );
 
-        render(<GameView auth={mockAuth} />);
+        render(<GameView auth={auth} />);
         expect(await screen.findByLabelText('Total Pot')).toBeInTheDocument();
 
         await waitFor(() => {

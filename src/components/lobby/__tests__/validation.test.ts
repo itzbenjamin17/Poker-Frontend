@@ -89,6 +89,11 @@ describe('validateCreate', () => {
         expect(validateCreate({ ...validConfig, buyIn: 2_000_000 }))
             .toBe(`Buy-in must be between $${VALIDATION.buyIn.min} and $${VALIDATION.buyIn.max.toLocaleString()}.`);
     });
+
+    test.each([1, 11, 2.5, 'invalid'])('rejects invalid maxPlayers value %j', (maxPlayers) => {
+        expect(validateCreate({ ...validConfig, maxPlayers }))
+            .toBe('Max players must be a whole number between 2 and 10.');
+    });
 });
 
 describe('validateJoin', () => {
@@ -103,5 +108,12 @@ describe('validateJoin', () => {
         expect(validateJoin({ roomName: 'PokerRoom', playerName: '   ' })).toBe('Player alias is required.');
         expect(validateJoin({ roomName: 'PokerRoom', playerName: 'P'.repeat(VALIDATION.playerName.max + 1) }))
             .toBe(`Alias must be at most ${VALIDATION.playerName.max} characters.`);
+    });
+
+    test.each(['\u0000', '\u007f'])('rejects control character %j in room names and aliases', (control) => {
+        expect(validateJoin({ roomName: `Poker${control}Room`, playerName: 'Alice' }))
+            .toBe('Room name cannot contain control characters.');
+        expect(validateJoin({ roomName: 'PokerRoom', playerName: `Alice${control}` }))
+            .toBe('Player alias cannot contain control characters.');
     });
 });

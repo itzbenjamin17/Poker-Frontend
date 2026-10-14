@@ -5,7 +5,15 @@ import { renderHook } from '@testing-library/react';
 import { OpponentSeats } from '../OpponentSeats';
 import { TablePlayers } from '../TablePlayers';
 import { useSeatLayout } from '../../hooks/useSeatLayout';
-import { getTableScale } from '../../lib/tableGeometry';
+import {
+    avatarDiameter,
+    fontPx,
+    getTableScale,
+    getTableTier,
+    opponentAvatarSize,
+    seatStatusFitsFelt,
+    statusBoxSize,
+} from '../../lib/tableGeometry';
 import type { GameState, Player } from '../../types';
 import '@testing-library/jest-dom';
 
@@ -23,6 +31,54 @@ const makePlayers = (count: number): Player[] =>
     }));
 
 describe('OpponentSeats', () => {
+    it('keeps a positive bet and wrapped reconnect status visible inside the felt for a lower side seat at 10 players on 860x400', () => {
+        const tableDimensions = { width: 860, height: 400 };
+        const players = makePlayers(10);
+        const { result } = renderHook(() => useSeatLayout(tableDimensions, players.length));
+        const tableScale = getTableScale(tableDimensions, players.length);
+        const lowerSide = players
+            .map((player, index) => ({
+                player,
+                index,
+                position: result.current.getSeatPosition(index, players.length, 0),
+            }))
+            .filter(({ index, position }) => index > 0 && position.top > 50 && (position.left < 35 || position.left > 65))
+            .reduce((lowest, candidate) => candidate.position.top > lowest.position.top ? candidate : lowest);
+        players[lowerSide.index] = {
+            ...players[lowerSide.index],
+            currentBet: 30,
+            status: 'DISCONNECTED',
+            disconnectDeadlineEpochMs: 102_000,
+        };
+
+        render(
+            <OpponentSeats
+                orderedPlayers={players}
+                currentPlayerId="p-1"
+                myPlayerId="p-1"
+                showdown={null}
+                heroIndex={0}
+                getSeatPosition={result.current.getSeatPosition}
+                isCompactTable={result.current.isCompactTable}
+                nowMs={100_000}
+                tableScale={tableScale}
+                tableDimensions={tableDimensions}
+            />,
+        );
+
+        const seat = screen.getByTestId(`opponent-seat-${lowerSide.player.id}`);
+        expect(within(seat).getByTestId('seat-bet')).toHaveTextContent('BET: 30');
+        expect(within(seat).getByTestId('seat-bet')).not.toHaveClass('sr-only');
+        expect(within(seat).getByTestId('seat-status')).toHaveTextContent('Reconnect in 00:02');
+        expect(within(seat).getByTestId('seat-status')).not.toHaveClass('sr-only');
+
+        const tier = getTableTier(tableDimensions.width);
+        const radius = avatarDiameter(opponentAvatarSize(tier), tableScale.avatar) / 2;
+        expect(statusBoxSize(radius, tableScale.text).height)
+            .toBeGreaterThan(1.5 * fontPx(9, tableScale.text));
+        expect(seatStatusFitsFelt(lowerSide.position, tableDimensions, tableScale, tier)).toBe(true);
+    });
+
     it('uses passed tableDimensions without calling document.querySelector during render', () => {
         const tableDimensions = { width: 1855, height: 863 };
         const players = makePlayers(8);

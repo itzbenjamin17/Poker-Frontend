@@ -104,4 +104,47 @@ describe('App', () => {
         expect(screen.getByTestId('lobby-view')).toBeInTheDocument();
         expect(screen.queryByText(/Window too narrow to play/i)).not.toBeInTheDocument();
     });
+
+    it('reloads the page when Try Again handles a GameView load failure', async () => {
+        const user = userEvent.setup();
+        const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+        const reloadSpy = vi.fn();
+        const originalLocation = window.location;
+        Object.defineProperty(window, 'location', {
+            configurable: true,
+            value: { ...originalLocation, reload: reloadSpy },
+        });
+
+        try {
+            vi.resetModules();
+            vi.doMock('../GameView', () => {
+                throw new Error('GameView chunk failed');
+            });
+            const authModule = await import('../hooks/useAuthSession');
+            vi.mocked(authModule.useAuthSession).mockReturnValue({
+                auth: {
+                    roomId: 'room-123',
+                    playerName: 'CardMaster',
+                    token: 'valid-jwt',
+                    message: 'Success',
+                },
+                setAuth: mockSetAuth,
+                clearAuth: mockClearAuth,
+            });
+            const { default: AppWithFailedGameView } = await import('../App');
+
+            render(<AppWithFailedGameView />);
+            await user.click(await screen.findByRole('button', { name: /try again/i }));
+
+            expect(reloadSpy).toHaveBeenCalledTimes(1);
+            expect(mockClearAuth).not.toHaveBeenCalled();
+        } finally {
+            Object.defineProperty(window, 'location', {
+                configurable: true,
+                value: originalLocation,
+            });
+            consoleSpy.mockRestore();
+            vi.doUnmock('../GameView');
+        }
+    });
 });

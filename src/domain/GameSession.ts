@@ -21,6 +21,7 @@ import {
 } from '../lib/payloads';
 import {
     GAME_FINISHED_FALLBACK,
+    HOST_LEFT,
     SESSION_EXPIRED,
     SESSION_SEAT_GONE,
     STATUS_CONNECTED,
@@ -366,8 +367,12 @@ export class GameSession {
 
             if (update.message === 'ROOM_CLOSED') {
                 if (this.snapshot.isGameOver) return;
+                this.clearNotificationTimer();
+                this.cancelRecovery();
                 this.updateSnapshot(() => ({
                     roomState: null,
+                    notification: HOST_LEFT,
+                    loadingStatus: HOST_LEFT,
                 }));
                 this.clearRedirectTimer();
                 this.redirectTimer = this.clock.setTimeout(() => {

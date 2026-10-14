@@ -68,7 +68,7 @@ describe('useElementSize', () => {
             result.current.ref(mockElement);
         });
 
-        expect(observeMock).toHaveBeenCalledWith(mockElement);
+        expect(observeMock).toHaveBeenCalledWith(mockElement, { box: 'border-box' });
 
         // Fire observer callback
         act(() => {

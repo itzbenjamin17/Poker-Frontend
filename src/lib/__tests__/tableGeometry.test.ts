@@ -16,6 +16,10 @@ import {
     getBoardClusterHalfHeight,
     seatHandRankFits,
     seatStatusFitsFelt,
+    fitSeatEllipse,
+    placeOpponentSeat,
+    opponentAvatarSize,
+    statusBoxSize,
 } from '../tableGeometry';
 
 describe('getTableDimensions', () => {
@@ -181,6 +185,22 @@ describe('seatStatusFitsFelt', () => {
         const table = { width: 774, height: 360 };
         const scale = getTableScale(table, 4);
         expect(seatStatusFitsFelt({ left: 8.2, top: 49.5 }, table, scale, 'standard')).toBe(false);
+    });
+
+    it('fits a lower side seat with a bet row and wrapped reconnect status at 10 players on an 860x400 table', () => {
+        const table = { width: 860, height: 400 };
+        const players = 10;
+        const tier = getTableTier(table.width);
+        const scale = getTableScale(table, players);
+        const ellipse = fitSeatEllipse(table, scale, tier, players - 1);
+        const sideSeats = Array.from({ length: players - 1 }, (_, index) =>
+            placeOpponentSeat(index, players - 1, ellipse),
+        ).filter((seat) => seat.left < 35 || seat.left > 65);
+        const lowerSideSeat = sideSeats.reduce((lowest, seat) => seat.top > lowest.top ? seat : lowest);
+        const radius = avatarDiameter(opponentAvatarSize(tier), scale.avatar) / 2;
+
+        expect(statusBoxSize(radius, scale.text).height).toBeGreaterThan(1.5 * fontPx(9, scale.text));
+        expect(seatStatusFitsFelt(lowerSideSeat, table, scale, tier)).toBe(true);
     });
 });
 

@@ -113,6 +113,30 @@ describe('GameProvider and useGameContext', () => {
         message: 'Success',
     };
 
+    it('preserves the GameSession instance when the onLeave callback identity changes', () => {
+        const sessions: unknown[] = [];
+        function CaptureSession() {
+            sessions.push(useGameContext().session);
+            return null;
+        }
+        const firstOnLeave = () => {};
+        const secondOnLeave = () => {};
+        const { rerender } = render(
+            <GameProvider auth={auth} onLeave={firstOnLeave}>
+                <CaptureSession />
+            </GameProvider>,
+        );
+        const originalSession = sessions.at(-1);
+
+        rerender(
+            <GameProvider auth={auth} onLeave={secondOnLeave}>
+                <CaptureSession />
+            </GameProvider>,
+        );
+
+        expect(sessions.at(-1)).toBe(originalSession);
+    });
+
     it('throws error when useGameContext is used outside GameProvider', () => {
         // Suppress expected console.error from React
         const originalError = console.error;

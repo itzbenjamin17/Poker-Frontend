@@ -127,5 +127,6 @@ describe('GameLobbyView', () => {
         await user.click(copyButton);
 
         expect(writeTextMock).toHaveBeenCalledWith('HighRollers');
+        expect(await screen.findByText(/copied/i)).toBeInTheDocument();
     });
 });

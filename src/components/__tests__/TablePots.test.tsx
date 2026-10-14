@@ -134,6 +134,7 @@ describe('CompactPotDetails', () => {
 
         // Click to expand
         await user.click(toggleBtn);
+        expect(toggleBtn).toHaveFocus();
         expect(screen.getByRole('button', { name: /hide pot details/i })).toHaveAttribute('aria-expanded', 'true');
         expect(screen.getByRole('region', { name: /pot breakdown/i })).toBeInTheDocument();
         expect(screen.getByText('1,200')).toBeInTheDocument();
@@ -141,6 +142,7 @@ describe('CompactPotDetails', () => {
 
         // Click to collapse
         await user.click(toggleBtn);
+        expect(toggleBtn).toHaveFocus();
         expect(screen.getByRole('button', { name: /show pot details/i })).toHaveAttribute('aria-expanded', 'false');
         expect(screen.queryByRole('region', { name: /pot breakdown/i })).not.toBeInTheDocument();
     });

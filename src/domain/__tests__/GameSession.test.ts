@@ -5,6 +5,7 @@ import { TestClock } from '../clock';
 import { InMemoryTransportAdapter } from '../../services/transport';
 import type { AuthResponse, IncomingGameStatePayload } from '../../types';
 import { HOST_LEFT } from '../../constants/strings';
+import { createValidGameState, createValidPlayer } from '../../test/fixtures';
 
 describe('GameSession Domain Store', () => {
     const auth: AuthResponse = {
@@ -140,7 +141,10 @@ describe('GameSession Domain Store', () => {
                 data: {
                     roomId: 'room-123',
                     roomName: 'High Stakes',
-                    players: [{ name: 'Hero', isHost: true }, { name: 'Villain', isHost: false }],
+                    players: [
+                        { name: 'Hero', isHost: true, joinedAt: '2026-01-01T00:00:00Z' },
+                        { name: 'Villain', isHost: false, joinedAt: '2026-01-01T00:00:01Z' },
+                    ],
                     gameStarted: false,
                 },
             });
@@ -327,6 +331,56 @@ describe('GameSession Domain Store', () => {
             } as IncomingGameStatePayload);
 
             expect(session.getSnapshot().gameState?.phase).toBe('PRE_FLOP');
+            expect(session.getSnapshot().showdown).toBeNull();
+        });
+
+        it('does not clear a PLAY_ACTION lock or advance the revision for an expired SHOWDOWN frame', () => {
+            const { session, transport } = createSession(new TestClock(20_000));
+            session.connect();
+            transport.simulateStatus('connected');
+            transport.simulateMessage('/game/room-123', createValidGameState({
+                gameId: 'room-123',
+                players: [createValidPlayer({ id: 'hero-id', name: 'Hero' })],
+            }));
+            session.playAction('CHECK');
+            const revisionBefore = session.getStateSyncRevision();
+
+            transport.simulateMessage('/game/room-123', createValidGameState({
+                gameId: 'room-123',
+                phase: 'SHOWDOWN',
+                currentPlayerName: '',
+                currentPlayerId: '',
+                isReadyCountdownActive: true,
+                readyCountdownDeadlineEpochMs: 19_000,
+            }));
+
+            expect(session.getSnapshot().pendingActions.has('PLAY_ACTION')).toBe(true);
+            expect(session.getStateSyncRevision()).toBe(revisionBefore);
+            expect(session.getSnapshot().gameState?.phase).toBe('PRE_FLOP');
+        });
+
+        it('does not resurrect showdown when a duplicate frame arrives at the exact deadline', () => {
+            const { session, transport, clock } = createSession(new TestClock(1_000));
+            session.connect();
+            transport.simulateStatus('connected');
+            const showdown = createValidGameState({
+                gameId: 'room-123',
+                phase: 'SHOWDOWN',
+                currentPlayerName: '',
+                currentPlayerId: '',
+                winners: ['Hero'],
+                isReadyCountdownActive: true,
+                readyCountdownDeadlineEpochMs: 1_100,
+            });
+
+            transport.simulateMessage('/game/room-123', showdown);
+            expect(session.getSnapshot().showdown).not.toBeNull();
+            clock.tick(100);
+            expect(session.getSnapshot().showdown).toBeNull();
+
+            transport.simulateMessage('/game/room-123', showdown);
+            expect(session.getSnapshot().showdown).toBeNull();
+            clock.tick(250);
             expect(session.getSnapshot().showdown).toBeNull();
         });
 
@@ -632,6 +686,24 @@ describe('GameSession Domain Store', () => {
     });
 
     describe('Game End Lifecycle', () => {
+        it('setGameEndResult clears action locks and a pending ROOM_CLOSED redirect', () => {
+            const { session, transport, clock, onLeave } = createSession();
+            session.connect();
+            transport.simulateStatus('connected');
+            session.playAction('CHECK');
+            transport.simulateMessage('/room/room-123', { message: 'ROOM_CLOSED' });
+
+            session.setGameEndResult({
+                winnerName: 'Hero',
+                isForfeit: false,
+                message: 'Hero wins',
+            });
+
+            expect(session.getSnapshot().pendingActions).toHaveLength(0);
+            clock.tick(3_000);
+            expect(onLeave).not.toHaveBeenCalled();
+        });
+
         it('transitions to isGameOver and freezes finalState upon GAME_END payload', () => {
             const { session, transport } = createSession();
             session.connect();

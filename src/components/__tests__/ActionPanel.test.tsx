@@ -191,6 +191,19 @@ describe('ActionPanel', () => {
         expect(onRaiseChange).toHaveBeenCalledWith('1000');
     });
 
+    it('uses a minimum raise amount of 30 for a 20 blind, 20 table bet, and 10 committed chips', async () => {
+        const user = userEvent.setup();
+        renderActionPanel({
+            gameState: { ...mockGameState, currentBet: 20, legalActions: ['FOLD', 'CALL', 'RAISE'] },
+            me: { ...mockMe, currentBet: 10 },
+            bigBlind: 20,
+        });
+
+        await user.click(screen.getByRole('button', { name: /^raise$/i }));
+
+        expect(screen.getByLabelText(/raise amount/i)).toHaveValue('30');
+    });
+
     it('displays error messages after amount controls are revealed', async () => {
         const user = userEvent.setup();
         const { rerender } = renderActionPanel({
@@ -221,7 +234,7 @@ describe('ActionPanel', () => {
             />,
         );
         await user.click(screen.getByRole('button', { name: /^raise$/i }));
-        expect(screen.getByRole('alert')).toHaveTextContent('Minimum raise is 11.');
+        expect(screen.getByRole('alert')).toHaveTextContent('Minimum raise is 20.');
     });
 
     it('triggers onAction callback correctly when clicked', async () => {

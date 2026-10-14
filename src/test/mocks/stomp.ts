@@ -18,6 +18,8 @@ export class MockStompClient {
     private generation = 0;
     private connectTimer: ReturnType<typeof setTimeout> | undefined;
     connectHeaders: Record<string, string> = {};
+    debug: (message: string) => void = () => {};
+    reconnectDelay = 0;
 
     constructor(config?: Record<string, unknown>) {
         if (config) {
@@ -26,6 +28,12 @@ export class MockStompClient {
             }
             if (config.connectHeaders && typeof config.connectHeaders === 'object') {
                 this.connectHeaders = config.connectHeaders as Record<string, string>;
+            }
+            if (typeof config.debug === 'function') {
+                this.debug = config.debug as (message: string) => void;
+            }
+            if (typeof config.reconnectDelay === 'number') {
+                this.reconnectDelay = config.reconnectDelay;
             }
         }
     }

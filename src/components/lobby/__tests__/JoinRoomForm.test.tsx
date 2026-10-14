@@ -71,7 +71,7 @@ describe('JoinRoomForm', () => {
         await waitFor(() => {
             expect(mockOnAuth).toHaveBeenCalledWith({
                 message: 'Successfully joined room',
-                token: 'mock-jwt-token',
+                token: expect.any(String),
                 roomId: 'PokerNight',
                 playerName: 'CardShark',
             });

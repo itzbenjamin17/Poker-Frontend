@@ -158,6 +158,8 @@ describe('PokerRoomLayout', () => {
         expect(alertEl).toBeInTheDocument();
         expect(alertEl).toHaveTextContent(/connection lost/i);
         expect(alertEl).toHaveTextContent(/reconnecting/i);
+        const stageDockWrapper = screen.getByTestId('room-stage').parentElement;
+        expect(stageDockWrapper).toHaveAttribute('inert');
 
         // Header leave action is interactive even with overlay active
         const leaveBtn = screen.getByRole('button', { name: /leave table/i });

@@ -35,6 +35,7 @@ describe('GameTransport - InMemoryTransportAdapter', () => {
     });
 
     it('routes simulated messages to active subscribers', () => {
+        transport.connect();
         const handler1 = vi.fn();
         const handler2 = vi.fn();
         const otherHandler = vi.fn();
@@ -56,6 +57,7 @@ describe('GameTransport - InMemoryTransportAdapter', () => {
     });
 
     it('serializes object payloads in simulateMessage if an object is passed', () => {
+        transport.connect();
         const handler = vi.fn();
         transport.subscribe('/topic/test', handler);
 
@@ -64,6 +66,7 @@ describe('GameTransport - InMemoryTransportAdapter', () => {
     });
 
     it('records published messages and supports inspection and clearing', () => {
+        transport.connect();
         transport.publish('/app/action', JSON.stringify({ type: 'FOLD' }));
         transport.publish('/app/chat', 'hello');
 
@@ -118,8 +121,13 @@ describe('GameTransport - StompTransportAdapter', () => {
 
     beforeEach(() => {
         mockClient = {
-            activate: vi.fn(),
-            deactivate: vi.fn(),
+            active: false,
+            activate: vi.fn(function (this: { active: boolean }) {
+                this.active = true;
+            }),
+            deactivate: vi.fn(function (this: { active: boolean }) {
+                this.active = false;
+            }),
             subscribe: vi.fn().mockImplementation(() => ({
                 unsubscribe: vi.fn(),
             })),
@@ -137,7 +145,7 @@ describe('GameTransport - StompTransportAdapter', () => {
         expect(mockClient.activate).toHaveBeenCalledTimes(1);
 
         transport.disconnect();
-        expect(mockClient.deactivate).toHaveBeenCalledTimes(1);
+        expect(mockClient.deactivate).toHaveBeenCalledWith({ force: true });
         expect(statusChanges).toContain('disconnected');
     });
 
@@ -203,6 +211,25 @@ describe('GameTransport - StompTransportAdapter', () => {
         sub.unsubscribe();
     });
 
+    it('delivers duplicate STOMP frames with the same message-id only once', () => {
+        const handler = vi.fn();
+        let stompCallback: (msg: { body: string; headers: Record<string, string> }) => void = () => {};
+
+        mockClient.connected = true;
+        mockClient.subscribe.mockImplementation((...args: any[]) => {
+            stompCallback = args[1];
+            return { unsubscribe: vi.fn() };
+        });
+        transport.subscribe('/topic/news', handler);
+
+        const frame = { body: 'breaking news', headers: { 'message-id': 'message-1' } };
+        stompCallback(frame);
+        stompCallback(frame);
+
+        expect(handler).toHaveBeenCalledTimes(1);
+        expect(handler).toHaveBeenCalledWith('breaking news');
+    });
+
     it('defers client.subscribe while disconnected and unsubscribes stale stompSub before resubscribing on reconnect', () => {
         const handler = vi.fn();
         const firstUnsub = vi.fn();
@@ -262,6 +289,55 @@ describe('GameTransport - StompTransportAdapter', () => {
         mockClient.connected = false;
         mockClient.onWebSocketClose?.();
         expect(statusChanges).toEqual(['disconnected']);
+    });
+
+    it('stays connected across connect, disconnect, connect at the beforeConnect microtask boundary', async () => {
+        let activationGeneration = 0;
+        let beforeConnectCalls = 0;
+        let releaseFirstBeforeConnect!: () => void;
+        const firstBeforeConnect = new Promise<void>((resolve) => {
+            releaseFirstBeforeConnect = resolve;
+        });
+        const client = {
+            active: false,
+            connected: false,
+            beforeConnect: vi.fn(async () => {
+                beforeConnectCalls += 1;
+                if (beforeConnectCalls === 1) await firstBeforeConnect;
+            }),
+            onConnect: vi.fn(),
+            activate: vi.fn(() => {
+                client.active = true;
+                const generation = ++activationGeneration;
+                void Promise.resolve().then(async () => {
+                    await client.beforeConnect();
+                    if (!client.active || generation !== activationGeneration) return;
+                    client.connected = true;
+                    client.onConnect({});
+                });
+            }),
+            deactivate: vi.fn(() => {
+                client.active = false;
+                client.connected = false;
+                activationGeneration += 1;
+            }),
+            subscribe: vi.fn(() => ({ unsubscribe: vi.fn() })),
+            publish: vi.fn(),
+        };
+        const adapter = new StompTransportAdapter(client as unknown as Client);
+
+        adapter.connect();
+        await Promise.resolve();
+        adapter.disconnect();
+        adapter.connect();
+        await Promise.resolve();
+        await Promise.resolve();
+        releaseFirstBeforeConnect();
+        await Promise.resolve();
+        await Promise.resolve();
+
+        expect(adapter.isConnected()).toBe(true);
+        expect(client.connected).toBe(true);
     });
 
     it('transitions status from reconnecting to disconnected when beforeConnect deactivates on an expired token', async () => {

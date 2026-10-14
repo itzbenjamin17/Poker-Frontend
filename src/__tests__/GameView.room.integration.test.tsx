@@ -8,6 +8,7 @@ import { mockAuth } from '../test/fixtures'
 
 const auth = {
   ...mockAuth,
+  roomId: 'ROOM123',
   playerName: 'HostPlayer'
 }
 

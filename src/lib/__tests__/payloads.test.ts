@@ -1,6 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest';
 import {
+    decodeGameStatePayload,
     isGameStatePayload,
     isGameEndPayload,
     isPrivateStatePayload,
@@ -13,15 +14,12 @@ import {
     ERROR_SYSTEM,
     ERROR_TECHNICAL,
 } from '../../constants/strings';
+import { createValidGameState, createValidPlayer } from '../../test/fixtures';
 
 describe('lib/payloads - Type Guards and Normalizers', () => {
     describe('isGameStatePayload', () => {
         it('returns true for a valid complete game state payload', () => {
-            const valid = {
-                gameId: 'game-1',
-                phase: 'PRE_FLOP',
-                players: [{ name: 'Alice', chips: 1000 }],
-                communityCards: [],
+            const valid = createValidGameState({
                 pot: 30,
                 claimWinAvailable: false,
                 claimWinPlayerName: null,
@@ -29,17 +27,18 @@ describe('lib/payloads - Type Guards and Normalizers', () => {
                 isReadyCountdownActive: false,
                 readyCountdownDeadlineEpochMs: null,
                 pots: [30],
-            };
+            });
             expect(isGameStatePayload(valid)).toBe(true);
         });
 
         it('returns true for minimal valid game state payload', () => {
-            const minimal = {
+            const minimal = createValidGameState({
+                gameId: undefined,
                 phase: 'FLOP',
                 players: [],
                 communityCards: ['Ah', 'Kh', 'Qh'],
                 pot: 100,
-            };
+            });
             expect(isGameStatePayload(minimal)).toBe(true);
         });
 
@@ -69,6 +68,22 @@ describe('lib/payloads - Type Guards and Normalizers', () => {
                     pots: ['invalid'],
                 })
             ).toBe(false);
+        });
+    });
+
+    describe('decodeGameStatePayload', () => {
+        it('normalizes a null current player name to an empty string', () => {
+            const decoded = decodeGameStatePayload(createValidGameState({ currentPlayerName: null }));
+
+            expect(decoded?.currentPlayerName).toBe('');
+        });
+
+        it('rejects null player entries', () => {
+            expect(decodeGameStatePayload(createValidGameState({ players: [null] }))).toBeNull();
+        });
+
+        it('accepts validator-complete shared player fixtures', () => {
+            expect(isGameStatePayload(createValidGameState({ players: [createValidPlayer()] }))).toBe(true);
         });
     });
 
@@ -123,6 +138,8 @@ describe('lib/payloads - Type Guards and Normalizers', () => {
 
         it('returns false for non-objects or invalid hole cards', () => {
             expect(isPrivateStatePayload(null)).toBe(false);
+            expect(isPrivateStatePayload({})).toBe(false);
+            expect(isPrivateStatePayload({ type: 'UNKNOWN' })).toBe(false);
             expect(isPrivateStatePayload({ playerId: 123 })).toBe(false);
             expect(isPrivateStatePayload({ holeCards: [123, 456] })).toBe(false);
         });

@@ -59,9 +59,10 @@ describe('ErrorBoundary', () => {
     test('clicking Try Again invokes onReset and resets the error state', () => {
         const spyConsole = vi.spyOn(console, 'error').mockImplementation(() => {});
         const onReset = vi.fn();
+        const clearAuth = vi.fn();
 
         const { rerender } = render(
-            <ErrorBoundary onReset={onReset}>
+            <ErrorBoundary onReset={onReset} onLeave={clearAuth}>
                 <ThrowingComponent shouldThrow={true} />
             </ErrorBoundary>
         );
@@ -72,17 +73,34 @@ describe('ErrorBoundary', () => {
 
         // Rerender with component fixed (shouldThrow = false)
         rerender(
-            <ErrorBoundary onReset={onReset}>
+            <ErrorBoundary onReset={onReset} onLeave={clearAuth}>
                 <ThrowingComponent shouldThrow={false} />
             </ErrorBoundary>
         );
 
         fireEvent.click(tryAgainBtn);
 
-        expect(onReset).toHaveBeenCalledTimes(1);
+        expect(onReset).toHaveBeenCalledWith(expect.objectContaining({ message: 'Test boundary crash' }));
+        expect(clearAuth).not.toHaveBeenCalled();
         expect(screen.queryByText('Something went wrong')).not.toBeInTheDocument();
         expect(screen.getByText('Working Fine')).toBeInTheDocument();
 
+        spyConsole.mockRestore();
+    });
+
+    test('clicking Return to Lobby clears auth through onLeave', () => {
+        const spyConsole = vi.spyOn(console, 'error').mockImplementation(() => {});
+        const clearAuth = vi.fn();
+
+        render(
+            <ErrorBoundary onLeave={clearAuth}>
+                <ThrowingComponent shouldThrow={true} />
+            </ErrorBoundary>
+        );
+
+        fireEvent.click(screen.getByRole('button', { name: /return to lobby/i }));
+
+        expect(clearAuth).toHaveBeenCalledTimes(1);
         spyConsole.mockRestore();
     });
 

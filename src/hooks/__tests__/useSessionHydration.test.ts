@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { useSessionHydration } from '../useSessionHydration';
 import { useGameContext } from '../../context/GameContext';
 import { pokerApi } from '../../services/api';
+import { createValidGameState, createValidRoomData } from '../../test/fixtures';
 
 vi.mock('../../context/GameContext', () => ({
     useGameContext: vi.fn(),
@@ -53,18 +54,12 @@ describe('useSessionHydration', () => {
 
     it('hydrates room and transitions loading state successfully when game is not started', async () => {
         const getRoomInfoSpy = vi.spyOn(pokerApi, 'getRoomInfo').mockResolvedValue({
+            ...createValidRoomData(),
             roomId: 'ROOM123',
             roomName: 'Table 1',
             players: [{ name: 'TestPlayer', isHost: true, joinedAt: '2026-05-22T00:00:00Z' }],
-            maxPlayers: 6,
-            buyIn: 2000,
-            smallBlind: 10,
-            bigBlind: 20,
             canStartGame: true,
             gameStarted: false,
-            createdAt: '2026-05-22T00:00:00Z',
-            hostName: 'TestPlayer',
-            currentPlayers: 1,
         });
 
         renderHook(() => useSessionHydration());
@@ -144,5 +139,39 @@ describe('useSessionHydration', () => {
         });
 
         expect(onLeave).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not mark hydration complete when unmounted during the private-state fetch', async () => {
+        let resolvePrivateState!: (value: { playerId: string; holeCards: string[] }) => void;
+        const privateState = new Promise<{ playerId: string; holeCards: string[] }>((resolve) => {
+            resolvePrivateState = resolve;
+        });
+        vi.spyOn(pokerApi, 'getRoomInfo').mockResolvedValue(createValidRoomData({
+            roomId: 'ROOM123',
+            gameStarted: true,
+            players: [{ name: 'TestPlayer', isHost: true, joinedAt: '2026-05-22T00:00:00Z' }],
+        }));
+        vi.spyOn(pokerApi, 'getGameState').mockResolvedValue(createValidGameState({
+            gameId: 'ROOM123',
+            players: [],
+        }));
+        vi.spyOn(pokerApi, 'getPrivateState').mockReturnValue(privateState);
+
+        const { unmount } = renderHook(() => useSessionHydration());
+        await act(async () => {
+            await Promise.resolve();
+            await Promise.resolve();
+            await Promise.resolve();
+        });
+        expect(pokerApi.getPrivateState).toHaveBeenCalled();
+        dispatch.mockClear();
+
+        unmount();
+        resolvePrivateState({ playerId: 'p-1', holeCards: ['AS', 'KS'] });
+        await act(async () => {
+            await privateState;
+        });
+
+        expect(dispatch).not.toHaveBeenCalledWith({ type: 'SET_HYDRATED', payload: true });
     });
 });

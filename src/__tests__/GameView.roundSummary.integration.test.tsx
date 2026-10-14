@@ -3,8 +3,14 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { http, HttpResponse } from 'msw';
 import GameView from '../GameView';
 import { server } from '../test/mocks/server';
-import { mockAuth } from '../test/fixtures';
+import { createValidGameState, mockAuth } from '../test/fixtures';
 import { MockStompClient, activeSubscriptions } from '../test/mocks/stomp';
+
+const auth = {
+    ...mockAuth,
+    roomId: 'ROOM123',
+    playerName: 'TestPlayer',
+};
 
 function mockStartedTable() {
     server.use(
@@ -17,7 +23,7 @@ function mockStartedTable() {
             ],
             gameStarted: true,
         })),
-        http.get('/api/game/ROOM123/state', () => HttpResponse.json({
+        http.get('/api/game/ROOM123/state', () => HttpResponse.json(createValidGameState({
             gameId: 'ROOM123',
             phase: 'RIVER',
             pot: 120,
@@ -29,7 +35,7 @@ function mockStartedTable() {
                 { id: 'p-1', name: 'TestPlayer', chips: 980, currentBet: 0, status: 'ACTIVE', hasFolded: false },
                 { id: 'p-2', name: 'Opponent', chips: 980, currentBet: 0, status: 'ACTIVE', hasFolded: false },
             ],
-        })),
+        }))),
         http.get('/api/game/ROOM123/private-state', () => HttpResponse.json({
             playerId: 'p-1',
             holeCards: ['AS', 'KS'],
@@ -38,7 +44,7 @@ function mockStartedTable() {
 }
 
 async function renderStartedTable() {
-    render(<GameView auth={mockAuth} />);
+    render(<GameView auth={auth} />);
     expect(await screen.findByRole('region', { name: /poker table/i })).toBeInTheDocument();
     await MockStompClient.waitForSubscription('/game/ROOM123');
 }
@@ -54,7 +60,7 @@ describe('GameView - Collapsed Round Summary Integration', () => {
         await renderStartedTable();
 
         await act(async () => {
-            MockStompClient.simulateMessage('/game/ROOM123', {
+            MockStompClient.simulateMessage('/game/ROOM123', createValidGameState({
                 gameId: 'ROOM123',
                 phase: 'SHOWDOWN',
                 pot: 1000,
@@ -68,7 +74,7 @@ describe('GameView - Collapsed Round Summary Integration', () => {
                     { id: 'p-1', name: 'TestPlayer', chips: 1980, currentBet: 0, status: 'ACTIVE', hasFolded: false, handRank: 'TWO_PAIR', isWinner: true },
                     { id: 'p-2', name: 'Opponent', chips: 980, currentBet: 0, status: 'ACTIVE', hasFolded: false, handRank: 'PAIR' },
                 ],
-            });
+            }));
         });
 
         const summary = await screen.findByRole('region', { name: /round result/i });
@@ -84,7 +90,7 @@ describe('GameView - Collapsed Round Summary Integration', () => {
         await renderStartedTable();
 
         await act(async () => {
-            MockStompClient.simulateMessage('/game/ROOM123', {
+            MockStompClient.simulateMessage('/game/ROOM123', createValidGameState({
                 gameId: 'ROOM123',
                 phase: 'SHOWDOWN',
                 pot: 1000,
@@ -98,7 +104,7 @@ describe('GameView - Collapsed Round Summary Integration', () => {
                     { id: 'p-1', name: 'TestPlayer', chips: 1480, currentBet: 0, status: 'ACTIVE', hasFolded: false, handRank: 'STRAIGHT', isWinner: true },
                     { id: 'p-2', name: 'Opponent', chips: 1480, currentBet: 0, status: 'ACTIVE', hasFolded: false, handRank: 'STRAIGHT', isWinner: true },
                 ],
-            });
+            }));
         });
 
         const summary = await screen.findByRole('region', { name: /round result/i });
@@ -112,7 +118,7 @@ describe('GameView - Collapsed Round Summary Integration', () => {
         await renderStartedTable();
 
         await act(async () => {
-            MockStompClient.simulateMessage('/game/ROOM123', {
+            MockStompClient.simulateMessage('/game/ROOM123', createValidGameState({
                 gameId: 'ROOM123',
                 phase: 'SHOWDOWN',
                 pot: 120,
@@ -125,7 +131,7 @@ describe('GameView - Collapsed Round Summary Integration', () => {
                 players: [
                     { id: 'p-1', name: 'TestPlayer', chips: 1100, currentBet: 0, status: 'ACTIVE', hasFolded: false },
                 ],
-            });
+            }));
         });
 
         const summary = await screen.findByRole('region', { name: /round result/i });
@@ -137,7 +143,7 @@ describe('GameView - Collapsed Round Summary Integration', () => {
         await renderStartedTable();
 
         await act(async () => {
-            MockStompClient.simulateMessage('/game/ROOM123', {
+            MockStompClient.simulateMessage('/game/ROOM123', createValidGameState({
                 gameId: 'ROOM123',
                 phase: 'SHOWDOWN',
                 pot: 120,
@@ -151,7 +157,7 @@ describe('GameView - Collapsed Round Summary Integration', () => {
                     { id: 'p-1', name: 'TestPlayer', chips: 1100, currentBet: 0, status: 'ACTIVE', hasFolded: false, handRank: 'TWO_PAIR' },
                     { id: 'p-2', name: 'Opponent', chips: 880, currentBet: 0, status: 'FOLDED', hasFolded: true, handRank: 'STRAIGHT' },
                 ],
-            });
+            }));
         });
 
         const summary = await screen.findByRole('region', { name: /round result/i });
@@ -163,7 +169,7 @@ describe('GameView - Collapsed Round Summary Integration', () => {
         await renderStartedTable();
 
         await act(async () => {
-            MockStompClient.simulateMessage('/game/ROOM123', {
+            MockStompClient.simulateMessage('/game/ROOM123', createValidGameState({
                 gameId: 'ROOM123',
                 phase: 'SHOWDOWN',
                 pot: 1000,
@@ -175,7 +181,7 @@ describe('GameView - Collapsed Round Summary Integration', () => {
                     { id: 'p-1', name: 'TestPlayer', chips: 980, currentBet: 0, status: 'ACTIVE', hasFolded: false },
                     { id: 'p-2', name: 'Opponent', chips: 980, currentBet: 0, status: 'ACTIVE', hasFolded: false },
                 ],
-            });
+            }));
         });
 
         const summary = await screen.findByRole('region', { name: /round result/i });

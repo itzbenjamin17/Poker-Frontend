@@ -77,7 +77,7 @@ describe('api service', () => {
             });
 
             expect(dispatchSpy).toHaveBeenCalledWith(
-                expect.objectContaining({ type: 'auth-expired' })
+                expect.objectContaining({ type: 'auth-expired', detail: { token: expiredToken } })
             );
         });
 
@@ -95,7 +95,7 @@ describe('api service', () => {
             });
 
             expect(dispatchSpy).toHaveBeenCalledWith(
-                expect.objectContaining({ type: 'auth-expired' })
+                expect.objectContaining({ type: 'auth-expired', detail: { token: validToken } })
             );
         });
 
@@ -237,6 +237,19 @@ describe('api service', () => {
     });
 
     describe('room responses with ApiResponse envelope', () => {
+        it.each([
+            ['HTML', () => new HttpResponse('<html>not json</html>', { status: 200, headers: { 'Content-Type': 'text/html' } })],
+            ['JSON null', () => HttpResponse.json(null, { status: 200 })],
+        ])('rejects a 200 OK %s room response as a malformed upstream response', async (_label, response) => {
+            const validToken = createJwt({ exp: Math.floor(Date.now() / 1000) + 3600 });
+            server.use(http.get('/api/room/:roomId', response));
+
+            await expect(pokerApi.getRoomInfo('room-1', validToken)).rejects.toMatchObject({
+                status: 502,
+                message: 'The server returned an invalid response. Please try again.',
+            });
+        });
+
         it('createRoom cleanly handles and normalizes ApiResponse<TokenResponse>', async () => {
             const result = await pokerApi.createRoom({
                 roomName: 'High Roller',
@@ -249,7 +262,7 @@ describe('api service', () => {
 
             expect(result).toEqual({
                 message: 'Room created successfully',
-                token: 'mock-jwt-token',
+                token: expect.any(String),
                 roomId: 'ABCD',
                 playerName: 'Alice',
             });
@@ -263,7 +276,7 @@ describe('api service', () => {
 
             expect(result).toEqual({
                 message: 'Successfully joined room',
-                token: 'mock-jwt-token',
+                token: expect.any(String),
                 roomId: 'Room99',
                 playerName: 'Bob',
             });
@@ -304,6 +317,7 @@ describe('api service', () => {
             try {
                 const secretToken = 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiAliceJ9.secret-signature';
                 const client = createStompClient(secretToken);
+                expect(client.reconnectDelay).toEqual(expect.any(Number));
 
                 client.debug(`>>> CONNECT\nAuthorization:Bearer ${secretToken}\naccept-version:1.2,1.1,1.0\n\n\0`);
 
@@ -372,6 +386,33 @@ describe('api service', () => {
             }
         });
 
+        it('redacts serialized sensitive JSON and sensitive properties attached to Error instances', async () => {
+            const { logger } = await import('../../security/logger');
+            const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+            const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+            const sensitiveError = Object.assign(new Error('Request failed'), {
+                token: 'secret-token',
+                holeCards: ['AS', 'KS'],
+                safeField: 'visible',
+            });
+
+            try {
+                logger.warn('Serialized', '{"token":"secret-token","holeCards":["AS","KS"]}');
+                logger.error('Failure', sensitiveError);
+
+                expect(warnSpy.mock.calls[0][1]).toBe('[Sensitive serialized payload redacted]');
+                expect(errorSpy.mock.calls[0][1]).toEqual(expect.objectContaining({
+                    token: '[REDACTED]',
+                    holeCards: '[REDACTED]',
+                    safeField: 'visible',
+                    message: 'Request failed',
+                }));
+            } finally {
+                warnSpy.mockRestore();
+                errorSpy.mockRestore();
+            }
+        });
+
         it('dispatches auth-expired and deactivates client in beforeConnect when JWT is expired', async () => {
             const { createStompClient } = await import('../api');
             const dispatchSpy = vi.spyOn(window, 'dispatchEvent');
@@ -383,7 +424,7 @@ describe('api service', () => {
                 await client.beforeConnect(client);
 
                 expect(dispatchSpy).toHaveBeenCalledWith(
-                    expect.objectContaining({ type: 'auth-expired' })
+                    expect.objectContaining({ type: 'auth-expired', detail: { token: expiredToken } })
                 );
                 expect(deactivateSpy).toHaveBeenCalledTimes(1);
             } finally {

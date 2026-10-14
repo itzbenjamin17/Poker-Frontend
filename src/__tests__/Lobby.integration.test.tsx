@@ -225,4 +225,60 @@ describe('Lobby Integration', () => {
 
     resolveJoin()
   })
+
+  it('blocks JoinRoomForm while CreateRoomForm owns the shared request lock', async () => {
+    const user = userEvent.setup()
+    let resolveCreate!: () => void
+    server.use(
+      http.post('/api/room/create', async ({ request }) => {
+        const body = await request.json() as { playerName: string }
+        await new Promise<void>((resolve) => { resolveCreate = resolve })
+        return HttpResponse.json({
+          message: 'Room created successfully',
+          data: { token: 'mock-jwt-token', playerName: body.playerName, roomId: 'ABCD' },
+        })
+      }),
+    )
+    render(<Lobby onAuth={vi.fn()} />)
+    const createRegion = screen.getByRole('region', { name: /create table/i })
+    const quickJoinRegion = screen.getByRole('region', { name: /quick join/i })
+    await user.type(within(createRegion).getByLabelText(/room name/i), 'Locked Room')
+    await user.type(within(createRegion).getByLabelText(/player alias/i), 'Host')
+
+    await user.click(within(createRegion).getByRole('button', { name: /create game/i }))
+
+    expect(await within(createRegion).findByRole('button', { name: /creating/i })).toBeDisabled()
+    expect(within(quickJoinRegion).getByRole('button', { name: /join game/i })).toBeDisabled()
+    resolveCreate()
+  })
+
+  it('aborts a pending request on unmount and suppresses onAuth', async () => {
+    const user = userEvent.setup()
+    const onAuth = vi.fn()
+    let requestSignal: AbortSignal | undefined
+    let resolveJoin!: () => void
+    server.use(
+      http.post('/api/room/join', async ({ request }) => {
+        requestSignal = request.signal
+        await new Promise<void>((resolve) => { resolveJoin = resolve })
+        return HttpResponse.json({
+          message: 'Successfully joined room',
+          data: { token: 'mock-jwt-token', playerName: 'Joiner', roomId: 'POKER123' },
+        })
+      }),
+    )
+    const { unmount } = render(<Lobby onAuth={onAuth} />)
+    const quickJoinRegion = screen.getByRole('region', { name: /quick join/i })
+    await user.type(within(quickJoinRegion).getByLabelText(/room name/i), 'POKER123')
+    await user.type(within(quickJoinRegion).getByLabelText(/player alias/i), 'Joiner')
+    await user.click(within(quickJoinRegion).getByRole('button', { name: /join game/i }))
+    await waitFor(() => expect(requestSignal).toBeDefined())
+
+    unmount()
+    expect(requestSignal?.aborted).toBe(true)
+    resolveJoin()
+    await Promise.resolve()
+
+    expect(onAuth).not.toHaveBeenCalled()
+  })
 })

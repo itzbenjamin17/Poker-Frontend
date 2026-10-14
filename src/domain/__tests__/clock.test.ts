@@ -71,6 +71,16 @@ describe('Clock abstractions', () => {
             expect(fn).toHaveBeenCalledTimes(2);
         });
 
+        it('clamps a zero-delay interval to one millisecond', () => {
+            const clock = new TestClock();
+            const fn = vi.fn();
+
+            clock.setInterval(fn, 0);
+            clock.tick(3);
+
+            expect(fn).toHaveBeenCalledTimes(3);
+        });
+
         it('handles timers scheduled inside timer callbacks during same tick', () => {
             const clock = new TestClock();
             const order: string[] = [];

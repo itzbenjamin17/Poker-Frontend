@@ -131,7 +131,7 @@ describe('useAuthSession', () => {
         expect(result.current.auth).toBeNull();
     });
 
-    it('clears auth and localStorage on auth-expired window event', async () => {
+    it('clears auth and localStorage on a token-scoped auth-expired window event', async () => {
         const validAuth = {
             token: createJwt({ exp: Math.floor(Date.now() / 1000) + 3600 }),
             roomId: 'room-5',
@@ -146,11 +146,50 @@ describe('useAuthSession', () => {
         expect(result.current.auth).toEqual(validAuth);
 
         act(() => {
-            window.dispatchEvent(new Event('auth-expired'));
+            window.dispatchEvent(new CustomEvent('auth-expired', { detail: { token: validAuth.token } }));
         });
 
         expect(result.current.auth).toBeNull();
         expect(localStorage.getItem('poker-auth')).toBeNull();
+    });
+
+    it('ignores an auth-expired race for a stale token', async () => {
+        const currentAuth = {
+            token: createJwt({ exp: Math.floor(Date.now() / 1000) + 3600, session: 'current' }),
+            roomId: 'room-current',
+            playerName: 'Current Player',
+            message: 'Ok',
+        };
+        const staleToken = createJwt({ exp: Math.floor(Date.now() / 1000) + 3600, session: 'stale' });
+        localStorage.setItem('poker-auth', JSON.stringify(currentAuth));
+        const { useAuthSession } = await import('../useAuthSession');
+        const { result } = renderHook(() => useAuthSession());
+
+        act(() => {
+            window.dispatchEvent(new CustomEvent('auth-expired', { detail: { token: staleToken } }));
+        });
+
+        expect(result.current.auth).toEqual(currentAuth);
+        expect(JSON.parse(localStorage.getItem('poker-auth')!)).toEqual(currentAuth);
+    });
+
+    it('clears auth when a storage event with a null key signals storage.clear()', async () => {
+        const validAuth = {
+            token: createJwt({ exp: Math.floor(Date.now() / 1000) + 3600 }),
+            roomId: 'room-clear',
+            playerName: 'Clear Test',
+            message: 'Ok',
+        };
+        localStorage.setItem('poker-auth', JSON.stringify(validAuth));
+        const { useAuthSession } = await import('../useAuthSession');
+        const { result } = renderHook(() => useAuthSession());
+
+        act(() => {
+            localStorage.clear();
+            window.dispatchEvent(new StorageEvent('storage', { key: null }));
+        });
+
+        expect(result.current.auth).toBeNull();
     });
 
     it('survives localStorage SecurityError and QuotaExceededError while keeping auth state in memory', async () => {
