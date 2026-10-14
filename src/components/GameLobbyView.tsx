@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { cn } from '../lib/cn';
 import { Card } from './UI';
 import { Button } from './UI';
@@ -8,7 +8,7 @@ import {
     GAME_LOBBY_LABEL,
     BTN_START_GAME, BTN_STARTING_GAME, LABEL_WAITING_HOST,
     LABEL_BLINDS, LABEL_MIN_BUYIN,
-    LABEL_TABLE_RULES, LABEL_HOST,
+    LABEL_TABLE_RULES, LABEL_HOST, ERROR_COPY_ROOM_CODE,
 } from '../constants/strings';
 import type { RoomState } from '../types';
 
@@ -31,15 +31,31 @@ export function GameLobbyView({
     isStartingGame = false,
 }: GameLobbyViewProps) {
     const [copied, setCopied] = useState(false);
+    const [copyFailed, setCopyFailed] = useState(false);
+    const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const copyAttempt = useRef(0);
+
+    useEffect(() => () => {
+        copyAttempt.current += 1;
+        if (copyTimer.current !== null) clearTimeout(copyTimer.current);
+    }, []);
 
     if (!roomState) return null;
 
-    const handleCopyCode = () => {
+    const handleCopyCode = async () => {
         const code = roomState.roomName || '';
-        if (code) {
-            navigator.clipboard.writeText(code);
+        if (!code) return;
+        const attempt = ++copyAttempt.current;
+        if (copyTimer.current !== null) clearTimeout(copyTimer.current);
+        setCopied(false);
+        setCopyFailed(false);
+        try {
+            await navigator.clipboard.writeText(code);
+            if (attempt !== copyAttempt.current) return;
             setCopied(true);
-            setTimeout(() => setCopied(false), 2000);
+            copyTimer.current = setTimeout(() => setCopied(false), 2000);
+        } catch {
+            if (attempt === copyAttempt.current) setCopyFailed(true);
         }
     };
 
@@ -62,6 +78,7 @@ export function GameLobbyView({
             className="w-full max-w-5xl p-4 sm:p-8 overflow-y-auto max-h-full"
         >
             <NotificationBanner notification={notification} />
+            {copyFailed && <p role="alert">{ERROR_COPY_ROOM_CODE}</p>}
 
             <div className="w-full">
                 <div className="mb-8">

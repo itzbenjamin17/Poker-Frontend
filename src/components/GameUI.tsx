@@ -76,6 +76,7 @@ export const CardUI: React.FC<CardUIProps> = ({
         return (
             <div
                 data-testid="card"
+                role="img"
                 aria-label="Hidden Card"
                 className={cn('bg-emerald-container rounded-md border-2 border-white/20 flex items-center justify-center shadow-lg shrink-0 overflow-hidden', className)}
                 style={{
@@ -341,7 +342,7 @@ export function PlayerAvatar({
             {isCurrent && !isDisconnected && !isWinner && (
                 <div
                     data-testid="seat-turn-indicator"
-                    className="absolute bg-emerald-primary rounded-full animate-pulse shadow-[0_0_10px_rgba(170,234,208,0.5)]"
+                    className="absolute bg-emerald-primary rounded-full animate-pulse motion-reduce:animate-none shadow-[0_0_10px_rgba(170,234,208,0.5)]"
                     style={{
                         top: `-${scale * 4}px`,
                         right: `-${scale * 4}px`,

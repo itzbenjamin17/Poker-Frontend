@@ -1,4 +1,4 @@
-import { motion } from 'motion/react';
+import { motion, useReducedMotion } from 'motion/react';
 import { cn } from '../lib/cn';
 import { getShowdownHoleCardState } from '../lib/game';
 import { CardUI, HoleCardGroup, PlayerPod } from './GameUI';
@@ -31,6 +31,7 @@ export function HeroSeat({
     className,
     seatIndex,
 }: HeroSeatProps) {
+    const prefersReducedMotion = useReducedMotion();
     const showdownPlayer = showdown?.players.find((sp) => sp.id === player.id);
     const isShowdownWinner = Boolean(showdownPlayer?.isWinner || player.isWinner);
     const isActiveTurn = currentPlayerId === player.id;
@@ -110,9 +111,9 @@ export function HeroSeat({
                             return (
                                 <motion.div
                                     key={`hero-cards-${player.id}-${ci}`}
-                                    initial={{ scale: 0.9, opacity: 0 }}
+                                    initial={prefersReducedMotion ? false : { scale: 0.9, opacity: 0 }}
                                     animate={{ scale: 1, opacity: 1 }}
-                                    transition={{ delay: ci * 0.08 }}
+                                    transition={{ delay: prefersReducedMotion ? 0 : ci * 0.08 }}
                                 >
                                     <CardUI
                                         card={c}

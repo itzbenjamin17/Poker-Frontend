@@ -1,4 +1,4 @@
-import { motion } from 'motion/react';
+import { motion, useReducedMotion } from 'motion/react';
 import { CardUI } from './GameUI';
 import { fontPx, isCompactCardScale } from '../lib/tableGeometry';
 import { CARD_PLACEHOLDER_TURN, CARD_PLACEHOLDER_RIVER } from '../constants/strings';
@@ -9,6 +9,7 @@ interface CommunityCardsAreaProps {
 }
 
 export function CommunityCardsArea({ communityCards, scale }: CommunityCardsAreaProps) {
+    const prefersReducedMotion = useReducedMotion();
     const compactCards = isCompactCardScale(scale);
     return (
         <div
@@ -27,7 +28,7 @@ export function CommunityCardsArea({ communityCards, scale }: CommunityCardsArea
                         style={{ width: `${scale * 48}px`, height: `${scale * 64}px` }}
                     >
                         {card ? (
-                            <motion.div initial={{ scale: 0, rotateY: 90 }} animate={{ scale: 1, rotateY: 0 }} className="absolute inset-0">
+                            <motion.div initial={prefersReducedMotion ? false : { scale: 0, rotateY: 90 }} animate={{ scale: 1, rotateY: 0 }} className="absolute inset-0">
                                 <CardUI card={card} scale={scale} compact={compactCards} />
                             </motion.div>
                         ) : (
