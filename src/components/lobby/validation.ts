@@ -1,6 +1,9 @@
 import {
     VALIDATION_ROOM_NAME_REQUIRED,
     VALIDATION_PLAYER_ALIAS_REQUIRED,
+    VALIDATION_MAX_PLAYERS,
+    VALIDATION_ROOM_NAME_CONTROL,
+    VALIDATION_PLAYER_ALIAS_CONTROL,
     VALIDATION_BIG_BLIND_MIN_RATIO,
     VALIDATION_BUY_IN_MIN_BIG_BLIND,
     formatRoomNameMaxError,
@@ -36,8 +39,12 @@ export function validateJoin(data: {
 }): string | null {
     if (!data.roomName.trim()) return VALIDATION_ROOM_NAME_REQUIRED;
     if (data.roomName.trim().length > VALIDATION.roomName.max) return formatRoomNameMaxError(VALIDATION.roomName.max);
+    if (/\p{Cc}/u.test(data.roomName.trim()))
+        return VALIDATION_ROOM_NAME_CONTROL;
     if (!data.playerName.trim()) return VALIDATION_PLAYER_ALIAS_REQUIRED;
     if (data.playerName.trim().length > VALIDATION.playerName.max) return formatPlayerAliasMaxError(VALIDATION.playerName.max);
+    if (/\p{Cc}/u.test(data.playerName.trim()))
+        return VALIDATION_PLAYER_ALIAS_CONTROL;
     return null;
 }
 
@@ -51,6 +58,13 @@ export function validateCreate(data: {
 }): string | null {
     const joinError = validateJoin(data);
     if (joinError) return joinError;
+
+    const maxPlayers = parseInteger(data.maxPlayers);
+    if (
+        Number.isNaN(maxPlayers) ||
+        maxPlayers < VALIDATION.maxPlayers.min ||
+        maxPlayers > VALIDATION.maxPlayers.max
+    ) return VALIDATION_MAX_PLAYERS;
 
     const smallBlind = parseInteger(data.smallBlind);
     const bigBlind = parseInteger(data.bigBlind);
