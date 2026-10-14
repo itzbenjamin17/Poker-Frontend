@@ -120,6 +120,7 @@ export function TablePots({
                     <>
                         {/* Main/Displayed Pot */}
                         <div 
+                            key="main-pot"
                             data-testid="table-pot"
                             aria-label={hasMultiplePots ? LABEL_MAIN_POT : 'Total Pot'} 
                             className="bg-black/40 rounded-full border border-white/5 backdrop-blur-md flex items-center"
@@ -149,6 +150,7 @@ export function TablePots({
                         {/* Button to view side pots */}
                         {hasMultiplePots && (
                             <button
+                                key="pot-toggle"
                                 data-testid="side-pot-chip"
                                 aria-expanded="false"
                                 onClick={() => setViewingSidePots(true)}
@@ -171,6 +173,7 @@ export function TablePots({
                     <>
                         {/* Button to view main pot */}
                         <button
+                            key="pot-toggle"
                             aria-expanded="true"
                             onClick={() => setViewingSidePots(false)}
                             className="bg-black/60 hover:bg-black/40 text-white/70 hover:text-white border border-white/10 hover:border-white/30 rounded-full flex items-center transition-colors"

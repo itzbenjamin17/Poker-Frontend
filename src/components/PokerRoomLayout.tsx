@@ -221,14 +221,19 @@ export function PokerRoomLayout({
             {header}
 
             {/* Region 2 & 3: Flexible Stage Region & Bounded Dock Region */}
-            {stage || dock ? (
-                <>
-                    {stage}
-                    {dock}
-                </>
-            ) : (
-                children
-            )}
+            <div
+                className="flex flex-1 min-h-0 min-w-0 flex-col"
+                inert={shouldShowOverlay}
+            >
+                {stage || dock ? (
+                    <>
+                        {stage}
+                        {dock}
+                    </>
+                ) : (
+                    children
+                )}
+            </div>
         </div>
     );
 }
