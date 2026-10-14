@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
+import type { ComponentProps, ComponentType, RefAttributes } from 'react';
 import { motion, AnimatePresence, useReducedMotion } from 'motion/react';
 import { cn } from '../lib/cn';
 import { Button } from './UI';
@@ -12,6 +13,9 @@ import {
 import type { ActionError, GameState, Player, PokerAction } from '../types';
 
 type AmountAction = Extract<PokerAction, 'BET' | 'RAISE'>;
+const ButtonWithRef = Button as ComponentType<
+    ComponentProps<typeof Button> & RefAttributes<HTMLButtonElement>
+>;
 
 export type DockState = 'ready_countdown' | 'waiting' | 'raising' | 'betting';
 
@@ -69,6 +73,13 @@ export function ActionPanel({
     onLeaveGame,
 }: ActionPanelProps) {
     const prefersReducedMotion = useReducedMotion();
+    const restoreAmountTriggerFocus = useRef(false);
+    const amountTriggerRef = (node: HTMLButtonElement | null) => {
+        if (node && restoreAmountTriggerFocus.current) {
+            restoreAmountTriggerFocus.current = false;
+            node.focus();
+        }
+    };
     const [internalRaiseAmount, setInternalRaiseAmount] = useState('');
     const [amountAction, setAmountAction] = useState<AmountAction | null>(
         actionError?.action === 'BET' || actionError?.action === 'RAISE' ? actionError.action : null,
@@ -149,7 +160,7 @@ export function ActionPanel({
     const minBetAmount = bigBlind;
     const minRaiseAmount = actionType === 'BET'
         ? minBetAmount
-        : Math.max(minBetAmount, (gameState.currentBet || 0) - (me?.currentBet ?? 0) + 1);
+        : Math.max(0, (gameState.currentBet || 0) - (me?.currentBet ?? 0)) + minBetAmount;
     const availableChips = me?.chips ?? 0;
     const callAmount = Math.max(0, (gameState.currentBet || 0) - (me?.currentBet ?? 0));
     const clamp = (val: number) => Math.min(availableChips, Math.max(minRaiseAmount, val));
@@ -233,6 +244,7 @@ export function ActionPanel({
                     <motion.div
                         key="turn-controls"
                         {...fadeMotion}
+                        exit={{ opacity: 0, transition: { duration: 0 } }}
                         className={cn(
                             'flex w-full items-center justify-center',
                             isMobileLandscape ? 'gap-2 pr-12' : 'gap-3 md:gap-4',
@@ -296,6 +308,7 @@ export function ActionPanel({
                                         <span className="text-white tabular-nums text-xs sm:text-sm font-bold min-w-[3rem]">
                                             {parsedRaiseAmount.toLocaleString()}
                                         </span>
+                                        {/* eslint-disable jsx-a11y/no-autofocus */}
                                         <input
                                             type="range"
                                             aria-label={ARIA_RAISE_AMOUNT}
@@ -307,7 +320,10 @@ export function ActionPanel({
                                             min={defaultRaiseAmount}
                                             max={Math.max(defaultRaiseAmount, availableChips)}
                                             step={1}
+                                            autoFocus
+                                            disabled={isActionPending}
                                         />
+                                        {/* eslint-enable jsx-a11y/no-autofocus */}
                                     </div>
 
                                     {/* Cancel & Submit */}
@@ -316,6 +332,7 @@ export function ActionPanel({
                                             variant="ghost"
                                             size={controlButtonSize}
                                             onClick={() => {
+                                                restoreAmountTriggerFocus.current = true;
                                                 setAmountAction(null);
                                                 handleRaiseChange('');
                                             }}
@@ -371,9 +388,10 @@ export function ActionPanel({
                                 ) : null}
 
                                 {legalActions.has('BET') && (
-                                    <Button
+                                    <ButtonWithRef
                                         variant="outline"
                                         size={controlButtonSize}
+                                        ref={amountTriggerRef}
                                         aria-expanded="false"
                                         aria-controls="amount-action-controls"
                                         onClick={() => {
@@ -383,13 +401,14 @@ export function ActionPanel({
                                         disabled={isActionPending}
                                     >
                                         {BTN_BET}
-                                    </Button>
+                                    </ButtonWithRef>
                                 )}
 
                                 {legalActions.has('RAISE') && (
-                                    <Button
+                                    <ButtonWithRef
                                         variant="outline"
                                         size={controlButtonSize}
+                                        ref={amountTriggerRef}
                                         aria-expanded="false"
                                         aria-controls="amount-action-controls"
                                         onClick={() => {
@@ -399,7 +418,7 @@ export function ActionPanel({
                                         disabled={isActionPending}
                                     >
                                         {BTN_RAISE}
-                                    </Button>
+                                    </ButtonWithRef>
                                 )}
 
                                 {canAllIn && (
