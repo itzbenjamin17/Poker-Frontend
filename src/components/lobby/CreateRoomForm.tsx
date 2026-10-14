@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { Button, Input, Card } from '../UI';
 import { pokerApi } from '../../services/api';
 import { Rocket } from 'lucide-react';
-import { logger } from '../../security/logger';
 import {
     CREATE_TABLE_HEADING,
     CREATE_TABLE_SUBTITLE,
@@ -11,6 +10,8 @@ import {
     ERROR_CREATE_FALLBACK,
 } from '../../constants/strings';
 import { VALIDATION, validateCreate, parseCreateRoomSubmission } from './validation';
+import { useLobbyRequest } from './useLobbyRequest';
+import type { LobbyRequestLock } from './useLobbyRequest';
 import type { AuthResponse } from '../../types';
 
 interface CreateRoomFormProps {
@@ -20,9 +21,10 @@ interface CreateRoomFormProps {
     loading?: boolean;
     disabled?: boolean;
     setLoading: (loading: boolean) => void;
+    requestLock?: LobbyRequestLock;
 }
 
-export function CreateRoomForm({ onAuth, onError, isSubmitting, loading = false, disabled = false, setLoading }: CreateRoomFormProps) {
+export function CreateRoomForm({ onAuth, onError, isSubmitting, loading = false, disabled = false, setLoading, requestLock }: CreateRoomFormProps) {
     const [createData, setCreateData] = useState({
         roomName: '',
         playerName: '',
@@ -34,9 +36,11 @@ export function CreateRoomForm({ onAuth, onError, isSubmitting, loading = false,
 
     const submitting = isSubmitting ?? loading;
     const isDisabled = submitting || disabled;
+    const { isBusy, run } = useLobbyRequest({ requestLock, onAuth, onError, setLoading });
 
     const handleCreate = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (isDisabled || isBusy()) return;
         onError(null);
 
         const validationError = validateCreate(createData);
@@ -47,16 +51,7 @@ export function CreateRoomForm({ onAuth, onError, isSubmitting, loading = false,
 
         const submissionData = parseCreateRoomSubmission(createData);
 
-        setLoading(true);
-        try {
-            const res = await pokerApi.createRoom(submissionData);
-            onAuth(res);
-        } catch (err) {
-            logger.error('Failed to create room:', err);
-            onError(err instanceof Error ? err.message : ERROR_CREATE_FALLBACK);
-        } finally {
-            setLoading(false);
-        }
+        await run(signal => pokerApi.createRoom(submissionData, signal), ERROR_CREATE_FALLBACK);
     };
 
     return (

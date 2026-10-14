@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { Button, Input, Card } from '../UI';
 import { pokerApi } from '../../services/api';
 import { Key, ArrowRight } from 'lucide-react';
-import { logger } from '../../security/logger';
 import {
     JOIN_TABLE_HEADING,
     JOIN_TABLE_SUBTITLE,
@@ -11,6 +10,8 @@ import {
     ERROR_JOIN_FALLBACK,
 } from '../../constants/strings';
 import { VALIDATION, validateJoin } from './validation';
+import { useLobbyRequest } from './useLobbyRequest';
+import type { LobbyRequestLock } from './useLobbyRequest';
 import type { AuthResponse } from '../../types';
 
 interface JoinRoomFormProps {
@@ -20,9 +21,10 @@ interface JoinRoomFormProps {
     loading?: boolean;
     disabled?: boolean;
     setLoading: (loading: boolean) => void;
+    requestLock?: LobbyRequestLock;
 }
 
-export function JoinRoomForm({ onAuth, onError, isSubmitting, loading = false, disabled = false, setLoading }: JoinRoomFormProps) {
+export function JoinRoomForm({ onAuth, onError, isSubmitting, loading = false, disabled = false, setLoading, requestLock }: JoinRoomFormProps) {
     const [joinData, setJoinData] = useState({
         roomName: '',
         playerName: '',
@@ -30,9 +32,11 @@ export function JoinRoomForm({ onAuth, onError, isSubmitting, loading = false, d
 
     const submitting = isSubmitting ?? loading;
     const isDisabled = submitting || disabled;
+    const { isBusy, run } = useLobbyRequest({ requestLock, onAuth, onError, setLoading });
 
     const handleJoin = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (isDisabled || isBusy()) return;
         onError(null);
 
         const validationError = validateJoin(joinData);
@@ -44,16 +48,7 @@ export function JoinRoomForm({ onAuth, onError, isSubmitting, loading = false, d
         const roomName = joinData.roomName.trim();
         const playerName = joinData.playerName.trim();
 
-        setLoading(true);
-        try {
-            const res = await pokerApi.joinRoom({ roomName, playerName });
-            onAuth(res);
-        } catch (err) {
-            logger.error('Failed to join room:', err);
-            onError(err instanceof Error ? err.message : ERROR_JOIN_FALLBACK);
-        } finally {
-            setLoading(false);
-        }
+        await run(signal => pokerApi.joinRoom({ roomName, playerName }, signal), ERROR_JOIN_FALLBACK);
     };
 
     return (

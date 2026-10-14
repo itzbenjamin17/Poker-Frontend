@@ -1,5 +1,5 @@
-import { useState, useRef, useEffect } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
+import { useState, useRef } from 'react';
+import { motion, AnimatePresence, MotionConfig } from 'motion/react';
 import type { AuthResponse } from './types';
 import {
     LOBBY_HERO_SUBTITLE,
@@ -17,30 +17,14 @@ export default function Lobby({
     const [isCreating, setIsCreating] = useState(false);
     const [isJoining, setIsJoining] = useState(false);
     const [error, setErrorState] = useState<string | null>(null);
-    const errorTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const requestLock = useRef<AbortController | null>(null);
 
     const setError = (msg: string | null) => {
         setErrorState(msg);
-        if (errorTimeoutRef.current) {
-            clearTimeout(errorTimeoutRef.current);
-            errorTimeoutRef.current = null;
-        }
-        if (msg) {
-            errorTimeoutRef.current = setTimeout(() => {
-                setErrorState(null);
-            }, 5000);
-        }
     };
 
-    useEffect(() => {
-        return () => {
-            if (errorTimeoutRef.current) {
-                clearTimeout(errorTimeoutRef.current);
-            }
-        };
-    }, []);
-
     return (
+        <MotionConfig reducedMotion="user">
         <div className="min-h-screen pt-24 pb-32 px-6 flex flex-col items-center justify-center">
             <AnimatePresence>
                 {error && (
@@ -90,6 +74,7 @@ export default function Lobby({
                         isSubmitting={isCreating}
                         disabled={isJoining}
                         setLoading={setIsCreating}
+                        requestLock={requestLock}
                     />
                 </motion.div>
 
@@ -105,9 +90,11 @@ export default function Lobby({
                         isSubmitting={isJoining}
                         disabled={isCreating}
                         setLoading={setIsJoining}
+                        requestLock={requestLock}
                     />
                 </motion.div>
             </div>
         </div>
+        </MotionConfig>
     );
 }
