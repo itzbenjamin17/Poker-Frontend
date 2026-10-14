@@ -7,17 +7,21 @@ import { TestClock } from '../domain/clock';
 import { pokerApi } from '../services/api';
 import type { AuthResponse, GameState } from '../types';
 
-vi.mock('../services/api', () => ({
-    pokerApi: {
-        getRoomInfo: vi.fn().mockResolvedValue(null),
-        getGameState: vi.fn().mockResolvedValue(null),
-        getPrivateState: vi.fn().mockResolvedValue(null),
-        startGame: vi.fn(),
-        claimWin: vi.fn(),
-        leaveGame: vi.fn(),
-        leaveRoom: vi.fn(),
-    },
-}));
+vi.mock('../services/api', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('../services/api')>();
+    return {
+        ...actual,
+        pokerApi: {
+            getRoomInfo: vi.fn().mockResolvedValue(null),
+            getGameState: vi.fn().mockResolvedValue(null),
+            getPrivateState: vi.fn().mockResolvedValue(null),
+            startGame: vi.fn(),
+            claimWin: vi.fn(),
+            leaveGame: vi.fn(),
+            leaveRoom: vi.fn(),
+        },
+    };
+});
 
 describe('Disconnect & Leave Edge Cases', () => {
     const mockAuth: AuthResponse = {
