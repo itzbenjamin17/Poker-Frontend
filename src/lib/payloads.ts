@@ -13,28 +13,75 @@ import {
 } from '../constants/strings';
 
 function isObject(value: unknown): value is Record<string, unknown> {
-    return typeof value === 'object' && value !== null;
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-export function isActionErrorPayload(value: unknown): value is ActionError {
-    if (!isObject(value) || value.type !== 'ACTION_ERROR') return false;
-    return Object.keys(value).length === 4 &&
-        typeof value.code === 'string' && value.code.trim().length > 0 &&
-        /^[A-Z][A-Z0-9_]*$/.test(value.code) &&
-        typeof value.action === 'string' &&
-        ['FOLD', 'CHECK', 'CALL', 'BET', 'RAISE', 'ALL_IN'].includes(value.action) &&
-        typeof value.message === 'string' && value.message.trim().length > 0;
+type Check = (value: unknown) => boolean;
+const text: Check = value => typeof value === 'string';
+const boolean: Check = value => typeof value === 'boolean';
+const nonnegative: Check = value =>
+    typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
+const capacity: Check = value => nonnegative(value) && Number(value) >= 2 && Number(value) <= 10;
+const optional = (check: Check): Check => value => value === undefined || check(value);
+const nullable = (check: Check): Check => value => value == null || check(value);
+const list = (check: Check, max = Infinity): Check => value =>
+    Array.isArray(value) && value.length <= max && value.every(check);
+const member = (values: readonly string[]): Check => value =>
+    typeof value === 'string' && values.includes(value);
+const card: Check = value => typeof value === 'string' && /^(?:[2-9TJQKA]|10)[CDHS]$/i.test(value);
+const action = member(['FOLD', 'CHECK', 'CALL', 'BET', 'RAISE', 'ALL_IN']);
+
+function fields(value: unknown, schema: Record<string, Check>): boolean {
+    return isObject(value) && Object.entries(schema).every(([key, check]) => check(value[key]));
+}
+
+const roomPlayer = (value: unknown): boolean => fields(value, {
+    name: text, isHost: boolean, joinedAt: optional(text),
+});
+
+const player = (value: unknown): boolean => fields(value, {
+    id: text, name: text, chips: nonnegative, currentBet: nonnegative,
+    status: member(['ACTIVE', 'FOLDED', 'OUT', 'ALL_IN', 'DISCONNECTED']),
+    hasFolded: boolean, disconnectDeadlineEpochMs: optional(nonnegative),
+    isReadyForNextHand: optional(boolean), isSmallBlind: optional(boolean),
+    isBigBlind: optional(boolean), isAllIn: optional(boolean),
+    isCurrentPlayer: optional(boolean), holeCards: optional(list(card, 2)),
+    handRank: optional(text), bestHand: optional(list(card, 5)),
+    isWinner: optional(boolean), chipsWon: optional(nonnegative),
+});
+
+function omitNulls(value: Record<string, unknown>, keys: readonly string[]): Record<string, unknown> {
+    const result = { ...value };
+    for (const key of keys) if (result[key] === null) delete result[key];
+    return result;
+}
+
+/** Decode nullable wire metadata into the optional fields used by the domain. */
+export function decodeGameStatePayload(value: unknown): IncomingGameStatePayload | null {
+    if (!isObject(value) || !Array.isArray(value.players)) return null;
+    const decoded = omitNulls(value, [
+        'legalActions', 'winners', 'winningsPerPlayer', 'isAutoAdvancing',
+        'autoAdvanceMessage',
+    ]);
+    // The backend uses null when no player currently has the turn.
+    if (decoded.currentPlayerName === null) decoded.currentPlayerName = '';
+    if (decoded.currentPlayerId === null) decoded.currentPlayerId = '';
+    decoded.players = value.players.map(p => isObject(p) ? omitNulls(p, [
+        'disconnectDeadlineEpochMs', 'isReadyForNextHand', 'isSmallBlind',
+        'isBigBlind', 'isAllIn', 'isCurrentPlayer', 'holeCards', 'handRank',
+        'bestHand', 'isWinner', 'chipsWon',
+    ]) : p);
+    return isGameStatePayload(decoded) ? decoded : null;
 }
 
 export function isRoomDataPayload(value: unknown): value is RoomDataResponse {
-    if (!isObject(value)) return false;
-    return (
-        (typeof value.roomId === 'string' || value.roomId === undefined) &&
-        Array.isArray(value.players) &&
-        value.players.every(
-            (p) => isObject(p) && typeof p.name === 'string' && typeof p.isHost === 'boolean',
-        )
-    );
+    return fields(value, {
+        roomId: text, roomName: text, maxPlayers: capacity,
+        buyIn: nonnegative, smallBlind: nonnegative, bigBlind: nonnegative,
+        createdAt: text, hostName: text, currentPlayers: nonnegative,
+        canStartGame: boolean, gameStarted: boolean,
+        players: list(p => fields(p, { name: text, isHost: boolean, joinedAt: text }), 10),
+    });
 }
 
 export function mapRoomDataToRoomState(
@@ -44,7 +91,7 @@ export function mapRoomDataToRoomState(
     return {
         roomId: roomData.roomId ?? fallbackRoomId ?? '',
         roomName: roomData.roomName,
-        players: roomData.players.map((p) => ({
+        players: roomData.players.map(p => ({
             name: p.name,
             isHost: p.isHost,
             joinedAt: p.joinedAt,
@@ -59,29 +106,36 @@ export function mapRoomDataToRoomState(
 }
 
 export function isGameStatePayload(value: unknown): value is IncomingGameStatePayload {
-    if (!isObject(value)) return false;
-    return (
-        (typeof value.gameId === 'string' || value.gameId === undefined) &&
-        typeof value.phase === 'string' &&
-        Array.isArray(value.players) &&
-        Array.isArray(value.communityCards) &&
-        typeof value.pot === 'number' &&
-        (value.claimWinAvailable == null || typeof value.claimWinAvailable === 'boolean') &&
-        (value.claimWinPlayerName == null || typeof value.claimWinPlayerName === 'string') &&
-        (value.uncalledAmount == null || typeof value.uncalledAmount === 'number') &&
-        (value.isReadyCountdownActive == null || typeof value.isReadyCountdownActive === 'boolean') &&
-        (value.readyCountdownDeadlineEpochMs == null || typeof value.readyCountdownDeadlineEpochMs === 'number') &&
-        (value.pots == null || (Array.isArray(value.pots) && value.pots.every((p) => typeof p === 'number')))
-    );
+    return fields(value, {
+        gameId: optional(text), maxPlayers: capacity, pot: nonnegative,
+        pots: nullable(list(nonnegative, 10)), uncalledAmount: nullable(nonnegative),
+        phase: member(['PRE_FLOP', 'FLOP', 'TURN', 'RIVER', 'SHOWDOWN']),
+        currentBet: nonnegative, communityCards: list(card, 5), players: list(player, 10),
+        currentPlayerName: text, currentPlayerId: text,
+        legalActions: optional(list(action, 6)), winners: optional(list(text, 10)),
+        winningsPerPlayer: optional(nonnegative), isAutoAdvancing: optional(boolean),
+        autoAdvanceMessage: optional(text), isReadyCountdownActive: nullable(boolean),
+        readyCountdownDeadlineEpochMs: nullable(nonnegative),
+        claimWinAvailable: nullable(boolean), claimWinPlayerName: nullable(text),
+    });
+}
+
+export function isActionErrorPayload(value: unknown): value is ActionError {
+    if (!isObject(value) || value.type !== 'ACTION_ERROR') return false;
+    return Object.keys(value).length === 4 &&
+        typeof value.code === 'string' && value.code.trim().length > 0 &&
+        /^[A-Z][A-Z0-9_]*$/.test(value.code) &&
+        action(value.action) &&
+        typeof value.message === 'string' && value.message.trim().length > 0;
 }
 
 export function isGameEndPayload(value: unknown): value is {
-    type: string;
-    winner?: string;
-    winnerChips?: number;
-    isForfeit?: boolean;
-    message?: string;
-    gameId?: string;
+    type: 'GAME_END';
+    winner?: string | null;
+    winnerChips?: number | null;
+    isForfeit?: boolean | null;
+    message?: string | null;
+    gameId?: string | null;
     finalState?: unknown;
 } {
     if (!isObject(value)) return false;
@@ -89,7 +143,7 @@ export function isGameEndPayload(value: unknown): value is {
         typeof value.type === 'string' &&
         value.type === 'GAME_END' &&
         (value.winner == null || typeof value.winner === 'string') &&
-        (value.winnerChips == null || typeof value.winnerChips === 'number') &&
+        (value.winnerChips == null || nonnegative(value.winnerChips)) &&
         (value.isForfeit == null || typeof value.isForfeit === 'boolean') &&
         (value.message == null || typeof value.message === 'string') &&
         (value.gameId == null || typeof value.gameId === 'string')
@@ -97,18 +151,18 @@ export function isGameEndPayload(value: unknown): value is {
 }
 
 export function isPrivateStatePayload(value: unknown): value is IncomingPrivateStatePayload {
-    if (!isObject(value)) return false;
+    if (!isObject(value) || (!Object.hasOwn(value, 'playerId') && !Object.hasOwn(value, 'holeCards'))) return false;
+    if (value.type !== undefined) return false;
     return (
         (typeof value.playerId === 'string' || value.playerId === undefined) &&
-        (value.holeCards == null ||
-            (Array.isArray(value.holeCards) && value.holeCards.every((c) => typeof c === 'string')))
+        (value.holeCards == null || list(card, 2)(value.holeCards))
     );
 }
 
 export function isRoomUpdatePayload(value: unknown): value is RoomUpdate {
     if (!isObject(value) || typeof value.message !== 'string') return false;
     if (value.message === 'ROOM_CLOSED') {
-        return value.data == null || isObject(value.data);
+        return value.data == null || fields(value.data, { roomId: optional(text) });
     }
     if (
         value.message === 'ROOM_CREATED' ||
@@ -117,12 +171,13 @@ export function isRoomUpdatePayload(value: unknown): value is RoomUpdate {
     ) {
         if (!isObject(value.data)) return false;
         const data = value.data;
-        return (
-            (data.roomId == null || typeof data.roomId === 'string') &&
-            (data.roomName == null || typeof data.roomName === 'string') &&
-            Array.isArray(data.players) &&
-            data.players.every((p) => isObject(p) && typeof p.name === 'string')
-        );
+        return fields(data, {
+            roomId: optional(text), roomName: optional(text),
+            players: list(roomPlayer, 10), maxPlayers: optional(capacity),
+            buyIn: optional(nonnegative), smallBlind: optional(nonnegative),
+            bigBlind: optional(nonnegative), canStartGame: optional(boolean),
+            gameStarted: optional(boolean),
+        });
     }
     return false;
 }

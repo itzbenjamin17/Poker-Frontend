@@ -51,20 +51,12 @@ export interface GameState {
 }
 
 /** Shape broadcast by the backend: ApiResponse<RoomDataResponse> */
-export interface RoomUpdate {
-    message: 'ROOM_CREATED' | 'PLAYER_JOINED' | 'PLAYER_LEFT' | 'ROOM_CLOSED';
-    data: {
-        roomId: string;
-        roomName?: string;
-        players?: { name: string; isHost: boolean; joinedAt?: string }[];
-        maxPlayers?: number;
-        buyIn?: number;
-        smallBlind?: number;
-        bigBlind?: number;
-        canStartGame?: boolean;
-        gameStarted?: boolean;
+export type RoomUpdate =
+    | { message: 'ROOM_CLOSED'; data?: { roomId?: string } | null }
+    | {
+        message: 'ROOM_CREATED' | 'PLAYER_JOINED' | 'PLAYER_LEFT';
+        data: Partial<RoomState> & { players: NonNullable<RoomState['players']> };
     };
-}
 
 export interface RoomDataResponse {
     roomId: string;
@@ -125,7 +117,16 @@ export interface AuthResponse {
 
 // ─── GameView internal types (exported for hook/component use) ─────────────────
 
-export type IncomingGameStatePayload = Omit<GameState, 'gameId' | 'claimWinAvailable' | 'claimWinPlayerName' | 'uncalledAmount' | 'pots'> & {
+export type IncomingGameStatePayload = Omit<
+    GameState,
+    | 'gameId'
+    | 'claimWinAvailable'
+    | 'claimWinPlayerName'
+    | 'uncalledAmount'
+    | 'pots'
+    | 'isReadyCountdownActive'
+    | 'readyCountdownDeadlineEpochMs'
+> & {
     gameId?: string;
     claimWinAvailable?: boolean | null;
     claimWinPlayerName?: string | null;

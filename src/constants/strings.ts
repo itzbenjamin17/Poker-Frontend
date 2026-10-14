@@ -13,7 +13,7 @@ export const AUTH_KEY = 'poker-auth';
 export const SESSION_RESTORING = 'Restoring your seat...';
 export const SESSION_EXPIRED = 'Session expired. Returning to lobby...';
 export const SESSION_SEAT_GONE = 'Your seat is no longer active. Returning to lobby...';
-export const BTN_RETURN_TO_LOBBY = 'RETURN TO LOBBY';
+export const BTN_RETURN_TO_LOBBY = 'Return to Lobby';
 
 // ─── Error Boundary ───────────────────────────────────────────────────────────
 export const ERROR_BOUNDARY_HEADING = 'Something went wrong';
@@ -32,6 +32,21 @@ export const STATUS_RETURNING = 'Returning...';
 export const STATUS_WAITING_CONNECTION = 'Waiting for table connection...';
 export const STATUS_SYSTEM_MALFUNCTION = 'System malfunction. Please refresh.';
 export const BTN_RETRY_CONNECTION = 'Retry connection';
+
+export const VALIDATION_MAX_PLAYERS =
+    'Max players must be a whole number between 2 and 10.';
+export const VALIDATION_ROOM_NAME_CONTROL =
+    'Room name cannot contain control characters.';
+export const VALIDATION_PLAYER_ALIAS_CONTROL =
+    'Player alias cannot contain control characters.';
+export const ERROR_MALFORMED_RESPONSE =
+    'The server returned an invalid response. Please try again.';
+export const ERROR_COPY_ROOM_CODE = 'Could not copy room code.';
+export const ROTATE_REQUIRED = 'Landscape mode required.';
+export const ROTATE_INSTRUCTIONS =
+    'Please widen your browser window or rotate your device to play.';
+export const ARIA_ROTATE_PROMPT = 'Rotate device prompt';
+export const BTN_LEAVE = 'LEAVE';
 
 // ─── Lobby ────────────────────────────────────────────────────────────────────
 export const LOBBY_HERO_SUBTITLE = "Texas Hold'em";
