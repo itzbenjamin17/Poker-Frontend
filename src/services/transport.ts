@@ -1,4 +1,5 @@
 import { Client } from '@stomp/stompjs';
+import type { IMessage } from '@stomp/stompjs';
 import { createStompClient } from './api';
 import { logger } from '../security/logger';
 
@@ -28,6 +29,8 @@ export class StompTransportAdapter implements GameTransport {
     private errorListeners: Set<(error: string) => void> = new Set();
     private currentStatus: TransportStatus = 'disconnected';
     private isActive = true;
+    private lifecycleGeneration = 0;
+    private seenFrames = new Map<number, Set<string>>();
     private nextSubId = 1;
     private subscriptions: Map<
         number,
@@ -55,25 +58,9 @@ export class StompTransportAdapter implements GameTransport {
     private setupClientCallbacks(): void {
         const existingBeforeConnect = this.client.beforeConnect;
         this.client.beforeConnect = async () => {
-            let deactivated = false;
-            const origDeactivate =
-                typeof this.client.deactivate === 'function'
-                    ? this.client.deactivate.bind(this.client)
-                    : undefined;
-            if (origDeactivate) {
-                this.client.deactivate = ((...args: Parameters<Client['deactivate']>) => {
-                    deactivated = true;
-                    return origDeactivate(...args);
-                }) as Client['deactivate'];
-            }
-            try {
-                await existingBeforeConnect?.(this.client);
-            } finally {
-                if (origDeactivate) {
-                    this.client.deactivate = origDeactivate;
-                }
-            }
-            if (deactivated) {
+            const generation = this.lifecycleGeneration;
+            await existingBeforeConnect?.(this.client);
+            if (generation === this.lifecycleGeneration && !this.client.active) {
                 this.isActive = false;
                 this.setStatus('disconnected');
             }
@@ -90,6 +77,7 @@ export class StompTransportAdapter implements GameTransport {
         };
 
         this.client.onWebSocketClose = () => {
+            this.seenFrames.clear();
             for (const entry of this.subscriptions.values()) {
                 entry.stompSub = undefined;
             }
@@ -105,7 +93,13 @@ export class StompTransportAdapter implements GameTransport {
                 this.isActive = false;
                 this.setStatus('disconnected');
                 if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
-                    window.dispatchEvent(new Event('auth-expired'));
+                    const authorization = this.client.connectHeaders?.Authorization;
+                    const token = authorization?.startsWith('Bearer ')
+                        ? authorization.slice(7)
+                        : undefined;
+                    if (token) {
+                        window.dispatchEvent(new CustomEvent('auth-expired', { detail: { token } }));
+                    }
                 }
                 void this.client.deactivate();
                 this.notifyError(errorMsg);
@@ -117,12 +111,30 @@ export class StompTransportAdapter implements GameTransport {
     }
 
     private resubscribeAll(): void {
-        for (const entry of this.subscriptions.values()) {
+        for (const [id, entry] of this.subscriptions) {
             entry.stompSub?.unsubscribe();
             entry.stompSub = this.client.subscribe(entry.destination, (msg) => {
-                entry.handler(msg.body);
+                this.deliver(id, msg, entry.handler);
             });
         }
+    }
+
+    private deliver(id: number, message: IMessage, handler: (body: string) => void): void {
+        const messageId = message.headers?.['message-id'];
+        if (messageId) {
+            let seen = this.seenFrames.get(id);
+            if (!seen) {
+                seen = new Set();
+                this.seenFrames.set(id, seen);
+            }
+            if (seen.has(messageId)) return;
+            seen.add(messageId);
+            if (seen.size > 1024) {
+                const oldest = seen.values().next().value;
+                if (oldest !== undefined) seen.delete(oldest);
+            }
+        }
+        handler(message.body);
     }
 
     private setStatus(status: TransportStatus): void {
@@ -139,11 +151,13 @@ export class StompTransportAdapter implements GameTransport {
     }
 
     public connect(): void {
+        this.lifecycleGeneration += 1;
         this.isActive = true;
         this.client.activate();
     }
 
     public forceReconnect(): void {
+        this.lifecycleGeneration += 1;
         this.isActive = true;
         if (typeof (this.client as unknown as { forceDisconnect?: () => void }).forceDisconnect === 'function') {
             (this.client as unknown as { forceDisconnect: () => void }).forceDisconnect();
@@ -163,6 +177,7 @@ export class StompTransportAdapter implements GameTransport {
     }
 
     public disconnect(): void {
+        this.lifecycleGeneration += 1;
         this.isActive = false;
         this.setStatus('disconnected');
         for (const entry of this.subscriptions.values()) {
@@ -171,7 +186,7 @@ export class StompTransportAdapter implements GameTransport {
             }
             entry.stompSub = undefined;
         }
-        void this.client.deactivate();
+        void this.client.deactivate({ force: true });
     }
 
     public subscribe(destination: string, handler: (message: string) => void): TransportSubscription {
@@ -188,7 +203,7 @@ export class StompTransportAdapter implements GameTransport {
         if (this.client.connected) {
             try {
                 entry.stompSub = this.client.subscribe(destination, (msg) => {
-                    handler(msg.body);
+                    this.deliver(id, msg, handler);
                 });
             } catch {
                 // If client is not yet connected, resubscribeAll will subscribe on onConnect
@@ -205,6 +220,7 @@ export class StompTransportAdapter implements GameTransport {
                         subEntry.stompSub.unsubscribe();
                     }
                     this.subscriptions.delete(id);
+                    this.seenFrames.delete(id);
                 }
             },
         };
@@ -273,6 +289,7 @@ export class InMemoryTransportAdapter implements GameTransport {
     }
 
     public publish(destination: string, body: string): void {
+        if (!this.isConnected()) throw new Error('Transport is not connected');
         this.publishedMessages.push({ destination, body });
     }
 
@@ -304,6 +321,7 @@ export class InMemoryTransportAdapter implements GameTransport {
     // ── Inspection & Simulation Helpers ───────────────────────────────────────────
 
     public simulateMessage(destination: string, body: unknown): void {
+        if (!this.isConnected()) return;
         const payload = typeof body === 'string' ? body : JSON.stringify(body);
         const handlers = this.subscriptions.get(destination);
         if (handlers) {

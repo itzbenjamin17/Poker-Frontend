@@ -1,5 +1,6 @@
 import { http, HttpResponse } from 'msw'
-import type { ApiResponse, TokenResponse } from '../../types'
+import type { ApiResponse, RoomDataResponse, TokenResponse } from '../../types';
+import { createMockJwt } from '../fixtures';
 
 export const handlers = [
   // Mock join room
@@ -13,7 +14,7 @@ export const handlers = [
     const response: ApiResponse<TokenResponse> = {
       message: 'Successfully joined room',
       data: {
-        token: 'mock-jwt-token',
+        token: createMockJwt(),
         playerName,
         roomId: roomName,
       },
@@ -28,7 +29,7 @@ export const handlers = [
     const response: ApiResponse<TokenResponse> = {
       message: 'Room created successfully',
       data: {
-        token: 'mock-jwt-token',
+        token: createMockJwt(),
         playerName,
         roomId: 'ABCD',
       },
@@ -38,15 +39,24 @@ export const handlers = [
 
   // Mock room info
   http.get('/api/room/:roomId', ({ params }) => {
-    const { roomId } = params
+    const { roomId } = params;
     return HttpResponse.json({
-      roomId,
+      roomId: String(roomId),
+      roomName: 'Test Room',
+      maxPlayers: 6,
+      buyIn: 1000,
+      smallBlind: 10,
+      bigBlind: 20,
+      createdAt: '2026-01-01T00:00:00Z',
+      hostName: 'Player 1',
       players: [
-        { name: 'Player 1', isHost: true },
-        { name: 'Player 2', isHost: false }
+        { name: 'Player 1', isHost: true, joinedAt: '2026-01-01T00:00:00Z' },
+        { name: 'Player 2', isHost: false, joinedAt: '2026-01-01T00:00:00Z' },
       ],
-      gameStarted: false
-    })
+      currentPlayers: 2,
+      canStartGame: true,
+      gameStarted: false,
+    } satisfies RoomDataResponse);
   }),
 
   // Default game state handler (404 = not started)

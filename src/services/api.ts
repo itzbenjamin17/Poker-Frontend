@@ -1,7 +1,7 @@
-import { Client } from '@stomp/stompjs';
+import { Client, ReconnectionTimeMode } from '@stomp/stompjs';
 import type { ApiResponse, AuthResponse, RoomDataResponse, TokenResponse } from '../types';
 import { logger } from '../security/logger';
-import { ERROR_MALFORMED_AUTH, ERROR_REQUEST_TIMEOUT } from '../constants/strings';
+import { ERROR_MALFORMED_AUTH, ERROR_MALFORMED_RESPONSE, ERROR_REQUEST_TIMEOUT } from '../constants/strings';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api';
 const REQUEST_TIMEOUT_MS = 15000;
@@ -93,8 +93,8 @@ export function isJwtValid(token: string): boolean {
 /**
  * Shared fetch wrapper: injects headers, ngrok bypass (dev), handles network errors.
  */
-async function fetchApi<T>(url: string, options: RequestInit & { token?: string }): Promise<T> {
-    const { token, headers, signal: externalSignal, ...rest } = options;
+async function fetchApi<T>(url: string, options: RequestInit & { token?: string; expectJson?: boolean }): Promise<T> {
+    const { token, headers, signal: externalSignal, expectJson = false, ...rest } = options;
     const controller = new AbortController();
     let timedOut = false;
     const timeoutId = setTimeout(() => {
@@ -118,7 +118,7 @@ async function fetchApi<T>(url: string, options: RequestInit & { token?: string 
         };
         if (token) {
             if (!isJwtValid(token)) {
-                window.dispatchEvent(new Event('auth-expired'));
+                window.dispatchEvent(new CustomEvent('auth-expired', { detail: { token } }));
                 throw buildApiError(401, 'Session expired');
             }
             mergedHeaders['Authorization'] = `Bearer ${token}`;
@@ -132,18 +132,25 @@ async function fetchApi<T>(url: string, options: RequestInit & { token?: string 
 
         if (!response.ok) {
             const errorMessage = await getErrorMessage(response, 'Request failed');
-            if (response.status === 401) {
-                window.dispatchEvent(new Event('auth-expired'));
+            if (response.status === 401 && token) {
+                window.dispatchEvent(new CustomEvent('auth-expired', { detail: { token } }));
             }
             throw buildApiError(response.status, errorMessage);
         }
 
-        // Return empty object/null for 204 or responses without JSON
-        if (response.status === 204) return null as T;
+        if (response.status === 204) {
+            if (expectJson) throw buildApiError(502, ERROR_MALFORMED_RESPONSE);
+            return null as T;
+        }
         const contentType = response.headers.get('content-type') ?? '';
         if (contentType.includes('application/json')) {
-            return await response.json();
+            const data: unknown = await response.json();
+            if (expectJson && (data === null || typeof data !== 'object' || Array.isArray(data))) {
+                throw buildApiError(502, ERROR_MALFORMED_RESPONSE);
+            }
+            return data as T;
         }
+        if (expectJson) throw buildApiError(502, ERROR_MALFORMED_RESPONSE);
         return null as T;
     } catch (e) {
         if (timedOut) {
@@ -168,32 +175,34 @@ export const pokerApi = {
         bigBlind: number;
         buyIn: number;
         password?: string;
-    }): Promise<AuthResponse> {
+    }, signal?: AbortSignal): Promise<AuthResponse> {
         const data = await fetchApi<ApiResponse<TokenResponse>>(`${API_BASE}/room/create`, {
             method: 'POST',
             body: JSON.stringify(payload),
+            signal,
         });
         return normalizeAuthResponse(data);
     },
 
-    async joinRoom(payload: { roomName: string; playerName: string; password?: string }): Promise<AuthResponse> {
+    async joinRoom(payload: { roomName: string; playerName: string; password?: string }, signal?: AbortSignal): Promise<AuthResponse> {
         const data = await fetchApi<ApiResponse<TokenResponse>>(`${API_BASE}/room/join`, {
             method: 'POST',
             body: JSON.stringify(payload),
+            signal,
         });
         return normalizeAuthResponse(data);
     },
 
     async getRoomInfo(roomId: string, token: string): Promise<RoomDataResponse> {
-        return fetchApi<RoomDataResponse>(`${API_BASE}/room/${encodeURIComponent(roomId)}`, { method: 'GET', token });
+        return fetchApi<RoomDataResponse>(`${API_BASE}/room/${encodeURIComponent(roomId)}`, { method: 'GET', token, expectJson: true });
     },
 
     async getGameState(gameId: string, token: string): Promise<unknown> {
-        return fetchApi<unknown>(`${API_BASE}/game/${encodeURIComponent(gameId)}/state`, { method: 'GET', token });
+        return fetchApi<unknown>(`${API_BASE}/game/${encodeURIComponent(gameId)}/state`, { method: 'GET', token, expectJson: true });
     },
 
     async getPrivateState(gameId: string, token: string): Promise<unknown> {
-        return fetchApi<unknown>(`${API_BASE}/game/${encodeURIComponent(gameId)}/private-state`, { method: 'GET', token });
+        return fetchApi<unknown>(`${API_BASE}/game/${encodeURIComponent(gameId)}/private-state`, { method: 'GET', token, expectJson: true });
     },
 
     async leaveRoom(roomId: string, token: string, keepalive = false): Promise<void> {
@@ -222,14 +231,18 @@ export function createStompClient(token: string) {
         },
         beforeConnect: () => {
             if (!isJwtValid(token)) {
-                window.dispatchEvent(new Event('auth-expired'));
+                window.dispatchEvent(new CustomEvent('auth-expired', { detail: { token } }));
                 void client.deactivate();
             }
         },
         debug: (str) => {
             logger.debug(str);
         },
-        reconnectDelay: 5000,
+        reconnectDelay: 1000 + Math.floor(Math.random() * 4000),
+        reconnectTimeMode: ReconnectionTimeMode.EXPONENTIAL,
+        maxReconnectDelay: 25000 + Math.floor(Math.random() * 10000),
+        connectionTimeout: REQUEST_TIMEOUT_MS,
+        discardWebsocketOnCommFailure: true,
     });
     return client;
 }
