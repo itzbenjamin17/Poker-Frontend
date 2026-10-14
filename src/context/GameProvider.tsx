@@ -41,22 +41,21 @@ export function GameProvider({
     clock,
     children,
 }: GameProviderProps) {
+    const { roomId, playerName, token, message } = auth;
+
     const session = useMemo(() => {
         if (sessionProp) return sessionProp;
-        const persistedGameEnd = loadPersistedGameEnd(auth.roomId);
+        const persistedGameEnd = loadPersistedGameEnd(roomId);
         return new GameSession({
-            auth,
-            transport: transportProp ?? new StompTransportAdapter(auth.token),
+            auth: { roomId, playerName, token, message },
+            transport: transportProp ?? new StompTransportAdapter(token),
             clock,
             initialGameEndResult: persistedGameEnd,
-            onLeave,
         });
-    }, [sessionProp, auth, transportProp, clock, onLeave]);
+    }, [sessionProp, roomId, playerName, token, message, transportProp, clock]);
 
     useEffect(() => {
-        if (onLeave) {
-            session.setOnLeave(onLeave);
-        }
+        session.setOnLeave(onLeave);
     }, [session, onLeave]);
 
     // React external store subscription
