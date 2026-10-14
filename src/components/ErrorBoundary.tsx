@@ -5,12 +5,14 @@ import {
     ERROR_BOUNDARY_MESSAGE,
     BTN_TRY_AGAIN,
     BTN_RELOAD,
+    BTN_RETURN_TO_LOBBY,
 } from '../constants/strings';
 
 interface Props {
     children: ReactNode;
     fallback?: ReactNode;
-    onReset?: () => void;
+    onReset?: (error: unknown) => void;
+    onLeave?: () => void;
 }
 
 interface State {
@@ -33,7 +35,7 @@ export class ErrorBoundary extends React.Component<Props, State> {
     }
 
     handleReset = () => {
-        this.props.onReset?.();
+        this.props.onReset?.(this.state.error);
         this.setState({ hasError: false, error: null });
     };
 
@@ -49,7 +51,7 @@ export class ErrorBoundary extends React.Component<Props, State> {
                         <p className="text-zinc-500 text-sm">
                             {ERROR_BOUNDARY_MESSAGE}
                         </p>
-                        <div className="flex gap-3 justify-center">
+                        <div className="flex flex-wrap gap-3 justify-center">
                             <button
                                 onClick={this.handleReset}
                                 className="px-6 py-2.5 rounded-xl bg-emerald-container text-surface font-headline font-bold text-sm uppercase tracking-tight transition-all hover:opacity-90 active:scale-95"
@@ -62,6 +64,18 @@ export class ErrorBoundary extends React.Component<Props, State> {
                             >
                                 {BTN_RELOAD}
                             </button>
+                            {this.props.onLeave && (
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        this.props.onLeave?.();
+                                        this.setState({ hasError: false, error: null });
+                                    }}
+                                    className="px-6 py-2.5 rounded-xl border border-emerald-primary/20 text-emerald-primary font-headline font-bold text-sm"
+                                >
+                                    {BTN_RETURN_TO_LOBBY}
+                                </button>
+                            )}
                         </div>
                     </div>
                 </div>
