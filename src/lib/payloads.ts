@@ -139,9 +139,13 @@ export type GameSnapshotSource =
     | 'REST recovery game snapshot'
     | 'WebSocket game state';
 
+export function reportRejectedGameSnapshot(source: GameSnapshotSource, failure: ValidationFailure): void {
+    logger.warn('Rejected public game snapshot:', { source, ...failure });
+}
+
 export function decodeGameStatePayload(value: unknown, source?: GameSnapshotSource): IncomingGameStatePayload | null {
     const reject = (failure: ValidationFailure) => {
-        if (source) logger.warn('Rejected public game snapshot:', { source, ...failure });
+        if (source) reportRejectedGameSnapshot(source, failure);
         return null;
     };
     if (!isObject(value) || !Array.isArray(value.players)) {

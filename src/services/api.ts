@@ -19,6 +19,19 @@ function getWebSocketUrl(): string {
 
 type ApiError = Error & { status: number };
 
+/** A successful HTTP response that cannot satisfy the expected JSON object contract.
+ * Carries structural information only; never retains the response body.
+ */
+export class MalformedResponseError extends Error {
+    readonly status = 502;
+    readonly receivedType: string;
+
+    constructor(receivedType: string) {
+        super(ERROR_MALFORMED_RESPONSE);
+        this.receivedType = receivedType;
+    }
+}
+
 function buildApiError(status: number, message: string): ApiError {
     const error = new Error(message) as ApiError;
     error.status = status;
@@ -139,18 +152,24 @@ async function fetchApi<T>(url: string, options: RequestInit & { token?: string;
         }
 
         if (response.status === 204) {
-            if (expectJson) throw buildApiError(502, ERROR_MALFORMED_RESPONSE);
+            if (expectJson) throw new MalformedResponseError('empty response');
             return null as T;
         }
         const contentType = response.headers.get('content-type') ?? '';
         if (contentType.includes('application/json')) {
-            const data: unknown = await response.json();
+            let data: unknown;
+            try {
+                data = await response.json();
+            } catch (error) {
+                if (expectJson && error instanceof SyntaxError) throw new MalformedResponseError('invalid JSON');
+                throw error;
+            }
             if (expectJson && (data === null || typeof data !== 'object' || Array.isArray(data))) {
-                throw buildApiError(502, ERROR_MALFORMED_RESPONSE);
+                throw new MalformedResponseError(data === null ? 'null' : Array.isArray(data) ? 'array' : typeof data);
             }
             return data as T;
         }
-        if (expectJson) throw buildApiError(502, ERROR_MALFORMED_RESPONSE);
+        if (expectJson) throw new MalformedResponseError('non-JSON response');
         return null as T;
     } catch (e) {
         if (timedOut) {

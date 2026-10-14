@@ -32,6 +32,8 @@ export const STATUS_RETURNING = 'Returning...';
 export const STATUS_WAITING_CONNECTION = 'Waiting for table connection...';
 export const STATUS_SYSTEM_MALFUNCTION = 'System malfunction. Please refresh.';
 export const BTN_RETRY_CONNECTION = 'Retry connection';
+export const BTN_RETRY = 'Retry';
+export const ERROR_INITIAL_TABLE_LOAD = 'Couldn’t load the table data. Please retry.';
 
 export const VALIDATION_MAX_PLAYERS =
     'Max players must be a whole number between 2 and 10.';

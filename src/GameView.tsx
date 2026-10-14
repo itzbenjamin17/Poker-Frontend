@@ -60,7 +60,7 @@ function GameViewInner() {
     }, [hasDisconnectedPlayer, hasReadyCountdown, gameEndResult]);
 
     // ── Session hydration ───────────────────────────────────────────────────────
-    useSessionHydration();
+    const { initialLoadFailed, retryInitialLoad } = useSessionHydration();
 
     // ── WebSocket & Dispatcher ──────────────────────────────────────────────────
     useGameWebSocket();
@@ -79,7 +79,7 @@ function GameViewInner() {
     }
 
     if (!isHydrated) {
-        return <LoadingView status={loadingStatus} onRetry={recoveryFailed ? retryConnection : undefined} onLeave={onLeave} />;
+        return <LoadingView status={loadingStatus} error={initialLoadFailed} onRetry={initialLoadFailed ? retryInitialLoad : recoveryFailed ? retryConnection : undefined} onLeave={onLeave} />;
     }
 
     if (!gameState || !roomState) {

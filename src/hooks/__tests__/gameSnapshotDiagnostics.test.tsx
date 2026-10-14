@@ -65,4 +65,19 @@ describe('public game snapshot diagnostics at REST boundaries', () => {
         }));
         expect(session.getSnapshot().gameState).toBe(accepted);
     });
+
+    it('diagnoses a malformed HTTP recovery response without losing the accepted table', async () => {
+        const { session, warn, room, wrapper } = setup();
+        server.use(http.get('/api/game/:gameId/state', () => HttpResponse.json(null)));
+        session.setRoomState(mapRoomDataToRoomState(room));
+        session.applyGameState(createValidGameState({ pot: 75 }));
+        session.setHydrated(true);
+        const accepted = session.getSnapshot().gameState;
+        renderHook(() => useGameWebSocket(), { wrapper });
+
+        await waitFor(() => expect(warn).toHaveBeenCalledWith('Rejected public game snapshot:', {
+            source: 'REST recovery game snapshot', path: '$', expected: 'object', receivedType: 'null',
+        }));
+        expect(session.getSnapshot().gameState).toBe(accepted);
+    });
 });

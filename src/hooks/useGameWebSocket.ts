@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { pokerApi } from '../services/api';
+import { MalformedResponseError, pokerApi } from '../services/api';
 import { logger } from '../security/logger';
 import { useGameContext } from '../context/GameContext';
 import {
@@ -7,6 +7,7 @@ import {
     isPrivateStatePayload,
     isRoomDataPayload,
     mapRoomDataToRoomState,
+    reportRejectedGameSnapshot,
 } from '../lib/payloads';
 import type { Client } from '@stomp/stompjs';
 import {
@@ -101,7 +102,16 @@ export function useGameWebSocket(options: UseGameWebSocketOptions = {}) {
                     ) {
                         session.applyGameState(decodedSnapshot, syncTime);
                     }
-                }
+                },
+                (error: unknown) => {
+                    if (isCancelled()) return;
+                    if (error instanceof MalformedResponseError) {
+                        reportRejectedGameSnapshot('REST recovery game snapshot', {
+                            path: '$', expected: 'object', receivedType: error.receivedType,
+                        });
+                    }
+                    throw error;
+                },
             );
 
             const privatePromise = Promise.resolve(pokerApi.getPrivateState(auth.roomId, auth.token)).then(
