@@ -5,7 +5,19 @@ import { LoadingView } from './components/LoadingView';
 import { SESSION_RESTORING } from './constants/strings';
 import { useAuthSession } from './hooks/useAuthSession';
 
-const GameView = lazy(() => import('./GameView'));
+class GameViewLoadError extends Error {}
+
+const GameView = lazy(() =>
+    import('./GameView').catch((cause: unknown) => {
+        throw new GameViewLoadError('Unable to load GameView', { cause });
+    })
+);
+
+function recoverApp(error: unknown) {
+    if (error instanceof GameViewLoadError) {
+        window.location.reload();
+    }
+}
 
 export default function App() {
     const { auth, setAuth, clearAuth } = useAuthSession();
@@ -26,7 +38,7 @@ export default function App() {
                 </nav>
             )}
 
-            <ErrorBoundary onReset={clearAuth}>
+            <ErrorBoundary onLeave={clearAuth} onReset={recoverApp}>
                 {!auth ? (
                     <Lobby onAuth={setAuth} />
                 ) : (

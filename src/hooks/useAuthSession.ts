@@ -11,7 +11,8 @@ function isValidAuth(obj: unknown): obj is AuthResponse {
     return (
         typeof a.token === 'string' && a.token.length > 0 &&
         typeof a.roomId === 'string' && a.roomId.length > 0 &&
-        typeof a.playerName === 'string' && a.playerName.length > 0
+        typeof a.playerName === 'string' && a.playerName.length > 0 &&
+        typeof a.message === 'string'
     );
 }
 
@@ -79,12 +80,36 @@ export function useAuthSession() {
     // Listen for cross-tab changes and global expiry events
     useEffect(() => {
         const handleStorage = (e: StorageEvent) => {
-            if (e.key === AUTH_KEY) {
+            if (
+                (!e.storageArea || e.storageArea === localStorage) &&
+                (e.key === AUTH_KEY || e.key === null)
+            ) {
                 setAuthState(loadAuthStateFromStorage());
             }
         };
-        const handleAuthExpired = () => {
-            clearAuth();
+        const handleAuthExpired = (event: Event) => {
+            if (!(event instanceof CustomEvent)) return;
+            const detail: unknown = event.detail;
+            if (
+                !detail || typeof detail !== 'object' ||
+                !('token' in detail) || typeof detail.token !== 'string'
+            ) return;
+
+            const failedToken = detail.token;
+            setAuthState(current =>
+                current?.token === failedToken ? null : current
+            );
+
+            const saved = safeGetStorageItem(AUTH_KEY);
+            if (!saved) return;
+            try {
+                const persisted: unknown = JSON.parse(saved);
+                if (isValidAuth(persisted) && persisted.token === failedToken) {
+                    safeRemoveStorageItem(AUTH_KEY);
+                }
+            } catch {
+                // Malformed storage cannot identify the failed session.
+            }
         };
 
         window.addEventListener('storage', handleStorage);
@@ -93,7 +118,7 @@ export function useAuthSession() {
             window.removeEventListener('storage', handleStorage);
             window.removeEventListener('auth-expired', handleAuthExpired);
         };
-    }, [clearAuth]);
+    }, []);
 
     return {
         auth,
