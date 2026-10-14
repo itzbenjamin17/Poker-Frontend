@@ -12,7 +12,7 @@ import type {
 } from '../types';
 import {
     getErrorStatusCode,
-    isGameStatePayload,
+    decodeGameStatePayload,
     isGameEndPayload,
     isActionErrorPayload,
     isPrivateStatePayload,
@@ -20,7 +20,6 @@ import {
     normalizeErrorMessage,
 } from '../lib/payloads';
 import {
-    HOST_LEFT,
     GAME_FINISHED_FALLBACK,
     SESSION_EXPIRED,
     SESSION_SEAT_GONE,
@@ -64,11 +63,12 @@ export class GameSession {
     private unsubError?: () => void;
     private lastStateSyncTime = 0;
     private stateSyncRevision = 0;
+    private privateSyncRevision = 0;
 
     private actionTimeoutTimers = new Map<string, TimerHandle>();
     private notificationTimer: TimerHandle | null = null;
     private showdownTimer: TimerHandle | null = null;
-    private showdownResultTimer: TimerHandle | null = null;
+    private showdownHideAt: number | null = null;
     private redirectTimer: TimerHandle | null = null;
     private recoveryTimer: TimerHandle | null = null;
     private inFlightRecovery: Promise<void> | null = null;
@@ -113,9 +113,9 @@ export class GameSession {
         });
     }
 
-    public setOnLeave = (onLeave?: () => void): void => {
+    public setOnLeave(onLeave: (() => void) | undefined): void {
         this.onLeave = onLeave;
-    };
+    }
 
     public getSnapshot = (): SessionSnapshot => {
         return this.snapshot;
@@ -132,6 +132,10 @@ export class GameSession {
     public getStateSyncRevision = (): number => {
         return this.stateSyncRevision;
     };
+
+    public getPrivateSyncRevision(): number {
+        return this.privateSyncRevision;
+    }
 
     public now = (): number => {
         return this.clock.now();
@@ -210,6 +214,7 @@ export class GameSession {
 
     public connect(transportOverride?: GameTransport): void {
         if (transportOverride && transportOverride !== this.transport) {
+            this.disconnect();
             this.transport = transportOverride;
         }
 
@@ -293,7 +298,7 @@ export class GameSession {
 
             if (parsed?.type === 'ACTION_ERROR') {
                 if (!isActionErrorPayload(parsed)) {
-                    logger.warn('Invalid ACTION_ERROR contract:', body);
+                    logger.warn('Invalid ACTION_ERROR contract:', { bytes: body.length });
                     return;
                 }
                 this.cancelActionLocks();
@@ -308,10 +313,11 @@ export class GameSession {
             }
 
             if (isPrivateStatePayload(parsed)) {
+                this.privateSyncRevision += 1;
                 this.applyPrivateState(parsed);
             }
-        } catch (err) {
-            logger.warn('Ignoring malformed private payload:', body, err);
+        } catch {
+            logger.warn('Ignoring malformed private payload:', { bytes: body.length });
         }
     }
 
@@ -363,7 +369,11 @@ export class GameSession {
                 this.updateSnapshot(() => ({
                     roomState: null,
                 }));
-                this.scheduleRedirect(HOST_LEFT);
+                this.clearRedirectTimer();
+                this.redirectTimer = this.clock.setTimeout(() => {
+                    this.redirectTimer = null;
+                    if (!this.snapshot.isGameOver) this.onLeave?.();
+                }, ROOM_CLOSED_REDIRECT_MS);
                 return;
             }
 
@@ -423,22 +433,23 @@ export class GameSession {
             return;
         }
 
-        if (!isGameStatePayload(parsed)) {
+        const gamePayload = decodeGameStatePayload(parsed);
+        if (!gamePayload) {
             logger.warn('Ignoring non-game payload on game topic:', { keys: Object.keys(p) });
             return;
         }
 
         if (this.snapshot.isGameOver) return;
 
-        this.stateSyncRevision += 1;
-        this.lastStateSyncTime = this.clock.now();
-        this.applyGameState(parsed);
+        if (this.applyGameState(gamePayload, this.clock.now())) {
+            this.stateSyncRevision += 1;
+        }
     }
 
     private handleGameEnd(payload: {
         winner?: string | null;
         winnerChips?: number | null;
-        isForfeit?: boolean;
+        isForfeit?: boolean | null;
         message?: string | null;
         finalState?: unknown;
     }): void {
@@ -455,8 +466,8 @@ export class GameSession {
         const isForfeit = payload.isForfeit === true;
 
         let finalGameState: GameState | undefined = undefined;
-        if (payload.finalState && isGameStatePayload(payload.finalState)) {
-            const fs = payload.finalState;
+        const fs = decodeGameStatePayload(payload.finalState);
+        if (fs) {
             let pot = fs.pot;
             let pots = fs.pots ?? undefined;
             if (fs.phase === 'SHOWDOWN' && fs.pot === 0 && this.snapshot.gameState && this.snapshot.gameState.pot > 0) {
@@ -503,15 +514,8 @@ export class GameSession {
 
     // ── Public State Mutation Methods ─────────────────────────────────────────────
 
-    public applyGameState(payload: IncomingGameStatePayload, syncTime?: number): void {
-        if (this.snapshot.isGameOver) return;
-
-        if (typeof syncTime === 'number' && syncTime > this.lastStateSyncTime) {
-            this.lastStateSyncTime = syncTime;
-        }
-
-        // Any incoming game state clears in-flight action locks
-        this.cancelActionLocks();
+    public applyGameState(payload: IncomingGameStatePayload, syncTime?: number): boolean {
+        if (this.snapshot.isGameOver) return false;
 
         const incomingData: GameState = {
             ...payload,
@@ -576,9 +580,16 @@ export class GameSession {
                     ? incomingData.readyCountdownDeadlineEpochMs
                     : 0;
             if (incomingData.isReadyCountdownActive && inDeadline > 0 && inDeadline <= this.clock.now()) {
-                return;
+                return false;
             }
         }
+
+        if (typeof syncTime === 'number' && syncTime > this.lastStateSyncTime) {
+            this.lastStateSyncTime = syncTime;
+        }
+
+        // Any accepted incoming game state clears in-flight action locks
+        this.cancelActionLocks();
 
         // Preserve non-zero pot during showdown if server reports 0
         if (data.phase === 'SHOWDOWN' && data.pot === 0 && previousState && previousState.pot > 0) {
@@ -596,43 +607,58 @@ export class GameSession {
             if (!hadWinnersBefore) nextShowdownResult = null;
             nextShowdown = data;
             nextShowdownResult = data;
-            this.scheduleShowdownHide(data);
         } else if (data.phase === 'SHOWDOWN') {
             const currentShowdownResult =
                 this.snapshot.showdownResult ?? (previousState?.phase === 'SHOWDOWN' ? previousState : null);
-            if (currentShowdownResult && currentShowdownResult.winners && currentShowdownResult.winners.length > 0) {
-                const mergedShowdownResult: GameState = {
-                    ...currentShowdownResult,
-                    claimWinAvailable: data.claimWinAvailable,
-                    claimWinPlayerName: data.claimWinPlayerName,
-                    isReadyCountdownActive: data.isReadyCountdownActive,
-                    readyCountdownDeadlineEpochMs: data.readyCountdownDeadlineEpochMs,
-                    players: currentShowdownResult.players.map((p) => {
-                        const updatedPlayer = data.players.find((up) => up.id === p.id);
-                        if (!updatedPlayer) return p;
-                        return {
-                            ...p,
-                            chips: updatedPlayer.chips,
-                            status: updatedPlayer.status,
-                            isReadyForNextHand: updatedPlayer.isReadyForNextHand,
-                            disconnectDeadlineEpochMs: updatedPlayer.disconnectDeadlineEpochMs,
-                        };
-                    }),
+            if (currentShowdownResult) {
+                const mergedPlayers = data.players.map((p) => {
+                    const prevP = currentShowdownResult.players.find((prev) => prev.name === p.name);
+                    return {
+                        ...p,
+                        holeCards: p.holeCards && p.holeCards.length > 0 ? p.holeCards : prevP?.holeCards,
+                        handRank: p.handRank ?? prevP?.handRank,
+                        bestHand: p.bestHand ?? prevP?.bestHand,
+                        isWinner: p.isWinner ?? prevP?.isWinner,
+                        chipsWon: p.chipsWon ?? prevP?.chipsWon,
+                    };
+                });
+                const mergedState: GameState = {
+                    ...data,
+                    players: mergedPlayers,
+                    winners: data.winners ?? currentShowdownResult.winners,
+                    winningsPerPlayer: data.winningsPerPlayer ?? currentShowdownResult.winningsPerPlayer,
+                    pot: data.pot > 0 ? data.pot : currentShowdownResult.pot,
+                    pots: data.pots ?? currentShowdownResult.pots,
                 };
-                data = mergedShowdownResult;
-                nextShowdown = mergedShowdownResult;
-                nextShowdownResult = mergedShowdownResult;
+                data = mergedState;
+                nextShowdown = mergedState;
+                nextShowdownResult = mergedState;
             } else {
                 nextShowdown = data;
                 nextShowdownResult = data;
-            }
-            if (data.isReadyCountdownActive) {
-                this.scheduleShowdownHide(data);
             }
         } else {
             nextShowdown = null;
             nextShowdownResult = null;
             this.clearShowdownTimers();
+        }
+
+        if (data.phase === 'SHOWDOWN') {
+            const deadline =
+                data.isReadyCountdownActive &&
+                typeof data.readyCountdownDeadlineEpochMs === 'number' &&
+                data.readyCountdownDeadlineEpochMs > 0
+                    ? data.readyCountdownDeadlineEpochMs
+                    : undefined;
+            const hideAt = deadline ?? this.showdownHideAt ?? this.clock.now() + SHOWDOWN_FALLBACK_HIDE_MS;
+            if (hideAt <= this.clock.now()) {
+                this.clearShowdownTimers();
+                this.showdownHideAt = hideAt;
+                nextShowdown = null;
+                nextShowdownResult = null;
+            } else {
+                this.scheduleShowdownHide(data);
+            }
         }
 
         let myPlayerId = this.snapshot.myPlayerId;
@@ -650,6 +676,7 @@ export class GameSession {
             myPlayerId,
             claimPending: false,
         }));
+        return true;
     }
 
     public applyPrivateState(payload: IncomingPrivateStatePayload | { holeCards: string[] } | null): void {
@@ -873,6 +900,10 @@ export class GameSession {
     }
 
     public setGameEndResult(result: GameEndResult | null): void {
+        if (result !== null) {
+            this.cancelActionLocks();
+            this.clearRedirectTimer();
+        }
         let nextGameState = this.snapshot.gameState;
         if (result?.finalState) {
             const fs = result.finalState;
@@ -1056,10 +1087,10 @@ export class GameSession {
 
         if (msg !== null && ms > 0) {
             this.notificationTimer = this.clock.setTimeout(() => {
+                this.notificationTimer = null;
                 this.updateSnapshot(() => ({
                     notification: null,
                 }));
-                this.notificationTimer = null;
             }, ms);
         }
     }
@@ -1074,47 +1105,35 @@ export class GameSession {
     // ── Showdown Timers ───────────────────────────────────────────────────────────
 
     public clearShowdownTimers = (): void => {
+        this.showdownHideAt = null;
         if (this.showdownTimer !== null) {
             this.clock.clearTimeout(this.showdownTimer);
             this.showdownTimer = null;
         }
-        if (this.showdownResultTimer !== null) {
-            this.clock.clearTimeout(this.showdownResultTimer);
-            this.showdownResultTimer = null;
-        }
     };
 
     public scheduleShowdownHide = (state: GameState): void => {
+        const previousHideAt = this.showdownHideAt;
         this.clearShowdownTimers();
 
+        if (state.phase !== 'SHOWDOWN') return;
+
         const deadlineMs =
-            state.phase === 'SHOWDOWN' &&
-            Boolean(state.isReadyCountdownActive) &&
-            typeof state.readyCountdownDeadlineEpochMs === 'number'
+            state.isReadyCountdownActive &&
+            typeof state.readyCountdownDeadlineEpochMs === 'number' &&
+            state.readyCountdownDeadlineEpochMs > 0
                 ? state.readyCountdownDeadlineEpochMs
                 : undefined;
 
-        const delay =
-            deadlineMs !== undefined
-                ? Math.max(0, deadlineMs - this.clock.now()) || 250
-                : state.phase === 'SHOWDOWN'
-                ? SHOWDOWN_FALLBACK_HIDE_MS
-                : null;
-
-        if (delay === null) return;
+        this.showdownHideAt = deadlineMs ?? previousHideAt ?? this.clock.now() + SHOWDOWN_FALLBACK_HIDE_MS;
+        const delay = Math.max(0, this.showdownHideAt - this.clock.now());
 
         this.showdownTimer = this.clock.setTimeout(() => {
+            this.showdownTimer = null;
             this.updateSnapshot(() => ({
                 showdown: null,
-            }));
-            this.showdownTimer = null;
-        }, delay);
-
-        this.showdownResultTimer = this.clock.setTimeout(() => {
-            this.updateSnapshot(() => ({
                 showdownResult: null,
             }));
-            this.showdownResultTimer = null;
         }, delay);
     };
 
