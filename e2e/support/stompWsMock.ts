@@ -20,6 +20,7 @@ export async function setupStompWebSocketMock(
     const subscriptionResolvers = new Map<string, (subId: string) => void>();
 
     await target.routeWebSocket(/.*\/ws.*/, (ws) => {
+        subscriptions.clear();
         activeWs = ws;
 
         ws.onMessage((message) => {
@@ -85,14 +86,16 @@ export async function setupStompWebSocketMock(
         ws.onClose(() => {
             if (activeWs === ws) {
                 activeWs = null;
+                subscriptions.clear();
             }
         });
     });
 
     return {
         sendMessage(destination: string, payload: unknown) {
-            if (!activeWs) return;
-            const subId = subscriptions.get(destination) ?? 'sub-0';
+            if (!activeWs) throw new Error('No active mock WebSocket');
+            const subId = subscriptions.get(destination);
+            if (!subId) throw new Error(`No subscription for ${destination}`);
             const body = typeof payload === 'string' ? payload : JSON.stringify(payload);
             const msgId = `msg-${messageIdCounter++}`;
             const frame = `MESSAGE\ndestination:${destination}\nsubscription:${subId}\nmessage-id:${msgId}\ncontent-type:application/json\n\n${body}\0`;
@@ -100,7 +103,7 @@ export async function setupStompWebSocketMock(
         },
 
         sendError(errorMessage: string) {
-            if (!activeWs) return;
+            if (!activeWs) throw new Error('No active mock WebSocket');
             const frame = `ERROR\nmessage:${errorMessage}\n\n${errorMessage}\0`;
             activeWs.send(frame);
         },
@@ -123,6 +126,7 @@ export async function setupStompWebSocketMock(
         },
 
         close() {
+            subscriptions.clear();
             if (activeWs) {
                 activeWs.close();
                 activeWs = null;
