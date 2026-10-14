@@ -1,220 +1,144 @@
 # Frontend Poker Project Context
 
-This is the canonical AI and project context for the repository. Root-level files such as `AGENTS.md` and `GEMINI.md` should stay thin wrappers that point here.
+This is the canonical project context for agents. Root `AGENTS.md` and `GEMINI.md` point here. Read relevant [ADRs](../adr/) before changing architecture; use the current source and configuration for exact contracts and commands.
 
 ## Project Overview
 
-This repository is a polished React 19 + TypeScript frontend for a real-time multiplayer Texas Hold'em poker game. It is built with Vite 8, styled with Tailwind CSS v4, and uses Motion for animation. The app communicates with a Spring Boot backend over REST for authentication, room, and game lifecycle actions, and over STOMP/WebSockets for live table events.
+A React and TypeScript client for real-time multiplayer Texas Hold'em, paired with the Spring Boot backend in `../Poker`. Players create or join named rooms, receive a room-bound JWT, enter a lobby, play successive hands, and review the final game result. The backend owns poker rules and authoritative game state; the frontend owns presentation, local session state, transport coordination, and recovery.
 
-## Tech Stack
+The stack is React 19, TypeScript 5, Vite 8, Tailwind CSS 4, Motion, Lucide React, and STOMP. Exact dependency versions live in [package.json](../../package.json) and [package-lock.json](../../package-lock.json).
 
-- **Framework**: React 19 with functional components and hooks
-- **Language**: TypeScript 5.x with strict typing
-- **Build Tool**: Vite 8 with `@tailwindcss/vite` and `@vitejs/plugin-react`
-- **Styling**: Tailwind CSS v4 configured via `@theme` tokens in `src/index.css`
-- **Animation**: Motion (`motion/react`)
-- **Icons**: Lucide React
-- **Transport**: `@stomp/stompjs` for real-time WebSocket messaging
-- **Testing**: Vitest, React Testing Library, MSW, and Playwright
+## Development And Configuration
 
-## Build And Run
+Use `npm ci` to install the lockfile dependencies. CI uses Node.js 22; see [the workflow](../../.github/workflows/deploy.yml) and [Dockerfile](../../Dockerfile) for the environments actually configured.
 
-Defined scripts from `package.json`:
+| Command | Purpose |
+| --- | --- |
+| `npm run dev` | Start Vite; development requests to `/api` and `/ws` proxy to the backend at port 8080. |
+| `npm run build` | TypeScript project build checks followed by the Vite production build. |
+| `npm run lint` | Run the ESLint flat configuration. |
+| `npm run preview` | Preview the production assets locally. |
+| `npm run test -- --run` | Run Vitest once; plain `npm run test` uses Vitest's default interactive behavior. |
+| `npm run test -- --run <test-file>` | Run a targeted Vitest test file. |
+| `npm run test:all` | Run Vitest once, then the standard Playwright suite. |
+| `npm run backend:test` | Invoke the sibling backend with the `test` profile using the Windows Maven wrapper. |
+| `npm run layout:overlap` / `npm run layout:screenshots` / `npm run layout:all` | Run optional layout diagnostics using the separate layout Playwright configuration. |
 
-- `npm install`: install dependencies
-- `npm run dev`: start the Vite dev server (proxies `/api` and `/ws` to `localhost:8080`)
-- `npm run build`: run TypeScript build checks (`tsc -b`) and production Vite build
-- `npm run lint`: run ESLint flat config
-- `npm run preview`: preview the production build locally
-- `npm run test`: run the Vitest unit and component suite
-- `npm run backend:test`: start companion Spring Boot backend with test profile (`../Poker`)
-- `npm run test:all`: run Vitest followed by standard Playwright E2E tests
-- `npm run layout:overlap`: (Diagnostic) run the Playwright layout measurement script (in `scripts/layout/`)
-- `npm run layout:screenshots`: (Diagnostic) capture layout screenshot suites across viewports and player counts
-- `npm run layout:all`: (Diagnostic) run all layout diagnostic scripts
+Scripts are defined in `package.json`; proxying and Vitest setup are in [vite.config.ts](../../vite.config.ts). The `backend:test` script is distinct from Playwright's backend setup: backend test resources use a random server port, while standard Playwright expects port 8080 and the `e2e` profile.
 
-The frontend expects a compatible backend at `http://localhost:8080` and proxies `/api` and `/ws` traffic there during development.
+[api.ts](../../src/services/api.ts) reads these Vite build-time settings:
 
-## Project Structure
+- `VITE_API_BASE_URL`: REST base, defaulting to `/api`.
+- `VITE_WS_URL`: optional STOMP WebSocket URL; otherwise use the browser's host and matching `ws`/`wss` scheme at `/ws`.
+- `VITE_DEBUG_STOMP=true`: enable redacted STOMP debug output in development.
 
-```
-frontend-poker/
-├── docs/
-│   ├── adr/                      # Architectural Decision Records (ADR-0001 – ADR-0003)
-│   ├── agents/                   # Agent workflow guidelines (domain, issue tracking, labels)
-│   └── ai/
-│       └── PROJECT.md            # Canonical project context (this file)
-├── scripts/
-│   └── layout/                   # Layout verification and screenshot Playwright specs
-│       ├── layout-overlap.spec.ts
-│       └── layout-screenshots.spec.ts
-├── src/
-│   ├── main.tsx                  # Application entry point
-│   ├── App.tsx                   # Root auth, router, and session restoration
-│   ├── Lobby.tsx                 # Lobby page hosting the create/join room forms
-│   ├── GameView.tsx              # Live game container (WebSocket orchestration & view switching)
-│   ├── types.ts                  # Shared domain types, interfaces, and state models
-│   ├── index.css                 # Theme tokens, font variables, and global CSS
-│   ├── assets/                   # Static images (hero art, logos)
-│   ├── components/
-│   │   ├── lobby/
-│   │   │   ├── CreateRoomForm.tsx# Create-table form (room name, alias, blinds, max players, buy-in)
-│   │   │   ├── JoinRoomForm.tsx  # Quick-join form (room name, alias)
-│   │   │   └── validation.ts     # Lobby form validation rules
-│   │   ├── ActionPanel.tsx       # Betting slider, quick-bet buttons, and player actions
-│   │   ├── BoardCluster.tsx      # Centered table area (pots and community cards)
-│   │   ├── CommunityCardsArea.tsx# Flop, Turn, and River card slots
-│   │   ├── ErrorBoundary.tsx     # Top-level render error fallback
-│   │   ├── GameLobbyView.tsx     # Pre-game room lobby, player readiness, seat count
-│   │   ├── GameReviewView.tsx    # End-of-hand recap and hand history review sheet
-│   │   ├── GameTableView.tsx     # Active game table container
-│   │   ├── GameUI.tsx            # CardUI, PlayerPod, chips, badges, and avatars
-│   │   ├── HeroSeat.tsx          # Local player seat pinned at bottom-center (50%, 86%)
-│   │   ├── LiveTableStage.tsx    # Stage container measuring bounds and fitting table aspect ratio
-│   │   ├── LoadingView.tsx       # Splash and loading indicators
-│   │   ├── NotificationBanner.tsx# Non-blocking toast notifications
-│   │   ├── OpponentSeats.tsx     # Dynamic parametric opponent seating around table ellipse
-│   │   ├── PokerRoomLayout.tsx   # Viewport gating thresholds (landscape/portrait constraints)
-│   │   ├── ResultDock.tsx        # In-table round recap, payouts, winner announcements, ready controls
-│   │   ├── RoomHeader.tsx        # Header with room code, blinds, hand count, and leave table action
-│   │   ├── RotatePrompt.tsx      # Device rotation prompt on unsupported screen dimensions
-│   │   ├── TablePlayers.tsx      # High-level seat orchestrator
-│   │   ├── TablePots.tsx         # Main pot, side pots, chip stacks, and breakdown toggles
-│   │   ├── TableSurface.tsx      # Felt oval surface rendering, scaled rim and rail
-│   │   └── UI.tsx                # Generic primitives (Button, Input, Badge, Card, Modal)
-│   ├── constants/
-│   │   └── strings.ts            # UI copy, accessible labels, and display strings
-│   ├── context/
-│   │   ├── GameContext.ts        # Context type, `Action` union, and `useGameContext` accessor
-│   │   └── GameProvider.tsx      # Bridges the `GameSession` store into React via `useSyncExternalStore`
-│   ├── domain/
-│   │   ├── GameSession.ts        # Authoritative in-process game store: STOMP subscriptions, frame routing, action locks, and showdown/room-closed timers
-│   │   └── clock.ts              # `Clock` port with `SystemClock` (prod) and `TestClock` (deterministic tests)
-│   ├── hooks/
-│   │   ├── useAuthSession.ts     # JWT storage in localStorage (`poker-auth`)
-│   │   ├── useElementSize.ts     # ResizeObserver hook for container dimension measurement
-│   │   ├── useGameDispatcher.ts  # Delegates STOMP commands to `GameSession` and executes REST room/game lifecycle commands
-│   │   ├── useGameWebSocket.ts   # Connects/disconnects `GameSession`, wake-up/online reconnects, and REST state resync on connect
-│   │   ├── useSeatLayout.ts      # Parametric ellipse seating calculations wrapping `tableGeometry.ts`
-│   │   └── useSessionHydration.ts# REST snapshot hydration on initial load with fallback
-│   ├── lib/
-│   │   ├── cn.ts                 # Class merger utility (`clsx` + `tailwind-merge`)
-│   │   ├── game.ts               # Hand ranking evaluations, legal bet clamping, action helpers
-│   │   ├── layoutChecks.ts       # Geometry measurement and overlap detection utilities
-│   │   ├── payloads.ts           # WebSocket frame payload decoders and type guards
-│   │   └── tableGeometry.ts      # Parametric ellipse math, footprint fitting, and scaling tiers
-│   ├── security/
-│   │   └── logger.ts             # Dev-only console logger (silent in production builds)
-│   ├── services/
-│   │   ├── api.ts                # REST client (`fetch`), `handleApiError`, and STOMP client factory
-│   │   ├── gameEndStorage.ts     # Persisted `poker-game-end:{roomId}` snapshot storage helpers
-│   │   └── transport.ts          # `GameTransport` port with `StompTransportAdapter` and `InMemoryTransportAdapter`
-│   └── test/
-│       ├── mocks/                # MSW `handlers.ts`/`server.ts` and STOMP mock (`stomp.ts`)
-│       ├── fixtures.ts           # Shared domain test fixtures
-│       ├── prng.ts               # Seeded PRNG for deterministic tests
-│       └── setup.ts              # Vitest global setup
-```
+The production [Nginx configuration](../../nginx.conf) serves the built client and proxies backend traffic. Client environment values are public build inputs, so credentials belong in backend configuration.
 
-## Architecture
+## Code Map
 
-### Game Session and Transport Port
+| Area | Entry points and responsibility |
+| --- | --- |
+| App and lobby | [App.tsx](../../src/App.tsx) selects lobby or lazy-loaded game view from auth state and wraps errors/Suspense. [Lobby.tsx](../../src/Lobby.tsx) coordinates create/join forms and their shared request lock. There is no router library. |
+| Lobby requests | [useLobbyRequest.ts](../../src/components/lobby/useLobbyRequest.ts) owns request cancellation and prevents overlapping create/join submissions; [validation.ts](../../src/components/lobby/validation.ts) owns form rules. |
+| Game container | [GameView.tsx](../../src/GameView.tsx) coordinates hydration, connection, actions, display clocks, and lobby/table/final-review selection. |
+| Session store | [GameSession.ts](../../src/domain/GameSession.ts) owns public/private/room state, incoming frames, action locks, recovery coordination, notifications, and session timers. |
+| React bridge | [GameProvider.tsx](../../src/context/GameProvider.tsx) constructs or accepts a session and exposes its snapshots through `useSyncExternalStore`; [GameContext.ts](../../src/context/GameContext.ts) defines the compatibility API. |
+| Transport and time | [transport.ts](../../src/services/transport.ts) defines `GameTransport`, its STOMP adapter, and an in-memory test adapter. [clock.ts](../../src/domain/clock.ts) supplies production and deterministic test clocks. |
+| Network lifecycle | [useSessionHydration.ts](../../src/hooks/useSessionHydration.ts), [useGameWebSocket.ts](../../src/hooks/useGameWebSocket.ts), and [useGameDispatcher.ts](../../src/hooks/useGameDispatcher.ts) handle REST hydration, connection/resync, and commands respectively. |
+| Contracts | [types.ts](../../src/types.ts) contains domain and payload types; [payloads.ts](../../src/lib/payloads.ts) validates/normalizes incoming data and maps room responses. |
+| Table geometry | [tableGeometry.ts](../../src/lib/tableGeometry.ts) owns dimensions, scale, seat metrics, footprints, containment, and disclosure decisions. [useSeatLayout.ts](../../src/hooks/useSeatLayout.ts) adapts it to React. |
+| Presentation | `src/components/` contains lobby/table/review views, table seats, board, pots, action/result docks, room shell, and reusable UI primitives. |
+| Theme and copy | [index.css](../../src/index.css) defines Tailwind theme tokens and global CSS; [strings.ts](../../src/constants/strings.ts) holds shared copy. |
+| Storage and logging | [useAuthSession.ts](../../src/hooks/useAuthSession.ts) manages auth persistence; [gameEndStorage.ts](../../src/services/gameEndStorage.ts) stores the final review snapshot; [logger.ts](../../src/security/logger.ts) gates and redacts diagnostic output. |
 
-Per ADR `0003`, game state lives outside React:
+## Session And Transport Architecture
 
-1. **`GameSession` (`src/domain/GameSession.ts`)**: The single authoritative TypeScript store that owns STOMP topic subscriptions (`/room/{roomId}`, `/game/{roomId}`, `/user/queue/private`), incoming frame decoding and routing, room/game/private state, outgoing STOMP actions (`playAction`, `ready`, `unready`), action locks, and lifecycle timers (showdown fallback, room-closed redirect, notifications) through an injected `Clock`. It exposes `subscribe`/`getSnapshot` for `useSyncExternalStore`.
-2. **`GameTransport` port (`src/services/transport.ts`)**: `connect`, `disconnect`, `subscribe`, `publish`, `onStatusChange` (plus optional `onError`/`isConnected`/`forceReconnect`). `StompTransportAdapter` wraps `@stomp/stompjs` as the `GameProvider` default in production; `InMemoryTransportAdapter` backs deterministic unit/integration tests.
-3. **React bridge**: `GameProvider` constructs (or accepts an injected) `GameSession` with `StompTransportAdapter(auth.token)` by default, while `useGameWebSocket` manages `session.connect()`/`session.disconnect()`, wake-up reconnects, and REST state resync on connect, and `useGameDispatcher` delegates STOMP actions directly to `GameSession`. Presentational views (`GameTableView`, `GameLobbyView`, `GameReviewView`) receive explicit props from `GameView`.
-4. **Testability**: Full game flows and timer transitions can be tested in Node with `TestClock` + `InMemoryTransportAdapter`, without JSDOM. E2E tests intercept sockets with Playwright `page.routeWebSocket()` rather than production backdoors.
+Per [ADR-0003](../adr/0003-in-process-game-session-and-transport-port.md), game session state lives outside React. `GameProvider` accepts injected `GameSession`, `GameTransport`, and `Clock` dependencies for tests. Views receive explicit game data and action callbacks from the container.
 
-### Real-Time Flow
+1. Create/join REST responses wrap `TokenResponse` in `ApiResponse`. The API client normalizes these to `AuthResponse` containing token, room ID, player name, and message.
+2. `useAuthSession` restores validated auth from `poker-auth` localStorage, synchronizes browser-tab storage changes, and processes token-specific `auth-expired` events.
+3. Initial REST hydration checks room membership, loads public/private game state when a game is active, and redirects when the room or seat is gone. A persisted final-game result allows review after server cleanup without live hydration.
+4. Once hydrated, the WebSocket hook connects the session. The session subscribes to `/room/{roomId}`, `/game/{roomId}`, and `/user/queue/private`.
+5. The WebSocket hook performs REST resync on connection, tab wake-up, online events, and manual retry. The session deduplicates recovery, bounds retries, and uses generation/revision guards to avoid applying obsolete recovery results over newer state.
+6. Gameplay and readiness commands publish to `/app/{gameId}/action`, `/app/{gameId}/ready`, and `/app/{gameId}/unready`. Start, leave, and claim-win use authenticated REST calls. Backend game IDs reuse room IDs.
 
-1. **Hydration**: When the game room mounts, `useSessionHydration` fetches initial state snapshots via REST (`/api/room/{id}`, `/api/game/{id}/state`, `/api/game/{id}/private-state`).
-2. **Subscriptions**: `useGameWebSocket` invokes `session.connect()`, and `GameSession` subscribes via `GameTransport` to:
-   - `/room/{roomId}`: room status, seat assignments, readiness, and room closed events.
-   - `/game/{roomId}`: public game states (phases, pots, community cards, turn active player) and `GAME_END` payloads.
-   - `/user/queue/private`: private player updates (hole cards, private `ACTION_ERROR` payloads).
-3. **Actions**: Gameplay actions (`CHECK`, `CALL`, `BET`, `RAISE`, `FOLD`, `ALL_IN`) and showdown readiness (`READY`, `UNREADY`) are dispatched via `GameSession` STOMP frames (`/app/{gameId}/action`, `/app/{gameId}/ready`, `/app/{gameId}/unready`). Room lifecycle actions (`join`, `start-game`, `leave`, `claim-win`) execute via authenticated REST endpoints in `useGameDispatcher`.
-4. **Resiliency**: Auto-reconnection handles transient network drops, tab visibility changes, and online events without creating UI freezes or infinite loops.
+The API wrapper handles HTTP status errors, malformed expected responses, a request timeout, and caller cancellation. Gameplay state is decoded at runtime; TypeScript interfaces alone do not validate network data. JWT parsing in the client checks shape/expiry for session handling, while signature and authorization checks remain the backend's responsibility.
 
-### Table Layout and Parametric Seating Geometry
+Final-game snapshots use `poker-game-end:{roomId}`. Keep final-game review distinct from a single-hand showdown and its ready countdown. [game.ts](../../src/lib/game.ts) formats ranks/results and pot/card presentation; it is not the authoritative poker hand evaluator.
 
-The table layout is fully decoupled from browser viewport globals (`window.innerWidth`/`innerHeight`) and hardcoded coordinate lookup tables, governed by `src/lib/tableGeometry.ts` and ADR `0002`:
+## Table Layout And Interaction
 
-1. **Container Dimension Sync**: `LiveTableStage` measures its actual rendered dimensions via `useElementSize` (using `ResizeObserver` with border-box measurement). It calculates a responsive table box maintaining a 2.15:1 (standard) or 2.35:1 (wide) aspect ratio and passes it down to `TableSurface`.
-2. **Parametric Ellipse Seating**: `useSeatLayout` computes opponent positions analytically along an ellipse arc:
-   \[
-   x = cx + rx \cdot \cos(\theta), \quad y = cy + ry \cdot \sin(\theta)
-   \]
-   Seats are evenly distributed across an angular span spanning the top and sides of the table, ordered relative to the local hero offset:
-   \[
-   k = (i - \text{heroIndex} + \text{total}) \pmod{\text{total}}
-   \]
-3. **Dynamic Footprint Fitting (`fitSeatEllipse`)**:
-   - Calculates worst-case seat footprints (avatar diameter, status badges, showdown card fan) scaled by `scale.overall`.
-   - Derives optimal semi-major and semi-minor radii \((rx, ry)\) to ensure every seat remains at least `safeMarginPx(scale.overall)` inside the felt boundary across 3–10 players and supported viewports (down to 667×375 minimum landscape).
-4. **Hero Seat Pinning**: `HeroSeat` is statically anchored to `(50%, 86%)` above the action dock, isolated from dynamic opponent angle distribution.
-5. **Avatar-Centered Geometry (`PlayerPod`)**: The root bounding box strictly matches the avatar diameter (\(D \times D\)). Bottom-heavy elements (`handRank`, `currentBet`, disconnect timers) are extracted into an absolutely positioned subordinate container (`absolute top-full left-1/2 -translate-x-1/2`) so vertical growth does not displace the avatar center.
-6. **Showdown Card Fan & Density**:
-   - Hole cards display as an overlapping fan with corner-indices always visible.
-   - Scale floor is enforced at `SCALE_FLOOR = 0.30` with `SCALE_CEILING = 1.15`.
-   - Constrained top-row clearances fall back gracefully to avatar badge or screen-reader announcements to eliminate collisions with the central pot.
-7. **Orientation & Viewport Guards**: `PokerRoomLayout` enforces minimum playable viewport gates:
-   - Landscape minimum: 667×375 px.
-   - Portrait minimum: 600×800 px (displays `RotatePrompt` on narrow mobile screens < 600px width).
-   - Desktop minimum height: 600 px.
+[ADR-0001](../adr/0001-adaptive-table-first-game-page.md) establishes the table-first experience. Current measured-container sizing and parametric seating are implemented in `LiveTableStage`, `useSeatLayout`, and `tableGeometry.ts`.
 
-### Styling And Theme
+- `PokerRoomLayout` owns viewport eligibility, header/stage/dock regions, and the reconnect overlay. The overlay makes the underlying stage/dock inert while preserving header access.
+- `LiveTableStage` measures its container through `useElementSize`. `getTableDimensions` fits the table to that space; table content sizing uses measured dimensions rather than window size.
+- Current geometry uses a single `TABLE_ASPECT = 2.15`. Compact/standard/wide tiers derive from table width; density reduces opponent sizes at crowded tables.
+- Opponents are ordered relative to the hero and placed along a continuous ellipse. The fit uses shared seat footprints and a containment guard. Keep rendered seat metrics and geometry calculations aligned.
+- The hero stays at `(50%, 86%)`. Avatar centers anchor seats; subordinate labels/cards must not displace those anchors.
+- Cards have compact faces and minimum sizes. Rank/status disclosure depends on felt and board clearances; hidden visual details retain accessible or expanded-seat equivalents.
+- Current viewport gates are portrait minimum 600×800; landscape below 1024px width minimum 667×375; desktop at least 1024px wide requires 600px height. These gates use window dimensions separately from measured table geometry.
 
-- Tailwind CSS v4 is configured through the `@theme` block in `src/index.css`.
-- Typography: Space Grotesk for headlines/amounts, Inter for body/labels.
-- Palette tokens:
-  - Emerald Primary (`#aaead0` / `--color-emerald-primary`): active turns, ready status, confirmations.
-  - Gold Secondary (`#fcc025` / `--color-gold-secondary`): chips, pots, bets, payouts.
-  - Surface (`#0e0e0e` / `--color-surface`): table surroundings and container backgrounds.
+## Styling And Development Conventions
 
-## Development Conventions
+Use functional components and focused hooks. Keep transport/state logic at the existing session seams and avoid ambient state dependencies in presentational views.
 
-- Prefer functional components and custom hooks with clean seams.
-- Keep domain types and payload contracts strictly defined in `src/types.ts`.
-- Use the `cn` helper for conditional Tailwind class composition.
-- Centralize user-facing copy and accessible announcement strings in `src/constants/strings.ts`.
-- Normalise backend error handling via `handleApiError` in `api.ts`.
-- Respect reduced motion preferences (`useReducedMotion`) across animations.
+Use `cn` for conditional classes, shared types for contracts, runtime decoders at boundaries, and shared strings for reusable copy. The theme uses Space Grotesk headlines, Inter body text, emerald for active/positive state, gold for chips/stakes, and dark surfaces. Consult `index.css` for exact tokens.
 
-## Testing Strategy & CI Guardrails
+Preserve keyboard access, semantic labels, focus handling, reduced motion, and non-color status cues. Follow the existing request/error paths instead of inventing a second error helper. Diagnostics use the redacting logger, which is silent in production.
 
-The testing strategy uses a strict two-tier architecture to balance thoroughness with fast CI feedback:
+## Tests And CI
 
-### 1. Fast CI Layer (~1–2 minutes)
-- **Unit & Component Tests**: Run via `npx vitest run`. Covers 48 test files (pure geometric math in `tableGeometry.test.ts`, `GameSession` domain flows, hook lifecycle, component rendering, and state dispatchers).
-- **Type Checking**: Run via `npx tsc -p tsconfig.app.json --noEmit`. Zero TypeScript errors allowed.
-- **Linting**: Run via `npm run lint`. Zero errors and zero warnings allowed.
-- **Production Build**: Run via `npm run build`. Builds production assets in < 500ms.
-- **Fast E2E Integration**: Run via `npx playwright test` against mocked or live backend. Ignores heavy layout specs via `playwright.config.ts`.
+- Vitest defaults to JSDOM through `vite.config.ts`; domain tests can opt into Node. Shared setup/fixtures and MSW/STOMP doubles live in `src/test/`.
+- Session flows use `TestClock` and `InMemoryTransportAdapter`. Component/integration tests exercise rendering, actions, recovery, and auth; geometry tests cover footprint fitting, anchoring, and preservation.
+- [playwright.config.ts](../../playwright.config.ts) runs Chromium specs in `e2e/` and starts Vite plus the sibling backend with the `e2e` profile. Override `BACKEND_DIR` when the backend is elsewhere. Java 25, backend configuration, and installed Playwright Chromium are prerequisites even when individual specs mock traffic.
+- Mocked browser flows use [stompWsMock.ts](../../e2e/support/stompWsMock.ts) and Playwright `routeWebSocket`. Keep mocks at the transport boundary rather than add production test switches.
+- [playwright.layout.config.ts](../../playwright.layout.config.ts) runs `scripts/layout/` diagnostics with Vite only. These are separate from standard E2E and are not run by the normal CI workflow.
+- The `main` push/PR workflow runs lint, Vitest, standard Playwright with the companion backend, and the production build. Successful pushes to `main` then build/push Docker images.
+- ESLint includes accessibility and React rules but permits warning-level rules; `npm run lint` does not enforce zero warnings. A successful build/test run establishes only the checks actually executed, not a timing or universal layout guarantee.
 
-### 2. Layout Overlap & Visual Diagnostics (Optional Utility)
-- Kept in `scripts/layout/` as diagnostic measurement and screenshot generation tools (`npm run layout:overlap`, `npm run layout:screenshots`).
-- Decoupled from the primary test suite because full visual runs take 10–20+ minutes and do not prevent visual card crowding at 7–10 players without layout algorithmic tuning.
+Test public behavior and accessibility. Prefer semantic queries and deterministic session/transport seams. Verify winner identity, chips, cards, and meaningful outcomes where relevant rather than visibility-only assertions or private implementation details. Historical research under `docs/research/` describes the code at the time of its audit; verify observations against current source.
 
-### Testing Conventions
-- Test behavior and accessibility, not internal state or CSS classes.
-- Prefer semantic queries (`getByRole`, `getByText`, `getByLabelText`).
-- Use screen-reader helper spans (`sr-only`) for states verified by automated tests and accessible tools.
+## Domain Vocabulary
 
-## Architecture Decision Records (ADRs)
+| Term | Meaning |
+| --- | --- |
+| Room | A named lobby/session container with a backend-generated UUID. Players join by room name; `roomId` identifies API/STOMP resources. |
+| Game | The backend-managed sequence of hands associated with a room; its ID reuses the room ID. |
+| Hand / round | One deal through betting phases and showdown, distinct from final game completion. |
+| Hero | The local player, pinned at the bottom-center seat. |
+| Opponent | Another seated player placed on the opponent ellipse. |
+| PlayerPod | Avatar-centered seat presentation with status and supporting details. |
+| Board cluster | Central pots/phase/community-card area. |
+| Action dock | Persistent lower action/turn-status controls. |
+| Result dock | In-game hand result and readiness surface. |
+| Final review | Frozen end-of-game recap that can survive page refresh after server cleanup. |
 
-- [ADR-0001: Adaptive table-first game page](file:///c:/Users/benja/IdeaProjects/frontend-poker/docs/adr/0001-adaptive-table-first-game-page.md): Establishes the live table as the primary experience, landscape-first constraints, and the three-tier responsive model.
-- [ADR-0002: Parametric seat ellipse and containment architecture](file:///c:/Users/benja/IdeaProjects/frontend-poker/docs/adr/0002-parametric-seat-ellipse-containment.md): Details the closed-form parametric ellipse model, container dimension sync, dynamic seat footprint fitting (`fitSeatEllipse`), and zero-gating-violation layout invariants.
-- [ADR-0003: In-process GameSession store and GameTransport port](file:///c:/Users/benja/IdeaProjects/frontend-poker/docs/adr/0003-in-process-game-session-and-transport-port.md): Moves game state and lifecycle timers into a standalone `GameSession` consumed via `useSyncExternalStore`, decouples real-time I/O behind `GameTransport`, and replaces E2E backdoors with Playwright WebSocket interception.
+## Agent Roles And Model Selection
 
-## Domain Glossary
+Choose the main chat model for the decisions the task requires. For architecture, ambiguous requirements, or difficult debugging, prefer GPT-6.1 Sol with high reasoning in Codex or the Pro tier in Antigravity. Luna with medium reasoning or Flash is suitable for straightforward work with clear acceptance criteria. These are task-specific recommendations, not a requirement to start every chat at a higher tier.
 
-- **Room**: The multi-user lobby and game session container identified by a 6-character room code.
-- **Table / Stage**: The responsive visual arena containing the table felt, seats, community cards, and pots.
-- **Hero**: The local player seated at the client instance, statically positioned at bottom-center (50%, 86%).
-- **Opponent / Villain**: Other players in the room, positioned dynamically along the parametric ellipse arc.
-- **PlayerPod**: The circular seat component representing an individual player, strictly centered on the avatar diameter.
-- **Board Cluster**: The central table area comprising the main pot, side pots, and community cards (Flop, Turn, River).
-- **Result Dock**: The persistent lower docking panel displaying round outcomes, payouts, and the ready-up action button.
-- **Action Panel**: The turn-based player control dock offering Fold, Check, Call, Bet, and Raise controls with slider and quick-bet buttons.
+Custom subagents have their own model settings; choosing a stronger main model does not change the explicit model or reasoning setting in those role definitions. Treat the linked role files as the source of truth for models, reasoning effort, tools, and operating rules.
+
+| Role | Codex definition | Antigravity definition | Delegate when |
+| --- | --- | --- | --- |
+| Explorer | [explorer](../../.codex/agents/explorer.toml) | [explorer](../../.agents/agents/explorer.md) | A specific file lookup, call-path trace, or coverage question would save the main agent substantial exploration. |
+| Scoped implementer | [scoped_implementer](../../.codex/agents/scoped_implementer.toml) | [scoped-implementer](../../.agents/agents/scoped-implementer.md) | The plan is settled and file ownership, required behavior, and completion criteria are explicit. |
+| Verifier | [verifier](../../.codex/agents/verifier.toml) | [verifier](../../.agents/agents/verifier.md) | Assigned checks need execution and a compact report of observed results. |
+| Fast reviewer | [fast_reviewer](../../.codex/agents/fast_reviewer.toml) | [fast-reviewer](../../.agents/agents/fast-reviewer.md) | Presentational components, accessibility, forms, UI copy, and routine configuration changes. |
+| Deep reviewer | [deep_reviewer](../../.codex/agents/deep_reviewer.toml) | [deep-reviewer](../../.agents/agents/deep-reviewer.md) | GameSession state transitions, REST/STOMP ordering, transport and timer lifecycles, runtime payload validation, authentication, and shared table-geometry algorithms. |
+
+Keep decisions about the deep-review areas with the main agent or a stronger model. A scoped implementer can carry out a settled plan in those areas; a deep review is still required even for a small diff.
+
+### Delegation And Usage
+
+- Handle tiny edits directly. Delegate bounded work when its benefit exceeds the extra agent context and coordination.
+- Supply the question or acceptance criteria, relevant evidence, explicit file ownership, allowed checks, and the expected handoff. Reuse existing findings instead of repeating exploration.
+- Choose the reviewer whose scope matches the change. Use both reviewers when the change spans both scopes.
+- Preserve concurrent edits and give workers distinct file ownership. The main agent integrates results and resolves cross-module decisions.
+- Run the smallest relevant checks first. Expand or repeat checks only for an assigned requirement, an intervening change, or an unresolved failure.
+- After an unsuccessful fix-and-check attempt, return evidence to the main agent for diagnosis rather than continuing speculative repairs. Report blockers and unfinished checks explicitly.
+- Keep handoffs concise: file:line evidence, changed files, observed check results, and unresolved decisions.
+
+Explorer and reviewer work is read-only by instruction. Implementers edit assigned files; verifiers write only normal generated build/test outputs. Parent-session permissions remain authoritative: Codex custom-agent sandbox settings do not override the parent sandbox, and Antigravity subagents inherit the parent's safety boundaries.
+
+Model and reasoning guidance: [Codex subagents](https://learn.chatgpt.com/docs/agent-configuration/subagents). Antigravity discovery, model tiers, and permission inheritance: [custom subagents](https://www.antigravity.google/docs/subagents/).
