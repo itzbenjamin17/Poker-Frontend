@@ -415,7 +415,10 @@ export class GameSession {
             return;
         }
 
-        if (!parsed || typeof parsed !== 'object') return;
+        if (!parsed || typeof parsed !== 'object') {
+            decodeGameStatePayload(parsed, 'WebSocket game state');
+            return;
+        }
         const p = parsed as Record<string, unknown>;
 
         const messageType = typeof p.type === 'string' ? p.type : null;
@@ -438,11 +441,8 @@ export class GameSession {
             return;
         }
 
-        const gamePayload = decodeGameStatePayload(parsed);
-        if (!gamePayload) {
-            logger.warn('Ignoring non-game payload on game topic:', { keys: Object.keys(p) });
-            return;
-        }
+        const gamePayload = decodeGameStatePayload(parsed, 'WebSocket game state');
+        if (!gamePayload) return;
 
         if (this.snapshot.isGameOver) return;
 

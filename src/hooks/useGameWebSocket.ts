@@ -93,7 +93,7 @@ export function useGameWebSocket(options: UseGameWebSocketOptions = {}) {
             const publicPromise = Promise.resolve(pokerApi.getGameState(auth.roomId, auth.token)).then(
                 (snapshot) => {
                     if (isCancelled()) return;
-                    const decodedSnapshot = decodeGameStatePayload(snapshot);
+                    const decodedSnapshot = decodeGameStatePayload(snapshot, 'REST recovery game snapshot');
                     if (
                         decodedSnapshot &&
                         session.getStateSyncRevision() === syncRevision &&

@@ -69,6 +69,40 @@ describe('GameSession Domain Store', () => {
     });
 
     describe('State Synchronization & Hand Progression', () => {
+        it('diagnoses rejected live snapshots and preserves the table and pending action lock', () => {
+            const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+            const { session, transport } = createSession();
+            try {
+                session.connect();
+                transport.simulateMessage('/game/room-123', createValidGameState({
+                    pot: 50,
+                    players: [{ id: 'hero-id', name: 'Hero', chips: 950 }],
+                }));
+                session.playAction('CHECK');
+                const accepted = session.getSnapshot();
+                const revision = session.getStateSyncRevision();
+
+                transport.simulateMessage('/game/room-123', createValidGameState({
+                    pot: 999,
+                    players: [{ id: 'hero-id', name: 'Hero', chips: 'private-invalid-value' }],
+                }));
+
+                expect(warn.mock.calls).toEqual([['Rejected public game snapshot:', {
+                    source: 'WebSocket game state',
+                    path: '$.players[0].chips',
+                    expected: 'nonnegative safe integer',
+                    receivedType: 'string',
+                }]]);
+                expect(session.getSnapshot()).toBe(accepted);
+                expect(session.getSnapshot().gameState?.pot).toBe(50);
+                expect(session.getSnapshot().pendingActions.has('PLAY_ACTION')).toBe(true);
+                expect(session.getStateSyncRevision()).toBe(revision);
+            } finally {
+                session.disconnect();
+                warn.mockRestore();
+            }
+        });
+
         it('subscribes to room, game, and private channels on connect', () => {
             const { session, transport } = createSession();
             session.connect();

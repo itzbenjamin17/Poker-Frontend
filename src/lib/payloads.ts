@@ -11,35 +11,99 @@ import {
     ERROR_SYSTEM,
     ERROR_TECHNICAL,
 } from '../constants/strings';
+import { logger } from '../security/logger';
 
 function isObject(value: unknown): value is Record<string, unknown> {
     return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-type Check = (value: unknown) => boolean;
-const text: Check = value => typeof value === 'string';
-const boolean: Check = value => typeof value === 'boolean';
-const nonnegative: Check = value =>
-    typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
-const capacity: Check = value => nonnegative(value) && Number(value) >= 2 && Number(value) <= 10;
-const optional = (check: Check): Check => value => value === undefined || check(value);
-const nullable = (check: Check): Check => value => value == null || check(value);
-const list = (check: Check, max = Infinity): Check => value =>
-    Array.isArray(value) && value.length <= max && value.every(check);
-const member = (values: readonly string[]): Check => value =>
-    typeof value === 'string' && values.includes(value);
-const card: Check = value => typeof value === 'string' && /^(?:[2-9TJQKA]|10)[CDHS]$/i.test(value);
+interface ValidationFailure {
+    path: string;
+    expected: string;
+    receivedType: string;
+}
+
+type Check = ((value: unknown) => boolean) & {
+    expected: string;
+    diagnose: (value: unknown, path: string) => ValidationFailure | null;
+};
+
+function receivedType(value: unknown): string {
+    return value === null ? 'null' : Array.isArray(value) ? 'array' : typeof value;
+}
+
+function rule(expected: string, accepts: (value: unknown) => boolean): Check {
+    return Object.assign(accepts, {
+        expected,
+        diagnose: (value: unknown, path: string): ValidationFailure | null =>
+            accepts(value) ? null : { path, expected, receivedType: receivedType(value) },
+    });
+}
+
+const text = rule('string', value => typeof value === 'string');
+const boolean = rule('boolean', value => typeof value === 'boolean');
+const nonnegative = rule('nonnegative safe integer', value =>
+    typeof value === 'number' && Number.isSafeInteger(value) && value >= 0);
+const capacity = rule('safe integer between 2 and 10', value => nonnegative(value) && Number(value) >= 2 && Number(value) <= 10);
+
+function optional(check: Check): Check {
+    const result = rule(`${check.expected} or undefined`, value => value === undefined || check(value));
+    result.diagnose = (value, path) => value === undefined ? null : check.diagnose(value, path);
+    return result;
+}
+
+function nullable(check: Check): Check {
+    const result = rule(`${check.expected}, null, or undefined`, value => value == null || check(value));
+    result.diagnose = (value, path) => value == null ? null : check.diagnose(value, path);
+    return result;
+}
+
+function list(check: Check, max = Infinity): Check {
+    const result = rule(max === Infinity ? 'array' : `array with at most ${max} entries`, value =>
+        Array.isArray(value) && value.length <= max && value.every(check));
+    const diagnoseShape = result.diagnose;
+    result.diagnose = (value, path) => {
+        if (!Array.isArray(value) || value.length > max) {
+            return { path, expected: result.expected, receivedType: receivedType(value) };
+        }
+        let failure: ValidationFailure | null = null;
+        value.every((entry, index) => {
+            failure = check.diagnose(entry, `${path}[${index}]`);
+            return failure === null;
+        });
+        return failure ?? diagnoseShape(value, path);
+    };
+    return result;
+}
+
+const member = (values: readonly string[]): Check => rule(`one of ${values.join(', ')}`, value =>
+    typeof value === 'string' && values.includes(value));
+const card = rule('card string (rank followed by C, D, H, or S)', value =>
+    typeof value === 'string' && /^(?:[2-9TJQKA]|10)[CDHS]$/i.test(value));
 const action = member(['FOLD', 'CHECK', 'CALL', 'BET', 'RAISE', 'ALL_IN']);
 
 function fields(value: unknown, schema: Record<string, Check>): boolean {
     return isObject(value) && Object.entries(schema).every(([key, check]) => check(value[key]));
 }
 
-const roomPlayer = (value: unknown): boolean => fields(value, {
+function shape(schema: Record<string, Check>): Check {
+    const result = rule('object', value => fields(value, schema));
+    result.diagnose = (value, path) => {
+        if (!isObject(value)) return { path, expected: 'object', receivedType: receivedType(value) };
+        for (const [key, check] of Object.entries(schema)) {
+            const failure = check.diagnose(value[key], `${path}.${key}`);
+            if (failure) return failure;
+        }
+        return null;
+    };
+    return result;
+}
+
+const roomPlayer = shape({
     name: text, isHost: boolean, joinedAt: optional(text),
 });
 
-const player = (value: unknown): boolean => fields(value, {
+const player = shape({
     id: text, name: text, chips: nonnegative, currentBet: nonnegative,
     status: member(['ACTIVE', 'FOLDED', 'OUT', 'ALL_IN', 'DISCONNECTED']),
     hasFolded: boolean, disconnectDeadlineEpochMs: optional(nonnegative),
@@ -50,6 +114,19 @@ const player = (value: unknown): boolean => fields(value, {
     isWinner: optional(boolean), chipsWon: optional(nonnegative),
 });
 
+const gameState = shape({
+    gameId: optional(text), maxPlayers: capacity, pot: nonnegative,
+    pots: nullable(list(nonnegative, 10)), uncalledAmount: nullable(nonnegative),
+    phase: member(['PRE_FLOP', 'FLOP', 'TURN', 'RIVER', 'SHOWDOWN']),
+    currentBet: nonnegative, communityCards: list(card, 5), players: list(player, 10),
+    currentPlayerName: text, currentPlayerId: text,
+    legalActions: optional(list(action, 6)), winners: optional(list(text, 10)),
+    winningsPerPlayer: optional(nonnegative), isAutoAdvancing: optional(boolean),
+    autoAdvanceMessage: optional(text), isReadyCountdownActive: nullable(boolean),
+    readyCountdownDeadlineEpochMs: nullable(nonnegative),
+    claimWinAvailable: nullable(boolean), claimWinPlayerName: nullable(text),
+});
+
 function omitNulls(value: Record<string, unknown>, keys: readonly string[]): Record<string, unknown> {
     const result = { ...value };
     for (const key of keys) if (result[key] === null) delete result[key];
@@ -57,8 +134,19 @@ function omitNulls(value: Record<string, unknown>, keys: readonly string[]): Rec
 }
 
 /** Decode nullable wire metadata into the optional fields used by the domain. */
-export function decodeGameStatePayload(value: unknown): IncomingGameStatePayload | null {
-    if (!isObject(value) || !Array.isArray(value.players)) return null;
+export type GameSnapshotSource =
+    | 'initial REST game snapshot'
+    | 'REST recovery game snapshot'
+    | 'WebSocket game state';
+
+export function decodeGameStatePayload(value: unknown, source?: GameSnapshotSource): IncomingGameStatePayload | null {
+    const reject = (failure: ValidationFailure) => {
+        if (source) logger.warn('Rejected public game snapshot:', { source, ...failure });
+        return null;
+    };
+    if (!isObject(value) || !Array.isArray(value.players)) {
+        return reject(gameState.diagnose(value, '$')!);
+    }
     const decoded = omitNulls(value, [
         'legalActions', 'winners', 'winningsPerPlayer', 'isAutoAdvancing',
         'autoAdvanceMessage',
@@ -71,7 +159,8 @@ export function decodeGameStatePayload(value: unknown): IncomingGameStatePayload
         'isBigBlind', 'isAllIn', 'isCurrentPlayer', 'holeCards', 'handRank',
         'bestHand', 'isWinner', 'chipsWon',
     ]) : p);
-    return isGameStatePayload(decoded) ? decoded : null;
+    const failure = gameState.diagnose(decoded, '$');
+    return failure ? reject(failure) : decoded as IncomingGameStatePayload;
 }
 
 export function isRoomDataPayload(value: unknown): value is RoomDataResponse {
@@ -80,7 +169,7 @@ export function isRoomDataPayload(value: unknown): value is RoomDataResponse {
         buyIn: nonnegative, smallBlind: nonnegative, bigBlind: nonnegative,
         createdAt: text, hostName: text, currentPlayers: nonnegative,
         canStartGame: boolean, gameStarted: boolean,
-        players: list(p => fields(p, { name: text, isHost: boolean, joinedAt: text }), 10),
+        players: list(shape({ name: text, isHost: boolean, joinedAt: text }), 10),
     });
 }
 
@@ -106,18 +195,7 @@ export function mapRoomDataToRoomState(
 }
 
 export function isGameStatePayload(value: unknown): value is IncomingGameStatePayload {
-    return fields(value, {
-        gameId: optional(text), maxPlayers: capacity, pot: nonnegative,
-        pots: nullable(list(nonnegative, 10)), uncalledAmount: nullable(nonnegative),
-        phase: member(['PRE_FLOP', 'FLOP', 'TURN', 'RIVER', 'SHOWDOWN']),
-        currentBet: nonnegative, communityCards: list(card, 5), players: list(player, 10),
-        currentPlayerName: text, currentPlayerId: text,
-        legalActions: optional(list(action, 6)), winners: optional(list(text, 10)),
-        winningsPerPlayer: optional(nonnegative), isAutoAdvancing: optional(boolean),
-        autoAdvanceMessage: optional(text), isReadyCountdownActive: nullable(boolean),
-        readyCountdownDeadlineEpochMs: nullable(nonnegative),
-        claimWinAvailable: nullable(boolean), claimWinPlayerName: nullable(text),
-    });
+    return gameState(value);
 }
 
 export function isActionErrorPayload(value: unknown): value is ActionError {

@@ -146,7 +146,7 @@ export function useSessionHydration() {
 
                 if (!mounted || hasTimedOut) return;
 
-                const decodedSnapshot = decodeGameStatePayload(snapshot);
+                const decodedSnapshot = decodeGameStatePayload(snapshot, 'initial REST game snapshot');
                 if (decodedSnapshot && fetchTime >= lastStateSyncTimeRef.current) {
                     lastStateSyncTimeRef.current = fetchTime;
                     applyIncomingGameState(decodedSnapshot);
