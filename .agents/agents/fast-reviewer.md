@@ -3,7 +3,7 @@ name: fast-reviewer
 description: Use this subagent when reviewing presentational React components (.tsx), Tailwind/CSS layout, accessibility (ARIA/focus/reduced-motion), form validation, constants, E2E/Playwright configs, or checking literal spec/ticket compliance.
 subagent: true
 mainAgent: false
-model: gemini-3.8-flash-medium
+model: flash
 commandExecutionPolicy: sandbox
 inheritMcp: false
 tools:
