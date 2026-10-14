@@ -23,7 +23,7 @@ dist-ssr
 *.sln
 *.sw?
 *.code-workspace
-.agents/*
+.agents/tasks
 .kiro/*
 
 test-results/
