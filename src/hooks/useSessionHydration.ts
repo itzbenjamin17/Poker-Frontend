@@ -3,7 +3,7 @@ import { pokerApi } from '../services/api';
 import { logger } from '../security/logger';
 import { useGameContext } from '../context/GameContext';
 import {
-    isGameStatePayload,
+    decodeGameStatePayload,
     isPrivateStatePayload,
     getErrorStatusCode,
     mapRoomDataToRoomState,
@@ -34,6 +34,11 @@ export function useSessionHydration() {
 
     const lastStateSyncTimeRef = useRef<number>(0);
     const redirectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const onLeaveRef = useRef(onLeave);
+
+    useEffect(() => {
+        onLeaveRef.current = onLeave;
+    }, [onLeave]);
 
     useEffect(() => {
         let mounted = true;
@@ -57,7 +62,7 @@ export function useSessionHydration() {
             dispatch({ type: 'SET_LOADING_STATUS', payload: cleanMsg || 'Returning to lobby...' });
             if (redirectTimerRef.current !== null) clearTimeout(redirectTimerRef.current);
             redirectTimerRef.current = setTimeout(() => {
-                if (mounted) onLeave?.();
+                if (mounted) onLeaveRef.current?.();
             }, ROOM_CLOSED_REDIRECT_MS);
         };
 
@@ -141,9 +146,10 @@ export function useSessionHydration() {
 
                 if (!mounted || hasTimedOut) return;
 
-                if (snapshot && isGameStatePayload(snapshot) && fetchTime >= lastStateSyncTimeRef.current) {
+                const decodedSnapshot = decodeGameStatePayload(snapshot);
+                if (decodedSnapshot && fetchTime >= lastStateSyncTimeRef.current) {
                     lastStateSyncTimeRef.current = fetchTime;
-                    applyIncomingGameState(snapshot);
+                    applyIncomingGameState(decodedSnapshot);
 
                     try {
                         const privateSnapshot = await pokerApi.getPrivateState(auth.roomId, auth.token);
@@ -154,6 +160,8 @@ export function useSessionHydration() {
                         const code = getErrorStatusCode(privateErr);
                         if (code !== 404) logger.warn('Private snapshot fetch error:', privateErr);
                     }
+
+                    if (!mounted || hasTimedOut) return;
 
                     dispatch({ type: 'SET_HYDRATED', payload: true });
                     dispatch({ type: 'SET_LOADING_STATUS', payload: STATUS_SEAT_RESTORED });
@@ -174,5 +182,5 @@ export function useSessionHydration() {
             clearTimeout(timeoutId);
             if (redirectTimerRef.current !== null) clearTimeout(redirectTimerRef.current);
         };
-    }, [auth.playerName, auth.roomId, auth.token, onLeave, dispatch, applyIncomingGameState, applyIncomingPrivateState, gameEndResult]);
+    }, [auth.playerName, auth.roomId, auth.token, dispatch, applyIncomingGameState, applyIncomingPrivateState, gameEndResult]);
 }

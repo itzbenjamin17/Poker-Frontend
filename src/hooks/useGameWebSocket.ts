@@ -3,7 +3,7 @@ import { pokerApi } from '../services/api';
 import { logger } from '../security/logger';
 import { useGameContext } from '../context/GameContext';
 import {
-    isGameStatePayload,
+    decodeGameStatePayload,
     isPrivateStatePayload,
     isRoomDataPayload,
     mapRoomDataToRoomState,
@@ -30,7 +30,6 @@ export function useGameWebSocket(options: UseGameWebSocketOptions = {}) {
         isHydrated,
         isGameOver,
         gameEndResult,
-        roomState,
     } = useGameContext();
 
     const { onSocketError } = options;
@@ -38,7 +37,6 @@ export function useGameWebSocket(options: UseGameWebSocketOptions = {}) {
     const transportRef = useRef<GameTransport | null>(null);
     const stompClientRef = useRef<Client | null>(null);
     const gameEndedRef = useRef(Boolean(gameEndResult) || isGameOver);
-    const roomStateRef = useRef(roomState);
 
     // Keep refs in sync without re-triggering the main effect
     useEffect(() => {
@@ -47,10 +45,6 @@ export function useGameWebSocket(options: UseGameWebSocketOptions = {}) {
             session?.cancelRecovery();
         }
     }, [gameEndResult, isGameOver, session]);
-
-    useEffect(() => {
-        roomStateRef.current = roomState;
-    }, [roomState]);
 
     useEffect(() => {
         if (!isHydrated || !session) return;
@@ -70,19 +64,22 @@ export function useGameWebSocket(options: UseGameWebSocketOptions = {}) {
         }
 
         const executeRecoveryStep = async (): Promise<void> => {
-            let currentRoom = roomStateRef.current ?? session.getSnapshot().roomState;
+            let currentRoom = session.getSnapshot().roomState;
 
             if (!currentRoom || !currentRoom.gameStarted) {
+                const roomBeforeSync = currentRoom;
                 if (typeof pokerApi.getRoomInfo === 'function') {
                     const roomData = await Promise.resolve(pokerApi.getRoomInfo(auth.roomId, auth.token));
                     if (isCancelled()) return;
-                    if (isRoomDataPayload(roomData)) {
+                    if (
+                        isRoomDataPayload(roomData) &&
+                        session.getSnapshot().roomState === roomBeforeSync
+                    ) {
                         const updatedRoom = mapRoomDataToRoomState(roomData, auth.roomId);
-                        roomStateRef.current = updatedRoom;
                         session.setRoomState(updatedRoom);
-                        currentRoom = updatedRoom;
                     }
                 }
+                currentRoom = session.getSnapshot().roomState;
             }
 
             if (isCancelled() || !currentRoom?.gameStarted) {
@@ -91,16 +88,18 @@ export function useGameWebSocket(options: UseGameWebSocketOptions = {}) {
 
             const syncTime = session.now();
             const syncRevision = session.getStateSyncRevision();
+            const privateRevision = session.getPrivateSyncRevision();
 
             const publicPromise = Promise.resolve(pokerApi.getGameState(auth.roomId, auth.token)).then(
                 (snapshot) => {
                     if (isCancelled()) return;
+                    const decodedSnapshot = decodeGameStatePayload(snapshot);
                     if (
-                        isGameStatePayload(snapshot) &&
+                        decodedSnapshot &&
                         session.getStateSyncRevision() === syncRevision &&
                         syncTime >= session.getLastStateSyncTime()
                     ) {
-                        session.applyGameState(snapshot, syncTime);
+                        session.applyGameState(decodedSnapshot, syncTime);
                     }
                 }
             );
@@ -108,7 +107,10 @@ export function useGameWebSocket(options: UseGameWebSocketOptions = {}) {
             const privatePromise = Promise.resolve(pokerApi.getPrivateState(auth.roomId, auth.token)).then(
                 (privateSnapshot) => {
                     if (isCancelled()) return;
-                    if (isPrivateStatePayload(privateSnapshot)) {
+                    if (
+                        isPrivateStatePayload(privateSnapshot) &&
+                        session.getPrivateSyncRevision() === privateRevision
+                    ) {
                         session.applyPrivateState(privateSnapshot);
                     }
                 }

@@ -50,13 +50,14 @@ function GameViewInner() {
     const hasReadyCountdown = gameState?.phase === 'SHOWDOWN' && Boolean(gameState?.isReadyCountdownActive);
 
     useEffect(() => {
+        if (gameEndResult) return;
         if (!hasDisconnectedPlayer && !hasReadyCountdown) return;
 
         const update = () => setNowMs(Date.now());
         update();
         const id = window.setInterval(update, 1000);
         return () => window.clearInterval(id);
-    }, [hasDisconnectedPlayer, hasReadyCountdown]);
+    }, [hasDisconnectedPlayer, hasReadyCountdown, gameEndResult]);
 
     // ── Session hydration ───────────────────────────────────────────────────────
     useSessionHydration();
