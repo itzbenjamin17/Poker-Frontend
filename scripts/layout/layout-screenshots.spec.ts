@@ -38,7 +38,7 @@ test.describe('Layout Screenshots 3 to 10 players', () => {
                     token: authToken,
                     roomId: id,
                     playerName: 'Host',
-                    playerId: 'p-1',
+                    message: 'Success',
                 }));
             }, { authToken: token, id: roomId });
 
@@ -53,6 +53,7 @@ test.describe('Layout Screenshots 3 to 10 players', () => {
                         chips: 1000 - (i * 10),
                         currentBet: i === 1 ? 20 : i === 2 ? 10 : 0,
                         status: 'ACTIVE',
+                        hasFolded: false,
                         isBigBlind: i === 1,
                         isSmallBlind: i === 2
                     });
@@ -63,7 +64,15 @@ test.describe('Layout Screenshots 3 to 10 players', () => {
             const mockRoom = {
                 roomId,
                 roomName: `Test Room ${numPlayers}P`,
-                players: generatePlayers(numPlayers).map(p => ({ name: p.name, isHost: p.id === 'p-1' })),
+                maxPlayers: numPlayers,
+                buyIn: 1000,
+                smallBlind: 10,
+                bigBlind: 20,
+                createdAt: '2026-01-01T00:00:00.000Z',
+                hostName: 'Host',
+                currentPlayers: numPlayers,
+                canStartGame: false,
+                players: generatePlayers(numPlayers).map(p => ({ name: p.name, isHost: p.id === 'p-1', joinedAt: '2026-01-01T00:00:00.000Z' })),
                 gameStarted: true,
             };
 
@@ -75,6 +84,7 @@ test.describe('Layout Screenshots 3 to 10 players', () => {
             // 1. Regular State Mock (FLOP)
             const mockFlopState = {
                 gameId: roomId,
+                maxPlayers: numPlayers,
                 phase: 'FLOP',
                 pot: 80,
                 pots: [30, 20, 15, 10, 5],

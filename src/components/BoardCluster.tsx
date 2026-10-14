@@ -42,7 +42,7 @@ export function BoardCluster({
             style={{ gap: `${Math.round(tableScale.spacing * 8)}px` }}
         >
             <div
-                className="max-w-full overflow-auto"
+                className="relative flex w-full max-w-full flex-col items-center justify-end overflow-visible"
                 style={{ height: potRegionHeight, flexShrink: 0 }}
             >
                 <TablePots

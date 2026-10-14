@@ -647,6 +647,7 @@ const generatePlayers = (count: number) => {
             chips: 1000 - (i * 10),
             currentBet: i === 1 ? 20 : i === 2 ? 10 : 0,
             status: 'ACTIVE',
+            hasFolded: false,
             isBigBlind: i === 1,
             isSmallBlind: i === 2,
         });
@@ -693,12 +694,21 @@ function buildMocks(roomId: string, numPlayers: number, spec: MockSpec) {
     const room = {
         roomId,
         roomName: `Test Room ${numPlayers}P`,
-        players: ordered(generatePlayers(numPlayers)).map(p => ({ name: p.name, isHost: p.id === 'p-1' })),
+        maxPlayers: numPlayers,
+        buyIn: 1000,
+        smallBlind: 10,
+        bigBlind: 20,
+        createdAt: '2026-01-01T00:00:00.000Z',
+        hostName: 'Host',
+        currentPlayers: numPlayers,
+        canStartGame: false,
+        players: ordered(generatePlayers(numPlayers)).map(p => ({ name: p.name, isHost: p.id === 'p-1', joinedAt: '2026-01-01T00:00:00.000Z' })),
         gameStarted: true,
     };
 
     const flop = {
         gameId: roomId,
+        maxPlayers: numPlayers,
         phase: 'FLOP',
         pot: 80,
         pots: [30, 20, 15, 10, 5],
@@ -762,7 +772,7 @@ function buildMocks(roomId: string, numPlayers: number, spec: MockSpec) {
         // GameTableView shows a "Waiting for <current player> to reconnect" banner (outside the stage, shrinking it)
         // whenever a player is DISCONNECTED and somebody is on turn. A finished hand has nobody on turn, so the
         // rich scenarios omit the turn: the seat geometry is measured on the same felt as the other showdowns.
-        ...(spec.rich ? { currentPlayerId: undefined, currentPlayerName: undefined } : {}),
+        ...(spec.rich ? { currentPlayerId: '', currentPlayerName: '' } : {}),
         phase: 'SHOWDOWN',
         communityCards: ['QH', 'JH', 'TH', '2S', '2D'],
         isGameOver: true,
@@ -793,7 +803,7 @@ async function openShowdown(
             token: authToken,
             roomId: id,
             playerName: 'Host',
-            playerId: 'p-1',
+            message: 'Success',
         }));
     }, { authToken: token, id: roomId });
 
