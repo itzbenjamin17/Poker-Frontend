@@ -51,6 +51,8 @@ export class TestClock implements Clock {
     }
 
     setTimeout(callback: () => void, ms: number): number {
+        if (!Number.isFinite(ms)) throw new RangeError('Timeout delay must be finite');
+        ms = Math.max(0, ms);
         const id = this.nextId++;
         this.timers.set(id, {
             id,
@@ -65,6 +67,8 @@ export class TestClock implements Clock {
     }
 
     setInterval(callback: () => void, ms: number): number {
+        if (!Number.isFinite(ms)) throw new RangeError('Interval delay must be finite');
+        ms = Math.max(1, ms);
         const id = this.nextId++;
         this.timers.set(id, {
             id,
@@ -80,6 +84,7 @@ export class TestClock implements Clock {
     }
 
     tick(ms: number): void {
+        if (!Number.isFinite(ms) || ms < 0) throw new RangeError('Tick must be finite and nonnegative');
         const targetTime = this.currentTime + ms;
         while (true) {
             let earliest: ScheduledTimer | null = null;

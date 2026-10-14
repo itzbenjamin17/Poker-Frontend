@@ -33,19 +33,23 @@ export function useElementSize<T extends HTMLElement = HTMLDivElement>() {
         if (typeof ResizeObserver === 'undefined') return;
 
         const observer = new ResizeObserver((entries) => {
-            if (!entries || entries.length === 0) return;
+            const rect = element.getBoundingClientRect();
+            if (rect.width > 0 || rect.height > 0) {
+                update({ width: rect.width, height: rect.height });
+                return;
+            }
             const entry = entries[0];
-            const borderBox = entry.borderBoxSize?.[0];
+            const borderBox = entry?.borderBoxSize?.[0];
             if (borderBox && (borderBox.inlineSize > 0 || borderBox.blockSize > 0)) {
                 update({ width: borderBox.inlineSize, height: borderBox.blockSize });
                 return;
             }
-            const width = entry.contentRect.width || (entry.target as HTMLElement).clientWidth || 0;
-            const height = entry.contentRect.height || (entry.target as HTMLElement).clientHeight || 0;
+            const width = entry?.contentRect.width || (entry?.target as HTMLElement)?.clientWidth || 0;
+            const height = entry?.contentRect.height || (entry?.target as HTMLElement)?.clientHeight || 0;
             update({ width, height });
         });
 
-        observer.observe(element);
+        observer.observe(element, { box: 'border-box' });
 
         return () => {
             observer.disconnect();

@@ -427,10 +427,11 @@ export function statusBoxSize(avatarRadius: number, textScale: number): { width:
     const font = fontPx(9, textScale);
     const maxWidth = statusMaxWidthPx(avatarRadius, font);
     const textWidth = STATUS_TEXT_EM * font;
-    // Height is modelled as ONE line: the long reconnect text wraps to a second line only on avatars smaller than ~50px, and a
-    // second line of 8-10px text under BET is not worth the room it would cost every seat (BET and status already hang
-    // under the avatar). A wrapped second line is measured by the e2e containment check, not budgeted by the fit.
-    return { width: Math.min(textWidth, maxWidth), height: LINE_HEIGHT_EM * font };
+    const lines = textWidth > maxWidth ? 2 : 1;
+    return {
+        width: Math.min(textWidth, maxWidth),
+        height: LINE_HEIGHT_EM * font * lines,
+    };
 }
 /** Rotation of the face-down cards is +-6 degrees: the bounding box grows by sin(6deg) of the other dimension. */
 const TILT_EM = 0.105;
@@ -1056,7 +1057,8 @@ export function seatStatusFitsFelt(
     const anchorX = ((seat.left - 50) / 100) * table.width;
     const anchorY = ((seat.top - 50) / 100) * table.height;
     const topY = anchorY + radius + 8 * scale.avatar;
-    const bottomY = topY + 2 * (LINE_HEIGHT_EM * font);
+    // Reserve a bet row followed by the full wrapped status.
+    const bottomY = topY + LINE_HEIGHT_EM * font + status.height;
     const halfW = status.width / 2;
     const margin = safeMarginPx(scale.overall);
 
