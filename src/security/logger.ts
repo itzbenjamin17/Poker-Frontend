@@ -4,6 +4,9 @@ function redactString(value: string): string {
     if (value.includes('/user/queue/private')) {
         return '[STOMP /user/queue/private frame redacted]';
     }
+    if (/"(?:token|password|authorization|holecards)"\s*:/i.test(value)) {
+        return '[Sensitive serialized payload redacted]';
+    }
     return value
         .replace(/Bearer\s+[^\s\n\r"']+/gi, 'Bearer [REDACTED]')
         .replace(/"holeCards"\s*:\s*\[[^\]]*\]/gi, '"holeCards":"[REDACTED]"');
@@ -13,7 +16,15 @@ function redactValue(value: unknown, seen = new WeakSet<object>()): unknown {
     if (typeof value === 'string') {
         return redactString(value);
     }
-    if (!value || typeof value !== 'object' || value instanceof Error) {
+    if (value instanceof Error) {
+        return redactValue({
+            ...value,
+            name: value.name,
+            message: value.message,
+            stack: value.stack,
+        }, seen);
+    }
+    if (!value || typeof value !== 'object') {
         return value;
     }
     if (seen.has(value)) {

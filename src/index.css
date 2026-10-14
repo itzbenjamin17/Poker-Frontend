@@ -3,6 +3,13 @@
 /* Short viewports: chrome (header/dock) compacts via CSS only; the table never reads the window. */
 @custom-variant short (@media (max-height: 640px));
 
+@media (prefers-reduced-motion: reduce) {
+  .animate-pulse,
+  .animate-spin {
+    animation: none;
+  }
+}
+
 @theme {
   --font-headline: "Space Grotesk", sans-serif;
   --font-body: "Inter", sans-serif;
