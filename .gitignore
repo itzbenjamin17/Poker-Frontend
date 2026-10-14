@@ -56,3 +56,6 @@ CONTEXT.md
 
 # Personal workstation audit with absolute machine paths
 /docs/research/test-efficacy-audit.md
+
+# Local technical-debt notes
+/docs/specs/Technical-Debt/
