@@ -2,13 +2,20 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, test, expect } from 'vitest';
 import { TablePlayers } from '../TablePlayers';
+import { getTableScale } from '../../lib/tableGeometry';
 import type { Player, GameState } from '../../types';
 
 describe('TablePlayers', () => {
+    const tableScale = getTableScale({ width: 900, height: 419 }, 3);
+
     const mockGetSeatPosition = () => ({
         left: 50,
         top: 50,
-        cardPlacement: 'below' as const,
+        cardPlacement: 'right' as const,
+        panelPlacement: 'centre' as const,
+        side: 'centre' as const,
+        verticalZone: 'middle' as const,
+        labelPlacement: 'avatar' as const,
     });
 
     const player1: Player = {
@@ -31,6 +38,49 @@ describe('TablePlayers', () => {
         isReadyForNextHand: false,
     };
 
+    describe('Semantic ARIA roles and domain attributes', () => {
+        test('seats render role="group" and explicit domain data attributes', () => {
+            const showdownState: GameState = {
+                gameId: 'g-1',
+                phase: 'SHOWDOWN',
+                pot: 100,
+                communityCards: [],
+                currentPlayerId: 'p-1',
+                currentPlayerName: 'Alice',
+                currentBet: 0,
+                maxPlayers: 6,
+                players: [
+                    { ...player1, isWinner: true },
+                    { ...player2, isWinner: false },
+                ],
+            };
+
+            render(
+                <TablePlayers
+                    orderedPlayers={[player1, player2]}
+                    currentPlayerId="p-1"
+                    myPlayerId="p-1"
+                    showdown={showdownState}
+                    privateState={{ holeCards: ['AS', 'KS'] }}
+                    getSeatPosition={mockGetSeatPosition}
+                    isCompactTable={false}
+                    nowMs={100000}
+                    tableScale={tableScale}
+                />
+            );
+
+            const heroSeat = screen.getByRole('group', { name: /alice hero seat/i });
+            expect(heroSeat).toHaveAttribute('data-seat-index', '0');
+            expect(heroSeat).toHaveAttribute('data-is-active-turn', 'true');
+            expect(heroSeat).toHaveAttribute('data-is-winner', 'true');
+
+            const opponentSeat = screen.getByRole('group', { name: /bob seat/i });
+            expect(opponentSeat).toHaveAttribute('data-seat-index', '1');
+            expect(opponentSeat).toHaveAttribute('data-is-active-turn', 'false');
+            expect(opponentSeat).toHaveAttribute('data-is-winner', 'false');
+        });
+    });
+
     describe('Item 16: Showdown card reveal behavior', () => {
         test('renders opponent cards facedown when not in showdown', () => {
             render(
@@ -43,7 +93,7 @@ describe('TablePlayers', () => {
                     getSeatPosition={mockGetSeatPosition}
                     isCompactTable={false}
                     nowMs={100000}
-                    scale={1}
+                    tableScale={tableScale}
                 />
             );
 
@@ -88,7 +138,7 @@ describe('TablePlayers', () => {
                     getSeatPosition={mockGetSeatPosition}
                     isCompactTable={false}
                     nowMs={100000}
-                    scale={1}
+                    tableScale={tableScale}
                 />
             );
 
@@ -118,7 +168,7 @@ describe('TablePlayers', () => {
                     getSeatPosition={mockGetSeatPosition}
                     isCompactTable={false}
                     nowMs={nowMs}
-                    scale={1}
+                    tableScale={tableScale}
                 />
             );
 
@@ -150,7 +200,7 @@ describe('TablePlayers', () => {
                     getSeatPosition={mockGetSeatPosition}
                     isCompactTable={false}
                     nowMs={100000}
-                    scale={1}
+                    tableScale={tableScale}
                 />
             );
 

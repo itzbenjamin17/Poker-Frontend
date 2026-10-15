@@ -1,139 +1,191 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import type { AuthResponse } from './types';
+import type { GameSession } from './domain/GameSession';
 import { GameProvider } from './context/GameProvider';
 import { useGameContext } from './context/GameContext';
 import { useSessionHydration } from './hooks/useSessionHydration';
 import { useGameWebSocket } from './hooks/useGameWebSocket';
 import { useGameDispatcher } from './hooks/useGameDispatcher';
-import { useSeatLayout } from './hooks/useSeatLayout';
 import { LoadingView } from './components/LoadingView';
 import { GameLobbyView } from './components/GameLobbyView';
 import { GameTableView } from './components/GameTableView';
 import { GameReviewView } from './components/GameReviewView';
+import { PokerRoomLayout, RoomStage } from './components/PokerRoomLayout';
+import { RoomHeader } from './components/RoomHeader';
 
 type GameViewProps = {
     auth: AuthResponse;
     onLeave?: () => void;
+    session?: GameSession;
 };
 
-// ─── Inner component (has access to GameContext) ──────────────────────────────
+// ─── Inner component (connects to GameSession / GameContext) ──────────────────
 
 function GameViewInner() {
-    // ALL hooks must be called unconditionally at the top — no hooks after returns.
-    const { gameState, loadingStatus, roomState, isHydrated, onLeave, gameEndResult } = useGameContext();
+    const {
+        auth,
+        onLeave,
+        gameState,
+        roomState,
+        privateState,
+        showdown,
+        showdownResult,
+        notification,
+        loadingStatus,
+        myPlayerId,
+        claimPending,
+        wsStatus,
+        isHydrated,
+        gameEndResult,
+        recoveryFailed,
+        retryConnection,
+    } = useGameContext();
 
-    const [windowWidth, setWindowWidth] = useState(() => window.innerWidth);
-    const [windowHeight, setWindowHeight] = useState(() => window.innerHeight);
-    const [raiseAmount, setRaiseAmount] = useState('');
     const [nowMs, setNowMs] = useState(() => Date.now());
 
-    // ── Layout ──────────────────────────────────────────────────────────────────
-    const { tableTier, isCompactTable, isMobileLandscape, getSeatPosition, scale } = useSeatLayout({
-        width: windowWidth,
-        height: windowHeight,
-    });
-
-    // ── Window resize ───────────────────────────────────────────────────────────
-    useEffect(() => {
-        const onResize = () => {
-            setWindowWidth(window.innerWidth);
-            setWindowHeight(window.innerHeight);
-        };
-        window.addEventListener('resize', onResize);
-        return () => window.removeEventListener('resize', onResize);
-    }, []);
+    // Table sizing, scale and seat layout are owned by LiveTableStage (measured stage).
 
     // ── Disconnect countdown clock ──────────────────────────────────────────────
+    const hasDisconnectedPlayer = Boolean(gameState?.players?.some(p => p.status === 'DISCONNECTED'));
+    const hasReadyCountdown = gameState?.phase === 'SHOWDOWN' && Boolean(gameState?.isReadyCountdownActive);
+
     useEffect(() => {
-        const hasDisconnected = Boolean(gameState?.players.some(p => p.status === 'DISCONNECTED'));
-        const hasReadyCountdown = gameState?.phase === 'SHOWDOWN' && Boolean(gameState.isReadyCountdownActive);
-        if (!hasDisconnected && !hasReadyCountdown) return;
+        if (gameEndResult) return;
+        if (!hasDisconnectedPlayer && !hasReadyCountdown) return;
 
         const update = () => setNowMs(Date.now());
         update();
         const id = window.setInterval(update, 1000);
         return () => window.clearInterval(id);
-    }, [gameState]);
+    }, [hasDisconnectedPlayer, hasReadyCountdown, gameEndResult]);
 
     // ── Session hydration ───────────────────────────────────────────────────────
-    useSessionHydration();
+    const { initialLoadFailed, retryInitialLoad } = useSessionHydration();
 
     // ── WebSocket & Dispatcher ──────────────────────────────────────────────────
-    const dispatcherRef = useRef<ReturnType<typeof useGameDispatcher> | null>(null);
-    const handleSocketError = useCallback((msg: string) => {
-        dispatcherRef.current?.onSocketError(msg);
-    }, []);
-
-    const { stompClientRef } = useGameWebSocket({ onSocketError: handleSocketError });
-
-    const publisherAdapter = useMemo(() => ({
-        publish: (dest: string, body: string) => {
-            stompClientRef.current?.publish({ destination: dest, body });
-        },
-        isConnected: () => stompClientRef.current?.connected ?? false
-    }), [stompClientRef]);
-
-    const dispatcher = useGameDispatcher(publisherAdapter);
-    
-    useEffect(() => {
-        dispatcherRef.current = dispatcher;
-    }, [dispatcher]);
+    useGameWebSocket();
+    const dispatcher = useGameDispatcher();
 
     // ── Routing (no hooks below this line) ──────────────────────────────────────
 
     if (gameEndResult) {
-        return <GameReviewView onLeave={() => dispatcher.dispatch({ type: 'LEAVE_REVIEW' })} />;
+        return (
+            <GameReviewView
+                gameEndResult={gameEndResult}
+                gameState={gameState}
+                onLeave={() => dispatcher.dispatch({ type: 'LEAVE_REVIEW' })}
+            />
+        );
     }
 
     if (!isHydrated) {
-        return <LoadingView status={loadingStatus} onLeave={onLeave} />;
+        return <LoadingView status={loadingStatus} error={initialLoadFailed} onRetry={initialLoadFailed ? retryInitialLoad : recoveryFailed ? retryConnection : undefined} onLeave={onLeave} />;
     }
 
-    if (!gameState) {
+    if (!gameState || !roomState) {
         // Show lobby if room is known but game hasn't started yet
         if (roomState && !roomState.gameStarted) {
             return (
-                <GameLobbyView
-                    onStartGame={() => dispatcher.dispatch({ type: 'START_GAME' })}
-                    onLeaveGame={() => dispatcher.dispatch({ type: 'LEAVE_GAME' })}
-                    isStartingGame={dispatcher.isPending('START_GAME')}
-                />
+                <PokerRoomLayout
+                    header={
+                        <RoomHeader
+                            roomName={roomState?.roomName}
+                            playerCount={roomState?.players?.length || 0}
+                            wsStatus={wsStatus}
+                            onLeave={() => dispatcher.dispatch({ type: 'LEAVE_GAME' })}
+                            confirmLeaveMessage="Are you sure you want to leave the lobby?"
+                        />
+                    }
+                    wsStatus={wsStatus}
+                    onLeave={() => dispatcher.dispatch({ type: 'LEAVE_GAME' })}
+                >
+                    <RoomStage>
+                        <GameLobbyView
+                            roomState={roomState}
+                            playerName={auth.playerName}
+                            auth={auth}
+                            notification={notification}
+                            onStartGame={() => dispatcher.dispatch({ type: 'START_GAME' })}
+                            isStartingGame={dispatcher.isPending('START_GAME')}
+                            onLeaveGame={() => dispatcher.dispatch({ type: 'LEAVE_GAME' })}
+                        />
+                    </RoomStage>
+                </PokerRoomLayout>
             );
         }
         // Show loading spinner while connecting / hydrating
-        return <LoadingView status={loadingStatus} onLeave={onLeave} />;
+        return (
+            <PokerRoomLayout
+                header={
+                    <RoomHeader
+                        roomName={roomState?.roomName}
+                        playerCount={0}
+                        wsStatus={wsStatus}
+                        onLeave={onLeave}
+                        confirmLeave={false}
+                    />
+                }
+                wsStatus={wsStatus}
+                showReconnectOverlay={false}
+                onLeave={onLeave}
+            >
+                <RoomStage>
+                    <LoadingView status={loadingStatus} onRetry={recoveryFailed ? retryConnection : undefined} />
+                </RoomStage>
+            </PokerRoomLayout>
+        );
     }
 
     // ── Active game table ───────────────────────────────────────────────────────
     return (
-        <GameTableView
-            tableTier={tableTier}
-            isCompactTable={isCompactTable}
-            isMobileLandscape={isMobileLandscape}
-            scale={scale}
-            nowMs={nowMs}
-            raiseAmount={raiseAmount}
-            raiseError={dispatcher.error?.message ?? null}
-            getSeatPosition={getSeatPosition}
-            onAction={(action, amount) => dispatcher.dispatch({ type: 'PLAY_ACTION', action, amount })}
-            onReady={() => dispatcher.dispatch({ type: 'READY' })}
-            onClaimWin={() => dispatcher.dispatch({ type: 'CLAIM_WIN' })}
-            onLeaveGame={() => dispatcher.dispatch({ type: 'LEAVE_GAME' })}
-            onRaiseChange={(val) => {
-                setRaiseAmount(val);
-                dispatcher.clearError();
-            }}
-            isActionPending={dispatcher.isPending('PLAY_ACTION') || dispatcher.isPending('READY') || dispatcher.isPending('START_GAME') || dispatcher.isPending('CLAIM_WIN') || dispatcher.isPending('LEAVE_GAME')}
-        />
+        <PokerRoomLayout
+            header={
+                <RoomHeader
+                    roomName={roomState?.roomName}
+                    playerCount={gameState.players.length}
+                    wsStatus={wsStatus}
+                    onLeave={() => dispatcher.dispatch({ type: 'LEAVE_GAME' })}
+                />
+            }
+            wsStatus={wsStatus}
+            onLeave={() => dispatcher.dispatch({ type: 'LEAVE_GAME' })}
+        >
+            <GameTableView
+                gameState={gameState}
+                roomState={roomState}
+                auth={auth}
+                playerName={auth.playerName}
+                myPlayerId={myPlayerId}
+                privateState={privateState}
+                showdown={showdown}
+                showdownResult={showdownResult}
+                claimPending={claimPending}
+                notification={notification}
+                wsStatus={wsStatus}
+                nowMs={nowMs}
+                raiseError={null}
+                actionError={dispatcher.error}
+                onAction={(action, amount) => dispatcher.dispatch({ type: 'PLAY_ACTION', action, amount })}
+                onReady={() => dispatcher.dispatch({ type: 'READY' })}
+                onUnready={() => dispatcher.dispatch({ type: 'UNREADY' })}
+                onClaimWin={() => dispatcher.dispatch({ type: 'CLAIM_WIN' })}
+                onLeaveGame={() => dispatcher.dispatch({ type: 'LEAVE_GAME' })}
+                onClearRaiseError={() => dispatcher.clearError()}
+                isActionPending={dispatcher.isPending('PLAY_ACTION') || dispatcher.isPending('READY') || dispatcher.isPending('UNREADY') || dispatcher.isPending('START_GAME') || dispatcher.isPending('CLAIM_WIN') || dispatcher.isPending('LEAVE_GAME')}
+                hasShellHeader={true}
+            />
+        </PokerRoomLayout>
     );
 }
 
 // ─── Public export ─────────────────────────────────────────────────────────────
 
-export default function GameView({ auth, onLeave }: GameViewProps) {
+export function GameView({ auth, onLeave, session }: GameViewProps) {
     return (
-        <GameProvider auth={auth} onLeave={onLeave}>
+        <GameProvider auth={auth} onLeave={onLeave} session={session}>
             <GameViewInner />
         </GameProvider>
     );
 }
+
+export default GameView;

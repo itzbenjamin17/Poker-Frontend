@@ -1,286 +1,204 @@
 import { useEffect, useRef } from 'react';
-import { createStompClient, pokerApi } from '../services/api';
+import { MalformedResponseError, pokerApi } from '../services/api';
 import { logger } from '../security/logger';
 import { useGameContext } from '../context/GameContext';
 import {
-    isGameStatePayload,
-    isGameEndPayload,
+    decodeGameStatePayload,
     isPrivateStatePayload,
-    getErrorStatusCode,
-    normalizeErrorMessage,
+    isRoomDataPayload,
+    mapRoomDataToRoomState,
+    reportRejectedGameSnapshot,
 } from '../lib/payloads';
-import type { RoomUpdate, GameState } from '../types';
-import {
-    HOST_LEFT,
-    GAME_FINISHED_FALLBACK,
-} from '../constants/strings';
 import type { Client } from '@stomp/stompjs';
+import {
+    StompTransportAdapter,
+    type GameTransport,
+} from '../services/transport';
 
-const ROOM_CLOSED_REDIRECT_MS = 3_000;
-
-interface UseGameWebSocketOptions {
-    onSocketError: (message: string) => void;
+export interface UseGameWebSocketOptions {
+    onSocketError?: (message: string) => void;
+    transport?: GameTransport;
 }
 
 /**
- * Manages the STOMP WebSocket lifecycle: connect, subscribe, reconnect.
- * Bug fix: privateSubscribedRef is reset to false at the start of each effect run,
- * so reconnections always re-subscribe to the private channel.
+ * Manages the real-time communication lifecycle via GameSession and GameTransport:
+ * connect/disconnect, wake-up/online reconnection, and deduplicated REST state recovery.
  */
-export function useGameWebSocket(options: UseGameWebSocketOptions) {
+export function useGameWebSocket(options: UseGameWebSocketOptions = {}) {
     const {
-        auth, onLeave, dispatch,
-        applyIncomingGameState, applyIncomingPrivateState,
-        clearShowdownTimers, isHydrated,
+        auth,
+        session,
+        isHydrated,
+        isGameOver,
         gameEndResult,
-        roomState,
     } = useGameContext();
 
     const { onSocketError } = options;
 
+    const transportRef = useRef<GameTransport | null>(null);
     const stompClientRef = useRef<Client | null>(null);
-    const lastStateSyncTimeRef = useRef<number>(0);
-    const redirectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const gameEndedRef = useRef(Boolean(gameEndResult));
-    const roomStateRef = useRef(roomState);
+    const gameEndedRef = useRef(Boolean(gameEndResult) || isGameOver);
 
     // Keep refs in sync without re-triggering the main effect
     useEffect(() => {
-        if (gameEndResult) gameEndedRef.current = true;
-        else if (!gameEndResult) gameEndedRef.current = false;
-    }, [gameEndResult]);
+        gameEndedRef.current = Boolean(gameEndResult) || isGameOver;
+        if (gameEndedRef.current) {
+            session?.cancelRecovery();
+        }
+    }, [gameEndResult, isGameOver, session]);
 
     useEffect(() => {
-        roomStateRef.current = roomState;
-    }, [roomState]);
-
-    useEffect(() => {
-        if (!isHydrated) return;
+        if (!isHydrated || !session) return;
         // Nothing to connect for - a restored review (e.g. after a page refresh
         // past server cleanup) has no live game to subscribe to.
-        if (gameEndedRef.current) return;
+        if (gameEndedRef.current || session.getSnapshot().isGameOver) return;
 
-        const isE2EMock = typeof window !== 'undefined' && window.localStorage.getItem('poker-e2e-mock') === 'true';
-        if (isE2EMock) {
-            dispatch({ type: 'SET_WS_STATUS', payload: 'connected' });
-            return;
+        let disposed = false;
+
+        const isCancelled = () =>
+            disposed || gameEndedRef.current || session.getSnapshot().isGameOver;
+
+        const transport = options.transport ?? session.getTransport();
+        transportRef.current = transport;
+        if (transport instanceof StompTransportAdapter) {
+            stompClientRef.current = transport.getClient();
         }
 
-        const client = createStompClient(auth.token);
-        stompClientRef.current = client;
+        const executeRecoveryStep = async (): Promise<void> => {
+            let currentRoom = session.getSnapshot().roomState;
 
-        const scheduleRedirect = (message: string) => {
-            if (gameEndedRef.current) return;
-            const cleanMsg = normalizeErrorMessage(message);
-            dispatch({ type: 'SET_NOTIFICATION', payload: cleanMsg });
-            dispatch({ type: 'SET_LOADING_STATUS', payload: cleanMsg || 'Returning...' });
-            if (redirectTimerRef.current !== null) clearTimeout(redirectTimerRef.current);
-            redirectTimerRef.current = setTimeout(() => onLeave?.(), ROOM_CLOSED_REDIRECT_MS);
-        };
-
-        client.onConnect = () => {
-            logger.log('Connected to WebSocket');
-            dispatch({ type: 'SET_WS_STATUS', payload: 'connected' });
-
-            const subscribeTo = (destinations: string[], handler: (body: string) => void) => {
-                destinations.forEach((dest) => client.subscribe(dest, (msg) => handler(msg.body)));
-            };
-
-            // ── Private channel ───────────────────────────────────────────
-            subscribeTo(['/user/queue/private'], (privBody) => {
-                try {
-                    const parsed = JSON.parse(privBody);
-
-                    if (parsed.type === 'ACTION_ERROR' && typeof parsed.message === 'string') {
-                        onSocketError(parsed.message);
-                        return;
-                    }
-
-                    if (isPrivateStatePayload(parsed)) {
-                        applyIncomingPrivateState(parsed);
-                    }
-                } catch (err) {
-                    logger.warn('Ignoring malformed private payload:', privBody, err);
-                }
-            });
-
-            // ── Room updates ──────────────────────────────────────────────
-            subscribeTo([`/room/${auth.roomId}`], (body) => {
-                try {
-                    const update = JSON.parse(body) as RoomUpdate;
-
-                    if (update.message === 'ROOM_CLOSED') {
-                        if (gameEndedRef.current) return;
-                        dispatch({ type: 'SET_NOTIFICATION', payload: HOST_LEFT });
-                        dispatch({ type: 'SET_LOADING_STATUS', payload: HOST_LEFT });
-                        dispatch({ type: 'SET_ROOM', payload: null });
-                        if (redirectTimerRef.current !== null) clearTimeout(redirectTimerRef.current);
-                        redirectTimerRef.current = setTimeout(() => onLeave?.(), ROOM_CLOSED_REDIRECT_MS);
-                        return;
-                    }
-
+            if (!currentRoom || !currentRoom.gameStarted) {
+                const roomBeforeSync = currentRoom;
+                if (typeof pokerApi.getRoomInfo === 'function') {
+                    const roomData = await Promise.resolve(pokerApi.getRoomInfo(auth.roomId, auth.token));
+                    if (isCancelled()) return;
                     if (
-                        update.message === 'ROOM_CREATED' ||
-                        update.message === 'PLAYER_JOINED' ||
-                        update.message === 'PLAYER_LEFT'
+                        isRoomDataPayload(roomData) &&
+                        session.getSnapshot().roomState === roomBeforeSync
                     ) {
-                        dispatch({
-                            type: 'SET_ROOM',
-                            payload: {
-                                roomId: update.data.roomId ?? auth.roomId,
-                                roomName: update.data.roomName,
-                                players: update.data.players,
-                                maxPlayers: update.data.maxPlayers,
-                                buyIn: update.data.buyIn,
-                                smallBlind: update.data.smallBlind,
-                                bigBlind: update.data.bigBlind,
-                                canStartGame: update.data.canStartGame,
-                                gameStarted: update.data.gameStarted,
-                            },
+                        const updatedRoom = mapRoomDataToRoomState(roomData, auth.roomId);
+                        session.setRoomState(updatedRoom);
+                    }
+                }
+                currentRoom = session.getSnapshot().roomState;
+            }
+
+            if (isCancelled() || !currentRoom?.gameStarted) {
+                return;
+            }
+
+            const syncTime = session.now();
+            const syncRevision = session.getStateSyncRevision();
+            const privateRevision = session.getPrivateSyncRevision();
+
+            const publicPromise = Promise.resolve(pokerApi.getGameState(auth.roomId, auth.token)).then(
+                (snapshot) => {
+                    if (isCancelled()) return;
+                    const decodedSnapshot = decodeGameStatePayload(snapshot, 'REST recovery game snapshot');
+                    if (
+                        decodedSnapshot &&
+                        session.getStateSyncRevision() === syncRevision &&
+                        syncTime >= session.getLastStateSyncTime()
+                    ) {
+                        session.applyGameState(decodedSnapshot, syncTime);
+                    }
+                },
+                (error: unknown) => {
+                    if (isCancelled()) return;
+                    if (error instanceof MalformedResponseError) {
+                        reportRejectedGameSnapshot('REST recovery game snapshot', {
+                            path: '$', expected: 'object', receivedType: error.receivedType,
                         });
                     }
-                } catch (err) {
-                    logger.warn('Ignoring malformed room update payload:', body, err);
-                }
-            });
+                    throw error;
+                },
+            );
 
-            // ── Game state ────────────────────────────────────────────────
-            subscribeTo([`/game/${auth.roomId}`], (body) => {
-                let parsed: unknown;
-                try {
-                    parsed = JSON.parse(body);
-                } catch (err) {
-                    logger.warn('Ignoring malformed game payload:', body, err);
-                    return;
-                }
-
-                if (!parsed || typeof parsed !== 'object') return;
-                const p = parsed as Record<string, unknown>;
-
-                const messageType = typeof p.type === 'string' ? p.type : null;
-                const messageText = typeof p.message === 'string' ? p.message : null;
-
-                if (isGameEndPayload(parsed)) {
-                    if (gameEndedRef.current) return;
-                    gameEndedRef.current = true;
-                    if (redirectTimerRef.current !== null) {
-                        clearTimeout(redirectTimerRef.current);
-                        redirectTimerRef.current = null;
+            const privatePromise = Promise.resolve(pokerApi.getPrivateState(auth.roomId, auth.token)).then(
+                (privateSnapshot) => {
+                    if (isCancelled()) return;
+                    if (
+                        isPrivateStatePayload(privateSnapshot) &&
+                        session.getPrivateSyncRevision() === privateRevision
+                    ) {
+                        session.applyPrivateState(privateSnapshot);
                     }
-
-                    dispatch({ type: 'SET_NOTIFICATION', payload: null });
-
-                    const endMsg = normalizeErrorMessage(parsed.message ?? GAME_FINISHED_FALLBACK);
-                    const winnerName = typeof parsed.winner === 'string' ? parsed.winner : null;
-                    const winnerChips = typeof parsed.winnerChips === 'number' ? parsed.winnerChips : undefined;
-                    const isForfeit = parsed.isForfeit === true;
-
-                    let finalGameState: GameState | undefined = undefined;
-                    if (parsed.finalState && isGameStatePayload(parsed.finalState)) {
-                        finalGameState = {
-                            ...parsed.finalState,
-                            gameId: parsed.finalState.gameId ?? auth.roomId,
-                            claimWinAvailable: parsed.finalState.claimWinAvailable ?? undefined,
-                            claimWinPlayerName: parsed.finalState.claimWinPlayerName ?? undefined,
-                            uncalledAmount: parsed.finalState.uncalledAmount ?? undefined,
-                            pots: parsed.finalState.pots ?? undefined,
-                            isReadyCountdownActive: parsed.finalState.isReadyCountdownActive ?? undefined,
-                            readyCountdownDeadlineEpochMs: parsed.finalState.readyCountdownDeadlineEpochMs ?? undefined,
-                        };
-                    }
-
-                    dispatch({
-                        type: 'SET_GAME_END_RESULT',
-                        payload: {
-                            winnerName,
-                            winnerChips,
-                            isForfeit,
-                            message: endMsg || GAME_FINISHED_FALLBACK,
-                            finalState: finalGameState,
-                        },
-                    });
-                    return;
                 }
+            );
 
-                if (
-                    messageType === 'PLAYER_NOTIFICATION' ||
-                    messageType === 'AUTO_ADVANCE_START' ||
-                    messageType === 'AUTO_ADVANCE_COMPLETE'
-                ) {
-                    if (messageText) dispatch({ type: 'SET_NOTIFICATION', payload: normalizeErrorMessage(messageText) });
-                    return;
-                }
-
-                if (!isGameStatePayload(parsed)) {
-                    logger.warn('Ignoring non-game payload on game topic:', { keys: Object.keys(p) });
-                    return;
-                }
-
-                if (gameEndedRef.current) return;
-
-                lastStateSyncTimeRef.current = Date.now();
-                applyIncomingGameState(parsed);
-            });
-
-            // ── Sync on connect (catch missed updates during reconnect) ───
-            if (gameEndedRef.current) return;
-            if (!roomStateRef.current?.gameStarted) return;
-
-            const syncTime = Date.now();
-            void pokerApi.getGameState(auth.roomId, auth.token)
-                .then((snapshot) => {
-                    if (gameEndedRef.current) return;
-                    if (isGameStatePayload(snapshot) && syncTime >= lastStateSyncTimeRef.current) {
-                        lastStateSyncTimeRef.current = syncTime;
-                        applyIncomingGameState(snapshot);
-                    }
-                })
-                .catch((err) => {
-                    if (gameEndedRef.current) return;
-                    const code = getErrorStatusCode(err);
-                    if (code === 403) {
-                        scheduleRedirect('Your seat is no longer active. Returning to lobby...');
-                        return;
-                    }
-                    if (code !== 404) logger.warn('State re-sync failed after connect:', err);
-                });
-
-            void pokerApi.getPrivateState(auth.roomId, auth.token)
-                .then((privateSnapshot) => {
-                    if (gameEndedRef.current) return;
-                    if (isPrivateStatePayload(privateSnapshot)) applyIncomingPrivateState(privateSnapshot);
-                })
-                .catch((err) => {
-                    if (gameEndedRef.current) return;
-                    const code = getErrorStatusCode(err);
-                    if (code !== 404) logger.warn('Private state re-sync failed after connect:', err);
-                });
+            await Promise.all([publicPromise, privatePromise]);
         };
 
-        client.onStompError = (frame) => {
-            logger.warn('STOMP error:', frame.headers['message']);
-            dispatch({ type: 'SET_WS_STATUS', payload: 'reconnecting' });
+        const startRecoveryWorkflow = ({ resetBudget }: { resetBudget: boolean }) => {
+            if (isCancelled()) return;
+            void session.recoverState(executeRecoveryStep, { resetBudget });
         };
 
-        client.onWebSocketClose = () => {
-            logger.warn('WebSocket closed — will reconnect automatically');
-            dispatch({ type: 'SET_WS_STATUS', payload: 'reconnecting' });
+        const unsubConnect = session.onConnect(() => {
+            startRecoveryWorkflow({ resetBudget: true });
+        });
+
+        const triggerReconnect = () => {
+            if (typeof transport.forceReconnect === 'function') {
+                transport.forceReconnect();
+            } else {
+                transport.connect();
+            }
         };
 
-        client.activate();
+        const unsubManualRetry = session.onManualRetry(() => {
+            if (isCancelled()) return;
+            if (!transport.isConnected?.()) {
+                triggerReconnect();
+            }
+            startRecoveryWorkflow({ resetBudget: true });
+        });
+
+        const unsubSocketError = onSocketError ? session.onSocketError(onSocketError) : undefined;
+
+        const handleWakeup = () => {
+            if (document.visibilityState !== 'visible') return;
+            if (isCancelled()) return;
+            if (!transport.isConnected?.()) {
+                logger.log('Tab woke up and WebSocket is disconnected. Forcing reconnect...');
+                triggerReconnect();
+            }
+            startRecoveryWorkflow({ resetBudget: false });
+        };
+
+        const handleOnline = () => {
+            if (isCancelled()) return;
+            if (!transport.isConnected?.()) {
+                logger.log('Browser came online. Forcing reconnect...');
+                triggerReconnect();
+            }
+            startRecoveryWorkflow({ resetBudget: false });
+        };
+
+        document.addEventListener('visibilitychange', handleWakeup);
+        window.addEventListener('online', handleOnline);
+
+        session.connect(options.transport);
 
         return () => {
-            clearShowdownTimers();
-            if (redirectTimerRef.current !== null) clearTimeout(redirectTimerRef.current);
-            dispatch({ type: 'SET_WS_STATUS', payload: 'disconnected' });
-            client.deactivate();
+            disposed = true;
+            session.cancelRecovery();
+            document.removeEventListener('visibilitychange', handleWakeup);
+            window.removeEventListener('online', handleOnline);
+            unsubConnect();
+            unsubManualRetry();
+            unsubSocketError?.();
+            session.disconnect();
         };
     }, [
-        auth.roomId, auth.playerName, auth.token,
-        isHydrated, onLeave, dispatch,
-        applyIncomingGameState, applyIncomingPrivateState,
-        clearShowdownTimers, onSocketError,
+        auth.roomId,
+        auth.token,
+        isHydrated,
+        session,
+        onSocketError,
+        options.transport,
     ]);
 
-    return { stompClientRef };
+    return { stompClientRef, transportRef };
 }
+

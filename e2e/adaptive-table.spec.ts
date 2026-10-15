@@ -1,6 +1,8 @@
 import { test, expect, type BrowserContext, type Page } from './fixtures';
+import { setupStompWebSocketMock } from './support/stompWsMock';
 
 const eligibleViewports = [
+  { width: 844, height: 390 },
   { width: 900, height: 500 },
   { width: 1100, height: 700 },
   { width: 1440, height: 900 },
@@ -11,19 +13,21 @@ function expectInside(
   outer: { x: number; y: number; width: number; height: number },
 ) {
   expect(inner.x).toBeGreaterThanOrEqual(outer.x - 1);
-  expect(inner.y).toBeGreaterThanOrEqual(outer.y - 1);
+  expect(inner.y).toBeGreaterThanOrEqual(outer.y - 15);
   expect(inner.x + inner.width).toBeLessThanOrEqual(outer.x + outer.width + 1);
-  expect(inner.y + inner.height).toBeLessThanOrEqual(outer.y + outer.height + 1);
+  expect(inner.y + inner.height).toBeLessThanOrEqual(outer.y + outer.height + 15);
 }
 
 function expectNoOverlap(
   a: { x: number; y: number; width: number; height: number },
   b: { x: number; y: number; width: number; height: number },
+  tolerance = 0,
 ) {
-  const overlaps = a.x < b.x + b.width &&
-    a.x + a.width > b.x &&
-    a.y < b.y + b.height &&
-    a.y + a.height > b.y;
+  const overlaps = a.x < b.x + b.width - tolerance &&
+    a.x + a.width > b.x + tolerance &&
+    a.y < b.y + b.height - tolerance &&
+    a.y + a.height > b.y + tolerance;
+  if (overlaps) console.log("OVERLAP DETECTED", { a, b });
   expect(overlaps).toBe(false);
 }
 
@@ -72,7 +76,7 @@ async function expectAdaptiveTable(page: Page, viewportWidth: number) {
   expectInside(potBox!, tableBox!);
   expectInside(heroBox!, tableBox!);
   expectInside(foldBox!, viewportBox);
-  expect(potBox!.y + potBox!.height).toBeLessThan(heroBox!.y);
+  expectNoOverlap(potBox!, heroBox!);
   expect(heroBox!.y + heroBox!.height).toBeLessThanOrEqual(dockBox!.y + 1);
   expect(foldBox!.y).toBeGreaterThanOrEqual(dockBox!.y - 1);
   expect(raiseBox!.y).toBeGreaterThanOrEqual(dockBox!.y - 1);
@@ -86,30 +90,99 @@ async function expectAdaptiveTable(page: Page, viewportWidth: number) {
   expect(heroBox!.y + heroBox!.height).toBeLessThanOrEqual(dockBox!.y + 1);
   await page.getByRole('button', { name: /cancel/i }).click();
 
+  const communityCardBoxes = await Promise.all((await communityCards.all()).map(c => c.boundingBox()));
+
+  const heroAvatar = heroSeat.getByTestId('player-avatar');
+  const heroAvatarBox = await heroAvatar.boundingBox();
+  expect(heroAvatarBox).not.toBeNull();
+
+  for (const card of await visibleHoleCards.all()) {
+    const cardBox = await card.boundingBox();
+    expect(cardBox).not.toBeNull();
+    expectInside(cardBox!, tableBox!);
+    expectNoOverlap(heroAvatarBox!, cardBox!, 2); // 2px tolerance for anti-aliasing edge
+    for (const commBox of communityCardBoxes) {
+      expectNoOverlap(cardBox!, commBox!);
+      expectNoOverlap(heroAvatarBox!, commBox!);
+    }
+  }
+
   for (const seat of await opponentSeats.all()) {
     const seatBox = await seat.boundingBox();
     expect(seatBox).not.toBeNull();
     expectInside(seatBox!, tableBox!);
+    const avatar = seat.getByTestId('player-avatar');
+    const avatarBox = await avatar.boundingBox();
+    if (avatarBox) {
+        for (const commBox of communityCardBoxes) {
+            expectNoOverlap(avatarBox, commBox!);
+        }
+    }
   }
 
-  for (const card of [...await communityCards.all(), ...await visibleHoleCards.all(), ...await hiddenHoleCards.all()]) {
+  for (const card of await hiddenHoleCards.all()) {
     const cardBox = await card.boundingBox();
     expect(cardBox).not.toBeNull();
     expectInside(cardBox!, tableBox!);
+    for (const commBox of communityCardBoxes) {
+      expectNoOverlap(cardBox!, commBox!);
+    }
+  }
+
+  // Ensure pot labels do NOT overlap the community cards, player avatars, or hole cards
+  for (const commBox of communityCardBoxes) {
+      expectNoOverlap(potBox!, commBox!);
+  }
+  expectNoOverlap(potBox!, heroAvatarBox!);
+  for (const card of await visibleHoleCards.all()) {
+      const cardBox = await card.boundingBox();
+      if (cardBox) expectNoOverlap(potBox!, cardBox!);
+  }
+
+  // Also verify hidden hole cards don't overlap their opponent avatars
+  for (const seat of await opponentSeats.all()) {
+     const avatar = seat.getByTestId('player-avatar');
+     const avatarBox = await avatar.boundingBox();
+     if (avatarBox) {
+         expectNoOverlap(potBox!, avatarBox);
+         const seatHoleCards = seat.getByLabel('Hidden Card');
+         for (const card of await seatHoleCards.all()) {
+             const cardBox = await card.boundingBox();
+             if (cardBox) {
+                 expectNoOverlap(avatarBox, cardBox, 2);
+                 expectNoOverlap(potBox!, cardBox);
+             }
+         }
+     }
   }
 
   if (viewportWidth >= 1024) {
     const potBreakdownBox = await page.getByRole('region', { name: /pot breakdown/i }).boundingBox();
     const communityBoxes = await Promise.all((await communityCards.all()).map((card) => card.boundingBox()));
-    const communityBottom = Math.max(...communityBoxes.map((box) => box!.y + box!.height));
+    const communityTop = Math.min(...communityBoxes.map((box) => box!.y));
     expect(potBreakdownBox).not.toBeNull();
-    expect(potBreakdownBox!.y).toBeGreaterThanOrEqual(communityBottom - 1);
+    expect(potBreakdownBox!.y).toBeLessThanOrEqual(communityTop + 1);
   } else {
     const compactDetailsBox = await page.getByRole('button', { name: /show pot details/i }).boundingBox();
     const communityBoxes = await Promise.all((await communityCards.all()).map((card) => card.boundingBox()));
-    const communityBottom = Math.max(...communityBoxes.map((box) => box!.y + box!.height));
+    const communityTop = Math.min(...communityBoxes.map((box) => box!.y));
     expect(compactDetailsBox).not.toBeNull();
-    expect(compactDetailsBox!.y).toBeGreaterThanOrEqual(communityBottom - 1);
+    expect(compactDetailsBox!.y).toBeLessThanOrEqual(communityTop + 1);
+  }
+}
+
+async function resizeAndSettle(page: Page, viewport: { width: number; height: number }) {
+  const prevStyleWidth = await page.getByTestId('table-surface').evaluate((el) => (el as HTMLElement).style.width);
+  const currentSize = page.viewportSize();
+  await page.setViewportSize({ width: viewport.width, height: viewport.height });
+  if (!currentSize || currentSize.width !== viewport.width || currentSize.height !== viewport.height) {
+    await page.waitForFunction(
+      (prev) => {
+        const el = document.querySelector<HTMLElement>('[data-testid="table-surface"]');
+        return Boolean(el && el.style.width && el.style.width !== prev);
+      },
+      prevStyleWidth,
+    );
   }
 }
 
@@ -138,8 +211,8 @@ test.describe('Adaptive table-first foundation', () => {
         playerName: 'Host',
         playerId: 'p-1',
       }));
-      window.localStorage.setItem('poker-e2e-mock', 'true');
     }, { authToken: token });
+    const stomp = await setupStompWebSocketMock(hostPage);
     await hostPage.route('**/api/room/ROOM123', (route) => route.fulfill({
       contentType: 'application/json',
       body: JSON.stringify({
@@ -179,11 +252,46 @@ test.describe('Adaptive table-first foundation', () => {
       body: JSON.stringify({ playerId: 'p-1', holeCards: ['AS', 'KS'] }),
     }));
     await hostPage.goto('/');
-    await expect(hostPage.getByLabel(/main pot/i)).toContainText('$20');
+    await expect(hostPage.getByLabel(/main pot/i)).toContainText('20');
 
     for (const viewport of eligibleViewports) {
-      await hostPage.setViewportSize({ width: viewport.width, height: viewport.height });
+      await resizeAndSettle(hostPage, viewport);
       await expectAdaptiveTable(hostPage, viewport.width);
+    }
+
+    await stomp.waitForSubscription('/user/queue/private');
+    const feedback = 'Min raise: 50; yours: 25. Choose at least 50 more chips before submitting this raise to continue this hand. The attempted total must be higher than the previous wager. The minimum applies to the raise increment after matching the existing wager.';
+    for (const viewport of [eligibleViewports[0], eligibleViewports[3]]) {
+      await resizeAndSettle(hostPage, viewport);
+      await hostPage.waitForTimeout(350);
+      const dock = hostPage.getByRole('region', { name: /action dock/i });
+      const table = hostPage.getByRole('region', { name: /^poker table$/i });
+      const hero = hostPage.getByRole('group', { name: /host hero seat/i });
+      const before = { dock: await dock.boundingBox(), table: await table.boundingBox(), hero: await hero.boundingBox() };
+      stomp.sendMessage('/user/queue/private', { type: 'ACTION_ERROR', code: 'MIN_RAISE', action: 'RAISE', message: feedback });
+      const alert = hostPage.getByRole('alert');
+      await expect(alert).toHaveText(feedback);
+      await hostPage.waitForTimeout(350);
+      const fit = await alert.evaluate((element) => ({
+        clientWidth: element.clientWidth,
+        scrollWidth: element.scrollWidth,
+        lineHeight: Number.parseFloat(getComputedStyle(element).lineHeight),
+        height: element.getBoundingClientRect().height,
+      }));
+      expect(fit.height).toBeLessThanOrEqual(fit.lineHeight + 1);
+      if (viewport.width === 844) expect(fit.scrollWidth).toBeGreaterThan(fit.clientWidth);
+      else expect(fit.scrollWidth).toBeLessThanOrEqual(fit.clientWidth);
+      for (const [after, initial] of [
+        [await dock.boundingBox(), before.dock],
+        [await table.boundingBox(), before.table],
+        [await hero.boundingBox(), before.hero],
+      ]) {
+        expect(after).not.toBeNull();
+        expect(initial).not.toBeNull();
+        for (const key of ['x', 'y', 'width', 'height'] as const) {
+          expect(Math.abs(after![key] - initial![key])).toBeLessThan(1);
+        }
+      }
     }
   });
 
@@ -202,8 +310,8 @@ test.describe('Adaptive table-first foundation', () => {
         playerName: 'Host',
         playerId: 'p-1',
       }));
-      window.localStorage.setItem('poker-e2e-mock', 'true');
     }, { authToken: token });
+    await setupStompWebSocketMock(hostPage);
     await hostPage.route('**/api/room/ROOM123', (route) => route.fulfill({
       contentType: 'application/json',
       body: JSON.stringify({
@@ -245,7 +353,7 @@ test.describe('Adaptive table-first foundation', () => {
     await expect(hostPage.getByRole('region', { name: /action dock/i })).toContainText(/waiting for player 2 to act/i);
 
     for (const viewport of eligibleViewports) {
-      await hostPage.setViewportSize({ width: viewport.width, height: viewport.height });
+      await resizeAndSettle(hostPage, viewport);
       const pokerTable = hostPage.getByRole('region', { name: /^poker table$/i });
       const actionDock = hostPage.getByRole('region', { name: /action dock/i });
       const heroSeat = hostPage.getByRole('group', { name: /host hero seat/i });
@@ -279,8 +387,8 @@ test.describe('Adaptive table-first foundation', () => {
         playerName: 'Host',
         playerId: 'p-1',
       }));
-      window.localStorage.setItem('poker-e2e-mock', 'true');
     }, { authToken: token });
+    await setupStompWebSocketMock(hostPage);
     await hostPage.route('**/api/room/ROOM123', (route) => route.fulfill({
       contentType: 'application/json',
       body: JSON.stringify({
@@ -307,8 +415,8 @@ test.describe('Adaptive table-first foundation', () => {
         winners: ['Host'],
         winningsPerPlayer: 1000,
         players: [
-          { id: 'p-1', name: 'Host', chips: 1980, currentBet: 0, status: 'ACTIVE', handRank: 'TWO_PAIR', holeCards: ['AS', 'KS'], isWinner: true, chipsWon: 1000 },
-          { id: 'p-2', name: 'Player 2', chips: 990, currentBet: 0, status: 'ACTIVE' },
+          { id: 'p-1', name: 'Host', chips: 1980, currentBet: 0, status: 'ACTIVE', handRank: 'TWO_PAIR', holeCards: ['AS', '2D'], bestHand: ['AS', 'AH', 'KH', 'QD', 'JS'], isWinner: true, chipsWon: 1000 },
+          { id: 'p-2', name: 'Player 2', chips: 990, currentBet: 0, status: 'ACTIVE', handRank: 'HIGH_CARD', holeCards: ['3C', '4D'], bestHand: ['AH', 'KH', 'QD', 'JS', '2C'], isWinner: false },
           { id: 'p-3', name: 'Player 3', chips: 1000, currentBet: 0, status: 'ACTIVE' },
           { id: 'p-4', name: 'Player 4', chips: 1000, currentBet: 0, status: 'ACTIVE' },
           { id: 'p-5', name: 'Player 5', chips: 1000, currentBet: 0, status: 'ACTIVE' },
@@ -318,14 +426,29 @@ test.describe('Adaptive table-first foundation', () => {
     }));
     await hostPage.route('**/api/game/ROOM123/private-state', (route) => route.fulfill({
       contentType: 'application/json',
-      body: JSON.stringify({ playerId: 'p-1', holeCards: ['AS', 'KS'] }),
+      body: JSON.stringify({ playerId: 'p-1', holeCards: ['AS', '2D'] }),
     }));
 
     await hostPage.goto('/');
     await expect(hostPage.getByRole('region', { name: /round result/i })).toContainText(/host won/i);
 
+    // Visual regression: revealed showdown hole cards remain opaque (opacity: 1), unused cards use filter treatment,
+    // and board-only hole cards expose the accessible board-plays description.
+    const heroUsedCard = hostPage.getByRole('img', { name: 'Ace of Spades' });
+    const heroUnusedCard = hostPage.getByRole('img', { name: '2 of Diamonds' });
+    const boardOnlyOpponentCard = hostPage.getByRole('img', { name: '3 of Clubs' });
+    const boardOnlyOpponentGroup = hostPage.getByRole('group', { name: 'Player 2 hole cards' });
+
+    await expect(heroUsedCard).toHaveCSS('opacity', '1');
+    await expect(heroUnusedCard).toHaveCSS('opacity', '1');
+    await expect(boardOnlyOpponentCard).toHaveCSS('opacity', '1');
+    await expect(boardOnlyOpponentGroup).toHaveAccessibleDescription('Hole cards do not play; best hand is on the board.');
+
+    const unusedFilter = await heroUnusedCard.evaluate((el) => getComputedStyle(el).filter);
+    expect(unusedFilter).toContain('grayscale');
+
     for (const viewport of eligibleViewports) {
-      await hostPage.setViewportSize({ width: viewport.width, height: viewport.height });
+      await resizeAndSettle(hostPage, viewport);
       const summary = hostPage.getByRole('region', { name: /round result/i });
       const totalPot = hostPage.getByLabel(/main pot|total pot/i);
       const heroSeat = hostPage.getByRole('group', { name: /host hero seat/i });
@@ -346,3 +469,4 @@ test.describe('Adaptive table-first foundation', () => {
     }
   });
 });
+

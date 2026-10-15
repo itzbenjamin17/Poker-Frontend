@@ -1,4 +1,5 @@
 import { test, expect, type BrowserContext } from './fixtures';
+import { setupStompWebSocketMock } from './support/stompWsMock';
 
 test.describe('Item 35: Visual rendering of side pots in multi-way all-in', () => {
   let contexts: BrowserContext[] = [];
@@ -33,10 +34,11 @@ test.describe('Item 35: Visual rendering of side pots in multi-way all-in', () =
             playerId: 'p-1',
           }),
         );
-        window.localStorage.setItem('poker-e2e-mock', 'true');
       },
       { authToken: token, rId: roomId },
     );
+
+    await setupStompWebSocketMock(page);
 
     // Mock room info
     await page.route(`**/api/room/${roomId}`, (route) =>
@@ -96,16 +98,21 @@ test.describe('Item 35: Visual rendering of side pots in multi-way all-in', () =
     // 1. Prominent pot badge switches to "Main Pot" and displays $300
     const mainPotBadge = page.getByLabel('Main Pot');
     await expect(mainPotBadge).toBeVisible();
-    await expect(mainPotBadge).toContainText('$300');
+    await expect(mainPotBadge).toContainText('300');
 
     // 2. Pot Breakdown region displays both Main Pot ($300) and Side Pot 1 ($200)
+    const breakdownToggle = page.getByRole('button', { name: /show pot details/i });
+    if (await breakdownToggle.isVisible()) {
+      await breakdownToggle.click();
+    }
     const breakdownRegion = page.getByRole('region', { name: /pot breakdown/i });
     await expect(breakdownRegion).toBeVisible();
 
     await expect(breakdownRegion.getByText('Main Pot')).toBeVisible();
-    await expect(breakdownRegion.getByText('$300')).toBeVisible();
+    await expect(breakdownRegion.getByText('300')).toBeVisible();
 
     await expect(breakdownRegion.getByText('Side Pot 1')).toBeVisible();
-    await expect(breakdownRegion.getByText('$200')).toBeVisible();
+    await expect(breakdownRegion.getByText('200')).toBeVisible();
   });
 });
+

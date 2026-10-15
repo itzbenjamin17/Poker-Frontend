@@ -1,13 +1,15 @@
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { describe, it, expect, vi } from 'vitest';
 import { LoadingView } from '../LoadingView';
 
 describe('LoadingView', () => {
-    it('renders with status role and aria-busy set to true', () => {
+    it('places the status role on the status paragraph', () => {
         render(<LoadingView status="Connecting to Game" />);
         const element = screen.getByRole('status');
         expect(element).toBeInTheDocument();
-        expect(element).toHaveAttribute('aria-busy', 'true');
+        expect(element.tagName).toBe('P');
+        expect(element).toHaveTextContent('Connecting to Game');
     });
 
     it('renders the status text in uppercase', () => {
@@ -15,26 +17,21 @@ describe('LoadingView', () => {
         expect(screen.getByText('Restoring session')).toBeInTheDocument();
     });
 
-    it('does not render Return to Lobby button when onLeave is not provided', () => {
+    it('does not render Return to Lobby button when onLeave is omitted', () => {
         render(<LoadingView status="Connecting..." />);
         const button = screen.queryByRole('button', { name: /return to lobby/i });
         expect(button).not.toBeInTheDocument();
     });
 
-    it('does not render Return to Lobby button when redirecting', () => {
-        const onLeaveMock = vi.fn();
-        render(<LoadingView status="Session expired. Returning to lobby..." onLeave={onLeaveMock} />);
-        const button = screen.queryByRole('button', { name: /return to lobby/i });
-        expect(button).not.toBeInTheDocument();
-    });
+    it('renders Return to Lobby button and invokes onLeave when clicked if onLeave is provided', async () => {
+        const user = userEvent.setup();
+        const onLeave = vi.fn();
+        render(<LoadingView status="Restoring your seat..." onLeave={onLeave} />);
 
-    it('renders Return to Lobby button when onLeave is provided and calls callback on click', () => {
-        const onLeaveMock = vi.fn();
-        render(<LoadingView status="Connecting..." onLeave={onLeaveMock} />);
         const button = screen.getByRole('button', { name: /return to lobby/i });
         expect(button).toBeInTheDocument();
-        
-        button.click();
-        expect(onLeaveMock).toHaveBeenCalledTimes(1);
+
+        await user.click(button);
+        expect(onLeave).toHaveBeenCalledTimes(1);
     });
 });

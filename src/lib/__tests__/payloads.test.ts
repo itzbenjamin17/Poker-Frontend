@@ -1,8 +1,11 @@
-import { describe, expect, it } from 'vitest';
+// @vitest-environment node
+import { describe, expect, it, vi } from 'vitest';
 import {
+    decodeGameStatePayload,
     isGameStatePayload,
     isGameEndPayload,
     isPrivateStatePayload,
+    isRoomUpdatePayload,
     getErrorStatusCode,
     normalizeErrorMessage,
 } from '../payloads';
@@ -11,15 +14,12 @@ import {
     ERROR_SYSTEM,
     ERROR_TECHNICAL,
 } from '../../constants/strings';
+import { createValidGameState, createValidPlayer } from '../../test/fixtures';
 
 describe('lib/payloads - Type Guards and Normalizers', () => {
     describe('isGameStatePayload', () => {
         it('returns true for a valid complete game state payload', () => {
-            const valid = {
-                gameId: 'game-1',
-                phase: 'PRE_FLOP',
-                players: [{ name: 'Alice', chips: 1000 }],
-                communityCards: [],
+            const valid = createValidGameState({
                 pot: 30,
                 claimWinAvailable: false,
                 claimWinPlayerName: null,
@@ -27,17 +27,18 @@ describe('lib/payloads - Type Guards and Normalizers', () => {
                 isReadyCountdownActive: false,
                 readyCountdownDeadlineEpochMs: null,
                 pots: [30],
-            };
+            });
             expect(isGameStatePayload(valid)).toBe(true);
         });
 
         it('returns true for minimal valid game state payload', () => {
-            const minimal = {
+            const minimal = createValidGameState({
+                gameId: undefined,
                 phase: 'FLOP',
                 players: [],
                 communityCards: ['Ah', 'Kh', 'Qh'],
                 pot: 100,
-            };
+            });
             expect(isGameStatePayload(minimal)).toBe(true);
         });
 
@@ -67,6 +68,122 @@ describe('lib/payloads - Type Guards and Normalizers', () => {
                     pots: ['invalid'],
                 })
             ).toBe(false);
+        });
+    });
+
+    describe('decodeGameStatePayload', () => {
+        it('diagnoses the first nested player failure without exposing payload values', () => {
+            const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+            try {
+                const payload = createValidGameState({
+                    players: [createValidPlayer({ chips: 'secret-chip-value', currentBet: -1 })],
+                    token: 'secret-token',
+                });
+
+                expect(decodeGameStatePayload(payload, 'initial REST game snapshot')).toBeNull();
+                expect(warn.mock.calls).toEqual([[
+                    'Rejected public game snapshot:',
+                    {
+                        source: 'initial REST game snapshot',
+                        path: '$.players[0].chips',
+                        expected: 'nonnegative safe integer',
+                        receivedType: 'string',
+                    },
+                ]]);
+            } finally {
+                warn.mockRestore();
+            }
+        });
+
+        it('normalizes a null current player name to an empty string', () => {
+            const decoded = decodeGameStatePayload(createValidGameState({ currentPlayerName: null }));
+
+            expect(decoded?.currentPlayerName).toBe('');
+        });
+
+        it.each([
+            [null, '$', 'object', 'null'],
+            [[], '$', 'object', 'array'],
+            ['private-root-value', '$', 'object', 'string'],
+            [{ ...createValidGameState(), players: {} }, '$.players', 'array with at most 10 entries', 'object'],
+            [createValidGameState({ players: [null] }), '$.players[0]', 'object', 'null'],
+            [createValidGameState({ communityCards: ['AS', 7] }), '$.communityCards[1]', 'card string (rank followed by C, D, H, or S)', 'number'],
+            [createValidGameState({ players: [{ bestHand: ['AS', false] }] }), '$.players[0].bestHand[1]', 'card string (rank followed by C, D, H, or S)', 'boolean'],
+            [createValidGameState({ players: Array.from({ length: 11 }, () => createValidPlayer()) }), '$.players', 'array with at most 10 entries', 'array'],
+        ])('diagnoses malformed root and array shapes at %s', (payload, path, expected, receivedType) => {
+            const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+            try {
+                expect(decodeGameStatePayload(payload, 'WebSocket game state')).toBeNull();
+                expect(warn.mock.calls).toEqual([['Rejected public game snapshot:', {
+                    source: 'WebSocket game state', path, expected, receivedType,
+                }]]);
+            } finally {
+                warn.mockRestore();
+            }
+        });
+
+        it('retains all accepted nullable wire metadata and its normalization without diagnostics', () => {
+            const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+            try {
+                const decoded = decodeGameStatePayload(createValidGameState({
+                    currentPlayerName: null, currentPlayerId: null,
+                    legalActions: null, winners: null, winningsPerPlayer: null,
+                    isAutoAdvancing: null, autoAdvanceMessage: null,
+                    pots: null, uncalledAmount: null, isReadyCountdownActive: null,
+                    readyCountdownDeadlineEpochMs: null, claimWinAvailable: null,
+                    claimWinPlayerName: null,
+                    players: [{
+                        disconnectDeadlineEpochMs: null, isReadyForNextHand: null,
+                        isSmallBlind: null, isBigBlind: null, isAllIn: null,
+                        isCurrentPlayer: null, holeCards: null, handRank: null,
+                        bestHand: null, isWinner: null, chipsWon: null,
+                    }],
+                }), 'initial REST game snapshot');
+
+                expect(decoded).toEqual({
+                    gameId: 'game-123', maxPlayers: 6, pot: 0, phase: 'PRE_FLOP', currentBet: 0,
+                    communityCards: [], currentPlayerName: '', currentPlayerId: '',
+                    pots: null, uncalledAmount: null, isReadyCountdownActive: null,
+                    readyCountdownDeadlineEpochMs: null, claimWinAvailable: null, claimWinPlayerName: null,
+                    players: [{
+                        id: 'player-1', name: 'Player 1', chips: 1000, currentBet: 0,
+                        status: 'ACTIVE', hasFolded: false,
+                    }],
+                });
+                expect(warn).not.toHaveBeenCalled();
+            } finally {
+                warn.mockRestore();
+            }
+        });
+
+        it.each([
+            { pot: '50' }, { pot: null }, { pot: -1 }, { pot: 1.5 },
+            { currentBet: Infinity }, { pots: [NaN] },
+            { uncalledAmount: Number.MAX_SAFE_INTEGER + 1 },
+            { players: [{ chips: null }] }, { players: [{ chips: -1 }] },
+            { players: [{ currentBet: '20' }] }, { players: [{ currentBet: 0.5 }] },
+        ])('continues to reject corrupt authoritative money values: %j', overrides => {
+            expect(decodeGameStatePayload(createValidGameState(overrides))).toBeNull();
+        });
+
+        it('keeps development diagnostics silent in production', () => {
+            const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+            vi.stubEnv('DEV', false);
+            try {
+                expect(decodeGameStatePayload(null, 'initial REST game snapshot')).toBeNull();
+                expect(warn).not.toHaveBeenCalled();
+            } finally {
+                vi.unstubAllEnvs();
+                warn.mockRestore();
+            }
+        });
+
+        it('rejects null player entries', () => {
+            expect(decodeGameStatePayload(createValidGameState({ players: [null] }))).toBeNull();
+        });
+
+        it('accepts validator-complete shared player fixtures', () => {
+            expect(isGameStatePayload(createValidGameState({ players: [createValidPlayer()] }))).toBe(true);
         });
     });
 
@@ -121,8 +238,36 @@ describe('lib/payloads - Type Guards and Normalizers', () => {
 
         it('returns false for non-objects or invalid hole cards', () => {
             expect(isPrivateStatePayload(null)).toBe(false);
+            expect(isPrivateStatePayload({})).toBe(false);
+            expect(isPrivateStatePayload({ type: 'UNKNOWN' })).toBe(false);
             expect(isPrivateStatePayload({ playerId: 123 })).toBe(false);
             expect(isPrivateStatePayload({ holeCards: [123, 456] })).toBe(false);
+        });
+    });
+
+    describe('isRoomUpdatePayload', () => {
+        it('returns true for valid ROOM_CLOSED and PLAYER_JOINED payloads', () => {
+            expect(isRoomUpdatePayload({ message: 'ROOM_CLOSED' })).toBe(true);
+            expect(isRoomUpdatePayload({ message: 'ROOM_CLOSED', data: { roomId: 'room-1' } })).toBe(true);
+            expect(
+                isRoomUpdatePayload({
+                    message: 'PLAYER_JOINED',
+                    data: {
+                        roomId: 'room-1',
+                        roomName: 'Table 1',
+                        players: [{ name: 'Alice', isHost: true }],
+                    },
+                })
+            ).toBe(true);
+        });
+
+        it('returns false for malformed room update payloads', () => {
+            expect(isRoomUpdatePayload(null)).toBe(false);
+            expect(isRoomUpdatePayload({ message: 'UNKNOWN_EVENT', data: {} })).toBe(false);
+            expect(isRoomUpdatePayload({ message: 'PLAYER_JOINED', data: null })).toBe(false);
+            expect(isRoomUpdatePayload({ message: 'PLAYER_JOINED', data: { players: 'bad' } })).toBe(false);
+            expect(isRoomUpdatePayload({ message: 'PLAYER_JOINED', data: { roomName: 123, players: [] } })).toBe(false);
+            expect(isRoomUpdatePayload({ message: 'PLAYER_JOINED', data: { players: [{ name: 123 }] } })).toBe(false);
         });
     });
 
@@ -154,7 +299,14 @@ describe('lib/payloads - Type Guards and Normalizers', () => {
 
         it('normalizes 500 and internal server errors', () => {
             expect(normalizeErrorMessage('Internal Server Error')).toBe(ERROR_TECHNICAL);
+            expect(normalizeErrorMessage('HTTP 500 Internal Server Error')).toBe(ERROR_TECHNICAL);
             expect(normalizeErrorMessage('Request failed with status code 500')).toBe(ERROR_TECHNICAL);
+        });
+
+        it('does not treat chip amounts containing 500 as server 500 errors', () => {
+            expect(normalizeErrorMessage('Minimum raise is 500 chips')).toBe('Minimum raise is 500 chips');
+            expect(normalizeErrorMessage('Buy-in must be at least 500')).toBe('Buy-in must be at least 500');
+            expect(normalizeErrorMessage('Insufficient chips to call 1500')).toBe('Insufficient chips to call 1500');
         });
 
         it('normalizes internal java / spring stack traces', () => {

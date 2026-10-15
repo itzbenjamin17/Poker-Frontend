@@ -10,7 +10,10 @@
     "preview": "vite preview",
     "test": "vitest",
     "backend:test": "cd ../Poker && mvnw.cmd spring-boot:run -Dspring-boot.run.profiles=test",
-    "test:all": "vitest run && npx playwright test"
+    "test:all": "vitest run && npx playwright test",
+    "layout:overlap": "npx playwright test -c playwright.layout.config.ts scripts/layout/layout-overlap.spec.ts",
+    "layout:screenshots": "npx playwright test -c playwright.layout.config.ts scripts/layout/layout-screenshots.spec.ts",
+    "layout:all": "npx playwright test -c playwright.layout.config.ts"
   },
   "dependencies": {
     "@stomp/stompjs": "^7.3.0",

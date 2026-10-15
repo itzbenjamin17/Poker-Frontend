@@ -1,56 +1,36 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { pokerApi } from '../services/api';
+import { savePersistedGameEnd } from '../services/gameEndStorage';
 import { useGameContext } from '../context/GameContext';
 import { normalizeErrorMessage, getErrorStatusCode } from '../lib/payloads';
 import { logger } from '../security/logger';
-import { RAISE_ERROR_FORBIDDEN_BET } from '../constants/strings';
-import type { PokerAction } from '../types';
+import type { ActionError, PokerAction } from '../types';
 
 export type GameCommand = 
     | { type: 'PLAY_ACTION'; action: PokerAction; amount?: number }
     | { type: 'READY' }
+    | { type: 'UNREADY' }
     | { type: 'START_GAME' }
     | { type: 'CLAIM_WIN' }
     | { type: 'LEAVE_GAME' }
     | { type: 'LEAVE_REVIEW' };
 
-export interface PublisherAdapter {
-    publish: (destination: string, body: string) => void;
-    isConnected: () => boolean;
-}
+export type DispatchError = ActionError;
 
-export interface DispatchError {
-    message: string;
-}
-
-export function useGameDispatcher(publisher: PublisherAdapter) {
-    const { auth, gameState, dispatch: contextDispatch, clearShowdownTimers, onLeave } = useGameContext();
+export function useGameDispatcher() {
+    const {
+        auth,
+        gameState,
+        session,
+        pendingActions,
+        error: sessionError,
+        dispatch: contextDispatch,
+        clearShowdownTimers,
+        onLeave,
+    } = useGameContext();
     
     const [pendingCommands, setPendingCommands] = useState<Set<string>>(new Set());
     const pendingRef = useRef<Set<string>>(new Set());
-    const actionTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-    const [error, setError] = useState<DispatchError | null>(null);
-
-    const clearPending = useCallback(() => {
-        pendingRef.current = new Set();
-        setPendingCommands(new Set());
-        if (actionTimeoutRef.current !== null) {
-            clearTimeout(actionTimeoutRef.current);
-            actionTimeoutRef.current = null;
-        }
-    }, []);
-
-    // Reset pending state when gameState changes
-    useEffect(() => {
-        clearPending();
-    }, [gameState, clearPending]);
-
-    useEffect(() => {
-        return () => {
-            if (actionTimeoutRef.current !== null) clearTimeout(actionTimeoutRef.current);
-        };
-    }, []);
 
     const setPending = useCallback((type: string, isPending: boolean) => {
         const next = new Set(pendingRef.current);
@@ -60,46 +40,35 @@ export function useGameDispatcher(publisher: PublisherAdapter) {
         setPendingCommands(next);
     }, []);
 
-    const isPending = useCallback((type: string) => pendingCommands.has(type), [pendingCommands]);
+    const isPending = useCallback(
+        (type: string) =>
+            Boolean(
+                pendingActions?.has(type) ||
+                session?.isActionPending(type) ||
+                pendingCommands.has(type)
+            ),
+        [pendingActions, session, pendingCommands]
+    );
 
     const dispatch = useCallback(async (command: GameCommand) => {
+        if (command.type === 'PLAY_ACTION') {
+            session?.playAction(command.action, command.amount);
+            return;
+        }
+        if (command.type === 'READY') {
+            session?.ready();
+            return;
+        }
+        if (command.type === 'UNREADY') {
+            session?.unready();
+            return;
+        }
+
         const targetGameId = gameState?.gameId ?? auth.roomId;
 
         if (pendingRef.current.has(command.type)) return;
 
-        setError(null);
-
-        if (command.type === 'PLAY_ACTION' || command.type === 'READY') {
-            if (!publisher.isConnected()) {
-                contextDispatch({ type: 'SET_NOTIFICATION', payload: 'Waiting for connection...' });
-                return;
-            }
-
-            try {
-                setPending(command.type, true);
-                actionTimeoutRef.current = setTimeout(() => {
-                    setPending(command.type, false);
-                }, 3000);
-
-                if (command.type === 'PLAY_ACTION') {
-                    publisher.publish(
-                        `/app/${encodeURIComponent(targetGameId)}/action`,
-                        JSON.stringify({ action: command.action, amount: command.amount || 0 })
-                    );
-                } else if (command.type === 'READY') {
-                    publisher.publish(
-                        `/app/${encodeURIComponent(targetGameId)}/ready`,
-                        '{}'
-                    );
-                }
-            } catch (err) {
-                setPending(command.type, false);
-                if (actionTimeoutRef.current) clearTimeout(actionTimeoutRef.current);
-                logger.error(`Failed to publish ${command.type}:`, err);
-                contextDispatch({ type: 'SET_NOTIFICATION', payload: 'System malfunction' });
-            }
-            return;
-        }
+        session?.clearError();
 
         // REST Commands
         try {
@@ -111,18 +80,27 @@ export function useGameDispatcher(publisher: PublisherAdapter) {
                 contextDispatch({ type: 'SET_CLAIM_PENDING', payload: true });
                 await pokerApi.claimWin(targetGameId, auth.token);
             } else if (command.type === 'LEAVE_GAME') {
-                try {
-                    if (gameState?.gameId) {
-                        await pokerApi.leaveGame(gameState.gameId, auth.token);
-                    }
-                    await pokerApi.leaveRoom(auth.roomId, auth.token);
-                } catch (err) {
+                session?.disconnect();
+                const logUnexpectedLeaveError = (op: string, err: unknown) => {
                     const code = getErrorStatusCode(err);
                     if (code !== 404 && code !== 403) {
-                        throw err;
+                        logger.warn(`LEAVE_GAME ${op} failed:`, err);
+                    }
+                };
+                if (gameState?.gameId) {
+                    try {
+                        await pokerApi.leaveGame(gameState.gameId, auth.token);
+                    } catch (err) {
+                        logUnexpectedLeaveError('leaveGame', err);
                     }
                 }
+                try {
+                    await pokerApi.leaveRoom(auth.roomId, auth.token);
+                } catch (err) {
+                    logUnexpectedLeaveError('leaveRoom', err);
+                }
                 clearShowdownTimers();
+                savePersistedGameEnd(auth.roomId, null);
                 contextDispatch({ type: 'SET_PRIVATE', payload: null });
                 onLeave?.();
             } else if (command.type === 'LEAVE_REVIEW') {
@@ -133,35 +111,32 @@ export function useGameDispatcher(publisher: PublisherAdapter) {
                     .catch((err) => logger.warn('LEAVE_REVIEW leaveRoom failed:', err));
 
                 clearShowdownTimers();
+                savePersistedGameEnd(auth.roomId, null);
                 contextDispatch({ type: 'CLEAR_GAME_STATE' });
                 onLeave?.();
                 return;
             }
         } catch (err) {
-            setPending(command.type, false);
+            if (command.type === 'CLAIM_WIN') {
+                contextDispatch({ type: 'SET_CLAIM_PENDING', payload: false });
+            }
             logger.error(`Failed ${command.type}:`, err);
             const msg = normalizeErrorMessage(err instanceof Error ? err.message : 'Operation failed');
             contextDispatch({ type: 'SET_NOTIFICATION', payload: msg });
+        } finally {
+            setPending(command.type, false);
         }
-    }, [auth.roomId, auth.token, clearShowdownTimers, contextDispatch, gameState, onLeave, publisher, setPending]);
+    }, [auth.roomId, auth.token, clearShowdownTimers, contextDispatch, gameState, onLeave, session, setPending]);
 
     const onSocketError = useCallback((message: string) => {
-        setPending('PLAY_ACTION', false);
-        setPending('READY', false);
-        if (actionTimeoutRef.current) clearTimeout(actionTimeoutRef.current);
+        session?.handleActionError(message);
+    }, [session]);
 
-        const normalized = normalizeErrorMessage(message) || 'Error occurred';
-        const isBetRaiseError = /bet|raise|insufficient|amount|chip/i.test(message);
-        
-        if (isBetRaiseError) {
-            setError({ message: normalized });
-            contextDispatch({ type: 'SET_NOTIFICATION', payload: RAISE_ERROR_FORBIDDEN_BET });
-        } else {
-            contextDispatch({ type: 'SET_NOTIFICATION', payload: normalized });
-        }
-    }, [contextDispatch, setPending]);
+    const clearError = useCallback(() => {
+        session?.clearError();
+    }, [session]);
 
-    const clearError = useCallback(() => setError(null), []);
+    const error: DispatchError | null = sessionError ?? session?.getSnapshot().error ?? null;
 
     return { dispatch, isPending, error, clearError, onSocketError };
 }

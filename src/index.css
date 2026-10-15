@@ -1,5 +1,15 @@
 @import "tailwindcss";
 
+/* Short viewports: chrome (header/dock) compacts via CSS only; the table never reads the window. */
+@custom-variant short (@media (max-height: 640px));
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-pulse,
+  .animate-spin {
+    animation: none;
+  }
+}
+
 @theme {
   --font-headline: "Space Grotesk", sans-serif;
   --font-body: "Inter", sans-serif;
@@ -21,10 +31,6 @@
 }
 
 @layer base {
-  html {
-    scrollbar-gutter: stable;
-  }
-
   html,
   body,
   #root {
@@ -44,10 +50,12 @@
   }
 }
 
-.glass-card {
-  @apply bg-surface-highest/60 backdrop-blur-3xl border border-emerald-primary/10;
-}
+@layer components {
+  .glass-card {
+    @apply bg-surface-highest/60 backdrop-blur-3xl border border-emerald-primary/10;
+  }
 
-.poker-table-gradient {
-  background: radial-gradient(circle at 50% 50%, var(--color-emerald-container) 0%, var(--color-surface) 80%);
+  .poker-table-gradient {
+    background: radial-gradient(circle at 50% 50%, var(--color-emerald-container) 0%, #1b2a22 80%);
+  }
 }

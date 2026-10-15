@@ -17,12 +17,11 @@ describe('useAuthSession', () => {
         vi.resetModules();
     });
 
-    it('returns null auth and null authError when no session is stored', async () => {
+    it('returns null auth when no session is stored', async () => {
         const { useAuthSession } = await import('../useAuthSession');
         const { result } = renderHook(() => useAuthSession());
 
         expect(result.current.auth).toBeNull();
-        expect(result.current.authError).toBeNull();
     });
 
     it('returns parsed auth object when valid session is stored', async () => {
@@ -38,10 +37,9 @@ describe('useAuthSession', () => {
         const { result } = renderHook(() => useAuthSession());
 
         expect(result.current.auth).toEqual(validAuth);
-        expect(result.current.authError).toBeNull();
     });
 
-    it('clears storage, sets authError, and returns null auth when stored JWT is expired', async () => {
+    it('clears storage and returns null auth when stored JWT is expired', async () => {
         const expiredAuth = {
             token: createJwt({ exp: Math.floor(Date.now() / 1000) - 3600 }),
             roomId: 'room-1',
@@ -55,10 +53,9 @@ describe('useAuthSession', () => {
 
         expect(result.current.auth).toBeNull();
         expect(localStorage.getItem('poker-auth')).toBeNull();
-        expect(result.current.authError).toBe("Your session couldn't be restored.");
     });
 
-    it('clears storage, sets authError, and returns null auth when storage has invalid shape', async () => {
+    it('clears storage and returns null auth when storage has invalid shape', async () => {
         localStorage.setItem('poker-auth', JSON.stringify({ token: '', roomId: 'room-1' }));
 
         const { useAuthSession } = await import('../useAuthSession');
@@ -66,7 +63,6 @@ describe('useAuthSession', () => {
 
         expect(result.current.auth).toBeNull();
         expect(localStorage.getItem('poker-auth')).toBeNull();
-        expect(result.current.authError).toBe("Your session couldn't be restored.");
     });
 
     it('writes to localStorage when setAuth is called', async () => {
@@ -135,7 +131,7 @@ describe('useAuthSession', () => {
         expect(result.current.auth).toBeNull();
     });
 
-    it('clears auth and localStorage on auth-expired window event', async () => {
+    it('clears auth and localStorage on a token-scoped auth-expired window event', async () => {
         const validAuth = {
             token: createJwt({ exp: Math.floor(Date.now() / 1000) + 3600 }),
             roomId: 'room-5',
@@ -150,10 +146,89 @@ describe('useAuthSession', () => {
         expect(result.current.auth).toEqual(validAuth);
 
         act(() => {
-            window.dispatchEvent(new Event('auth-expired'));
+            window.dispatchEvent(new CustomEvent('auth-expired', { detail: { token: validAuth.token } }));
         });
 
         expect(result.current.auth).toBeNull();
         expect(localStorage.getItem('poker-auth')).toBeNull();
+    });
+
+    it('ignores an auth-expired race for a stale token', async () => {
+        const currentAuth = {
+            token: createJwt({ exp: Math.floor(Date.now() / 1000) + 3600, session: 'current' }),
+            roomId: 'room-current',
+            playerName: 'Current Player',
+            message: 'Ok',
+        };
+        const staleToken = createJwt({ exp: Math.floor(Date.now() / 1000) + 3600, session: 'stale' });
+        localStorage.setItem('poker-auth', JSON.stringify(currentAuth));
+        const { useAuthSession } = await import('../useAuthSession');
+        const { result } = renderHook(() => useAuthSession());
+
+        act(() => {
+            window.dispatchEvent(new CustomEvent('auth-expired', { detail: { token: staleToken } }));
+        });
+
+        expect(result.current.auth).toEqual(currentAuth);
+        expect(JSON.parse(localStorage.getItem('poker-auth')!)).toEqual(currentAuth);
+    });
+
+    it('clears auth when a storage event with a null key signals storage.clear()', async () => {
+        const validAuth = {
+            token: createJwt({ exp: Math.floor(Date.now() / 1000) + 3600 }),
+            roomId: 'room-clear',
+            playerName: 'Clear Test',
+            message: 'Ok',
+        };
+        localStorage.setItem('poker-auth', JSON.stringify(validAuth));
+        const { useAuthSession } = await import('../useAuthSession');
+        const { result } = renderHook(() => useAuthSession());
+
+        act(() => {
+            localStorage.clear();
+            window.dispatchEvent(new StorageEvent('storage', { key: null }));
+        });
+
+        expect(result.current.auth).toBeNull();
+    });
+
+    it('survives localStorage SecurityError and QuotaExceededError while keeping auth state in memory', async () => {
+        const { useAuthSession } = await import('../useAuthSession');
+
+        const getItemSpy = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+            throw new DOMException('Access is denied', 'SecurityError');
+        });
+        const setItemSpy = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+            throw new DOMException('Quota exceeded', 'QuotaExceededError');
+        });
+        const removeItemSpy = vi.spyOn(Storage.prototype, 'removeItem').mockImplementation(() => {
+            throw new DOMException('Access is denied', 'SecurityError');
+        });
+
+        try {
+            const { result } = renderHook(() => useAuthSession());
+            expect(result.current.auth).toBeNull();
+
+            const newAuth = {
+                token: createJwt({ exp: Math.floor(Date.now() / 1000) + 3600 }),
+                roomId: 'room-mem',
+                playerName: 'InMemoryUser',
+                message: 'Ok',
+            };
+
+            act(() => {
+                result.current.setAuth(newAuth);
+            });
+            expect(result.current.auth).toEqual(newAuth);
+
+            act(() => {
+                result.current.clearAuth();
+            });
+            expect(result.current.auth).toBeNull();
+        } finally {
+            getItemSpy.mockRestore();
+            setItemSpy.mockRestore();
+            removeItemSpy.mockRestore();
+        }
     });
 });

@@ -11,21 +11,51 @@ node_modules
 dist
 dist-ssr
 *.local
+*.tsbuildinfo
+/.cache/
+/.vite/
 
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
 .idea
+*.iml
+*.iws
+*.ipr
 .DS_Store
+Thumbs.db
+Desktop.ini
+*~
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
 *.sw?
 *.code-workspace
+.agents/tasks
+.codex/config.toml
+.codex/config.local.toml
+.codex/sessions/
+.codex/logs/
+.kiro/*
 
 test-results/
 playwright-report/
+/coverage/
+/blob-report/
+/playwright/.cache/
+/playwright/.auth/
 /.scratch
 CONTEXT.md
+
+# Local environment values; keep shareable examples
 .env
+.env.*
+!.env.example
+!.env.*.example
+
+# Personal workstation audit with absolute machine paths
+/docs/research/test-efficacy-audit.md
+
+# Local technical-debt notes
+/docs/specs/Technical-Debt/

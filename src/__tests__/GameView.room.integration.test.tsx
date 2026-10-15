@@ -8,6 +8,7 @@ import { mockAuth } from '../test/fixtures'
 
 const auth = {
   ...mockAuth,
+  roomId: 'ROOM123',
   playerName: 'HostPlayer'
 }
 
@@ -40,7 +41,7 @@ describe('GameView - Room Lobby Integration', () => {
     // Check hydration
     await waitFor(() => {
       expect(screen.getByText(/GAME LOBBY/i)).toBeInTheDocument()
-      expect(screen.getByText(/High Stakes/i)).toBeInTheDocument()
+      expect(screen.getAllByText(/High Stakes/i).length).toBeGreaterThan(0)
       expect(screen.getByText(/\$50 \/ \$100/i)).toBeInTheDocument()
     })
 
@@ -75,37 +76,44 @@ describe('GameView - Room Lobby Integration', () => {
   })
 
   it('redirects when the room is closed', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
     const handleLeave = vi.fn()
-    
-    // Initial hydration
-    server.use(
-        http.get('/api/room/ROOM123', () => HttpResponse.json({
-          roomId: 'ROOM123',
-          players: [{ name: 'HostPlayer', isHost: true }],
-          gameStarted: false
-        })),
-        http.get('/api/game/ROOM123/state', () => new HttpResponse(null, { status: 404 })),
-        http.get('/api/game/ROOM123/private-state', () => new HttpResponse(null, { status: 404 }))
-    )
+    try {
+      // Initial hydration
+      server.use(
+          http.get('/api/room/ROOM123', () => HttpResponse.json({
+            roomId: 'ROOM123',
+            players: [{ name: 'HostPlayer', isHost: true }],
+            gameStarted: false
+          })),
+          http.get('/api/game/ROOM123/state', () => new HttpResponse(null, { status: 404 })),
+          http.get('/api/game/ROOM123/private-state', () => new HttpResponse(null, { status: 404 }))
+      )
 
-    render(<GameView auth={auth} onLeave={handleLeave} />)
+      render(<GameView auth={auth} onLeave={handleLeave} />)
 
-    await waitFor(() => expect(screen.getByText(/GAME LOBBY/i)).toBeInTheDocument())
+      await waitFor(() => expect(screen.getByText(/GAME LOBBY/i)).toBeInTheDocument())
 
-    // Ensure STOMP is connected and subscribed before sending messages
-    await MockStompClient.waitForSubscription('/room/ROOM123')
+      // Ensure STOMP is connected and subscribed before sending messages
+      await MockStompClient.waitForSubscription('/room/ROOM123')
 
-    // Simulate ROOM_CLOSED using await act(async () => ...)
-    await act(async () => {
-      MockStompClient.simulateMessage('/room/ROOM123', {
-        message: 'ROOM_CLOSED'
+      // Simulate ROOM_CLOSED using await act(async () => ...)
+      await act(async () => {
+        MockStompClient.simulateMessage('/room/ROOM123', {
+          message: 'ROOM_CLOSED'
+        })
       })
-    })
 
-    await waitFor(() => expect(screen.getByText(/Host left the lobby/i)).toBeInTheDocument())
+      await waitFor(() => expect(screen.getByText(/Host left the lobby/i)).toBeInTheDocument())
 
-    // Wait for redirect timeout (ROOM_CLOSED_REDIRECT_MS = 3000)
-    await waitFor(() => expect(handleLeave).toHaveBeenCalled(), { timeout: 4500 })
+      // Advance past redirect timeout (ROOM_CLOSED_REDIRECT_MS = 3000)
+      await act(async () => {
+        vi.advanceTimersByTime(3000)
+      })
+      expect(handleLeave).toHaveBeenCalled()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('does not render the lobby or raw room code during session hydration or connection failure', async () => {

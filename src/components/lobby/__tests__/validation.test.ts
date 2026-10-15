@@ -1,5 +1,6 @@
+// @vitest-environment node
 import { describe, test, expect } from 'vitest';
-import { validateCreate, VALIDATION } from '../validation';
+import { validateCreate, validateJoin, VALIDATION } from '../validation';
 
 describe('validateCreate', () => {
     const validConfig = {
@@ -11,8 +12,23 @@ describe('validateCreate', () => {
         buyIn: 1000,
     };
 
-    test('returns null for a valid configuration', () => {
+    test('returns null for a valid configuration (both numeric and string inputs)', () => {
         expect(validateCreate(validConfig)).toBeNull();
+        expect(validateCreate({
+            ...validConfig,
+            smallBlind: '25',
+            bigBlind: '50',
+            buyIn: '1000',
+        })).toBeNull();
+    });
+
+    test('rejects empty or non-numeric string inputs for blinds and buy-in', () => {
+        expect(validateCreate({ ...validConfig, smallBlind: '' }))
+            .toBe(`Small blind must be between ${VALIDATION.smallBlind.min} and ${VALIDATION.smallBlind.max.toLocaleString()}.`);
+        expect(validateCreate({ ...validConfig, bigBlind: '' }))
+            .toBe(`Big blind must be between ${VALIDATION.bigBlind.min} and ${VALIDATION.bigBlind.max.toLocaleString()}.`);
+        expect(validateCreate({ ...validConfig, buyIn: '' }))
+            .toBe(`Buy-in must be between $${VALIDATION.buyIn.min} and $${VALIDATION.buyIn.max.toLocaleString()}.`);
     });
 
     test('rejects empty or whitespace-only room name', () => {
@@ -72,5 +88,32 @@ describe('validateCreate', () => {
             .toBe(`Buy-in must be between $${VALIDATION.buyIn.min} and $${VALIDATION.buyIn.max.toLocaleString()}.`);
         expect(validateCreate({ ...validConfig, buyIn: 2_000_000 }))
             .toBe(`Buy-in must be between $${VALIDATION.buyIn.min} and $${VALIDATION.buyIn.max.toLocaleString()}.`);
+    });
+
+    test.each([1, 11, 2.5, 'invalid'])('rejects invalid maxPlayers value %j', (maxPlayers) => {
+        expect(validateCreate({ ...validConfig, maxPlayers }))
+            .toBe('Max players must be a whole number between 2 and 10.');
+    });
+});
+
+describe('validateJoin', () => {
+    test('returns null for valid roomName and playerName', () => {
+        expect(validateJoin({ roomName: 'PokerRoom', playerName: 'Alice' })).toBeNull();
+    });
+
+    test('rejects empty or overly long roomName or playerName', () => {
+        expect(validateJoin({ roomName: '   ', playerName: 'Alice' })).toBe('Room name is required.');
+        expect(validateJoin({ roomName: 'A'.repeat(VALIDATION.roomName.max + 1), playerName: 'Alice' }))
+            .toBe(`Room name must be at most ${VALIDATION.roomName.max} characters.`);
+        expect(validateJoin({ roomName: 'PokerRoom', playerName: '   ' })).toBe('Player alias is required.');
+        expect(validateJoin({ roomName: 'PokerRoom', playerName: 'P'.repeat(VALIDATION.playerName.max + 1) }))
+            .toBe(`Alias must be at most ${VALIDATION.playerName.max} characters.`);
+    });
+
+    test.each(['\u0000', '\u007f'])('rejects control character %j in room names and aliases', (control) => {
+        expect(validateJoin({ roomName: `Poker${control}Room`, playerName: 'Alice' }))
+            .toBe('Room name cannot contain control characters.');
+        expect(validateJoin({ roomName: 'PokerRoom', playerName: `Alice${control}` }))
+            .toBe('Player alias cannot contain control characters.');
     });
 });

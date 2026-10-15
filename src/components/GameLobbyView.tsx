@@ -1,36 +1,61 @@
-import { useState } from 'react';
-import { useGameContext } from '../context/GameContext';
+import { useEffect, useRef, useState } from 'react';
 import { cn } from '../lib/cn';
 import { Card } from './UI';
 import { Button } from './UI';
-import { Info, Play, Wifi, WifiOff, Copy, Check, Crown } from 'lucide-react';
+import { Info, Play, Copy, Check, Crown } from 'lucide-react';
 import { NotificationBanner } from './NotificationBanner';
-import type { WsStatus } from '../types';
 import {
     GAME_LOBBY_LABEL,
-    BTN_LEAVE_LOBBY, BTN_START_GAME, BTN_STARTING_GAME, LABEL_WAITING_HOST,
-    LABEL_WAITING_PLAYERS, LABEL_BLINDS, LABEL_MIN_BUYIN,
-    LABEL_TABLE_RULES, LABEL_HOST,
+    BTN_START_GAME, BTN_STARTING_GAME, LABEL_WAITING_HOST,
+    LABEL_BLINDS, LABEL_MIN_BUYIN,
+    LABEL_TABLE_RULES, LABEL_HOST, ERROR_COPY_ROOM_CODE,
 } from '../constants/strings';
+import type { RoomState } from '../types';
 
-interface GameLobbyViewProps {
+export interface GameLobbyViewProps {
+    roomState: RoomState | null;
+    playerName?: string;
+    auth?: { playerName: string } | null;
+    notification?: string | null;
     onStartGame: () => void;
-    onLeaveGame: () => void;
+    onLeaveGame?: () => void;
     isStartingGame?: boolean;
 }
 
-export function GameLobbyView({ onStartGame, onLeaveGame, isStartingGame = false }: GameLobbyViewProps) {
-    const { auth, roomState, notification, wsStatus } = useGameContext();
+export function GameLobbyView({
+    roomState,
+    playerName,
+    auth,
+    notification = null,
+    onStartGame,
+    isStartingGame = false,
+}: GameLobbyViewProps) {
     const [copied, setCopied] = useState(false);
+    const [copyFailed, setCopyFailed] = useState(false);
+    const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const copyAttempt = useRef(0);
+
+    useEffect(() => () => {
+        copyAttempt.current += 1;
+        if (copyTimer.current !== null) clearTimeout(copyTimer.current);
+    }, []);
 
     if (!roomState) return null;
 
-    const handleCopyCode = () => {
+    const handleCopyCode = async () => {
         const code = roomState.roomName || '';
-        if (code) {
-            navigator.clipboard.writeText(code);
+        if (!code) return;
+        const attempt = ++copyAttempt.current;
+        if (copyTimer.current !== null) clearTimeout(copyTimer.current);
+        setCopied(false);
+        setCopyFailed(false);
+        try {
+            await navigator.clipboard.writeText(code);
+            if (attempt !== copyAttempt.current) return;
             setCopied(true);
-            setTimeout(() => setCopied(false), 2000);
+            copyTimer.current = setTimeout(() => setCopied(false), 2000);
+        } catch {
+            if (attempt === copyAttempt.current) setCopyFailed(true);
         }
     };
 
@@ -43,30 +68,20 @@ export function GameLobbyView({ onStartGame, onLeaveGame, isStartingGame = false
             ? `$${roomState.buyIn.toLocaleString()}`
             : 'Waiting...';
 
-    const amHost = roomState.players?.find(p => p.name === auth.playerName)?.isHost ?? false;
+    const effectivePlayerName = playerName ?? auth?.playerName;
+    const amHost = roomState.players?.find(p => p.name === effectivePlayerName)?.isHost ?? false;
 
     return (
-        <div className="min-h-screen p-8 md:pt-28 flex flex-col items-center justify-center">
+        <div
+            role="region"
+            aria-label="Game lobby"
+            className="w-full max-w-5xl p-4 sm:p-8 overflow-y-auto max-h-full"
+        >
             <NotificationBanner notification={notification} />
+            {copyFailed && <p role="alert">{ERROR_COPY_ROOM_CODE}</p>}
 
-            <div className="w-full max-w-5xl">
-                <div className="mb-4 flex justify-between items-center">
-                    <LobbyWsStatusBadge status={wsStatus} />
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                            if (window.confirm('Are you sure you want to leave the lobby?')) {
-                                onLeaveGame();
-                            }
-                        }}
-                        className="border-red-500/50 text-red-500 hover:bg-red-500/10"
-                    >
-                        {BTN_LEAVE_LOBBY}
-                    </Button>
-                </div>
-
-                <div className="mb-12">
+            <div className="w-full">
+                <div className="mb-8">
                     <span className="text-emerald-primary text-[10px] font-bold tracking-[0.3em] uppercase">
                         {GAME_LOBBY_LABEL}
                     </span>
@@ -112,15 +127,15 @@ export function GameLobbyView({ onStartGame, onLeaveGame, isStartingGame = false
                                 </Card>
                             </li>
                         ))}
-                        {Array.from({ length: (roomState.maxPlayers || 6) - (roomState.players?.length || 0) }).map((_, i) => (
-                            <li key={`empty-${i}`}>
+                        {((roomState.maxPlayers || 6) - (roomState.players?.length || 0)) > 0 && (
+                            <li className="md:col-span-2">
                                 <div className="border border-white/5 rounded-xl p-6 flex items-center justify-center border-dashed">
-                                    <p className="text-zinc-700 text-xs uppercase tracking-widest italic">
-                                        {LABEL_WAITING_PLAYERS}
+                                    <p className="text-zinc-500 text-sm uppercase tracking-widest font-semibold">
+                                        {roomState.players?.length || 0} / {roomState.maxPlayers || 6} Players Joined
                                     </p>
                                 </div>
                             </li>
-                        ))}
+                        )}
                     </ul>
 
                     {/* Sidebar */}
@@ -177,28 +192,3 @@ export function GameLobbyView({ onStartGame, onLeaveGame, isStartingGame = false
     );
 }
 
-// ─── Lobby Connection Status Badge ───────────────────────────────────────────
-
-function LobbyWsStatusBadge({ status }: { status: WsStatus }) {
-    const isConnected = status === 'connected';
-    const isReconnecting = status === 'reconnecting';
-
-    return (
-        <div
-            className={cn(
-                'flex items-center gap-2 px-3 py-1.5 rounded-full border text-[10px] font-bold uppercase tracking-wider transition-all duration-300',
-                isConnected && 'border-emerald-primary/20 text-emerald-primary/70',
-                isReconnecting && 'border-amber-400/30 text-amber-300/80 animate-pulse',
-                !isConnected && !isReconnecting && 'border-red-500/30 text-red-400/80 animate-pulse',
-            )}
-            role="status"
-            aria-label={`Connection status: ${status}`}
-        >
-            {isConnected
-                ? <Wifi aria-hidden="true" className="w-3 h-3" />
-                : <WifiOff aria-hidden="true" className="w-3 h-3" />
-            }
-            <span>{isConnected ? 'Connected' : isReconnecting ? 'Reconnecting\u2026' : 'Disconnected'}</span>
-        </div>
-    );
-}

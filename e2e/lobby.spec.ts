@@ -11,7 +11,7 @@ test.describe('Lobby and Room Lifecycle', () => {
   });
 
   test('Host can create a room and Guest can join', async ({ browser, createRoom, joinRoom }) => {
-    const roomName = `E2E-Room-${Math.floor(Math.random() * 1000)}`;
+    const roomName = `E2E-Room-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
     const hostName = 'HostPlayer';
     const guestName = 'GuestPlayer';
 
@@ -23,8 +23,8 @@ test.describe('Lobby and Room Lifecycle', () => {
 
     // Verify Host is in the lobby
     await expect(hostPage.getByText(/game lobby/i)).toBeVisible();
-    await expect(hostPage.getByText(roomName)).toBeVisible();
-    await expect(hostPage.getByRole('heading', { name: hostName })).toBeVisible();
+    await expect(hostPage.getByText(roomName).first()).toBeVisible();
+    await expect(hostPage.getByText(hostName )).toBeVisible();
     await expect(hostPage.getByRole('button', { name: /start game/i })).toBeVisible();
 
     // 2. Guest joins the room
@@ -35,15 +35,16 @@ test.describe('Lobby and Room Lifecycle', () => {
 
     // Verify Guest is in the same lobby
     await expect(guestPage.getByText(/game lobby/i)).toBeVisible();
-    await expect(guestPage.getByText(roomName)).toBeVisible();
-    await expect(guestPage.getByRole('heading', { name: guestName })).toBeVisible();
+    await expect(guestPage.getByText(roomName).first()).toBeVisible();
+    await expect(guestPage.getByText(guestName )).toBeVisible();
     
     // Guest should NOT see the start game button
     await expect(guestPage.getByRole('button', { name: /start game/i })).not.toBeVisible();
     await expect(guestPage.getByText(/waiting for host to start/i)).toBeVisible();
 
     // 3. Verify synchronization (both see each other)
-    await expect(hostPage.getByRole('heading', { name: guestName })).toBeVisible();
-    await expect(guestPage.getByRole('heading', { name: hostName })).toBeVisible();
+    await expect(hostPage.getByText(guestName )).toBeVisible();
+    await expect(guestPage.getByText(hostName )).toBeVisible();
   });
 });
+

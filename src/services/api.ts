@@ -1,5 +1,7 @@
-import { Client } from '@stomp/stompjs';
-import type { AuthResponse, RoomDataResponse } from '../types';
+import { Client, ReconnectionTimeMode } from '@stomp/stompjs';
+import type { ApiResponse, AuthResponse, RoomDataResponse, TokenResponse } from '../types';
+import { logger } from '../security/logger';
+import { ERROR_MALFORMED_AUTH, ERROR_MALFORMED_RESPONSE, ERROR_REQUEST_TIMEOUT } from '../constants/strings';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api';
 const REQUEST_TIMEOUT_MS = 15000;
@@ -16,6 +18,19 @@ function getWebSocketUrl(): string {
 }
 
 type ApiError = Error & { status: number };
+
+/** A successful HTTP response that cannot satisfy the expected JSON object contract.
+ * Carries structural information only; never retains the response body.
+ */
+export class MalformedResponseError extends Error {
+    readonly status = 502;
+    readonly receivedType: string;
+
+    constructor(receivedType: string) {
+        super(ERROR_MALFORMED_RESPONSE);
+        this.receivedType = receivedType;
+    }
+}
 
 function buildApiError(status: number, message: string): ApiError {
     const error = new Error(message) as ApiError;
@@ -43,27 +58,44 @@ export async function getErrorMessage(res: Response, fallback: string): Promise<
     return fallback;
 }
 
-function normalizeAuthResponse(raw: unknown): AuthResponse {
-    const src = (raw ?? {}) as Record<string, unknown>;
-    // Backend sends: { "message": "...", "data": { "token": "...", "roomId": "...", "playerName": "..." } }
-    const data = (src.data ?? src) as Record<string, unknown>;
-
+function normalizeAuthResponse(res: ApiResponse<TokenResponse>): AuthResponse {
+    if (
+        !res ||
+        typeof res !== 'object' ||
+        !res.data ||
+        typeof res.data !== 'object' ||
+        typeof res.data.token !== 'string' ||
+        typeof res.data.roomId !== 'string' ||
+        typeof res.data.playerName !== 'string'
+    ) {
+        throw buildApiError(500, ERROR_MALFORMED_AUTH);
+    }
     return {
-        message: typeof src.message === 'string' ? src.message : '',
-        token: typeof data.token === 'string' ? data.token : '',
-        roomId: typeof data.roomId === 'string' ? data.roomId : '',
-        playerName: typeof data.playerName === 'string' ? data.playerName : '',
+        message: res.message,
+        token: res.data.token,
+        roomId: res.data.roomId,
+        playerName: res.data.playerName,
     };
 }
 
-/** Decode JWT payload and check exp claim. Returns false if expired. */
+/** Decode JWT payload and check exp claim. Returns false if expired or malformed. */
 export function isJwtValid(token: string): boolean {
     try {
         const parts = token.split('.');
         if (parts.length !== 3) return false;
-        const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
-        if (typeof payload.exp === 'number') {
-            return payload.exp * 1000 > Date.now();
+        const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+        if (!base64 || base64.length % 4 === 1) return false;
+        const padded = base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), '=');
+        const payload: unknown = JSON.parse(atob(padded));
+        if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+            return false;
+        }
+        const record = payload as Record<string, unknown>;
+        if (typeof record.exp === 'number') {
+            return record.exp * 1000 > Date.now();
+        }
+        if (record.exp !== undefined) {
+            return false;
         }
         return true;
     } catch {
@@ -74,10 +106,22 @@ export function isJwtValid(token: string): boolean {
 /**
  * Shared fetch wrapper: injects headers, ngrok bypass (dev), handles network errors.
  */
-async function fetchApi<T>(url: string, options: RequestInit & { token?: string }): Promise<T> {
-    const { token, headers, ...rest } = options;
+async function fetchApi<T>(url: string, options: RequestInit & { token?: string; expectJson?: boolean }): Promise<T> {
+    const { token, headers, signal: externalSignal, expectJson = false, ...rest } = options;
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+    let timedOut = false;
+    const timeoutId = setTimeout(() => {
+        timedOut = true;
+        controller.abort();
+    }, REQUEST_TIMEOUT_MS);
+    const onExternalAbort = () => controller.abort();
+    if (externalSignal) {
+        if (externalSignal.aborted) {
+            controller.abort();
+        } else {
+            externalSignal.addEventListener('abort', onExternalAbort, { once: true });
+        }
+    }
 
     try {
         const mergedHeaders: Record<string, string> = {
@@ -87,7 +131,7 @@ async function fetchApi<T>(url: string, options: RequestInit & { token?: string 
         };
         if (token) {
             if (!isJwtValid(token)) {
-                window.dispatchEvent(new Event('auth-expired'));
+                window.dispatchEvent(new CustomEvent('auth-expired', { detail: { token } }));
                 throw buildApiError(401, 'Session expired');
             }
             mergedHeaders['Authorization'] = `Bearer ${token}`;
@@ -100,26 +144,44 @@ async function fetchApi<T>(url: string, options: RequestInit & { token?: string 
         });
 
         if (!response.ok) {
-            if (response.status === 401 || response.status === 403) {
-                window.dispatchEvent(new Event('auth-expired'));
+            const errorMessage = await getErrorMessage(response, 'Request failed');
+            if (response.status === 401 && token) {
+                window.dispatchEvent(new CustomEvent('auth-expired', { detail: { token } }));
             }
-            throw buildApiError(response.status, await getErrorMessage(response, 'Request failed'));
+            throw buildApiError(response.status, errorMessage);
         }
 
-        // Return empty object/null for 204 or responses without JSON
-        if (response.status === 204) return null as T;
+        if (response.status === 204) {
+            if (expectJson) throw new MalformedResponseError('empty response');
+            return null as T;
+        }
         const contentType = response.headers.get('content-type') ?? '';
         if (contentType.includes('application/json')) {
-            return await response.json();
+            let data: unknown;
+            try {
+                data = await response.json();
+            } catch (error) {
+                if (expectJson && error instanceof SyntaxError) throw new MalformedResponseError('invalid JSON');
+                throw error;
+            }
+            if (expectJson && (data === null || typeof data !== 'object' || Array.isArray(data))) {
+                throw new MalformedResponseError(data === null ? 'null' : Array.isArray(data) ? 'array' : typeof data);
+            }
+            return data as T;
         }
+        if (expectJson) throw new MalformedResponseError('non-JSON response');
         return null as T;
     } catch (e) {
+        if (timedOut) {
+            throw buildApiError(408, ERROR_REQUEST_TIMEOUT);
+        }
         if (e instanceof TypeError) {
             throw buildApiError(0, 'Unable to reach the server. Check your connection.');
         }
         throw e;
     } finally {
         clearTimeout(timeoutId);
+        externalSignal?.removeEventListener('abort', onExternalAbort);
     }
 }
 
@@ -132,32 +194,34 @@ export const pokerApi = {
         bigBlind: number;
         buyIn: number;
         password?: string;
-    }): Promise<AuthResponse> {
-        const data = await fetchApi<unknown>(`${API_BASE}/room/create`, {
+    }, signal?: AbortSignal): Promise<AuthResponse> {
+        const data = await fetchApi<ApiResponse<TokenResponse>>(`${API_BASE}/room/create`, {
             method: 'POST',
             body: JSON.stringify(payload),
+            signal,
         });
         return normalizeAuthResponse(data);
     },
 
-    async joinRoom(payload: { roomName: string; playerName: string; password?: string }): Promise<AuthResponse> {
-        const data = await fetchApi<unknown>(`${API_BASE}/room/join`, {
+    async joinRoom(payload: { roomName: string; playerName: string; password?: string }, signal?: AbortSignal): Promise<AuthResponse> {
+        const data = await fetchApi<ApiResponse<TokenResponse>>(`${API_BASE}/room/join`, {
             method: 'POST',
             body: JSON.stringify(payload),
+            signal,
         });
         return normalizeAuthResponse(data);
     },
 
     async getRoomInfo(roomId: string, token: string): Promise<RoomDataResponse> {
-        return fetchApi<RoomDataResponse>(`${API_BASE}/room/${encodeURIComponent(roomId)}`, { method: 'GET', token });
+        return fetchApi<RoomDataResponse>(`${API_BASE}/room/${encodeURIComponent(roomId)}`, { method: 'GET', token, expectJson: true });
     },
 
     async getGameState(gameId: string, token: string): Promise<unknown> {
-        return fetchApi<unknown>(`${API_BASE}/game/${encodeURIComponent(gameId)}/state`, { method: 'GET', token });
+        return fetchApi<unknown>(`${API_BASE}/game/${encodeURIComponent(gameId)}/state`, { method: 'GET', token, expectJson: true });
     },
 
     async getPrivateState(gameId: string, token: string): Promise<unknown> {
-        return fetchApi<unknown>(`${API_BASE}/game/${encodeURIComponent(gameId)}/private-state`, { method: 'GET', token });
+        return fetchApi<unknown>(`${API_BASE}/game/${encodeURIComponent(gameId)}/private-state`, { method: 'GET', token, expectJson: true });
     },
 
     async leaveRoom(roomId: string, token: string, keepalive = false): Promise<void> {
@@ -179,16 +243,25 @@ export const pokerApi = {
 };
 
 export function createStompClient(token: string) {
-    return new Client({
+    const client = new Client({
         brokerURL: getWebSocketUrl(),
         connectHeaders: {
             Authorization: `Bearer ${token}`,
         },
-        debug: (str) => {
-            if (import.meta.env.DEV) {
-                console.log(str);
+        beforeConnect: () => {
+            if (!isJwtValid(token)) {
+                window.dispatchEvent(new CustomEvent('auth-expired', { detail: { token } }));
+                void client.deactivate();
             }
         },
-        reconnectDelay: 5000,
+        debug: (str) => {
+            logger.debug(str);
+        },
+        reconnectDelay: 1000 + Math.floor(Math.random() * 4000),
+        reconnectTimeMode: ReconnectionTimeMode.EXPONENTIAL,
+        maxReconnectDelay: 25000 + Math.floor(Math.random() * 10000),
+        connectionTimeout: REQUEST_TIMEOUT_MS,
+        discardWebsocketOnCommFailure: true,
     });
+    return client;
 }

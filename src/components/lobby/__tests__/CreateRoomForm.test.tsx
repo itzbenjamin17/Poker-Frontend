@@ -1,15 +1,10 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { http, HttpResponse } from 'msw';
 import { CreateRoomForm } from '../CreateRoomForm';
-import { pokerApi } from '../../../services/api';
+import { server } from '../../../test/mocks/server';
 import '@testing-library/jest-dom';
-
-vi.mock('../../../services/api', () => ({
-    pokerApi: {
-        createRoom: vi.fn(),
-    },
-}));
 
 describe('CreateRoomForm', () => {
     const mockOnAuth = vi.fn();
@@ -37,37 +32,21 @@ describe('CreateRoomForm', () => {
         const smallBlindInput = screen.getByLabelText(/small blind/i) as HTMLInputElement;
         const bigBlindInput = screen.getByLabelText(/big blind/i) as HTMLInputElement;
 
-        await user.type(roomInput, 'Test Room');
-        await user.type(playerInput, 'Player1');
-
-        // Set invalid blinds (big blind 15 < 2x small blind 10)
-        await user.type(smallBlindInput, '10', {
-            initialSelectionStart: 0,
-            initialSelectionEnd: smallBlindInput.value.length,
-        });
-        await user.type(bigBlindInput, '15', {
-            initialSelectionStart: 0,
-            initialSelectionEnd: bigBlindInput.value.length,
-        });
+        fireEvent.change(roomInput, { target: { value: 'Test Room' } });
+        fireEvent.change(playerInput, { target: { value: 'Player1' } });
+        fireEvent.change(smallBlindInput, { target: { value: '10' } });
+        fireEvent.change(bigBlindInput, { target: { value: '15' } });
 
         const submitButton = screen.getByRole('button', { name: /create game/i });
         await user.click(submitButton);
 
         expect(mockOnError).toHaveBeenCalledWith('Big blind must be at least 2× the small blind.');
-        expect(pokerApi.createRoom).not.toHaveBeenCalled();
         expect(mockOnAuth).not.toHaveBeenCalled();
+        expect(mockSetLoading).not.toHaveBeenCalled();
     });
 
-    it('calls pokerApi.createRoom with correctly shaped payload and invokes onAuth on success', async () => {
+    it('submits valid form data through MSW and invokes onAuth on success', async () => {
         const user = userEvent.setup();
-        const fakeAuthResponse = {
-            token: 'test-jwt-token',
-            playerName: 'CardShark',
-            roomId: 'room-xyz',
-            message: 'Success',
-        };
-        vi.mocked(pokerApi.createRoom).mockResolvedValueOnce(fakeAuthResponse);
-
         render(
             <CreateRoomForm
                 onAuth={mockOnAuth}
@@ -83,42 +62,34 @@ describe('CreateRoomForm', () => {
         const bigBlindInput = screen.getByLabelText(/big blind/i) as HTMLInputElement;
         const buyInInput = screen.getByLabelText(/buy-in/i) as HTMLInputElement;
 
-        await user.type(roomInput, 'Vip High Stakes');
-        await user.type(playerInput, 'CardShark');
-        await user.type(smallBlindInput, '50', {
-            initialSelectionStart: 0,
-            initialSelectionEnd: smallBlindInput.value.length,
-        });
-        await user.type(bigBlindInput, '100', {
-            initialSelectionStart: 0,
-            initialSelectionEnd: bigBlindInput.value.length,
-        });
-        await user.type(buyInInput, '2000', {
-            initialSelectionStart: 0,
-            initialSelectionEnd: buyInInput.value.length,
-        });
+        fireEvent.change(roomInput, { target: { value: 'Vip High Stakes' } });
+        fireEvent.change(playerInput, { target: { value: 'CardShark' } });
+        fireEvent.change(smallBlindInput, { target: { value: '50' } });
+        fireEvent.change(bigBlindInput, { target: { value: '100' } });
+        fireEvent.change(buyInInput, { target: { value: '2000' } });
 
         const submitButton = screen.getByRole('button', { name: /create game/i });
         await user.click(submitButton);
 
         await waitFor(() => {
-            expect(pokerApi.createRoom).toHaveBeenCalledWith({
-                roomName: 'Vip High Stakes',
+            expect(mockOnAuth).toHaveBeenCalledWith({
+                message: 'Room created successfully',
+                token: expect.any(String),
+                roomId: 'ABCD',
                 playerName: 'CardShark',
-                smallBlind: 50,
-                bigBlind: 100,
-                buyIn: 2000,
-                maxPlayers: 6,
             });
-            expect(mockOnAuth).toHaveBeenCalledWith(fakeAuthResponse);
             expect(mockSetLoading).toHaveBeenCalledWith(true);
             expect(mockSetLoading).toHaveBeenCalledWith(false);
         });
     });
 
-    it('calls onError with error message when pokerApi.createRoom fails', async () => {
+    it('calls onError with backend error message when room creation fails', async () => {
         const user = userEvent.setup();
-        vi.mocked(pokerApi.createRoom).mockRejectedValueOnce(new Error('Room already exists'));
+        server.use(
+            http.post('/api/room/create', () => {
+                return HttpResponse.json({ message: 'Room already exists' }, { status: 400 });
+            })
+        );
 
         render(
             <CreateRoomForm
@@ -132,8 +103,8 @@ describe('CreateRoomForm', () => {
         const roomInput = screen.getByLabelText(/room name/i);
         const playerInput = screen.getByLabelText(/player alias/i);
 
-        await user.type(roomInput, 'Duplicate Room');
-        await user.type(playerInput, 'Alice');
+        fireEvent.change(roomInput, { target: { value: 'Duplicate Room' } });
+        fireEvent.change(playerInput, { target: { value: 'Alice' } });
 
         const submitButton = screen.getByRole('button', { name: /create game/i });
         await user.click(submitButton);

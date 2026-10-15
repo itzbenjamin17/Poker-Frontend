@@ -51,4 +51,13 @@ describe('Input component', () => {
     await user.type(input, 'John')
     expect(handleChange).toHaveBeenCalled()
   })
+
+  it('spreads extra props before computed accessibility and className attributes so error semantics are preserved', () => {
+    render(<Input label="Amount" error="Required field" aria-invalid={false} className="custom-field" />)
+    const input = screen.getByLabelText(/amount/i)
+    const errorMsg = screen.getByRole('alert')
+
+    expect(input).toBeInvalid()
+    expect(input).toHaveAttribute('aria-describedby', errorMsg.id)
+  })
 })

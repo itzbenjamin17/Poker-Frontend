@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { Button, Input, Card } from '../UI';
 import { pokerApi } from '../../services/api';
 import { Rocket } from 'lucide-react';
-import { logger } from '../../security/logger';
 import {
     CREATE_TABLE_HEADING,
     CREATE_TABLE_SUBTITLE,
@@ -10,52 +9,49 @@ import {
     BTN_CREATING,
     ERROR_CREATE_FALLBACK,
 } from '../../constants/strings';
-import { VALIDATION, validateCreate } from './validation';
+import { VALIDATION, validateCreate, parseCreateRoomSubmission } from './validation';
+import { useLobbyRequest } from './useLobbyRequest';
+import type { LobbyRequestLock } from './useLobbyRequest';
 import type { AuthResponse } from '../../types';
 
 interface CreateRoomFormProps {
     onAuth: (data: AuthResponse) => void;
     onError: (msg: string | null) => void;
-    loading: boolean;
+    isSubmitting?: boolean;
+    loading?: boolean;
+    disabled?: boolean;
     setLoading: (loading: boolean) => void;
+    requestLock?: LobbyRequestLock;
 }
 
-export function CreateRoomForm({ onAuth, onError, loading, setLoading }: CreateRoomFormProps) {
+export function CreateRoomForm({ onAuth, onError, isSubmitting, loading = false, disabled = false, setLoading, requestLock }: CreateRoomFormProps) {
     const [createData, setCreateData] = useState({
         roomName: '',
         playerName: '',
         maxPlayers: 6,
-        smallBlind: 25,
-        bigBlind: 50,
-        buyIn: 1000,
+        smallBlind: '25',
+        bigBlind: '50',
+        buyIn: '1000',
     });
+
+    const submitting = isSubmitting ?? loading;
+    const isDisabled = submitting || disabled;
+    const { isBusy, run } = useLobbyRequest({ requestLock, onAuth, onError, setLoading });
 
     const handleCreate = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (isDisabled || isBusy()) return;
         onError(null);
 
-        const submissionData = {
-            ...createData,
-            roomName: createData.roomName.trim(),
-            playerName: createData.playerName.trim(),
-        };
-
-        const validationError = validateCreate(submissionData);
+        const validationError = validateCreate(createData);
         if (validationError) {
             onError(validationError);
             return;
         }
 
-        setLoading(true);
-        try {
-            const res = await pokerApi.createRoom(submissionData);
-            onAuth(res);
-        } catch (err) {
-            logger.error('Failed to create room:', err);
-            onError(err instanceof Error ? err.message : ERROR_CREATE_FALLBACK);
-        } finally {
-            setLoading(false);
-        }
+        const submissionData = parseCreateRoomSubmission(createData);
+
+        await run(signal => pokerApi.createRoom(submissionData, signal), ERROR_CREATE_FALLBACK);
     };
 
     return (
@@ -69,7 +65,7 @@ export function CreateRoomForm({ onAuth, onError, loading, setLoading }: CreateR
                     <Rocket aria-hidden="true" className="text-emerald-primary/20 w-10 h-10" />
                 </div>
 
-                <form onSubmit={handleCreate} className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <form onSubmit={handleCreate} noValidate className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="col-span-full">
                         <Input
                             label="Room Name"
@@ -94,10 +90,7 @@ export function CreateRoomForm({ onAuth, onError, loading, setLoading }: CreateR
                         label="Small Blind"
                         type="number"
                         value={createData.smallBlind}
-                        onChange={e => {
-                            const v = Number.parseInt(e.target.value, 10);
-                            setCreateData({ ...createData, smallBlind: Number.isNaN(v) ? createData.smallBlind : v });
-                        }}
+                        onChange={e => setCreateData({ ...createData, smallBlind: e.target.value })}
                         min={VALIDATION.smallBlind.min}
                         max={VALIDATION.smallBlind.max}
                     />
@@ -105,10 +98,7 @@ export function CreateRoomForm({ onAuth, onError, loading, setLoading }: CreateR
                         label="Big Blind"
                         type="number"
                         value={createData.bigBlind}
-                        onChange={e => {
-                            const v = Number.parseInt(e.target.value, 10);
-                            setCreateData({ ...createData, bigBlind: Number.isNaN(v) ? createData.bigBlind : v });
-                        }}
+                        onChange={e => setCreateData({ ...createData, bigBlind: e.target.value })}
                         min={VALIDATION.bigBlind.min}
                         max={VALIDATION.bigBlind.max}
                     />
@@ -145,10 +135,7 @@ export function CreateRoomForm({ onAuth, onError, loading, setLoading }: CreateR
                         label="Buy-in Amount"
                         type="number"
                         value={createData.buyIn}
-                        onChange={e => {
-                            const v = Number.parseInt(e.target.value, 10);
-                            setCreateData({ ...createData, buyIn: Number.isNaN(v) ? createData.buyIn : v });
-                        }}
+                        onChange={e => setCreateData({ ...createData, buyIn: e.target.value })}
                         min={VALIDATION.buyIn.min}
                         max={VALIDATION.buyIn.max}
                     />
@@ -159,9 +146,9 @@ export function CreateRoomForm({ onAuth, onError, loading, setLoading }: CreateR
                             size="lg"
                             className="w-full"
                             type="submit"
-                            disabled={loading}
+                            disabled={isDisabled}
                         >
-                            {loading ? BTN_CREATING : BTN_CREATE_GAME}
+                            {submitting ? BTN_CREATING : BTN_CREATE_GAME}
                         </Button>
                     </div>
                 </form>

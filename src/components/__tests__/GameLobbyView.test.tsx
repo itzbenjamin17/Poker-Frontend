@@ -2,35 +2,29 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { GameLobbyView } from '../GameLobbyView';
-import { useGameContext } from '../../context/GameContext';
 import {
-    BTN_LEAVE_LOBBY,
     BTN_START_GAME,
     BTN_STARTING_GAME,
     LABEL_WAITING_HOST,
 } from '../../constants/strings';
+import type { RoomState } from '../../types';
 import '@testing-library/jest-dom';
-
-vi.mock('../../context/GameContext', () => ({
-    useGameContext: vi.fn(),
-}));
 
 describe('GameLobbyView', () => {
     const mockOnStartGame = vi.fn();
-    const mockOnLeaveGame = vi.fn();
 
-    const baseRoomState = {
+    const baseRoomState: RoomState = {
         roomId: 'room-1',
         roomName: 'HighRollers',
-        host: 'HostPlayer',
         smallBlind: 10,
         bigBlind: 20,
         buyIn: 1000,
         maxPlayers: 6,
         canStartGame: true,
+        gameStarted: false,
         players: [
-            { name: 'HostPlayer', isHost: true, chips: 1000 },
-            { name: 'GuestPlayer', isHost: false, chips: 1000 },
+            { name: 'HostPlayer', isHost: true },
+            { name: 'GuestPlayer', isHost: false },
         ],
     };
 
@@ -38,19 +32,16 @@ describe('GameLobbyView', () => {
         vi.clearAllMocks();
     });
 
-    it('renders room name, blinds, buy-in, player list with host indicator', () => {
-        vi.mocked(useGameContext).mockReturnValue({
-            auth: { playerName: 'HostPlayer', token: 'token', roomId: 'room-1', message: 'Success' },
-            roomState: baseRoomState,
-            gameState: null,
-            privateState: null,
-            notification: null,
-            wsStatus: 'connected',
-            dispatch: vi.fn(),
-        } as any);
+    it('renders room name, blinds, buy-in, player list with host indicator and semantic region', () => {
+        render(
+            <GameLobbyView
+                roomState={baseRoomState}
+                playerName="HostPlayer"
+                onStartGame={mockOnStartGame}
+            />
+        );
 
-        render(<GameLobbyView onStartGame={mockOnStartGame} onLeaveGame={mockOnLeaveGame} />);
-
+        expect(screen.getByRole('region', { name: /game lobby/i })).toBeInTheDocument();
         expect(screen.getByText('HighRollers')).toBeInTheDocument();
         expect(screen.getByText('$10 / $20')).toBeInTheDocument();
         expect(screen.getByText('$1,000')).toBeInTheDocument();
@@ -61,17 +52,14 @@ describe('GameLobbyView', () => {
 
     it('host sees Start Game button enabled when canStartGame is true and clicking invokes onStartGame', async () => {
         const user = userEvent.setup();
-        vi.mocked(useGameContext).mockReturnValue({
-            auth: { playerName: 'HostPlayer', token: 'token', roomId: 'room-1', message: 'Success' },
-            roomState: baseRoomState,
-            gameState: null,
-            privateState: null,
-            notification: null,
-            wsStatus: 'connected',
-            dispatch: vi.fn(),
-        } as any);
 
-        render(<GameLobbyView onStartGame={mockOnStartGame} onLeaveGame={mockOnLeaveGame} />);
+        render(
+            <GameLobbyView
+                roomState={baseRoomState}
+                playerName="HostPlayer"
+                onStartGame={mockOnStartGame}
+            />
+        );
 
         const startButton = screen.getByRole('button', { name: new RegExp(BTN_START_GAME, 'i') });
         expect(startButton).toBeEnabled();
@@ -81,18 +69,12 @@ describe('GameLobbyView', () => {
     });
 
     it('host sees Start Game button disabled when canStartGame is false or isStartingGame is true', () => {
-        vi.mocked(useGameContext).mockReturnValue({
-            auth: { playerName: 'HostPlayer', token: 'token', roomId: 'room-1', message: 'Success' },
-            roomState: { ...baseRoomState, canStartGame: false },
-            gameState: null,
-            privateState: null,
-            notification: null,
-            wsStatus: 'connected',
-            dispatch: vi.fn(),
-        } as any);
-
         const { rerender } = render(
-            <GameLobbyView onStartGame={mockOnStartGame} onLeaveGame={mockOnLeaveGame} />
+            <GameLobbyView
+                roomState={{ ...baseRoomState, canStartGame: false }}
+                playerName="HostPlayer"
+                onStartGame={mockOnStartGame}
+            />
         );
 
         const startButton = screen.getByRole('button', { name: new RegExp(BTN_START_GAME, 'i') });
@@ -100,8 +82,9 @@ describe('GameLobbyView', () => {
 
         rerender(
             <GameLobbyView
+                roomState={baseRoomState}
+                playerName="HostPlayer"
                 onStartGame={mockOnStartGame}
-                onLeaveGame={mockOnLeaveGame}
                 isStartingGame={true}
             />
         );
@@ -111,51 +94,16 @@ describe('GameLobbyView', () => {
     });
 
     it('non-host sees waiting for host message instead of start button', () => {
-        vi.mocked(useGameContext).mockReturnValue({
-            auth: { playerName: 'GuestPlayer', token: 'token', roomId: 'room-1', message: 'Success' },
-            roomState: baseRoomState,
-            gameState: null,
-            privateState: null,
-            notification: null,
-            wsStatus: 'connected',
-            dispatch: vi.fn(),
-        } as any);
-
-        render(<GameLobbyView onStartGame={mockOnStartGame} onLeaveGame={mockOnLeaveGame} />);
+        render(
+            <GameLobbyView
+                roomState={baseRoomState}
+                playerName="GuestPlayer"
+                onStartGame={mockOnStartGame}
+            />
+        );
 
         expect(screen.queryByRole('button', { name: new RegExp(BTN_START_GAME, 'i') })).not.toBeInTheDocument();
         expect(screen.getByText(LABEL_WAITING_HOST)).toBeInTheDocument();
-    });
-
-    it('clicking Leave Lobby invokes onLeaveGame after confirmation', async () => {
-        const user = userEvent.setup();
-        const confirmSpy = vi.spyOn(window, 'confirm');
-
-        vi.mocked(useGameContext).mockReturnValue({
-            auth: { playerName: 'GuestPlayer', token: 'token', roomId: 'room-1', message: 'Success' },
-            roomState: baseRoomState,
-            gameState: null,
-            privateState: null,
-            notification: null,
-            wsStatus: 'connected',
-            dispatch: vi.fn(),
-        } as any);
-
-        render(<GameLobbyView onStartGame={mockOnStartGame} onLeaveGame={mockOnLeaveGame} />);
-
-        const leaveButton = screen.getByRole('button', { name: new RegExp(BTN_LEAVE_LOBBY, 'i') });
-
-        // Cancel confirmation
-        confirmSpy.mockReturnValueOnce(false);
-        await user.click(leaveButton);
-        expect(mockOnLeaveGame).not.toHaveBeenCalled();
-
-        // Accept confirmation
-        confirmSpy.mockReturnValueOnce(true);
-        await user.click(leaveButton);
-        expect(mockOnLeaveGame).toHaveBeenCalledTimes(1);
-
-        confirmSpy.mockRestore();
     });
 
     it('copy room code button writes room name to clipboard', async () => {
@@ -167,21 +115,18 @@ describe('GameLobbyView', () => {
             writable: true,
         });
 
-        vi.mocked(useGameContext).mockReturnValue({
-            auth: { playerName: 'HostPlayer', token: 'token', roomId: 'room-1', message: 'Success' },
-            roomState: baseRoomState,
-            gameState: null,
-            privateState: null,
-            notification: null,
-            wsStatus: 'connected',
-            dispatch: vi.fn(),
-        } as any);
-
-        render(<GameLobbyView onStartGame={mockOnStartGame} onLeaveGame={mockOnLeaveGame} />);
+        render(
+            <GameLobbyView
+                roomState={baseRoomState}
+                playerName="HostPlayer"
+                onStartGame={mockOnStartGame}
+            />
+        );
 
         const copyButton = screen.getByRole('button', { name: /copy room code/i });
         await user.click(copyButton);
 
         expect(writeTextMock).toHaveBeenCalledWith('HighRollers');
+        expect(await screen.findByText(/copied/i)).toBeInTheDocument();
     });
 });

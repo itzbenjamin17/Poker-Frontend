@@ -13,6 +13,13 @@ export const AUTH_KEY = 'poker-auth';
 export const SESSION_RESTORING = 'Restoring your seat...';
 export const SESSION_EXPIRED = 'Session expired. Returning to lobby...';
 export const SESSION_SEAT_GONE = 'Your seat is no longer active. Returning to lobby...';
+export const BTN_RETURN_TO_LOBBY = 'Return to Lobby';
+
+// ─── Error Boundary ───────────────────────────────────────────────────────────
+export const ERROR_BOUNDARY_HEADING = 'Something went wrong';
+export const ERROR_BOUNDARY_MESSAGE = 'An unexpected application error occurred.';
+export const BTN_TRY_AGAIN = 'Try Again';
+export const BTN_RELOAD = 'Reload';
 
 // ─── Connection ───────────────────────────────────────────────────────────────
 export const STATUS_CONNECTING = 'Connecting...';
@@ -20,9 +27,28 @@ export const STATUS_CONNECTED = 'Connected.';
 export const STATUS_RECONNECTING = 'Reconnecting...';
 export const STATUS_SEAT_RESTORED = 'Seat restored. Syncing live updates...';
 export const STATUS_RECONNECTING_TABLE = 'Reconnecting to table...';
+export const STATUS_RECOVERING_TABLE = 'Reconnecting / restoring table…';
 export const STATUS_RETURNING = 'Returning...';
 export const STATUS_WAITING_CONNECTION = 'Waiting for table connection...';
 export const STATUS_SYSTEM_MALFUNCTION = 'System malfunction. Please refresh.';
+export const BTN_RETRY_CONNECTION = 'Retry connection';
+export const BTN_RETRY = 'Retry';
+export const ERROR_INITIAL_TABLE_LOAD = 'Couldn’t load the table data. Please retry.';
+
+export const VALIDATION_MAX_PLAYERS =
+    'Max players must be a whole number between 2 and 10.';
+export const VALIDATION_ROOM_NAME_CONTROL =
+    'Room name cannot contain control characters.';
+export const VALIDATION_PLAYER_ALIAS_CONTROL =
+    'Player alias cannot contain control characters.';
+export const ERROR_MALFORMED_RESPONSE =
+    'The server returned an invalid response. Please try again.';
+export const ERROR_COPY_ROOM_CODE = 'Could not copy room code.';
+export const ROTATE_REQUIRED = 'Landscape mode required.';
+export const ROTATE_INSTRUCTIONS =
+    'Please widen your browser window or rotate your device to play.';
+export const ARIA_ROTATE_PROMPT = 'Rotate device prompt';
+export const BTN_LEAVE = 'LEAVE';
 
 // ─── Lobby ────────────────────────────────────────────────────────────────────
 export const LOBBY_HERO_SUBTITLE = "Texas Hold'em";
@@ -62,8 +88,8 @@ export const BTN_CLAIMING = 'CLAIMING...';
 
 export const BTN_FOLD = 'Fold';
 export const BTN_CHECK = 'Check';
-export const BTN_CALL_PREFIX = 'Call $';
-export const BTN_ALL_IN_PREFIX = 'All In $';
+export const BTN_CALL_PREFIX = 'Call ';
+export const BTN_ALL_IN_PREFIX = 'All In ';
 export const BTN_BET = 'Bet';
 export const BTN_RAISE = 'Raise';
 
@@ -76,6 +102,7 @@ export const LABEL_UNCALLED = 'Uncalled';
 // ─── Ready Countdown ─────────────────────────────────────────────────────────
 export const READY_PROMPT = 'Round complete. Confirm READY to continue.';
 export const BTN_READY = 'READY';
+export const BTN_UNREADY = 'WAITING... (UNREADY)';
 export const BTN_READY_CONFIRMED = 'READY CONFIRMED';
 export const LABEL_PLAYERS_READY_SUFFIX = 'players ready';
 
@@ -93,6 +120,7 @@ export const SHOWDOWN_WON_ROUND = 'Won the round';
 export const SHOWDOWN_SHOW_DETAILS = 'Show result details';
 export const SHOWDOWN_HIDE_DETAILS = 'Hide result details';
 export const ARIA_ROUND_RESULT = 'Round Result';
+export const SHOWDOWN_BOARD_PLAYS_TOOLTIP = 'Hole cards do not play; best hand is on the board.';
 
 // ─── Notifications ────────────────────────────────────────────────────────────
 export const HOST_LEFT = 'Host left the lobby. Returning to main lobby...';
@@ -105,13 +133,29 @@ export const RAISE_ERROR_FORBIDDEN_BET = 'That bet size is not allowed. Adjust t
 // ─── Raise validation ────────────────────────────────────────────────────────
 export const RAISE_VALIDATION_WHOLE_NUMBER = 'Enter a whole number.';
 export const RAISE_VALIDATION_POSITIVE = 'Amount must be greater than 0.';
-export const RAISE_VALIDATION_BET_MIN = 'Bet amount must be at least 1 chip.';
 export const RAISE_VALIDATION_MAX = 'Amount cannot exceed 10,000,000 chips.';
+export const formatBetMinError = (minBetAmount: number) => `Bet amount must be at least ${minBetAmount.toLocaleString()}.`;
+export const formatRaiseMinError = (minRaiseAmount: number) => `Minimum raise is ${minRaiseAmount.toLocaleString()}.`;
+export const formatAvailableChipsError = (availableChips: number) => `You only have ${availableChips.toLocaleString()}.`;
+
+// ─── Lobby validation & seat labels ──────────────────────────────────────────
+export const LABEL_PLAYER = 'Player';
+export const VALIDATION_ROOM_NAME_REQUIRED = 'Room name is required.';
+export const VALIDATION_PLAYER_ALIAS_REQUIRED = 'Player alias is required.';
+export const VALIDATION_BIG_BLIND_MIN_RATIO = 'Big blind must be at least 2× the small blind.';
+export const VALIDATION_BUY_IN_MIN_BIG_BLIND = 'Buy-in must be at least the big blind amount.';
+export const formatRoomNameMaxError = (max: number) => `Room name must be at most ${max} characters.`;
+export const formatPlayerAliasMaxError = (max: number) => `Alias must be at most ${max} characters.`;
+export const formatSmallBlindRangeError = (min: number, max: number) => `Small blind must be between ${min} and ${max.toLocaleString()}.`;
+export const formatBigBlindRangeError = (min: number, max: number) => `Big blind must be between ${min} and ${max.toLocaleString()}.`;
+export const formatBuyInRangeError = (min: number, max: number) => `Buy-in must be between $${min} and $${max.toLocaleString()}.`;
 
 // ─── Error normalizer fallbacks ───────────────────────────────────────────────
 export const ERROR_INVALID_FORMAT = 'Invalid request format. Please try again.';
 export const ERROR_TECHNICAL = 'Technical difficulties.';
 export const ERROR_SYSTEM = 'A system error occurred. Please try again.';
+export const ERROR_REQUEST_TIMEOUT = 'Request timed out. Please try again.';
+export const ERROR_MALFORMED_AUTH = 'Malformed authentication response from server.';
 
 // ─── Waiting / Reconnect ─────────────────────────────────────────────────────
 export const WAITING_RECONNECT_PREFIX = 'Waiting for ';

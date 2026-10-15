@@ -31,6 +31,7 @@ export const Button = ({
 
     return (
         <button
+            {...props}
             type={type}
             className={cn(
                 'rounded-xl transition-all duration-200 flex items-center justify-center gap-2 uppercase tracking-tight',
@@ -39,7 +40,6 @@ export const Button = ({
                 sizes[size],
                 className
             )}
-            {...props}
         >
             {children}
         </button>
@@ -49,9 +49,13 @@ export const Button = ({
 export const Input = ({
     label,
     error,
+    className,
+    id: propId,
+    'aria-describedby': propAriaDescribedBy,
     ...props
 }: { label?: string; error?: string } & React.InputHTMLAttributes<HTMLInputElement>) => {
-    const id = useId();
+    const generatedId = useId();
+    const id = propId ?? generatedId;
     const errorId = `${id}-error`;
     return (
         <div className="space-y-2 w-full">
@@ -64,14 +68,18 @@ export const Input = ({
                 </label>
             )}
             <input
+                {...props}
                 id={id}
                 aria-invalid={!!error}
-                aria-describedby={error ? errorId : undefined}
+                aria-describedby={
+                    [propAriaDescribedBy, error ? errorId : undefined]
+                        .filter(Boolean).join(' ') || undefined
+                }
                 className={cn(
                     'w-full bg-surface-highest border-none rounded-lg p-4 text-white placeholder:text-white/20 focus:ring-1 focus:ring-emerald-primary/30 transition-all font-body outline-none',
-                    error && 'ring-1 ring-red-500/50'
+                    error && 'ring-1 ring-red-500/50',
+                    className
                 )}
-                {...props}
             />
             {error && <p id={errorId} role="alert" className="text-[10px] text-red-500 uppercase tracking-wider">{error}</p>}
         </div>

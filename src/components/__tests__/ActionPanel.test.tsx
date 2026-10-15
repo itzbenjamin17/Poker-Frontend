@@ -37,6 +37,7 @@ function renderActionPanel({
     isCompactTable = false,
     raiseAmount = '',
     raiseError = null,
+    actionError = null,
     onRaiseChange = vi.fn(),
     onAction = vi.fn(),
     isActionPending = false,
@@ -57,6 +58,7 @@ function renderActionPanel({
                 isCompactTable={isCompactTable}
                 raiseAmount={raiseAmount}
                 raiseError={raiseError}
+                actionError={actionError}
                 onRaiseChange={onRaiseChange}
                 onAction={onAction}
                 isActionPending={isActionPending}
@@ -67,12 +69,47 @@ function renderActionPanel({
 }
 
 describe('ActionPanel', () => {
+    it('keeps an unfamiliar check error in the Action Panel with its supplied wording', () => {
+        renderActionPanel({
+            gameState: { ...mockGameState, currentBet: 10, legalActions: ['FOLD', 'CHECK'] },
+            actionError: { type: 'ACTION_ERROR', code: 'FUTURE_RULE', action: 'CHECK', message: 'A new rule applies' },
+        });
+        expect(screen.getByRole('region', { name: 'Action dock' })).toHaveTextContent('A new rule applies');
+        expect(screen.getByRole('alert')).toHaveTextContent('A new rule applies');
+    });
+
+    it('shows a rejected action while the Hero is waiting', () => {
+        renderActionPanel({
+            isMyTurn: false,
+            actionError: { type: 'ACTION_ERROR', code: 'NOT_YOUR_TURN', action: 'FOLD', message: 'Wait for your turn' },
+        });
+        expect(screen.getByRole('region', { name: 'Action dock' })).toHaveTextContent('Wait for your turn');
+        expect(screen.getByRole('alert')).toHaveTextContent('Wait for your turn');
+    });
+
+    it('reveals the rejected raise control using its action and clears feedback on amount change', async () => {
+        const onClearRaiseError = vi.fn();
+        render(<ActionPanel
+            gameState={mockGameState} me={mockMe} isMyTurn isSelfDisconnected={false}
+            isReadyCountdownActive={false} isMobileLandscape={false} isCompactTable={false}
+            raiseError={null} actionError={{ type: 'ACTION_ERROR', code: 'UNKNOWN', action: 'RAISE', message: 'Use a different total' }}
+            onClearRaiseError={onClearRaiseError} onAction={vi.fn()} isActionPending={false}
+        />);
+        expect(screen.getByRole('alert')).toHaveTextContent('Use a different total');
+        expect(screen.getByLabelText(/raise amount/i)).toBeInTheDocument();
+        await userEvent.setup().click(screen.getByRole('button', { name: 'MAX' }));
+        expect(onClearRaiseError).toHaveBeenCalled();
+    });
+
     it('renders fold, check, and a progressive raise button on my turn', () => {
         renderActionPanel({
             gameState: { ...mockGameState, currentBet: 10, legalActions: ['FOLD', 'CHECK', 'RAISE'] },
             me: { ...mockMe, currentBet: 10 },
+            isMyTurn: true,
         });
 
+        const dock = screen.getByRole('region', { name: /action dock/i });
+        expect(dock).toHaveAttribute('data-is-active-turn', 'true');
         expect(screen.getByRole('button', { name: /fold/i })).toBeInTheDocument();
         expect(screen.getByRole('button', { name: /check/i })).toBeInTheDocument();
         expect(screen.getByRole('button', { name: /^raise$/i })).toHaveAttribute('aria-expanded', 'false');
@@ -87,7 +124,7 @@ describe('ActionPanel', () => {
         });
 
         expect(screen.getByRole('button', { name: /fold/i })).toBeInTheDocument();
-        expect(screen.getByRole('button', { name: /call \$10/i })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /call 10/i })).toBeInTheDocument();
         expect(screen.queryByRole('button', { name: /check/i })).not.toBeInTheDocument();
     });
 
@@ -97,22 +134,74 @@ describe('ActionPanel', () => {
             me: { ...mockMe, chips: 50, currentBet: 10 },
         });
 
-        expect(screen.getByRole('button', { name: /all in \$50/i })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /all in 50/i })).toBeInTheDocument();
     });
 
-    it('progressively reveals valid amount controls for raise', async () => {
+    it('progressively reveals valid amount controls for raise, replacing normal row, and restores on cancel', async () => {
         const user = userEvent.setup();
         renderActionPanel({
             gameState: { ...mockGameState, currentBet: 20, legalActions: ['FOLD', 'CALL', 'RAISE'] },
             me: { ...mockMe, currentBet: 10 },
         });
 
+        // Initially in normal betting state
+        expect(screen.getByRole('button', { name: /fold/i })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /call 10/i })).toBeInTheDocument();
         expect(screen.queryByLabelText(/raise amount/i)).not.toBeInTheDocument();
+
+        // Clicking Raise enters raise state and replaces normal row completely
         await user.click(screen.getByRole('button', { name: /^raise$/i }));
 
         expect(screen.getByLabelText(/raise amount/i)).toBeInTheDocument();
-        expect(screen.getByRole('button', { name: /^raise$/i })).toBeDisabled();
+        expect(screen.getByRole('button', { name: /^raise$/i })).not.toBeDisabled();
         expect(screen.getByRole('button', { name: /cancel/i })).toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: /fold/i })).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: /call/i })).not.toBeInTheDocument();
+
+        // Clicking Cancel returns to normal state
+        await user.click(screen.getByRole('button', { name: /cancel/i }));
+        expect(screen.getByRole('button', { name: /fold/i })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /call 10/i })).toBeInTheDocument();
+        expect(screen.queryByLabelText(/raise amount/i)).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: /cancel/i })).not.toBeInTheDocument();
+    });
+
+    it('clicking preset buttons updates raise amount via onRaiseChange', async () => {
+        const user = userEvent.setup();
+        const onRaiseChange = vi.fn();
+        renderActionPanel({
+            gameState: { ...mockGameState, currentBet: 20, pot: 100, legalActions: ['FOLD', 'CALL', 'RAISE'] },
+            me: { ...mockMe, chips: 1000, currentBet: 10 },
+            onRaiseChange,
+            bigBlind: 20,
+        });
+
+        await user.click(screen.getByRole('button', { name: /^raise$/i }));
+
+        await user.click(screen.getByRole('button', { name: /^3bb$/i }));
+        expect(onRaiseChange).toHaveBeenCalledWith('60');
+
+        await user.click(screen.getByRole('button', { name: /^1\/2 pot$/i }));
+        expect(onRaiseChange).toHaveBeenCalledWith('50');
+
+        await user.click(screen.getByRole('button', { name: /^pot$/i }));
+        expect(onRaiseChange).toHaveBeenCalledWith('100');
+
+        await user.click(screen.getByRole('button', { name: /^max$/i }));
+        expect(onRaiseChange).toHaveBeenCalledWith('1000');
+    });
+
+    it('uses a minimum raise amount of 30 for a 20 blind, 20 table bet, and 10 committed chips', async () => {
+        const user = userEvent.setup();
+        renderActionPanel({
+            gameState: { ...mockGameState, currentBet: 20, legalActions: ['FOLD', 'CALL', 'RAISE'] },
+            me: { ...mockMe, currentBet: 10 },
+            bigBlind: 20,
+        });
+
+        await user.click(screen.getByRole('button', { name: /^raise$/i }));
+
+        expect(screen.getByLabelText(/raise amount/i)).toHaveValue('30');
     });
 
     it('displays error messages after amount controls are revealed', async () => {
@@ -124,7 +213,7 @@ describe('ActionPanel', () => {
         });
 
         await user.click(screen.getByRole('button', { name: /^raise$/i }));
-        expect(screen.getByText(/You only have 100 chips/i)).toBeInTheDocument();
+        expect(screen.getByRole('alert')).toHaveTextContent('You only have 100.');
 
         rerender(
             <ActionPanel
@@ -145,7 +234,7 @@ describe('ActionPanel', () => {
             />,
         );
         await user.click(screen.getByRole('button', { name: /^raise$/i }));
-        expect(screen.getByText(/Minimum raise is 11 chips/i)).toBeInTheDocument();
+        expect(screen.getByRole('alert')).toHaveTextContent('Minimum raise is 20.');
     });
 
     it('triggers onAction callback correctly when clicked', async () => {
@@ -184,7 +273,7 @@ describe('ActionPanel', () => {
         });
 
         expect(screen.getByRole('button', { name: /fold/i })).toBeInTheDocument();
-        expect(screen.getByRole('button', { name: /call \$10/i })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /call 10/i })).toBeInTheDocument();
         expect(screen.queryByRole('button', { name: /check/i })).not.toBeInTheDocument();
         expect(screen.queryByRole('button', { name: /raise/i })).not.toBeInTheDocument();
         expect(screen.queryByRole('button', { name: /all in/i })).not.toBeInTheDocument();
@@ -212,5 +301,163 @@ describe('ActionPanel', () => {
         expect(screen.queryByRole('button', { name: /fold/i })).not.toBeInTheDocument();
         expect(screen.queryByRole('button', { name: /check/i })).not.toBeInTheDocument();
         expect(screen.queryByRole('button', { name: /call/i })).not.toBeInTheDocument();
+    });
+
+    it('keeps the raise drawer open on submit until turn resolution and surfaces server raiseError', async () => {
+        const user = userEvent.setup();
+        const onAction = vi.fn();
+        const onRaiseChange = vi.fn();
+        const gameState: GameState = { ...mockGameState, currentBet: 20, legalActions: ['FOLD', 'CALL', 'RAISE'] };
+        const me: Player = { ...mockMe, chips: 1000, currentBet: 10 };
+
+        const { rerender } = render(
+            <ActionPanel
+                gameState={gameState}
+                me={me}
+                isMyTurn={true}
+                isSelfDisconnected={false}
+                isReadyCountdownActive={false}
+                currentTurnPlayerName="TestPlayer"
+                isMobileLandscape={false}
+                isCompactTable={false}
+                raiseAmount="50"
+                raiseError={null}
+                onRaiseChange={onRaiseChange}
+                onAction={onAction}
+                isActionPending={false}
+                bigBlind={20}
+            />,
+        );
+
+        // Open the raise drawer
+        await user.click(screen.getByRole('button', { name: /^raise$/i }));
+        expect(screen.getByLabelText(/raise amount/i)).toBeInTheDocument();
+
+        // Submit the raise
+        await user.click(screen.getByRole('button', { name: /^raise$/i }));
+        expect(onAction).toHaveBeenCalledWith('RAISE', 50);
+
+        // Drawer remains open after submit
+        expect(screen.getByLabelText(/raise amount/i)).toBeInTheDocument();
+
+        // Server rejects the raise and passes raiseError
+        rerender(
+            <ActionPanel
+                gameState={gameState}
+                me={me}
+                isMyTurn={true}
+                isSelfDisconnected={false}
+                isReadyCountdownActive={false}
+                currentTurnPlayerName="TestPlayer"
+                isMobileLandscape={false}
+                isCompactTable={false}
+                raiseAmount="50"
+                raiseError="Raise amount is below table minimum"
+                onRaiseChange={onRaiseChange}
+                onAction={onAction}
+                isActionPending={false}
+                bigBlind={20}
+            />,
+        );
+
+        expect(screen.getByRole('alert')).toHaveTextContent('Raise amount is below table minimum');
+        expect(screen.getByRole('button', { name: /^raise$/i })).toBeDisabled();
+
+        // Adjusting the amount calls onRaiseChange (which clears raiseError in parent) and re-enables submission
+        await user.click(screen.getByRole('button', { name: '3BB' }));
+        expect(onRaiseChange).toHaveBeenCalledWith('60');
+
+        rerender(
+            <ActionPanel
+                gameState={gameState}
+                me={me}
+                isMyTurn={true}
+                isSelfDisconnected={false}
+                isReadyCountdownActive={false}
+                currentTurnPlayerName="TestPlayer"
+                isMobileLandscape={false}
+                isCompactTable={false}
+                raiseAmount="120"
+                raiseError={null}
+                onRaiseChange={onRaiseChange}
+                onAction={onAction}
+                isActionPending={false}
+                bigBlind={20}
+            />,
+        );
+
+        expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /^raise$/i })).not.toBeDisabled();
+    });
+
+    it('clamps short-stack presets to availableChips when availableChips < minRaiseAmount and submits without validation error', async () => {
+        const user = userEvent.setup();
+        const onAction = vi.fn();
+        const onRaiseChange = vi.fn();
+        // bigBlind = 40 -> minRaiseAmount = 40, but player only has 30 chips
+        const shortGameState: GameState = {
+            ...mockGameState,
+            currentBet: 20,
+            pot: 100,
+            legalActions: ['FOLD', 'CALL', 'RAISE'],
+        };
+        const shortMe: Player = {
+            ...mockMe,
+            chips: 30,
+            currentBet: 10,
+        };
+
+        const { rerender } = render(
+            <ActionPanel
+                gameState={shortGameState}
+                me={shortMe}
+                isMyTurn={true}
+                isSelfDisconnected={false}
+                isReadyCountdownActive={false}
+                currentTurnPlayerName="TestPlayer"
+                isMobileLandscape={false}
+                isCompactTable={false}
+                raiseAmount=""
+                raiseError={null}
+                onRaiseChange={onRaiseChange}
+                onAction={onAction}
+                isActionPending={false}
+                bigBlind={40}
+            />,
+        );
+
+        await user.click(screen.getByRole('button', { name: /^raise$/i }));
+
+        // Clicking 3BB, POT, or MAX should clamp to availableChips ('30'), not minRaiseAmount ('40')
+        await user.click(screen.getByRole('button', { name: /^3bb$/i }));
+        expect(onRaiseChange).toHaveBeenLastCalledWith('30');
+
+        await user.click(screen.getByRole('button', { name: /^max$/i }));
+        expect(onRaiseChange).toHaveBeenLastCalledWith('30');
+
+        rerender(
+            <ActionPanel
+                gameState={shortGameState}
+                me={shortMe}
+                isMyTurn={true}
+                isSelfDisconnected={false}
+                isReadyCountdownActive={false}
+                currentTurnPlayerName="TestPlayer"
+                isMobileLandscape={false}
+                isCompactTable={false}
+                raiseAmount="30"
+                raiseError={null}
+                onRaiseChange={onRaiseChange}
+                onAction={onAction}
+                isActionPending={false}
+                bigBlind={40}
+            />,
+        );
+
+        expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+        const submitBtn = screen.getByRole('button', { name: /^raise$/i });
+        expect(submitBtn).not.toBeDisabled();
+        await user.click(submitBtn);
+        expect(onAction).toHaveBeenCalledWith('RAISE', 30);
     });
 });

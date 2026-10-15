@@ -1,9 +1,8 @@
 import { useState, useCallback, useEffect } from 'react';
 import { logger } from '../security/logger';
 import { isJwtValid } from '../services/api';
+import { AUTH_KEY } from '../constants/strings';
 import type { AuthResponse } from '../types';
-
-const AUTH_KEY = 'poker-auth';
 
 /** Validate that a parsed auth object has all required fields. */
 function isValidAuth(obj: unknown): obj is AuthResponse {
@@ -12,62 +11,105 @@ function isValidAuth(obj: unknown): obj is AuthResponse {
     return (
         typeof a.token === 'string' && a.token.length > 0 &&
         typeof a.roomId === 'string' && a.roomId.length > 0 &&
-        typeof a.playerName === 'string' && a.playerName.length > 0
+        typeof a.playerName === 'string' && a.playerName.length > 0 &&
+        typeof a.message === 'string'
     );
 }
 
+function safeGetStorageItem(key: string): string | null {
+    try {
+        return localStorage.getItem(key);
+    } catch (e) {
+        logger.warn('Failed to read from localStorage:', e);
+        return null;
+    }
+}
 
-let initialAuthError: string | null = null;
+function safeSetStorageItem(key: string, value: string): void {
+    try {
+        localStorage.setItem(key, value);
+    } catch (e) {
+        logger.warn('Failed to write to localStorage:', e);
+    }
+}
 
-function loadAuthFromStorage(): AuthResponse | null {
-    const saved = localStorage.getItem(AUTH_KEY);
+function safeRemoveStorageItem(key: string): void {
+    try {
+        localStorage.removeItem(key);
+    } catch (e) {
+        logger.warn('Failed to remove from localStorage:', e);
+    }
+}
+
+function loadAuthStateFromStorage(): AuthResponse | null {
+    const saved = safeGetStorageItem(AUTH_KEY);
     if (!saved) return null;
     try {
         const parsed = JSON.parse(saved);
         if (!isValidAuth(parsed)) {
             logger.warn('Invalid auth shape in localStorage — clearing.');
-            localStorage.removeItem(AUTH_KEY);
-            initialAuthError = "Your session couldn't be restored.";
+            safeRemoveStorageItem(AUTH_KEY);
             return null;
         }
         if (!isJwtValid(parsed.token)) {
             logger.warn('Stored JWT is expired — clearing session.');
-            localStorage.removeItem(AUTH_KEY);
-            initialAuthError = "Your session couldn't be restored.";
+            safeRemoveStorageItem(AUTH_KEY);
             return null;
         }
         return parsed;
     } catch (e) {
         logger.error('Failed to parse saved auth:', e);
-        localStorage.removeItem(AUTH_KEY);
-        initialAuthError = "Your session couldn't be restored.";
+        safeRemoveStorageItem(AUTH_KEY);
         return null;
     }
 }
 
 export function useAuthSession() {
-    const [auth, setAuthState] = useState<AuthResponse | null>(loadAuthFromStorage);
-    const [authError, setAuthError] = useState<string | null>(initialAuthError);
+    const [auth, setAuthState] = useState<AuthResponse | null>(loadAuthStateFromStorage);
 
     const setAuth = useCallback((data: AuthResponse) => {
         setAuthState(data);
-        localStorage.setItem(AUTH_KEY, JSON.stringify(data));
+        safeSetStorageItem(AUTH_KEY, JSON.stringify(data));
     }, []);
 
     const clearAuth = useCallback(() => {
         setAuthState(null);
-        localStorage.removeItem(AUTH_KEY);
+        safeRemoveStorageItem(AUTH_KEY);
     }, []);
 
     // Listen for cross-tab changes and global expiry events
     useEffect(() => {
         const handleStorage = (e: StorageEvent) => {
-            if (e.key === AUTH_KEY) {
-                setAuthState(loadAuthFromStorage());
+            if (
+                (!e.storageArea || e.storageArea === localStorage) &&
+                (e.key === AUTH_KEY || e.key === null)
+            ) {
+                setAuthState(loadAuthStateFromStorage());
             }
         };
-        const handleAuthExpired = () => {
-            clearAuth();
+        const handleAuthExpired = (event: Event) => {
+            if (!(event instanceof CustomEvent)) return;
+            const detail: unknown = event.detail;
+            if (
+                !detail || typeof detail !== 'object' ||
+                !('token' in detail) || typeof detail.token !== 'string'
+            ) return;
+
+            const failedToken = detail.token;
+            setAuthState(current =>
+                current?.token === failedToken ? null : current
+            );
+
+            const saved = safeGetStorageItem(AUTH_KEY);
+            if (!saved) return;
+            try {
+                const persisted: unknown = JSON.parse(saved);
+                if (isValidAuth(persisted) && persisted.token === failedToken) {
+                    safeRemoveStorageItem(AUTH_KEY);
+                }
+            } catch {
+                // Malformed storage cannot identify the failed session.
+            }
         };
 
         window.addEventListener('storage', handleStorage);
@@ -76,7 +118,11 @@ export function useAuthSession() {
             window.removeEventListener('storage', handleStorage);
             window.removeEventListener('auth-expired', handleAuthExpired);
         };
-    }, [clearAuth]);
+    }, []);
 
-    return { auth, setAuth, clearAuth, authError, clearAuthError: () => setAuthError(null) };
+    return {
+        auth,
+        setAuth,
+        clearAuth,
+    };
 }

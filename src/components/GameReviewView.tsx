@@ -1,4 +1,3 @@
-import { useGameContext } from '../context/GameContext';
 import { CommunityCardsArea } from './CommunityCardsArea';
 import { Button } from './UI';
 import { CardUI } from './GameUI';
@@ -10,14 +9,15 @@ import {
     REVIEW_FORFEIT_NOTE,
     REVIEW_FINAL_BOARD_LABEL
 } from '../constants/strings';
+import type { GameEndResult, GameState } from '../types';
 
-interface GameReviewViewProps {
+export interface GameReviewViewProps {
+    gameEndResult: GameEndResult | null;
+    gameState?: GameState | null;
     onLeave: () => void;
 }
 
-export function GameReviewView({ onLeave }: GameReviewViewProps) {
-    const { gameEndResult, gameState } = useGameContext();
-
+export function GameReviewView({ gameEndResult, gameState, onLeave }: GameReviewViewProps) {
     if (!gameEndResult) return null;
 
     const winnerName = gameEndResult.winnerName;
@@ -27,6 +27,7 @@ export function GameReviewView({ onLeave }: GameReviewViewProps) {
 
     return (
         <main
+            role="region"
             aria-label="Game review"
             className="flex flex-col items-center justify-center min-h-screen w-full bg-neutral-950 text-white p-4 overflow-y-auto"
         >
@@ -105,9 +106,9 @@ export function GameReviewView({ onLeave }: GameReviewViewProps) {
                                             </div>
                                             <div className="text-sm text-neutral-400">
                                                 {player.chips} chips
-                                                {formatHandRank(player.handRank) && (
+                                                {formatHandRank(player.handRank, player.bestHand) && (
                                                     <span className="text-zinc-400 capitalize">
-                                                        • {formatHandRank(player.handRank)}
+                                                        • {formatHandRank(player.handRank, player.bestHand)}
                                                     </span>
                                                 )}
                                             </div>

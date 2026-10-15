@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
+import type { ComponentProps, ComponentType, RefAttributes } from 'react';
 import { motion, AnimatePresence, useReducedMotion } from 'motion/react';
 import { cn } from '../lib/cn';
 import { Button } from './UI';
@@ -6,10 +7,17 @@ import {
     BTN_FOLD, BTN_CHECK, BTN_CALL_PREFIX, BTN_ALL_IN_PREFIX,
     BTN_BET, BTN_RAISE, ARIA_RAISE_AMOUNT,
     READY_PROMPT, BTN_READY, BTN_READY_CONFIRMED, LABEL_PLAYERS_READY_SUFFIX,
+    RAISE_VALIDATION_WHOLE_NUMBER, RAISE_VALIDATION_POSITIVE, RAISE_VALIDATION_MAX,
+    formatBetMinError, formatRaiseMinError, formatAvailableChipsError,
 } from '../constants/strings';
-import type { GameState, Player, PokerAction } from '../types';
+import type { ActionError, GameState, Player, PokerAction } from '../types';
 
 type AmountAction = Extract<PokerAction, 'BET' | 'RAISE'>;
+const ButtonWithRef = Button as ComponentType<
+    ComponentProps<typeof Button> & RefAttributes<HTMLButtonElement>
+>;
+
+export type DockState = 'ready_countdown' | 'waiting' | 'raising' | 'betting';
 
 interface ActionPanelProps {
     gameState: GameState;
@@ -20,9 +28,11 @@ interface ActionPanelProps {
     currentTurnPlayerName?: string;
     isMobileLandscape: boolean;
     isCompactTable: boolean;
-    raiseAmount: string;
+    raiseAmount?: string;
     raiseError: string | null;
-    onRaiseChange: (val: string) => void;
+    actionError?: ActionError | null;
+    onRaiseChange?: (val: string) => void;
+    onClearRaiseError?: () => void;
     onAction: (action: PokerAction, amount?: number) => void;
     isActionPending: boolean;
     readyCountdownSecondsRemaining?: number;
@@ -33,6 +43,7 @@ interface ActionPanelProps {
     amReadyForNextHand?: boolean;
     onReady?: () => void;
     bigBlind?: number;
+    onLeaveGame?: () => void;
 }
 
 export function ActionPanel({
@@ -44,9 +55,11 @@ export function ActionPanel({
     currentTurnPlayerName,
     isMobileLandscape,
     isCompactTable,
-    raiseAmount,
+    raiseAmount: controlledRaiseAmount,
     raiseError,
+    actionError,
     onRaiseChange,
+    onClearRaiseError,
     onAction,
     isActionPending,
     readyCountdownSecondsRemaining = 0,
@@ -57,11 +70,45 @@ export function ActionPanel({
     amReadyForNextHand = false,
     onReady,
     bigBlind = 50,
+    onLeaveGame,
 }: ActionPanelProps) {
     const prefersReducedMotion = useReducedMotion();
-    const [amountAction, setAmountAction] = useState<AmountAction | null>(null);
+    const restoreAmountTriggerFocus = useRef(false);
+    const amountTriggerRef = (node: HTMLButtonElement | null) => {
+        if (node && restoreAmountTriggerFocus.current) {
+            restoreAmountTriggerFocus.current = false;
+            node.focus();
+        }
+    };
+    const [internalRaiseAmount, setInternalRaiseAmount] = useState('');
+    const [amountAction, setAmountAction] = useState<AmountAction | null>(
+        actionError?.action === 'BET' || actionError?.action === 'RAISE' ? actionError.action : null,
+    );
     const [pendingAction, setPendingAction] = useState<PokerAction | null>(null);
     const controlButtonSize: 'xs' | 'sm' | 'md' = isMobileLandscape ? 'xs' : isCompactTable ? 'sm' : 'md';
+
+    const raiseAmount = controlledRaiseAmount ?? internalRaiseAmount;
+    const handleRaiseChange = (val: string) => {
+        if (controlledRaiseAmount === undefined) {
+            setInternalRaiseAmount(val);
+        }
+        onRaiseChange?.(val);
+        onClearRaiseError?.();
+    };
+
+    const [prevTurn, setPrevTurn] = useState(isMyTurn);
+    const [prevPhase, setPrevPhase] = useState(gameState.phase);
+    const [prevGameId, setPrevGameId] = useState(gameState.gameId);
+    if (prevTurn !== isMyTurn || prevPhase !== gameState.phase || prevGameId !== gameState.gameId) {
+        setPrevTurn(isMyTurn);
+        setPrevPhase(gameState.phase);
+        setPrevGameId(gameState.gameId);
+        setInternalRaiseAmount('');
+        if (!isMyTurn || prevPhase !== gameState.phase || prevGameId !== gameState.gameId) {
+            setAmountAction(null);
+            setPendingAction(null);
+        }
+    }
 
     const handleAction = (action: PokerAction, amount?: number) => {
         setPendingAction(action);
@@ -71,7 +118,6 @@ export function ActionPanel({
             onAction(action);
         }
     };
-
 
     const legalActions = useMemo(() => {
         if (gameState.legalActions !== undefined && gameState.legalActions !== null) {
@@ -114,45 +160,41 @@ export function ActionPanel({
     const minBetAmount = bigBlind;
     const minRaiseAmount = actionType === 'BET'
         ? minBetAmount
-        : Math.max(minBetAmount, (gameState.currentBet || 0) - (me?.currentBet ?? 0) + 1);
+        : Math.max(0, (gameState.currentBet || 0) - (me?.currentBet ?? 0)) + minBetAmount;
     const availableChips = me?.chips ?? 0;
     const callAmount = Math.max(0, (gameState.currentBet || 0) - (me?.currentBet ?? 0));
-    const callExceedsStack = callAmount > availableChips;
+    const clamp = (val: number) => Math.min(availableChips, Math.max(minRaiseAmount, val));
 
+    const defaultRaiseAmount = availableChips > 0 ? Math.min(minRaiseAmount, availableChips) : minRaiseAmount;
     const rawRaise = raiseAmount.trim();
-    const parsedRaiseAmount = rawRaise === '' ? NaN : Number.parseInt(rawRaise, 10);
+    const parsedRaiseAmount = rawRaise === '' ? defaultRaiseAmount : Number.parseInt(rawRaise, 10);
     let computedRaiseError: string | null = null;
 
-    if (rawRaise !== '') {
-        if (!/^\d+$/.test(rawRaise)) {
-            computedRaiseError = 'Enter a whole number.';
-        } else if (!Number.isFinite(parsedRaiseAmount) || parsedRaiseAmount <= 0) {
-            computedRaiseError = 'Amount must be greater than 0.';
-        } else if (parsedRaiseAmount < minRaiseAmount) {
-            if (actionType === 'RAISE' && parsedRaiseAmount === availableChips) {
-                computedRaiseError = `Minimum raise is ${minRaiseAmount.toLocaleString()} chips. Your full stack is smaller, use All In${callExceedsStack ? '' : ' or Call'}.`;
-            } else {
-                computedRaiseError = actionType === 'BET'
-                    ? `Bet amount must be at least ${minBetAmount.toLocaleString()} chips.`
-                    : `Minimum raise is ${minRaiseAmount.toLocaleString()} chips.`;
-            }
-        } else if (parsedRaiseAmount > availableChips) {
-            computedRaiseError = `You only have ${availableChips.toLocaleString()} chips.`;
-        } else if (parsedRaiseAmount > 10_000_000) {
-            computedRaiseError = 'Amount cannot exceed 10,000,000 chips.';
-        }
+    if (rawRaise !== '' && !/^\d+$/.test(rawRaise)) {
+        computedRaiseError = RAISE_VALIDATION_WHOLE_NUMBER;
+    } else if (!Number.isFinite(parsedRaiseAmount) || parsedRaiseAmount <= 0) {
+        computedRaiseError = RAISE_VALIDATION_POSITIVE;
+    } else if (parsedRaiseAmount < minRaiseAmount && parsedRaiseAmount < availableChips) {
+        computedRaiseError = actionType === 'BET'
+            ? formatBetMinError(minBetAmount)
+            : formatRaiseMinError(minRaiseAmount);
+    } else if (parsedRaiseAmount > availableChips) {
+        computedRaiseError = formatAvailableChipsError(availableChips);
+    } else if (parsedRaiseAmount > 10_000_000) {
+        computedRaiseError = RAISE_VALIDATION_MAX;
     }
 
-    const activeRaiseError = raiseError ?? computedRaiseError;
-    const canSubmitRaise = rawRaise !== '' && !activeRaiseError;
+    const activeRaiseError = (actionError?.action === actionType ? actionError.message : null) ?? raiseError ?? computedRaiseError;
+    const displayedError = actionError?.message ?? (amountAction === actionType ? activeRaiseError : null);
+    const canSubmitRaise = !activeRaiseError;
     const hasError = Boolean(activeRaiseError);
 
     const isAutoAdvancing = Boolean(gameState.isAutoAdvancing);
     const isShowdown = gameState.phase === 'SHOWDOWN';
-    
+
     // Fallback: If we somehow retained isReadyCountdownActive: true, but the countdown is 0
     // and we've already transitioned out of SHOWDOWN, don't freeze the controls.
-    const isEffectivelyReadyCountdownActive = isReadyCountdownActive && 
+    const isEffectivelyReadyCountdownActive = isReadyCountdownActive &&
         (isShowdown || (readyCountdownSecondsRemaining > 0 && readyCount < readyEligibleCount));
 
     const showControls = isMyTurn && !isSelfDisconnected && !isEffectivelyReadyCountdownActive
@@ -162,7 +204,21 @@ export function ActionPanel({
     const canCall = legalActions.has('CALL');
     const canAllIn = legalActions.has('ALL_IN');
     const canBetOrRaise = legalActions.has(actionType);
-    const amountControlsOpen = showControls && canBetOrRaise && amountAction === actionType;
+
+    const [prevActionError, setPrevActionError] = useState(actionError);
+    if (prevActionError !== actionError) {
+        setPrevActionError(actionError);
+        if (actionError && canBetOrRaise && actionError.action === actionType) {
+            setAmountAction(actionError.action);
+        }
+    }
+    const [prevRaiseError, setPrevRaiseError] = useState(raiseError);
+    if (prevRaiseError !== raiseError) {
+        setPrevRaiseError(raiseError);
+        if (raiseError && canBetOrRaise) setAmountAction(actionType);
+    }
+
+    const isRaising = showControls && canBetOrRaise && amountAction === actionType;
 
     const sectionMotion = prefersReducedMotion
         ? { initial: false as const, animate: { opacity: 1 }, exit: { opacity: 1 }, transition: { duration: 0 } }
@@ -175,11 +231,12 @@ export function ActionPanel({
         <motion.section
             role="region"
             aria-label="Action dock"
+            data-is-active-turn={isMyTurn}
             {...sectionMotion}
+            style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 8px)' }}
             className={cn(
-                'flex h-full w-full min-w-0 flex-wrap items-center justify-center border-t border-white/5 bg-surface-high',
-                isMobileLandscape ? 'gap-2 p-1.5' : 'gap-3 md:gap-4',
-                !isMobileLandscape && (isCompactTable ? 'p-2' : 'p-4 md:p-6'),
+                'flex h-full w-full min-w-0 items-center justify-center border-t border-white/5 bg-surface-high relative',
+                isMobileLandscape ? 'px-2 py-1' : isCompactTable ? 'px-3 py-1.5' : 'px-4 py-2 md:px-6',
             )}
         >
             <AnimatePresence mode="wait">
@@ -187,155 +244,199 @@ export function ActionPanel({
                     <motion.div
                         key="turn-controls"
                         {...fadeMotion}
+                        exit={{ opacity: 0, transition: { duration: 0 } }}
                         className={cn(
-                            'flex w-full flex-wrap items-center justify-center',
-                            isMobileLandscape ? 'gap-2' : 'gap-3 md:gap-4',
+                            'flex w-full items-center justify-center',
+                            isMobileLandscape ? 'gap-2 pr-12' : 'gap-3 md:gap-4',
                         )}
                     >
-                        {legalActions.has('FOLD') && (
-                            <Button variant="outline" size={controlButtonSize} onClick={() => handleAction('FOLD')} disabled={isActionPending}>
-                                {isActionPending && pendingAction === 'FOLD' ? 'Submitting...' : BTN_FOLD}
-                            </Button>
-                        )}
-
-                        {canCheck ? (
-                            <Button variant="primary" size={controlButtonSize} onClick={() => handleAction('CHECK')} disabled={isActionPending}>
-                                {isActionPending && pendingAction === 'CHECK' ? 'Submitting...' : BTN_CHECK}
-                            </Button>
-                        ) : canCall ? (
-                            <Button variant="primary" size={controlButtonSize} onClick={() => handleAction('CALL')} disabled={isActionPending}>
-                                {isActionPending && pendingAction === 'CALL' ? 'Submitting...' : `${BTN_CALL_PREFIX}${callAmount.toLocaleString()}`}
-                            </Button>
-                        ) : null}
-
-                        {legalActions.has('BET') && !amountControlsOpen && (
-                            <Button
-                                variant="outline"
-                                size={controlButtonSize}
-                                aria-expanded="false"
-                                aria-controls="amount-action-controls"
-                                onClick={() => setAmountAction('BET')}
-                                disabled={isActionPending}
+                        {isRaising ? (
+                            <div
+                                id="amount-action-controls"
+                                className={cn(
+                                    'flex w-full flex-col items-center justify-center gap-1.5 px-2 max-w-xl',
+                                    isMobileLandscape ? 'gap-1' : 'gap-1.5',
+                                )}
                             >
-                                {BTN_BET}
-                            </Button>
-                        )}
+                                <div className="flex w-full flex-wrap sm:flex-nowrap items-center justify-center gap-2">
+                                    {/* Presets */}
+                                    <div className="flex items-center gap-1 shrink-0">
+                                        <Button
+                                            variant="outline"
+                                            size="xs"
+                                            onClick={() => handleRaiseChange(String(clamp(bigBlind * 3)))}
+                                            disabled={isActionPending}
+                                        >
+                                            3BB
+                                        </Button>
+                                        <Button
+                                            variant="outline"
+                                            size="xs"
+                                            onClick={() => handleRaiseChange(String(clamp(Math.floor((gameState.pot || 0) / 2))))}
+                                            disabled={isActionPending}
+                                        >
+                                            1/2 POT
+                                        </Button>
+                                        <Button
+                                            variant="outline"
+                                            size="xs"
+                                            onClick={() => handleRaiseChange(String(clamp(gameState.pot || 0)))}
+                                            disabled={isActionPending}
+                                        >
+                                            POT
+                                        </Button>
+                                        <Button
+                                            variant="outline"
+                                            size="xs"
+                                            onClick={() => handleRaiseChange(String(clamp(availableChips)))}
+                                            disabled={isActionPending}
+                                        >
+                                            MAX
+                                        </Button>
+                                    </div>
 
-                        {legalActions.has('RAISE') && !amountControlsOpen && (
-                            <Button
-                                variant="outline"
-                                size={controlButtonSize}
-                                aria-expanded="false"
-                                aria-controls="amount-action-controls"
-                                onClick={() => setAmountAction('RAISE')}
-                                disabled={isActionPending}
-                            >
-                                {BTN_RAISE}
-                            </Button>
-                        )}
-
-                        {canAllIn && (
-                            <Button variant="outline" size={controlButtonSize} onClick={() => handleAction('ALL_IN')} disabled={isActionPending}>
-                                {isActionPending && pendingAction === 'ALL_IN' ? 'Submitting...' : `${BTN_ALL_IN_PREFIX}${availableChips.toLocaleString()}`}
-                            </Button>
-                        )}
-
-                        <AnimatePresence>
-                            {amountControlsOpen && (
-                                <motion.div
-                                    id="amount-action-controls"
-                                    key="amount-controls"
-                                    {...fadeMotion}
-                                    className={cn(
-                                        'flex flex-wrap items-center justify-center gap-2',
-                                        'w-auto',
-                                    )}
-                                >
-                                    <div className={cn(
-                                        'flex items-stretch overflow-hidden rounded-xl border transition-colors duration-150',
-                                        hasError
-                                            ? 'border-red-500/50 shadow-[0_0_0_1px_rgba(239,68,68,0.2)]'
-                                            : 'border-white/10 focus-within:border-white/25',
-                                    )}>
-                                        <div className={cn(
-                                            'flex select-none items-center border-r border-white/10 bg-white/5',
-                                            isCompactTable || isMobileLandscape ? 'px-2' : 'px-3',
-                                        )}>
-                                            <span className="text-sm font-bold text-zinc-400">$</span>
-                                        </div>
-
+                                    {/* Current Amount & Slider */}
+                                    <div
+                                        className={cn(
+                                            'flex items-center gap-2 rounded-lg border px-2.5 py-1 transition-colors duration-150',
+                                            hasError
+                                                ? 'border-red-500/50 bg-red-500/5 shadow-[0_0_0_1px_rgba(239,68,68,0.2)]'
+                                                : 'border-white/10 bg-black/30 focus-within:border-white/25',
+                                        )}
+                                    >
+                                        <span className="text-zinc-400 text-xs font-bold">$</span>
+                                        <span className="text-white tabular-nums text-xs sm:text-sm font-bold min-w-[3rem]">
+                                            {parsedRaiseAmount.toLocaleString()}
+                                        </span>
+                                        {/* eslint-disable jsx-a11y/no-autofocus */}
                                         <input
-                                            type="number"
+                                            type="range"
                                             aria-label={ARIA_RAISE_AMOUNT}
                                             aria-describedby={activeRaiseError ? 'raise-amount-error' : undefined}
                                             aria-invalid={hasError}
-                                            className={cn(
-                                                'bg-black/30 font-bold tabular-nums text-white outline-none placeholder:text-zinc-600',
-                                                '[appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none',
-                                                isMobileLandscape ? 'w-20 px-2 py-1.5 text-xs'
-                                                    : isCompactTable ? 'w-14 px-2 py-1.5 text-xs'
-                                                        : 'w-24 px-3 py-2 text-sm',
-                                            )}
-                                            placeholder={minRaiseAmount.toString()}
-                                            value={raiseAmount}
-                                            onChange={e => onRaiseChange(e.target.value)}
-                                            min={minRaiseAmount}
+                                            className="w-24 sm:w-32 md:w-36 cursor-pointer accent-gold-secondary h-1.5"
+                                            value={parsedRaiseAmount}
+                                            onChange={e => handleRaiseChange(e.target.value)}
+                                            min={defaultRaiseAmount}
+                                            max={Math.max(defaultRaiseAmount, availableChips)}
                                             step={1}
+                                            autoFocus
+                                            disabled={isActionPending}
                                         />
+                                        {/* eslint-enable jsx-a11y/no-autofocus */}
+                                    </div>
+
+                                    {/* Cancel & Submit */}
+                                    <div className="flex items-center gap-1.5 shrink-0">
+                                        <Button
+                                            variant="ghost"
+                                            size={controlButtonSize}
+                                            onClick={() => {
+                                                restoreAmountTriggerFocus.current = true;
+                                                setAmountAction(null);
+                                                handleRaiseChange('');
+                                            }}
+                                            disabled={isActionPending}
+                                        >
+                                            Cancel
+                                        </Button>
 
                                         <button
                                             type="button"
                                             disabled={!canSubmitRaise || isActionPending}
                                             onClick={() => {
                                                 if (!canSubmitRaise || isActionPending) return;
-                                                const amount = Number.parseInt(rawRaise, 10);
-                                                handleAction(actionType, amount);
-                                                onRaiseChange('');
-                                                setAmountAction(null);
+                                                handleAction(actionType, parsedRaiseAmount);
                                             }}
                                             className={cn(
-                                                'select-none border-l border-white/10 font-headline font-extrabold uppercase tracking-wider transition-all duration-150',
-                                                isCompactTable || isMobileLandscape ? 'px-2.5 py-1.5 text-[10px]' : 'px-4 py-2 text-xs',
+                                                'select-none rounded-xl font-headline font-extrabold uppercase tracking-wider transition-all duration-150 flex items-center justify-center',
+                                                controlButtonSize === 'xs' ? 'px-3 py-1 text-[10px]' : controlButtonSize === 'sm' ? 'px-4 py-1.5 text-xs' : 'px-5 py-2 text-xs',
                                                 canSubmitRaise && !isActionPending
-                                                    ? 'cursor-pointer bg-gold-secondary text-black hover:brightness-110 active:brightness-95'
+                                                    ? 'cursor-pointer bg-gold-secondary text-surface shadow-[0_12px_24px_rgba(252,192,37,0.2)] hover:brightness-110 active:brightness-95'
                                                     : 'cursor-not-allowed bg-white/5 text-zinc-600',
                                             )}
                                         >
-                                            {isActionPending && pendingAction === actionType ? 'Submitting...' : actionType === 'BET' ? BTN_BET : BTN_RAISE}
+                                            {isActionPending && pendingAction === actionType
+                                                ? 'Submitting...'
+                                                : actionType === 'BET'
+                                                ? BTN_BET
+                                                : BTN_RAISE}
                                         </button>
                                     </div>
+                                </div>
 
-                                    <Button
-                                        variant="ghost"
+                            </div>
+                        ) : (
+                            <div className={cn(
+                                'flex w-full flex-wrap items-center justify-center',
+                                isMobileLandscape ? 'gap-2' : 'gap-3 md:gap-4',
+                            )}>
+                                {legalActions.has('FOLD') && (
+                                    <Button variant="outline" size={controlButtonSize} onClick={() => handleAction('FOLD')} disabled={isActionPending}>
+                                        {isActionPending && pendingAction === 'FOLD' ? 'Submitting...' : BTN_FOLD}
+                                    </Button>
+                                )}
+
+                                {canCheck ? (
+                                    <Button variant="primary" size={controlButtonSize} onClick={() => handleAction('CHECK')} disabled={isActionPending}>
+                                        {isActionPending && pendingAction === 'CHECK' ? 'Submitting...' : BTN_CHECK}
+                                    </Button>
+                                ) : canCall ? (
+                                    <Button variant="primary" size={controlButtonSize} onClick={() => handleAction('CALL')} disabled={isActionPending}>
+                                        {isActionPending && pendingAction === 'CALL' ? 'Submitting...' : `${BTN_CALL_PREFIX}${callAmount.toLocaleString()}`}
+                                    </Button>
+                                ) : null}
+
+                                {legalActions.has('BET') && (
+                                    <ButtonWithRef
+                                        variant="outline"
                                         size={controlButtonSize}
+                                        ref={amountTriggerRef}
+                                        aria-expanded="false"
+                                        aria-controls="amount-action-controls"
                                         onClick={() => {
-                                            setAmountAction(null);
-                                            onRaiseChange('');
+                                            handleRaiseChange(raiseAmount);
+                                            setAmountAction('BET');
                                         }}
                                         disabled={isActionPending}
                                     >
-                                        Cancel
-                                    </Button>
+                                        {BTN_BET}
+                                    </ButtonWithRef>
+                                )}
 
-                                    {activeRaiseError && (
-                                        <motion.p
-                                            id="raise-amount-error"
-                                            role="alert"
-                                            {...fadeMotion}
-                                            className="mx-auto line-clamp-2 w-full max-w-md text-center text-[10px] font-bold uppercase tracking-wider text-red-400 md:text-[11px] md:line-clamp-3"
-                                        >
-                                            {activeRaiseError}
-                                        </motion.p>
-                                    )}
-                                </motion.div>
-                            )}
-                        </AnimatePresence>
+                                {legalActions.has('RAISE') && (
+                                    <ButtonWithRef
+                                        variant="outline"
+                                        size={controlButtonSize}
+                                        ref={amountTriggerRef}
+                                        aria-expanded="false"
+                                        aria-controls="amount-action-controls"
+                                        onClick={() => {
+                                            handleRaiseChange(raiseAmount);
+                                            setAmountAction('RAISE');
+                                        }}
+                                        disabled={isActionPending}
+                                    >
+                                        {BTN_RAISE}
+                                    </ButtonWithRef>
+                                )}
+
+                                {canAllIn && (
+                                    <Button variant="outline" size={controlButtonSize} onClick={() => handleAction('ALL_IN')} disabled={isActionPending}>
+                                        {isActionPending && pendingAction === 'ALL_IN' ? 'Submitting...' : `${BTN_ALL_IN_PREFIX}${availableChips.toLocaleString()}`}
+                                    </Button>
+                                )}
+                            </div>
+                        )}
                     </motion.div>
                 ) : isEffectivelyReadyCountdownActive ? (
                     <motion.div
                         key="ready-controls"
                         {...fadeMotion}
-                        className="flex w-full flex-col items-center justify-center gap-1.5 text-center px-4"
+                        className={cn(
+                            "flex w-full flex-col items-center justify-center gap-1.5 text-center px-4",
+                            isMobileLandscape && 'pr-12'
+                        )}
                     >
                         <div className="flex items-center gap-2 flex-wrap justify-center">
                             <p className="text-emerald-primary font-headline font-bold uppercase tracking-wider text-[10px] sm:text-xs">
@@ -391,7 +492,10 @@ export function ActionPanel({
                         role="status"
                         aria-live="polite"
                         {...fadeMotion}
-                        className="flex min-h-11 w-full items-center justify-center px-3 text-center"
+                        className={cn(
+                            "flex min-h-11 w-full items-center justify-center px-3 text-center",
+                            isMobileLandscape && 'pr-12'
+                        )}
                     >
                         <p className="text-xs font-headline font-bold uppercase tracking-[0.16em] text-amber-200">
                             {isAutoAdvancing
@@ -403,6 +507,22 @@ export function ActionPanel({
                     </motion.div>
                 )}
             </AnimatePresence>
+            {displayedError && (
+                <p
+                    id="raise-amount-error"
+                    role="alert"
+                    className="absolute bottom-0 left-1/2 w-[calc(100%-1rem)] min-w-0 -translate-x-1/2 overflow-hidden text-ellipsis whitespace-nowrap text-center text-[10px] font-bold text-red-400"
+                >
+                    {displayedError}
+                </p>
+            )}
+            {isMobileLandscape && onLeaveGame && (
+                <div className="absolute right-2 top-1/2 -translate-y-1/2">
+                    <Button variant="ghost" size="xs" onClick={onLeaveGame} className="text-red-400 hover:text-red-300 hover:bg-red-400/10 px-2 py-1">
+                        Leave
+                    </Button>
+                </div>
+            )}
         </motion.section>
     );
 }

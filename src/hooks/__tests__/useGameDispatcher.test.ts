@@ -1,13 +1,12 @@
+import { createElement, type ReactNode } from 'react';
 import { renderHook, act } from '@testing-library/react';
-import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from 'vitest';
-import { useGameDispatcher, type PublisherAdapter } from '../useGameDispatcher';
-import { useGameContext } from '../../context/GameContext';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { useGameDispatcher } from '../useGameDispatcher';
+import { GameProvider } from '../../context/GameProvider';
+import { GameSession } from '../../domain/GameSession';
+import { InMemoryTransportAdapter } from '../../services/transport';
 import { pokerApi } from '../../services/api';
-import { RAISE_ERROR_FORBIDDEN_BET } from '../../constants/strings';
-
-vi.mock('../../context/GameContext', () => ({
-    useGameContext: vi.fn(),
-}));
+import type { GameState } from '../../types';
 
 vi.mock('../../services/api', () => ({
     pokerApi: {
@@ -26,47 +25,44 @@ describe('useGameDispatcher', () => {
         message: 'Success',
     };
     const onLeave = vi.fn();
-    const dispatch = vi.fn();
-    const clearShowdownTimers = vi.fn();
-    let publisherAdapter: PublisherAdapter;
-    let publishMock: Mock<(destination: string, body: string) => void>;
-    let isConnectedMock: Mock<() => boolean>;
+    let transport: InMemoryTransportAdapter;
+    let session: GameSession;
+
+    function createWrapper(customSession = session) {
+        return function Wrapper({ children }: { children: ReactNode }) {
+            return createElement(GameProvider, {
+                auth: mockAuth,
+                onLeave,
+                session: customSession,
+                children,
+            });
+        };
+    }
 
     beforeEach(() => {
         vi.clearAllMocks();
         vi.useFakeTimers();
 
-        publishMock = vi.fn<(destination: string, body: string) => void>();
-        isConnectedMock = vi.fn<() => boolean>().mockReturnValue(true);
-        publisherAdapter = {
-            publish: publishMock,
-            isConnected: isConnectedMock,
-        };
-
-        vi.mocked(useGameContext).mockReturnValue({
+        transport = new InMemoryTransportAdapter();
+        session = new GameSession({
             auth: mockAuth,
+            transport,
             onLeave,
-            dispatch,
-            clearShowdownTimers,
-            roomState: null,
-            gameState: { gameId: 'GAME123' } as unknown as import('../../types').GameState,
-            privateState: null,
-            showdown: null,
-            showdownResult: null,
-            notification: null,
-            loadingStatus: 'Connected',
-            myPlayerId: 'p-1',
-            claimPending: false,
-            wsStatus: 'connected',
-            isHydrated: true,
-            isGameOver: false,
-            gameEndResult: null,
-            scheduleShowdownHide: vi.fn(),
-            latestGameStateRef: { current: null },
-            notificationTimerRef: { current: null },
-            applyIncomingGameState: vi.fn(),
-            applyIncomingPrivateState: vi.fn(),
+            initialGameState: {
+                gameId: 'GAME123',
+                phase: 'PRE_FLOP',
+                pot: 30,
+                currentBet: 20,
+                communityCards: [],
+                maxPlayers: 6,
+                currentPlayerName: 'TestPlayer',
+                currentPlayerId: 'p-1',
+                players: [
+                    { id: 'p-1', name: 'TestPlayer', chips: 980, currentBet: 20, hasFolded: false, status: 'ACTIVE' },
+                ],
+            } as GameState,
         });
+        session.connect();
     });
 
     afterEach(() => {
@@ -74,28 +70,35 @@ describe('useGameDispatcher', () => {
     });
 
     it('dispatch PLAY_ACTION publishes STOMP message', async () => {
-        const { result } = renderHook(() => useGameDispatcher(publisherAdapter));
+        const { result } = renderHook(() => useGameDispatcher(), {
+            wrapper: createWrapper(),
+        });
 
         await act(async () => {
             await result.current.dispatch({ type: 'PLAY_ACTION', action: 'RAISE', amount: 100 });
         });
 
-        expect(publishMock).toHaveBeenCalledWith(
-            '/app/GAME123/action',
-            JSON.stringify({ action: 'RAISE', amount: 100 })
-        );
+        expect(transport.getPublishedMessages('/app/GAME123/action')).toEqual([
+            {
+                destination: '/app/GAME123/action',
+                body: JSON.stringify({ action: 'RAISE', amount: 100 }),
+            },
+        ]);
         expect(result.current.isPending('PLAY_ACTION')).toBe(true);
+        expect(session.getSnapshot().pendingActions.has('PLAY_ACTION')).toBe(true);
     });
 
     it('blocks duplicate rapid calls until timeout', async () => {
-        const { result } = renderHook(() => useGameDispatcher(publisherAdapter));
+        const { result } = renderHook(() => useGameDispatcher(), {
+            wrapper: createWrapper(),
+        });
 
         await act(async () => {
             await result.current.dispatch({ type: 'PLAY_ACTION', action: 'CHECK' });
             await result.current.dispatch({ type: 'PLAY_ACTION', action: 'CHECK' });
         });
 
-        expect(publishMock).toHaveBeenCalledTimes(1);
+        expect(transport.getPublishedMessages('/app/GAME123/action')).toHaveLength(1);
 
         await act(async () => {
             vi.advanceTimersByTime(3000);
@@ -105,39 +108,52 @@ describe('useGameDispatcher', () => {
             await result.current.dispatch({ type: 'PLAY_ACTION', action: 'CHECK' });
         });
 
-        expect(publishMock).toHaveBeenCalledTimes(2);
+        expect(transport.getPublishedMessages('/app/GAME123/action')).toHaveLength(2);
     });
 
     it('defers and sets notification when client is not connected', async () => {
-        isConnectedMock.mockReturnValue(false);
-        const { result } = renderHook(() => useGameDispatcher(publisherAdapter));
+        transport.disconnect();
+        const { result } = renderHook(() => useGameDispatcher(), {
+            wrapper: createWrapper(),
+        });
 
         await act(async () => {
             await result.current.dispatch({ type: 'PLAY_ACTION', action: 'RAISE', amount: 100 });
         });
 
-        expect(dispatch).toHaveBeenCalledWith({
-            type: 'SET_NOTIFICATION',
-            payload: 'Waiting for connection...',
-        });
+        expect(transport.getPublishedMessages()).toHaveLength(0);
+        expect(session.getSnapshot().notification).toBe('Waiting for connection...');
     });
 
-    it('dispatch READY publishes STOMP message', async () => {
-        const { result } = renderHook(() => useGameDispatcher(publisherAdapter));
+    it('dispatch READY and UNREADY publish STOMP messages', async () => {
+        const { result } = renderHook(() => useGameDispatcher(), {
+            wrapper: createWrapper(),
+        });
 
         await act(async () => {
             await result.current.dispatch({ type: 'READY' });
+            await result.current.dispatch({ type: 'UNREADY' });
         });
 
-        expect(publishMock).toHaveBeenCalledWith(
-            '/app/GAME123/ready',
-            '{}'
-        );
+        expect(transport.getPublishedMessages('/app/GAME123/ready')).toEqual([
+            {
+                destination: '/app/GAME123/ready',
+                body: '{}',
+            },
+        ]);
+        expect(transport.getPublishedMessages('/app/GAME123/unready')).toEqual([
+            {
+                destination: '/app/GAME123/unready',
+                body: '{}',
+            },
+        ]);
     });
 
     it('dispatch START_GAME calls pokerApi', async () => {
         const startGameSpy = vi.mocked(pokerApi.startGame).mockResolvedValue({});
-        const { result } = renderHook(() => useGameDispatcher(publisherAdapter));
+        const { result } = renderHook(() => useGameDispatcher(), {
+            wrapper: createWrapper(),
+        });
 
         await act(async () => {
             await result.current.dispatch({ type: 'START_GAME' });
@@ -148,106 +164,151 @@ describe('useGameDispatcher', () => {
 
     it('dispatch START_GAME handles error', async () => {
         vi.mocked(pokerApi.startGame).mockRejectedValue(new Error('Start failed'));
-        const { result } = renderHook(() => useGameDispatcher(publisherAdapter));
+        const { result } = renderHook(() => useGameDispatcher(), {
+            wrapper: createWrapper(),
+        });
 
         await act(async () => {
             await result.current.dispatch({ type: 'START_GAME' });
         });
 
-        expect(dispatch).toHaveBeenCalledWith({
-            type: 'SET_NOTIFICATION',
-            payload: 'Start failed',
-        });
+        expect(session.getSnapshot().notification).toBe('Start failed');
     });
 
     it('dispatch CLAIM_WIN calls pokerApi', async () => {
         const claimWinSpy = vi.mocked(pokerApi.claimWin).mockResolvedValue(true);
-        const { result } = renderHook(() => useGameDispatcher(publisherAdapter));
+        const { result } = renderHook(() => useGameDispatcher(), {
+            wrapper: createWrapper(),
+        });
 
         await act(async () => {
             await result.current.dispatch({ type: 'CLAIM_WIN' });
         });
 
-        expect(dispatch).toHaveBeenCalledWith({
-            type: 'SET_CLAIM_PENDING',
-            payload: true,
-        });
+        expect(session.getSnapshot().claimPending).toBe(true);
         expect(claimWinSpy).toHaveBeenCalledWith('GAME123', 'test-token');
+    });
+
+    it('dispatch CLAIM_WIN resets claimPending to false and sets notification when pokerApi.claimWin rejects with 403', async () => {
+        const error = Object.assign(new Error('Cannot claim win right now.'), { status: 403 });
+        vi.mocked(pokerApi.claimWin).mockRejectedValue(error);
+        const { result } = renderHook(() => useGameDispatcher(), {
+            wrapper: createWrapper(),
+        });
+
+        await act(async () => {
+            await result.current.dispatch({ type: 'CLAIM_WIN' });
+        });
+
+        expect(session.getSnapshot().claimPending).toBe(false);
+        expect(session.getSnapshot().notification).toBe('Cannot claim win right now.');
     });
 
     it('dispatch LEAVE_GAME calls leaveGame and leaveRoom', async () => {
         const leaveGameSpy = vi.mocked(pokerApi.leaveGame).mockResolvedValue();
         const leaveRoomSpy = vi.mocked(pokerApi.leaveRoom).mockResolvedValue();
+        const clearShowdownSpy = vi.spyOn(session, 'clearShowdownTimers');
+        session.applyPrivateState({ playerId: 'p-1', holeCards: ['AS', 'KS'] });
 
-        const { result } = renderHook(() => useGameDispatcher(publisherAdapter));
+        const { result } = renderHook(() => useGameDispatcher(), {
+            wrapper: createWrapper(),
+        });
 
         await act(async () => {
             await result.current.dispatch({ type: 'LEAVE_GAME' });
         });
 
-        expect(clearShowdownTimers).toHaveBeenCalled();
-        expect(dispatch).toHaveBeenCalledWith({
-            type: 'SET_PRIVATE',
-            payload: null,
-        });
+        expect(clearShowdownSpy).toHaveBeenCalled();
+        expect(session.getSnapshot().privateState).toBeNull();
         expect(leaveGameSpy).toHaveBeenCalledWith('GAME123', 'test-token');
         expect(leaveRoomSpy).toHaveBeenCalledWith('ROOM123', 'test-token');
         expect(onLeave).toHaveBeenCalled();
     });
 
-    it('dispatch LEAVE_REVIEW calls onLeave even if REST fails', async () => {
+    it('dispatch LEAVE_GAME still calls leaveRoom and onLeave when leaveGame rejects with a network/500 error', async () => {
+        const error = Object.assign(new Error('Network failure'), { status: 500 });
+        const leaveGameSpy = vi.mocked(pokerApi.leaveGame).mockRejectedValue(error);
+        const leaveRoomSpy = vi.mocked(pokerApi.leaveRoom).mockResolvedValue();
+        const clearShowdownSpy = vi.spyOn(session, 'clearShowdownTimers');
+        session.applyPrivateState({ playerId: 'p-1', holeCards: ['AS', 'KS'] });
+        localStorage.setItem(
+            'poker-game-end:ROOM123',
+            JSON.stringify({ winnerName: 'TestPlayer', isForfeit: false, message: 'TestPlayer wins!' })
+        );
+
+        const { result } = renderHook(() => useGameDispatcher(), {
+            wrapper: createWrapper(),
+        });
+
+        await act(async () => {
+            await result.current.dispatch({ type: 'LEAVE_GAME' });
+        });
+
+        expect(leaveGameSpy).toHaveBeenCalledWith('GAME123', 'test-token');
+        expect(leaveRoomSpy).toHaveBeenCalledWith('ROOM123', 'test-token');
+        expect(localStorage.getItem('poker-game-end:ROOM123')).toBeNull();
+        expect(clearShowdownSpy).toHaveBeenCalled();
+        expect(session.getSnapshot().privateState).toBeNull();
+        expect(onLeave).toHaveBeenCalledTimes(1);
+    });
+
+    it('dispatch LEAVE_REVIEW clears persisted game-end snapshot and calls onLeave even if REST fails', async () => {
         vi.mocked(pokerApi.leaveGame).mockRejectedValue(new Error('404 Not Found'));
         vi.mocked(pokerApi.leaveRoom).mockRejectedValue(new Error('404 Not Found'));
+        const clearShowdownSpy = vi.spyOn(session, 'clearShowdownTimers');
+        localStorage.setItem(
+            'poker-game-end:ROOM123',
+            JSON.stringify({ winnerName: 'TestPlayer', isForfeit: false, message: 'TestPlayer wins!' })
+        );
 
-        const { result } = renderHook(() => useGameDispatcher(publisherAdapter));
+        const { result } = renderHook(() => useGameDispatcher(), {
+            wrapper: createWrapper(),
+        });
 
         await act(async () => {
             await result.current.dispatch({ type: 'LEAVE_REVIEW' });
         });
 
-        expect(clearShowdownTimers).toHaveBeenCalled();
-        expect(dispatch).toHaveBeenCalledWith({ type: 'CLEAR_GAME_STATE' });
+        expect(localStorage.getItem('poker-game-end:ROOM123')).toBeNull();
+        expect(clearShowdownSpy).toHaveBeenCalled();
+        expect(session.getSnapshot().gameState).toBeNull();
         expect(onLeave).toHaveBeenCalled();
-        // No notification on LEAVE_REVIEW failure
-        expect(dispatch).not.toHaveBeenCalledWith({ type: 'SET_NOTIFICATION', payload: expect.any(String) });
+        expect(session.getSnapshot().notification).toBeNull();
     });
 
     it('dispatch LEAVE_GAME calls onLeave even on 404 error', async () => {
-        const error = new Error('Not Found') as any;
+        const error = new Error('Not Found') as Error & { status?: number };
         error.status = 404;
         vi.mocked(pokerApi.leaveGame).mockRejectedValue(error);
 
-        const { result } = renderHook(() => useGameDispatcher(publisherAdapter));
+        const { result } = renderHook(() => useGameDispatcher(), {
+            wrapper: createWrapper(),
+        });
 
         await act(async () => {
             await result.current.dispatch({ type: 'LEAVE_GAME' });
         });
 
         expect(onLeave).toHaveBeenCalled();
-        // Should NOT have called setNotification via the outer catch because we handled 404
-        expect(dispatch).not.toHaveBeenCalledWith({ type: 'SET_NOTIFICATION', payload: expect.any(String) });
+        expect(session.getSnapshot().notification).toBeNull();
     });
 
-    it('onSocketError parses errors and updates error state', async () => {
-        const { result } = renderHook(() => useGameDispatcher(publisherAdapter));
+    it('onSocketError keeps transport failures in generic notifications', async () => {
+        const { result } = renderHook(() => useGameDispatcher(), {
+            wrapper: createWrapper(),
+        });
 
         act(() => {
             result.current.onSocketError('INSUFFICIENT_CHIPS');
         });
 
-        expect(result.current.error?.message).toBe('INSUFFICIENT_CHIPS');
-        expect(dispatch).toHaveBeenCalledWith({
-            type: 'SET_NOTIFICATION',
-            payload: RAISE_ERROR_FORBIDDEN_BET,
-        });
+        expect(result.current.error).toBeNull();
+        expect(session.getSnapshot().notification).toBe('INSUFFICIENT_CHIPS');
 
         act(() => {
             result.current.onSocketError('SOME_OTHER_ERROR');
         });
 
-        expect(dispatch).toHaveBeenCalledWith({
-            type: 'SET_NOTIFICATION',
-            payload: 'SOME_OTHER_ERROR',
-        });
+        expect(session.getSnapshot().notification).toBe('SOME_OTHER_ERROR');
     });
 });

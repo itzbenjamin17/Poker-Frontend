@@ -1,5 +1,8 @@
 import { createContext, useContext } from 'react';
+import type { GameSession } from '../domain/GameSession';
+import type { GameTransport } from '../services/transport';
 import type {
+    ActionError,
     AuthResponse,
     GameState,
     GameEndResult,
@@ -23,17 +26,17 @@ export interface GameContextState {
     isHydrated: boolean;
     isGameOver: boolean;
     gameEndResult: GameEndResult | null;
+    pendingActions?: ReadonlySet<string>;
+    error?: ActionError | null;
+    isRecovering?: boolean;
+    recoveryFailed?: boolean;
 }
 
 export type Action =
     | { type: 'SET_ROOM'; payload: RoomState | null }
-    | { type: 'SET_GAME'; payload: GameState | null }
     | { type: 'SET_PRIVATE'; payload: { holeCards: string[] } | null }
-    | { type: 'SET_SHOWDOWN'; payload: GameState | null }
-    | { type: 'SET_SHOWDOWN_RESULT'; payload: GameState | null }
     | { type: 'SET_NOTIFICATION'; payload: string | null }
     | { type: 'SET_LOADING_STATUS'; payload: string }
-    | { type: 'SET_MY_PLAYER_ID'; payload: string | null }
     | { type: 'SET_CLAIM_PENDING'; payload: boolean }
     | { type: 'SET_WS_STATUS'; payload: WsStatus }
     | { type: 'SET_HYDRATED'; payload: boolean }
@@ -43,13 +46,13 @@ export type Action =
 export interface GameContextValue extends GameContextState {
     auth: AuthResponse;
     onLeave?: () => void;
+    session?: GameSession;
+    transport?: GameTransport;
     dispatch: React.Dispatch<Action>;
     applyIncomingGameState: (payload: IncomingGameStatePayload) => void;
     applyIncomingPrivateState: (payload: IncomingPrivateStatePayload) => void;
     clearShowdownTimers: () => void;
-    scheduleShowdownHide: (state: GameState) => void;
-    latestGameStateRef: React.RefObject<GameState | null>;
-    notificationTimerRef: React.RefObject<ReturnType<typeof setTimeout> | null>;
+    retryConnection?: () => void;
 }
 
 export const GameContext = createContext<GameContextValue | null>(null);
