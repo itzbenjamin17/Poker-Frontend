@@ -31,6 +31,7 @@ test.describe('Item 35: Visual rendering of side pots in multi-way all-in', () =
             token: authToken,
             roomId: rId,
             playerName: 'PlayerA',
+            message: 'Session restored',
             playerId: 'p-1',
           }),
         );
@@ -69,7 +70,8 @@ test.describe('Item 35: Visual rendering of side pots in multi-way all-in', () =
         contentType: 'application/json',
         body: JSON.stringify({
           gameId: roomId,
-          phase: 'ALL_IN',
+          maxPlayers: 3,
+          phase: 'RIVER',
           pot: 500,
           pots: [300, 200], // Main pot: $300, Side pot 1: $200
           currentBet: 200,
@@ -78,8 +80,8 @@ test.describe('Item 35: Visual rendering of side pots in multi-way all-in', () =
           currentPlayerName: null,
           legalActions: [],
           players: [
-            { id: 'p-1', name: 'PlayerA', chips: 0, currentBet: 100, status: 'ACTIVE', hasFolded: false },
-            { id: 'p-2', name: 'PlayerB', chips: 0, currentBet: 200, status: 'ACTIVE', hasFolded: false },
+            { id: 'p-1', name: 'PlayerA', chips: 0, currentBet: 100, status: 'ALL_IN', hasFolded: false },
+            { id: 'p-2', name: 'PlayerB', chips: 0, currentBet: 200, status: 'ALL_IN', hasFolded: false },
             { id: 'p-3', name: 'PlayerC', chips: 100, currentBet: 200, status: 'ACTIVE', hasFolded: false },
           ],
         }),

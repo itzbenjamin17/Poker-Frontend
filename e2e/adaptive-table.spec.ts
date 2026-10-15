@@ -209,6 +209,7 @@ test.describe('Adaptive table-first foundation', () => {
         token: authToken,
         roomId: 'ROOM123',
         playerName: 'Host',
+        message: 'Session restored',
         playerId: 'p-1',
       }));
     }, { authToken: token });
@@ -229,6 +230,7 @@ test.describe('Adaptive table-first foundation', () => {
       contentType: 'application/json',
       body: JSON.stringify({
         gameId: 'ROOM123',
+        maxPlayers: 6,
         phase: 'FLOP',
         pot: 30,
         pots: [20, 10],
@@ -238,12 +240,12 @@ test.describe('Adaptive table-first foundation', () => {
         currentPlayerName: 'Host',
         legalActions: ['FOLD', 'CALL', 'RAISE'],
         players: [
-          { id: 'p-1', name: 'Host', chips: 980, currentBet: 20, status: 'ACTIVE', isBigBlind: true },
-          { id: 'p-2', name: 'Player 2', chips: 990, currentBet: 10, status: 'ACTIVE', isSmallBlind: true },
-          { id: 'p-3', name: 'Player 3', chips: 1000, currentBet: 0, status: 'ACTIVE' },
-          { id: 'p-4', name: 'Player 4', chips: 1000, currentBet: 0, status: 'ACTIVE' },
-          { id: 'p-5', name: 'Player 5', chips: 1000, currentBet: 0, status: 'ACTIVE' },
-          { id: 'p-6', name: 'Player 6', chips: 1000, currentBet: 0, status: 'ACTIVE' },
+          { id: 'p-1', name: 'Host', chips: 980, currentBet: 20, status: 'ACTIVE', hasFolded: false, isBigBlind: true },
+          { id: 'p-2', name: 'Player 2', chips: 990, currentBet: 10, status: 'ACTIVE', hasFolded: false, isSmallBlind: true },
+          { id: 'p-3', name: 'Player 3', chips: 1000, currentBet: 0, status: 'ACTIVE', hasFolded: false },
+          { id: 'p-4', name: 'Player 4', chips: 1000, currentBet: 0, status: 'ACTIVE', hasFolded: false },
+          { id: 'p-5', name: 'Player 5', chips: 1000, currentBet: 0, status: 'ACTIVE', hasFolded: false },
+          { id: 'p-6', name: 'Player 6', chips: 1000, currentBet: 0, status: 'ACTIVE', hasFolded: false },
         ],
       }),
     }));
@@ -308,6 +310,7 @@ test.describe('Adaptive table-first foundation', () => {
         token: authToken,
         roomId: 'ROOM123',
         playerName: 'Host',
+        message: 'Session restored',
         playerId: 'p-1',
       }));
     }, { authToken: token });
@@ -328,6 +331,7 @@ test.describe('Adaptive table-first foundation', () => {
       contentType: 'application/json',
       body: JSON.stringify({
         gameId: 'ROOM123',
+        maxPlayers: 6,
         phase: 'FLOP',
         pot: 30,
         pots: [20, 10],
@@ -336,12 +340,12 @@ test.describe('Adaptive table-first foundation', () => {
         currentPlayerId: 'p-2',
         currentPlayerName: 'Player 2',
         players: [
-          { id: 'p-1', name: 'Host', chips: 980, currentBet: 20, status: 'ACTIVE', isBigBlind: true },
-          { id: 'p-2', name: 'Player 2', chips: 990, currentBet: 10, status: 'ACTIVE', isSmallBlind: true },
-          { id: 'p-3', name: 'Player 3', chips: 1000, currentBet: 0, status: 'ACTIVE' },
-          { id: 'p-4', name: 'Player 4', chips: 1000, currentBet: 0, status: 'ACTIVE' },
-          { id: 'p-5', name: 'Player 5', chips: 1000, currentBet: 0, status: 'ACTIVE' },
-          { id: 'p-6', name: 'Player 6', chips: 1000, currentBet: 0, status: 'ACTIVE' },
+          { id: 'p-1', name: 'Host', chips: 980, currentBet: 20, status: 'ACTIVE', hasFolded: false, isBigBlind: true },
+          { id: 'p-2', name: 'Player 2', chips: 990, currentBet: 10, status: 'ACTIVE', hasFolded: false, isSmallBlind: true },
+          { id: 'p-3', name: 'Player 3', chips: 1000, currentBet: 0, status: 'ACTIVE', hasFolded: false },
+          { id: 'p-4', name: 'Player 4', chips: 1000, currentBet: 0, status: 'ACTIVE', hasFolded: false },
+          { id: 'p-5', name: 'Player 5', chips: 1000, currentBet: 0, status: 'ACTIVE', hasFolded: false },
+          { id: 'p-6', name: 'Player 6', chips: 1000, currentBet: 0, status: 'ACTIVE', hasFolded: false },
         ],
       }),
     }));
@@ -385,6 +389,7 @@ test.describe('Adaptive table-first foundation', () => {
         token: authToken,
         roomId: 'ROOM123',
         playerName: 'Host',
+        message: 'Session restored',
         playerId: 'p-1',
       }));
     }, { authToken: token });
@@ -405,6 +410,7 @@ test.describe('Adaptive table-first foundation', () => {
       contentType: 'application/json',
       body: JSON.stringify({
         gameId: 'ROOM123',
+        maxPlayers: 6,
         phase: 'SHOWDOWN',
         pot: 1000,
         pots: [700, 300],
@@ -415,12 +421,12 @@ test.describe('Adaptive table-first foundation', () => {
         winners: ['Host'],
         winningsPerPlayer: 1000,
         players: [
-          { id: 'p-1', name: 'Host', chips: 1980, currentBet: 0, status: 'ACTIVE', handRank: 'TWO_PAIR', holeCards: ['AS', '2D'], bestHand: ['AS', 'AH', 'KH', 'QD', 'JS'], isWinner: true, chipsWon: 1000 },
-          { id: 'p-2', name: 'Player 2', chips: 990, currentBet: 0, status: 'ACTIVE', handRank: 'HIGH_CARD', holeCards: ['3C', '4D'], bestHand: ['AH', 'KH', 'QD', 'JS', '2C'], isWinner: false },
-          { id: 'p-3', name: 'Player 3', chips: 1000, currentBet: 0, status: 'ACTIVE' },
-          { id: 'p-4', name: 'Player 4', chips: 1000, currentBet: 0, status: 'ACTIVE' },
-          { id: 'p-5', name: 'Player 5', chips: 1000, currentBet: 0, status: 'ACTIVE' },
-          { id: 'p-6', name: 'Player 6', chips: 1000, currentBet: 0, status: 'ACTIVE' },
+          { id: 'p-1', name: 'Host', chips: 1980, currentBet: 0, status: 'ACTIVE', hasFolded: false, handRank: 'TWO_PAIR', holeCards: ['AS', '2D'], bestHand: ['AS', 'AH', 'KH', 'QD', 'JS'], isWinner: true, chipsWon: 1000 },
+          { id: 'p-2', name: 'Player 2', chips: 990, currentBet: 0, status: 'ACTIVE', hasFolded: false, handRank: 'HIGH_CARD', holeCards: ['3C', '4D'], bestHand: ['AH', 'KH', 'QD', 'JS', '2C'], isWinner: false },
+          { id: 'p-3', name: 'Player 3', chips: 1000, currentBet: 0, status: 'ACTIVE', hasFolded: false },
+          { id: 'p-4', name: 'Player 4', chips: 1000, currentBet: 0, status: 'ACTIVE', hasFolded: false },
+          { id: 'p-5', name: 'Player 5', chips: 1000, currentBet: 0, status: 'ACTIVE', hasFolded: false },
+          { id: 'p-6', name: 'Player 6', chips: 1000, currentBet: 0, status: 'ACTIVE', hasFolded: false },
         ],
       }),
     }));
