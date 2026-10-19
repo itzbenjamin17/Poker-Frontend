@@ -205,7 +205,7 @@ test.describe('Adaptive table-first foundation', () => {
     const hostPage = await hostContext.newPage();
     const token = `test.${Buffer.from(JSON.stringify({ exp: Math.floor(Date.now() / 1000) + 3600 })).toString('base64url')}.test`;
     await hostPage.addInitScript(({ authToken }) => {
-      window.localStorage.setItem('poker-auth', JSON.stringify({
+      window.sessionStorage.setItem('poker-auth', JSON.stringify({
         token: authToken,
         roomId: 'ROOM123',
         playerName: 'Host',
@@ -230,6 +230,9 @@ test.describe('Adaptive table-first foundation', () => {
       contentType: 'application/json',
       body: JSON.stringify({
         gameId: 'ROOM123',
+        handNumber: 1,
+        serverTimeEpochMs: Date.now(),
+        readyGateState: 'CLOSED',
         maxPlayers: 6,
         phase: 'FLOP',
         pot: 30,
@@ -306,7 +309,7 @@ test.describe('Adaptive table-first foundation', () => {
     const hostPage = await hostContext.newPage();
     const token = `test.${Buffer.from(JSON.stringify({ exp: Math.floor(Date.now() / 1000) + 3600 })).toString('base64url')}.test`;
     await hostPage.addInitScript(({ authToken }) => {
-      window.localStorage.setItem('poker-auth', JSON.stringify({
+      window.sessionStorage.setItem('poker-auth', JSON.stringify({
         token: authToken,
         roomId: 'ROOM123',
         playerName: 'Host',
@@ -385,7 +388,7 @@ test.describe('Adaptive table-first foundation', () => {
     const hostPage = await hostContext.newPage();
     const token = `test.${Buffer.from(JSON.stringify({ exp: Math.floor(Date.now() / 1000) + 3600 })).toString('base64url')}.test`;
     await hostPage.addInitScript(({ authToken }) => {
-      window.localStorage.setItem('poker-auth', JSON.stringify({
+      window.sessionStorage.setItem('poker-auth', JSON.stringify({
         token: authToken,
         roomId: 'ROOM123',
         playerName: 'Host',
@@ -412,6 +415,9 @@ test.describe('Adaptive table-first foundation', () => {
         gameId: 'ROOM123',
         maxPlayers: 6,
         phase: 'SHOWDOWN',
+        handNumber: 1,
+        serverTimeEpochMs: Date.now(),
+        readyGateState: 'CLOSED',
         pot: 1000,
         pots: [700, 300],
         currentBet: 0,

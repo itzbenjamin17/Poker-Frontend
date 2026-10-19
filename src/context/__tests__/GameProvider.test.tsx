@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { GameProvider } from '../GameProvider';
 import { useGameContext } from '../GameContext';
 import type { IncomingGameStatePayload, RoomState, WsStatus } from '../../types';
@@ -106,6 +106,10 @@ function TestConsumer() {
 }
 
 describe('GameProvider and useGameContext', () => {
+    beforeEach(() => {
+        localStorage.clear();
+        sessionStorage.clear();
+    });
     const auth = {
         roomId: 'test-room',
         playerName: 'Player1',
@@ -199,7 +203,7 @@ describe('GameProvider and useGameContext', () => {
         const { GameReviewView } = await import('../../components/GameReviewView');
         const user = userEvent.setup();
 
-        localStorage.setItem(
+        sessionStorage.setItem(
             `poker-game-end:${auth.roomId}`,
             JSON.stringify({
                 winnerName: 'Player1',
@@ -233,12 +237,12 @@ describe('GameProvider and useGameContext', () => {
         }
 
         render(<Host />);
-        expect(localStorage.getItem(`poker-game-end:${auth.roomId}`)).not.toBeNull();
+        expect(sessionStorage.getItem(`poker-game-end:${auth.roomId}`)).not.toBeNull();
 
         await user.click(screen.getByRole('button', { name: /leave/i }));
 
         expect(screen.getByTestId('unmounted')).toBeInTheDocument();
-        expect(localStorage.getItem(`poker-game-end:${auth.roomId}`)).toBeNull();
+        expect(sessionStorage.getItem(`poker-game-end:${auth.roomId}`)).toBeNull();
     });
 
     it('routes STOMP subscriptions, incoming frames, and outgoing actions through GameSession with zero duplicate subscriptions', async () => {

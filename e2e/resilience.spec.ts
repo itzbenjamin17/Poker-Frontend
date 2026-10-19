@@ -38,25 +38,20 @@ test.describe('Connection Resilience', () => {
     // 2. Simulate Disconnect (Refresh Guest Page)
     await guestPage.reload();
 
-    // Verify Guest re-hydrates into the Game View automatically
-    // It should skip the Lobby because of persistent auth in localStorage
+    // The same tab retains its sessionStorage auth across refresh.
     await expect(guestPage.getByLabel(/total pot/i)).toContainText('30');
     await expect(guestPage.getByRole('img', { name: /of/i })).toHaveCount(2);
 
-    // 3. Simulate Full Browser Close / Reopen
-    // Extract auth data from Guest's localStorage to ensure we're "the same person"
-    const storageState = await guestContext.storageState();
+    // 3. A new browser context has an independent tab session and cannot
+    // recover the previous tab's auth automatically.
     await guestContext.close();
 
-    // Re-open with same storage state
-    const newGuestContext = await browser.newContext({ storageState });
+    const newGuestContext = await browser.newContext();
     contexts.push(newGuestContext);
     const newGuestPage = await newGuestContext.newPage();
     await newGuestPage.goto('/');
 
-    // Verify Guest is back at the table
-    await expect(newGuestPage.getByLabel(/total pot/i)).toContainText('30');
-    await expect(newGuestPage.getByRole('group', { name: new RegExp(`^${hostName} seat$`, 'i') })).toBeVisible();
+    await expect(newGuestPage.getByRole('button', { name: /create game/i })).toBeVisible();
   });
 });
 

@@ -192,6 +192,14 @@ describe('lib/payloads - Type Guards and Normalizers', () => {
         it('accepts validator-complete shared player fixtures', () => {
             expect(isGameStatePayload(createValidGameState({ players: [createValidPlayer()] }))).toBe(true);
         });
+
+        it('decodes stateRevision when provided and rejects negative stateRevision', () => {
+            const valid = decodeGameStatePayload(createValidGameState({ stateRevision: 42 }));
+            expect(valid?.stateRevision).toBe(42);
+
+            expect(decodeGameStatePayload(createValidGameState({ stateRevision: -1 }))).toBeNull();
+            expect(decodeGameStatePayload(createValidGameState({ stateRevision: 1.5 }))).toBeNull();
+        });
     });
 
     describe('isGameEndPayload', () => {

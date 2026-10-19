@@ -23,6 +23,8 @@ import type { Clock } from '../domain/clock';
 export interface GameProviderProps {
     auth: AuthResponse;
     onLeave?: () => void;
+    requestLeave?: () => Promise<boolean>;
+    leaveError?: string | null;
     session?: GameSession;
     transport?: GameTransport;
     clock?: Clock;
@@ -36,6 +38,8 @@ export interface GameProviderProps {
 export function GameProvider({
     auth,
     onLeave,
+    requestLeave,
+    leaveError,
     session: sessionProp,
     transport: transportProp,
     clock,
@@ -124,6 +128,7 @@ export function GameProvider({
         showdown: state.showdown,
         showdownResult: state.showdownResult,
         notification: state.notification,
+        notificationSequence: state.notificationSequence,
         loadingStatus: state.loadingStatus,
         myPlayerId: state.myPlayerId,
         claimPending: state.claimPending,
@@ -137,6 +142,8 @@ export function GameProvider({
         recoveryFailed: state.recoveryFailed,
         auth,
         onLeave,
+        requestLeave,
+        leaveError,
         session,
         transport: session.getTransport(),
         dispatch,
@@ -148,6 +155,8 @@ export function GameProvider({
         state,
         auth,
         onLeave,
+        requestLeave,
+        leaveError,
         session,
         dispatch,
         applyIncomingGameState,

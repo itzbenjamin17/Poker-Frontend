@@ -26,6 +26,7 @@ export interface GameTableViewProps {
     showdownResult?: GameState | null;
     claimPending?: boolean;
     notification?: string | null;
+    notificationSequence?: number;
     wsStatus?: WsStatus;
     isRecovering?: boolean;
     recoveryFailed?: boolean;
@@ -60,6 +61,7 @@ export function GameTableView({
     showdownResult = null,
     claimPending = false,
     notification = null,
+    notificationSequence = 0,
     wsStatus = 'connected',
     isRecovering,
     recoveryFailed,
@@ -105,7 +107,7 @@ export function GameTableView({
     }, [players, myPlayerId, effectivePlayerName]);
 
     const readyEligiblePlayers = useMemo(
-        () => players ? players.filter((player) => player.status !== 'OUT' && player.status !== 'DISCONNECTED') : [],
+        () => players ? players.filter((player) => player.status !== 'OUT' && player.status !== 'DISCONNECTED' && player.chips > 0) : [],
         [players]
     );
 
@@ -115,7 +117,7 @@ export function GameTableView({
 
     const isMyTurn = gameState.currentPlayerId === myPlayerId;
     const isSelfDisconnected = me?.status === 'DISCONNECTED';
-    const isReadyCountdownActive = Boolean(gameState.isReadyCountdownActive);
+    const isReadyCountdownActive = Boolean(gameState.isReadyCountdownActive && gameState.readyGateState !== 'WAITING_FOR_PLAYERS');
     const currentTurnPlayer = gameState.players.find((p) => p.id === gameState.currentPlayerId);
     const disconnectedPlayer = currentTurnPlayer?.status === 'DISCONNECTED'
         ? currentTurnPlayer
@@ -127,7 +129,7 @@ export function GameTableView({
         ((effectivePlayerName && gameState.claimWinPlayerName === effectivePlayerName) || gameState.claimWinPlayerName === me?.name)
     );
 
-    const isReadyEligible = Boolean(me && me.status !== 'OUT' && me.status !== 'DISCONNECTED');
+    const isReadyEligible = Boolean(me && me.status !== 'OUT' && me.status !== 'DISCONNECTED' && me.chips > 0);
     const amReadyForNextHand = Boolean(me?.isReadyForNextHand);
 
     const readyCount = readyEligiblePlayers.filter((player) => player.isReadyForNextHand).length;
@@ -148,7 +150,7 @@ export function GameTableView({
                 hasShellHeader ? 'flex-1 min-h-0 min-w-0' : 'h-[100dvh] min-h-[600px] md:h-screen',
             )}
         >
-            <NotificationBanner notification={notification} />
+            <NotificationBanner notification={notification} sequence={notificationSequence} />
 
             {showStandaloneOverlay && (
                 <ReconnectOverlay
@@ -234,6 +236,7 @@ export function GameTableView({
                         isReadyEligible={isReadyEligible}
                         isActionPending={isActionPending}
                         isReadyCountdownActive={isReadyCountdownActive}
+                        readyGateState={gameState.readyGateState}
                         readyCountdownSecondsRemaining={readyCountdownSecondsRemaining}
                         readyCount={readyCount}
                         readyEligibleCount={readyEligibleCount}
@@ -248,7 +251,8 @@ export function GameTableView({
                         me={me}
                         isMyTurn={isMyTurn}
                         isSelfDisconnected={isSelfDisconnected}
-                        isReadyCountdownActive={isReadyCountdownActive}
+                        isReadyCountdownActive={isReadyCountdownActive && readyCountdownSecondsRemaining > 0}
+                        readyGateState={gameState.readyGateState}
                         currentTurnPlayerName={currentTurnPlayer?.name}
                         isMobileLandscape={isMobileLandscape}
                         isCompactTable={isCompactTable}
@@ -266,6 +270,7 @@ export function GameTableView({
                         isReadyEligible={isReadyEligible}
                         amReadyForNextHand={amReadyForNextHand}
                         onReady={onReady}
+                        onUnready={onUnready}
                         bigBlind={roomState.bigBlind ?? 50}
                         onLeaveGame={onLeaveGame}
                     />

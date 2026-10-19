@@ -6,11 +6,11 @@ import { Button } from './UI';
 import {
     BTN_FOLD, BTN_CHECK, BTN_CALL_PREFIX, BTN_ALL_IN_PREFIX,
     BTN_BET, BTN_RAISE, ARIA_RAISE_AMOUNT,
-    READY_PROMPT, BTN_READY, BTN_READY_CONFIRMED, LABEL_PLAYERS_READY_SUFFIX,
+    READY_PROMPT, BTN_READY, LABEL_PLAYERS_READY_SUFFIX,
     RAISE_VALIDATION_WHOLE_NUMBER, RAISE_VALIDATION_POSITIVE, RAISE_VALIDATION_MAX,
     formatBetMinError, formatRaiseMinError, formatAvailableChipsError,
 } from '../constants/strings';
-import type { ActionError, GameState, Player, PokerAction } from '../types';
+import type { ActionError, GameState, Player, PokerAction, ReadyGateState } from '../types';
 
 type AmountAction = Extract<PokerAction, 'BET' | 'RAISE'>;
 const ButtonWithRef = Button as ComponentType<
@@ -25,6 +25,7 @@ interface ActionPanelProps {
     isMyTurn: boolean;
     isSelfDisconnected: boolean;
     isReadyCountdownActive: boolean;
+    readyGateState?: ReadyGateState;
     currentTurnPlayerName?: string;
     isMobileLandscape: boolean;
     isCompactTable: boolean;
@@ -42,6 +43,7 @@ interface ActionPanelProps {
     isReadyEligible?: boolean;
     amReadyForNextHand?: boolean;
     onReady?: () => void;
+    onUnready?: () => void;
     bigBlind?: number;
     onLeaveGame?: () => void;
 }
@@ -52,6 +54,7 @@ export function ActionPanel({
     isMyTurn,
     isSelfDisconnected,
     isReadyCountdownActive,
+    readyGateState,
     currentTurnPlayerName,
     isMobileLandscape,
     isCompactTable,
@@ -69,6 +72,7 @@ export function ActionPanel({
     isReadyEligible = false,
     amReadyForNextHand = false,
     onReady,
+    onUnready,
     bigBlind = 50,
     onLeaveGame,
 }: ActionPanelProps) {
@@ -98,19 +102,25 @@ export function ActionPanel({
 
     const [prevTurn, setPrevTurn] = useState(isMyTurn);
     const [prevPhase, setPrevPhase] = useState(gameState.phase);
-    const [prevGameId, setPrevGameId] = useState(gameState.gameId);
-    if (prevTurn !== isMyTurn || prevPhase !== gameState.phase || prevGameId !== gameState.gameId) {
+    const [prevHandNumber, setPrevHandNumber] = useState(gameState.handNumber);
+    if (prevTurn !== isMyTurn || prevPhase !== gameState.phase || prevHandNumber !== gameState.handNumber) {
         setPrevTurn(isMyTurn);
         setPrevPhase(gameState.phase);
-        setPrevGameId(gameState.gameId);
+        setPrevHandNumber(gameState.handNumber);
         setInternalRaiseAmount('');
-        if (!isMyTurn || prevPhase !== gameState.phase || prevGameId !== gameState.gameId) {
+        if (!isMyTurn || prevPhase !== gameState.phase || prevHandNumber !== gameState.handNumber) {
             setAmountAction(null);
             setPendingAction(null);
         }
     }
 
+    const isControlsDisabled = isActionPending;
+    const activePendingAction = isActionPending ? pendingAction : null;
+
     const handleAction = (action: PokerAction, amount?: number) => {
+        if (isControlsDisabled) {
+            return;
+        }
         setPendingAction(action);
         if (amount !== undefined) {
             onAction(action, amount);
@@ -142,7 +152,7 @@ export function ActionPanel({
             }
         } else {
             if (availableChips > 0) {
-                actions.add('CALL');
+                if (availableChips > callAmount) actions.add('CALL');
                 if (availableChips > callAmount) {
                     actions.add('RAISE');
                 }
@@ -163,6 +173,7 @@ export function ActionPanel({
         : Math.max(0, (gameState.currentBet || 0) - (me?.currentBet ?? 0)) + minBetAmount);
     const availableChips = me?.chips ?? 0;
     const callAmount = Math.max(0, (gameState.currentBet || 0) - (me?.currentBet ?? 0));
+    const presetOffset = actionType === 'RAISE' ? callAmount : 0;
     const clamp = (val: number) => Math.min(availableChips, Math.max(minRaiseAmount, val));
 
     const defaultRaiseAmount = availableChips > 0 ? Math.min(minRaiseAmount, availableChips) : minRaiseAmount;
@@ -195,7 +206,7 @@ export function ActionPanel({
     // Fallback: If we somehow retained isReadyCountdownActive: true, but the countdown is 0
     // and we've already transitioned out of SHOWDOWN, don't freeze the controls.
     const isEffectivelyReadyCountdownActive = isReadyCountdownActive &&
-        (isShowdown || (readyCountdownSecondsRemaining > 0 && readyCount < readyEligibleCount));
+        readyCountdownSecondsRemaining > 0;
 
     const showControls = isMyTurn && !isSelfDisconnected && !isEffectivelyReadyCountdownActive
         && !isAutoAdvancing && !isShowdown && legalActions.size > 0;
@@ -264,24 +275,24 @@ export function ActionPanel({
                                         <Button
                                             variant="outline"
                                             size="xs"
-                                            onClick={() => handleRaiseChange(String(clamp(bigBlind * 3)))}
-                                            disabled={isActionPending}
+                                            onClick={() => handleRaiseChange(String(clamp(presetOffset + bigBlind * 3)))}
+                                            disabled={isControlsDisabled}
                                         >
                                             3BB
                                         </Button>
                                         <Button
                                             variant="outline"
                                             size="xs"
-                                            onClick={() => handleRaiseChange(String(clamp(Math.floor((gameState.pot || 0) / 2))))}
-                                            disabled={isActionPending}
+                                            onClick={() => handleRaiseChange(String(clamp(presetOffset + Math.floor((gameState.pot || 0) / 2))))}
+                                            disabled={isControlsDisabled}
                                         >
                                             1/2 POT
                                         </Button>
                                         <Button
                                             variant="outline"
                                             size="xs"
-                                            onClick={() => handleRaiseChange(String(clamp(gameState.pot || 0)))}
-                                            disabled={isActionPending}
+                                            onClick={() => handleRaiseChange(String(clamp(presetOffset + (gameState.pot || 0))))}
+                                            disabled={isControlsDisabled}
                                         >
                                             POT
                                         </Button>
@@ -289,7 +300,7 @@ export function ActionPanel({
                                             variant="outline"
                                             size="xs"
                                             onClick={() => handleRaiseChange(String(clamp(availableChips)))}
-                                            disabled={isActionPending}
+                                            disabled={isControlsDisabled}
                                         >
                                             MAX
                                         </Button>
@@ -321,7 +332,7 @@ export function ActionPanel({
                                             max={Math.max(defaultRaiseAmount, availableChips)}
                                             step={1}
                                             autoFocus
-                                            disabled={isActionPending}
+                                            disabled={isControlsDisabled}
                                         />
                                         {/* eslint-enable jsx-a11y/no-autofocus */}
                                     </div>
@@ -343,20 +354,20 @@ export function ActionPanel({
 
                                         <button
                                             type="button"
-                                            disabled={!canSubmitRaise || isActionPending}
+                                            disabled={!canSubmitRaise || isControlsDisabled}
                                             onClick={() => {
-                                                if (!canSubmitRaise || isActionPending) return;
+                                                if (!canSubmitRaise || isControlsDisabled) return;
                                                 handleAction(actionType, parsedRaiseAmount);
                                             }}
                                             className={cn(
                                                 'select-none rounded-xl font-headline font-extrabold uppercase tracking-wider transition-all duration-150 flex items-center justify-center',
                                                 controlButtonSize === 'xs' ? 'px-3 py-1 text-[10px]' : controlButtonSize === 'sm' ? 'px-4 py-1.5 text-xs' : 'px-5 py-2 text-xs',
-                                                canSubmitRaise && !isActionPending
+                                                canSubmitRaise && !isControlsDisabled
                                                     ? 'cursor-pointer bg-gold-secondary text-surface shadow-[0_12px_24px_rgba(252,192,37,0.2)] hover:brightness-110 active:brightness-95'
                                                     : 'cursor-not-allowed bg-white/5 text-zinc-600',
                                             )}
                                         >
-                                            {isActionPending && pendingAction === actionType
+                                            {activePendingAction === actionType
                                                 ? 'Submitting...'
                                                 : actionType === 'BET'
                                                 ? BTN_BET
@@ -372,18 +383,18 @@ export function ActionPanel({
                                 isMobileLandscape ? 'gap-2' : 'gap-3 md:gap-4',
                             )}>
                                 {legalActions.has('FOLD') && (
-                                    <Button variant="outline" size={controlButtonSize} onClick={() => handleAction('FOLD')} disabled={isActionPending}>
-                                        {isActionPending && pendingAction === 'FOLD' ? 'Submitting...' : BTN_FOLD}
+                                    <Button variant="outline" size={controlButtonSize} onClick={() => handleAction('FOLD')} disabled={isControlsDisabled}>
+                                        {activePendingAction === 'FOLD' ? 'Submitting...' : BTN_FOLD}
                                     </Button>
                                 )}
 
                                 {canCheck ? (
-                                    <Button variant="primary" size={controlButtonSize} onClick={() => handleAction('CHECK')} disabled={isActionPending}>
-                                        {isActionPending && pendingAction === 'CHECK' ? 'Submitting...' : BTN_CHECK}
+                                    <Button variant="primary" size={controlButtonSize} onClick={() => handleAction('CHECK')} disabled={isControlsDisabled}>
+                                        {activePendingAction === 'CHECK' ? 'Submitting...' : BTN_CHECK}
                                     </Button>
                                 ) : canCall ? (
-                                    <Button variant="primary" size={controlButtonSize} onClick={() => handleAction('CALL')} disabled={isActionPending}>
-                                        {isActionPending && pendingAction === 'CALL' ? 'Submitting...' : `${BTN_CALL_PREFIX}${callAmount.toLocaleString()}`}
+                                    <Button variant="primary" size={controlButtonSize} onClick={() => handleAction('CALL')} disabled={isControlsDisabled}>
+                                        {activePendingAction === 'CALL' ? 'Submitting...' : `${BTN_CALL_PREFIX}${Math.min(callAmount, availableChips).toLocaleString()}`}
                                     </Button>
                                 ) : null}
 
@@ -398,7 +409,7 @@ export function ActionPanel({
                                             handleRaiseChange(raiseAmount);
                                             setAmountAction('BET');
                                         }}
-                                        disabled={isActionPending}
+                                        disabled={isControlsDisabled}
                                     >
                                         {BTN_BET}
                                     </ButtonWithRef>
@@ -415,15 +426,15 @@ export function ActionPanel({
                                             handleRaiseChange(raiseAmount);
                                             setAmountAction('RAISE');
                                         }}
-                                        disabled={isActionPending}
+                                        disabled={isControlsDisabled}
                                     >
                                         {BTN_RAISE}
                                     </ButtonWithRef>
                                 )}
 
                                 {canAllIn && (
-                                    <Button variant="outline" size={controlButtonSize} onClick={() => handleAction('ALL_IN')} disabled={isActionPending}>
-                                        {isActionPending && pendingAction === 'ALL_IN' ? 'Submitting...' : `${BTN_ALL_IN_PREFIX}${availableChips.toLocaleString()}`}
+                                    <Button variant="outline" size={controlButtonSize} onClick={() => handleAction('ALL_IN')} disabled={isControlsDisabled}>
+                                        {activePendingAction === 'ALL_IN' ? 'Submitting...' : `${BTN_ALL_IN_PREFIX}${availableChips.toLocaleString()}`}
                                     </Button>
                                 )}
                             </div>
@@ -473,15 +484,15 @@ export function ActionPanel({
                             })}
                         </div>
 
-                        {isReadyEligible && (
+                        {isReadyEligible && readyCountdownSecondsRemaining > 0 && (
                             <div className="pt-0.5">
                                 <Button
-                                    variant="primary"
+                                    variant={amReadyForNextHand ? 'secondary' : 'primary'}
                                     size={controlButtonSize === 'xs' ? 'xs' : 'sm'}
-                                    onClick={onReady}
-                                    disabled={amReadyForNextHand || isActionPending}
+                                    onClick={isControlsDisabled ? undefined : (amReadyForNextHand ? onUnready : onReady)}
+                                    disabled={isControlsDisabled}
                                 >
-                                    {amReadyForNextHand ? BTN_READY_CONFIRMED : BTN_READY}
+                                    {amReadyForNextHand ? 'Unready' : BTN_READY}
                                 </Button>
                             </div>
                         )}
@@ -501,7 +512,9 @@ export function ActionPanel({
                             {isAutoAdvancing
                                 ? (gameState.autoAdvanceMessage || 'Auto-advancing...')
                                 : gameState.phase === 'SHOWDOWN'
-                                ? 'Final hand complete — reviewing board'
+                                ? readyGateState === 'WAITING_FOR_PLAYERS'
+                                    ? 'Hand complete — waiting for players'
+                                    : 'Hand complete — reviewing board'
                                 : `Waiting for ${waitingName} to act`}
                         </p>
                     </motion.div>

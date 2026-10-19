@@ -53,6 +53,8 @@ describe('GameView - Collapsed Round Summary Integration', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         activeSubscriptions.clear();
+        sessionStorage.clear();
+        localStorage.clear();
         mockStartedTable();
     });
 
@@ -71,7 +73,7 @@ describe('GameView - Collapsed Round Summary Integration', () => {
                 winners: ['TestPlayer'],
                 winningsPerPlayer: 1000,
                 players: [
-                    { id: 'p-1', name: 'TestPlayer', chips: 1980, currentBet: 0, status: 'ACTIVE', hasFolded: false, handRank: 'TWO_PAIR', isWinner: true },
+                    { id: 'p-1', name: 'TestPlayer', chips: 1980, currentBet: 0, status: 'ACTIVE', hasFolded: false, handRank: 'TWO_PAIR', isWinner: true, chipsWon: 1000 },
                     { id: 'p-2', name: 'Opponent', chips: 980, currentBet: 0, status: 'ACTIVE', hasFolded: false, handRank: 'PAIR' },
                 ],
             }));
@@ -101,8 +103,8 @@ describe('GameView - Collapsed Round Summary Integration', () => {
                 winners: ['TestPlayer', 'Opponent'],
                 winningsPerPlayer: 500,
                 players: [
-                    { id: 'p-1', name: 'TestPlayer', chips: 1480, currentBet: 0, status: 'ACTIVE', hasFolded: false, handRank: 'STRAIGHT', isWinner: true },
-                    { id: 'p-2', name: 'Opponent', chips: 1480, currentBet: 0, status: 'ACTIVE', hasFolded: false, handRank: 'STRAIGHT', isWinner: true },
+                    { id: 'p-1', name: 'TestPlayer', chips: 1480, currentBet: 0, status: 'ACTIVE', hasFolded: false, handRank: 'STRAIGHT', isWinner: true, chipsWon: 500 },
+                    { id: 'p-2', name: 'Opponent', chips: 1480, currentBet: 0, status: 'ACTIVE', hasFolded: false, handRank: 'STRAIGHT', isWinner: true, chipsWon: 500 },
                 ],
             }));
         });

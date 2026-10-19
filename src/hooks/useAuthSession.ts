@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { logger } from '../security/logger';
 import { isJwtValid } from '../services/api';
 import { AUTH_KEY } from '../constants/strings';
@@ -18,36 +18,48 @@ function isValidAuth(obj: unknown): obj is AuthResponse {
 
 function safeGetStorageItem(key: string): string | null {
     try {
-        return localStorage.getItem(key);
+        return sessionStorage.getItem(key);
     } catch (e) {
-        logger.warn('Failed to read from localStorage:', e);
+        logger.warn('Failed to read from sessionStorage:', e);
         return null;
     }
 }
 
 function safeSetStorageItem(key: string, value: string): void {
     try {
-        localStorage.setItem(key, value);
+        sessionStorage.setItem(key, value);
     } catch (e) {
-        logger.warn('Failed to write to localStorage:', e);
+        logger.warn('Failed to write to sessionStorage:', e);
     }
 }
 
 function safeRemoveStorageItem(key: string): void {
     try {
-        localStorage.removeItem(key);
+        sessionStorage.removeItem(key);
     } catch (e) {
-        logger.warn('Failed to remove from localStorage:', e);
+        logger.warn('Failed to remove from sessionStorage:', e);
     }
 }
 
 function loadAuthStateFromStorage(): AuthResponse | null {
-    const saved = safeGetStorageItem(AUTH_KEY);
+    let saved = safeGetStorageItem(AUTH_KEY);
+    // Retire the legacy shared value on every load. If this tab has no
+    // session yet, import it once before removing it so new tabs cannot adopt it.
+    try {
+        const legacy = localStorage.getItem(AUTH_KEY);
+        if (!saved && legacy) {
+            saved = legacy;
+            sessionStorage.setItem(AUTH_KEY, legacy);
+        }
+        localStorage.removeItem(AUTH_KEY);
+    } catch (e) {
+        logger.warn('Failed to import legacy auth storage:', e);
+    }
     if (!saved) return null;
     try {
         const parsed = JSON.parse(saved);
         if (!isValidAuth(parsed)) {
-            logger.warn('Invalid auth shape in localStorage — clearing.');
+            logger.warn('Invalid auth shape in sessionStorage — clearing.');
             safeRemoveStorageItem(AUTH_KEY);
             return null;
         }
@@ -66,27 +78,38 @@ function loadAuthStateFromStorage(): AuthResponse | null {
 
 export function useAuthSession() {
     const [auth, setAuthState] = useState<AuthResponse | null>(loadAuthStateFromStorage);
+    const [authExpired, setAuthExpired] = useState(false);
+    const authRef = useRef(auth);
 
     const setAuth = useCallback((data: AuthResponse) => {
+        setAuthExpired(false);
+        authRef.current = data;
         setAuthState(data);
         safeSetStorageItem(AUTH_KEY, JSON.stringify(data));
     }, []);
 
-    const clearAuth = useCallback(() => {
-        setAuthState(null);
+    const clearAuth = useCallback((expectedToken?: string) => {
+        if (expectedToken && authRef.current?.token !== expectedToken) return;
+        if (expectedToken) {
+            const saved = safeGetStorageItem(AUTH_KEY);
+            if (saved) {
+                try {
+                    const persisted: unknown = JSON.parse(saved);
+                    if (isValidAuth(persisted) && persisted.token !== expectedToken) return;
+                } catch {
+                    // Malformed persisted data does not represent a valid replacement token.
+                }
+            }
+        }
+        authRef.current = null;
         safeRemoveStorageItem(AUTH_KEY);
+        setAuthState(null);
     }, []);
 
-    // Listen for cross-tab changes and global expiry events
+    const getCurrentAuth = useCallback(() => authRef.current, []);
+
+    // Session auth is tab-local. Only token-specific expiry events can clear it.
     useEffect(() => {
-        const handleStorage = (e: StorageEvent) => {
-            if (
-                (!e.storageArea || e.storageArea === localStorage) &&
-                (e.key === AUTH_KEY || e.key === null)
-            ) {
-                setAuthState(loadAuthStateFromStorage());
-            }
-        };
         const handleAuthExpired = (event: Event) => {
             if (!(event instanceof CustomEvent)) return;
             const detail: unknown = event.detail;
@@ -96,32 +119,23 @@ export function useAuthSession() {
             ) return;
 
             const failedToken = detail.token;
-            setAuthState(current =>
-                current?.token === failedToken ? null : current
-            );
-
-            const saved = safeGetStorageItem(AUTH_KEY);
-            if (!saved) return;
-            try {
-                const persisted: unknown = JSON.parse(saved);
-                if (isValidAuth(persisted) && persisted.token === failedToken) {
-                    safeRemoveStorageItem(AUTH_KEY);
-                }
-            } catch {
-                // Malformed storage cannot identify the failed session.
-            }
+            if (authRef.current?.token !== failedToken) return;
+            setAuthExpired(true);
+            clearAuth(failedToken);
         };
 
-        window.addEventListener('storage', handleStorage);
         window.addEventListener('auth-expired', handleAuthExpired);
         return () => {
-            window.removeEventListener('storage', handleStorage);
             window.removeEventListener('auth-expired', handleAuthExpired);
         };
-    }, []);
+    }, [clearAuth]);
 
     return {
         auth,
+        authExpired,
+        dismissAuthExpired: () => setAuthExpired(false),
+        isCurrentToken: (token: string) => authRef.current?.token === token,
+        getCurrentAuth,
         setAuth,
         clearAuth,
     };

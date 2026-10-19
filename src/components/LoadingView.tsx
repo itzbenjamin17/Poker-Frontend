@@ -4,11 +4,12 @@ import { BTN_RETRY, BTN_RETRY_CONNECTION, BTN_RETURN_TO_LOBBY } from '../constan
 interface LoadingViewProps {
     status: string;
     onRetry?: () => void;
-    onLeave?: () => void;
+    onLeave?: () => void | Promise<unknown>;
     error?: boolean;
+    errorMessage?: string | null;
 }
 
-export function LoadingView({ status, onRetry, onLeave, error = false }: LoadingViewProps) {
+export function LoadingView({ status, onRetry, onLeave, error = false, errorMessage }: LoadingViewProps) {
     return (
         <div className="flex items-center justify-center h-full w-full">
             <div className="flex flex-col items-center gap-6">
@@ -19,13 +20,14 @@ export function LoadingView({ status, onRetry, onLeave, error = false }: Loading
                 <p role={error ? 'alert' : 'status'} className="font-headline text-xs tracking-widest uppercase text-emerald-primary text-center max-w-xs px-4">
                     {status}
                 </p>
+                {errorMessage && <p role="alert" className="text-sm text-red-400 text-center max-w-xs">{errorMessage}</p>}
                 {onRetry && (
                     <Button variant="primary" size="sm" onClick={onRetry}>
                         {error ? BTN_RETRY : BTN_RETRY_CONNECTION}
                     </Button>
                 )}
                 {onLeave && (
-                    <Button variant="outline" size="sm" onClick={onLeave}>
+                    <Button variant="outline" size="sm" onClick={() => { void Promise.resolve(onLeave()).catch(() => undefined); }}>
                         {BTN_RETURN_TO_LOBBY}
                     </Button>
                 )}

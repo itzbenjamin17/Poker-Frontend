@@ -65,11 +65,14 @@ describe('ResultDock', () => {
         expect(screen.getByText(/hand complete · 250 chips carry over/i)).toBeInTheDocument();
         expect(screen.queryByText(/processing results/i)).not.toBeInTheDocument();
     });
-    it('renders the Ready button by default when isReadyEligible is omitted', async () => {
+    it('keeps readiness disabled unless eligibility and a positive countdown are present', async () => {
         const user = userEvent.setup();
         const onReady = vi.fn();
 
-        render(<ResultDock showdownResult={showdownState} isReady={false} onReady={onReady} />);
+        const { rerender } = render(<ResultDock showdownResult={showdownState} isReady={false} onReady={onReady} />);
+
+        expect(screen.queryByRole('button', { name: /^ready$/i })).not.toBeInTheDocument();
+        rerender(<ResultDock showdownResult={showdownState} isReady={false} isReadyEligible onReady={onReady} isReadyCountdownActive readyCountdownSecondsRemaining={2} />);
 
         const readyBtn = screen.getByRole('button', { name: /^ready$/i });
         expect(readyBtn).toBeInTheDocument();
@@ -113,6 +116,8 @@ describe('ResultDock', () => {
                 showdownResult={showdownState}
                 isReady={false}
                 isReadyEligible={true}
+                isReadyCountdownActive={true}
+                readyCountdownSecondsRemaining={2}
                 isActionPending={true}
                 onReady={vi.fn()}
                 onUnready={vi.fn()}
@@ -126,6 +131,8 @@ describe('ResultDock', () => {
                 showdownResult={showdownState}
                 isReady={true}
                 isReadyEligible={true}
+                isReadyCountdownActive={true}
+                readyCountdownSecondsRemaining={2}
                 isActionPending={true}
                 onReady={vi.fn()}
                 onUnready={vi.fn()}

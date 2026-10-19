@@ -12,7 +12,8 @@ interface Props {
     children: ReactNode;
     fallback?: ReactNode;
     onReset?: (error: unknown) => void;
-    onLeave?: () => void;
+    onLeave?: () => void | Promise<unknown>;
+    leaveError?: string | null;
 }
 
 interface State {
@@ -64,12 +65,16 @@ export class ErrorBoundary extends React.Component<Props, State> {
                             >
                                 {BTN_RELOAD}
                             </button>
+                            {this.props.leaveError && <p role="alert" className="text-red-400 text-sm">{this.props.leaveError}</p>}
                             {this.props.onLeave && (
                                 <button
                                     type="button"
-                                    onClick={() => {
-                                        this.props.onLeave?.();
-                                        this.setState({ hasError: false, error: null });
+                                    onClick={async () => {
+                                        try {
+                                            const result = await this.props.onLeave?.();
+                                            if (result === false) return;
+                                            this.setState({ hasError: false, error: null });
+                                        } catch { /* Keep the recovery screen visible for retry. */ }
                                     }}
                                     className="px-6 py-2.5 rounded-xl border border-emerald-primary/20 text-emerald-primary font-headline font-bold text-sm"
                                 >

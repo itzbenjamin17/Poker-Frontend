@@ -14,6 +14,7 @@ function createJwt(payload: Record<string, unknown>): string {
 describe('useAuthSession', () => {
     beforeEach(() => {
         localStorage.clear();
+        sessionStorage.clear();
         vi.resetModules();
     });
 
@@ -37,6 +38,21 @@ describe('useAuthSession', () => {
         const { result } = renderHook(() => useAuthSession());
 
         expect(result.current.auth).toEqual(validAuth);
+        expect(JSON.parse(sessionStorage.getItem('poker-auth')!)).toEqual(validAuth);
+        expect(localStorage.getItem('poker-auth')).toBeNull();
+    });
+
+    it('retires a legacy shared value when this tab already has its own session', async () => {
+        const tabAuth = {
+            token: createJwt({ exp: Math.floor(Date.now() / 1000) + 3600, tab: 'own' }),
+            roomId: 'tab-room', playerName: 'Tab User', message: 'Ok',
+        };
+        sessionStorage.setItem('poker-auth', JSON.stringify(tabAuth));
+        localStorage.setItem('poker-auth', JSON.stringify({ ...tabAuth, roomId: 'legacy-room' }));
+        const { useAuthSession } = await import('../useAuthSession');
+        const { result } = renderHook(() => useAuthSession());
+        expect(result.current.auth).toEqual(tabAuth);
+        expect(localStorage.getItem('poker-auth')).toBeNull();
     });
 
     it('clears storage and returns null auth when stored JWT is expired', async () => {
@@ -65,7 +81,7 @@ describe('useAuthSession', () => {
         expect(localStorage.getItem('poker-auth')).toBeNull();
     });
 
-    it('writes to localStorage when setAuth is called', async () => {
+    it('writes to sessionStorage when setAuth is called', async () => {
         const { useAuthSession } = await import('../useAuthSession');
         const { result } = renderHook(() => useAuthSession());
 
@@ -81,10 +97,23 @@ describe('useAuthSession', () => {
         });
 
         expect(result.current.auth).toEqual(newAuth);
-        expect(JSON.parse(localStorage.getItem('poker-auth')!)).toEqual(newAuth);
+        expect(JSON.parse(sessionStorage.getItem('poker-auth')!)).toEqual(newAuth);
+        expect(localStorage.getItem('poker-auth')).toBeNull();
     });
 
-    it('removes from localStorage and resets state when clearAuth is called', async () => {
+    it('exposes a stable synchronous auth getter updated before React renders', async () => {
+        const { useAuthSession } = await import('../useAuthSession');
+        const { result } = renderHook(() => useAuthSession());
+        const getCurrentAuth = result.current.getCurrentAuth;
+        const nextAuth = { token: createJwt({ exp: Math.floor(Date.now() / 1000) + 3600 }), roomId: 'room-sync', playerName: 'Sync', message: 'Ok' };
+        act(() => result.current.setAuth(nextAuth));
+        expect(result.current.getCurrentAuth).toBe(getCurrentAuth);
+        expect(getCurrentAuth()).toEqual(nextAuth);
+        act(() => result.current.clearAuth(nextAuth.token));
+        expect(getCurrentAuth()).toBeNull();
+    });
+
+    it('removes from sessionStorage and resets state when clearAuth is called', async () => {
         const validAuth = {
             token: createJwt({ exp: Math.floor(Date.now() / 1000) + 3600 }),
             roomId: 'room-3',
@@ -103,10 +132,10 @@ describe('useAuthSession', () => {
         });
 
         expect(result.current.auth).toBeNull();
-        expect(localStorage.getItem('poker-auth')).toBeNull();
+        expect(sessionStorage.getItem('poker-auth')).toBeNull();
     });
 
-    it('updates auth to null on cross-tab storage event when auth is cleared', async () => {
+    it('does not adopt or clear tab auth from cross-tab storage events', async () => {
         const validAuth = {
             token: createJwt({ exp: Math.floor(Date.now() / 1000) + 3600 }),
             roomId: 'room-4',
@@ -128,10 +157,10 @@ describe('useAuthSession', () => {
             }));
         });
 
-        expect(result.current.auth).toBeNull();
+        expect(result.current.auth).toEqual(validAuth);
     });
 
-    it('clears auth and localStorage on a token-scoped auth-expired window event', async () => {
+    it('clears auth and sessionStorage on a matching token-scoped auth-expired event', async () => {
         const validAuth = {
             token: createJwt({ exp: Math.floor(Date.now() / 1000) + 3600 }),
             roomId: 'room-5',
@@ -150,7 +179,10 @@ describe('useAuthSession', () => {
         });
 
         expect(result.current.auth).toBeNull();
-        expect(localStorage.getItem('poker-auth')).toBeNull();
+        expect(result.current.authExpired).toBe(true);
+        expect(sessionStorage.getItem('poker-auth')).toBeNull();
+        act(() => result.current.dismissAuthExpired());
+        expect(result.current.authExpired).toBe(false);
     });
 
     it('ignores an auth-expired race for a stale token', async () => {
@@ -170,10 +202,11 @@ describe('useAuthSession', () => {
         });
 
         expect(result.current.auth).toEqual(currentAuth);
-        expect(JSON.parse(localStorage.getItem('poker-auth')!)).toEqual(currentAuth);
+        expect(result.current.authExpired).toBe(false);
+        expect(JSON.parse(sessionStorage.getItem('poker-auth')!)).toEqual(currentAuth);
     });
 
-    it('clears auth when a storage event with a null key signals storage.clear()', async () => {
+    it('ignores storage.clear events because session auth is tab-local', async () => {
         const validAuth = {
             token: createJwt({ exp: Math.floor(Date.now() / 1000) + 3600 }),
             roomId: 'room-clear',
@@ -189,7 +222,20 @@ describe('useAuthSession', () => {
             window.dispatchEvent(new StorageEvent('storage', { key: null }));
         });
 
-        expect(result.current.auth).toBeNull();
+        expect(result.current.auth).toEqual(validAuth);
+    });
+
+    it('does not let stale token cleanup clear a replacement session', async () => {
+        const { useAuthSession } = await import('../useAuthSession');
+        const { result } = renderHook(() => useAuthSession());
+        const oldAuth = { token: createJwt({ exp: Math.floor(Date.now() / 1000) + 3600, id: 'old' }), roomId: 'old', playerName: 'A', message: '' };
+        const newAuth = { token: createJwt({ exp: Math.floor(Date.now() / 1000) + 3600, id: 'new' }), roomId: 'new', playerName: 'B', message: '' };
+        act(() => result.current.setAuth(oldAuth));
+        act(() => result.current.setAuth(newAuth));
+        act(() => result.current.clearAuth(oldAuth.token));
+
+        expect(result.current.auth).toEqual(newAuth);
+        expect(JSON.parse(sessionStorage.getItem('poker-auth')!)).toEqual(newAuth);
     });
 
     it('survives localStorage SecurityError and QuotaExceededError while keeping auth state in memory', async () => {
@@ -230,5 +276,55 @@ describe('useAuthSession', () => {
             setItemSpy.mockRestore();
             removeItemSpy.mockRestore();
         }
+    });
+
+    it('clears memory state on clearAuth(expectedToken) even if persisted storage contains malformed JSON', async () => {
+        const { useAuthSession } = await import('../useAuthSession');
+        const validToken = createJwt({ exp: Math.floor(Date.now() / 1000) + 3600 });
+        const validAuth = {
+            token: validToken,
+            roomId: 'room-corrupt',
+            playerName: 'CorruptTest',
+            message: 'Ok',
+        };
+        const { result } = renderHook(() => useAuthSession());
+        act(() => {
+            result.current.setAuth(validAuth);
+        });
+        expect(result.current.auth).toEqual(validAuth);
+
+        // Corrupt the persisted storage under the hood
+        sessionStorage.setItem('poker-auth', '{invalid-json:');
+
+        act(() => {
+            result.current.clearAuth(validToken);
+        });
+
+        expect(result.current.auth).toBeNull();
+        expect(sessionStorage.getItem('poker-auth')).toBeNull();
+    });
+
+    it('migrates legacy localStorage once to sessionStorage and prevents subsequent tabs from adopting it', async () => {
+        const legacyAuth = {
+            token: createJwt({ exp: Math.floor(Date.now() / 1000) + 3600 }),
+            roomId: 'room-migration',
+            playerName: 'MigratedUser',
+            message: 'Ok',
+        };
+        localStorage.setItem('poker-auth', JSON.stringify(legacyAuth));
+
+        // Tab 1 loads: imports to sessionStorage, removes from localStorage
+        const { useAuthSession } = await import('../useAuthSession');
+        const tab1 = renderHook(() => useAuthSession());
+        expect(tab1.result.current.auth).toEqual(legacyAuth);
+        expect(localStorage.getItem('poker-auth')).toBeNull();
+        expect(JSON.parse(sessionStorage.getItem('poker-auth')!)).toEqual(legacyAuth);
+
+        // Simulate Tab 2 with its own fresh sessionStorage
+        sessionStorage.clear();
+        vi.resetModules();
+        const { useAuthSession: useAuthSessionTab2 } = await import('../useAuthSession');
+        const tab2 = renderHook(() => useAuthSessionTab2());
+        expect(tab2.result.current.auth).toBeNull();
     });
 });

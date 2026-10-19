@@ -19,6 +19,7 @@ export interface GameContextState {
     showdown: GameState | null;
     showdownResult: GameState | null;
     notification: string | null;
+    notificationSequence?: number;
     loadingStatus: string;
     myPlayerId: string | null;
     claimPending: boolean;
@@ -46,6 +47,8 @@ export type Action =
 export interface GameContextValue extends GameContextState {
     auth: AuthResponse;
     onLeave?: () => void;
+    requestLeave?: () => Promise<boolean>;
+    leaveError?: string | null;
     session?: GameSession;
     transport?: GameTransport;
     dispatch: React.Dispatch<Action>;

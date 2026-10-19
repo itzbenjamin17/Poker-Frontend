@@ -6,7 +6,7 @@ import {
     SHOWDOWN_PROCESSING,
     SHOWDOWN_HAND_COMPLETE, SHOWDOWN_CARRY_OVER, SHOWDOWN_MULTIPLE_WINNERS,
     SHOWDOWN_FORFEIT_SUFFIX, SHOWDOWN_WIN_SUFFIX,
-    SHOWDOWN_WON_WITH_PREFIX, SHOWDOWN_WON_ROUND,
+    SHOWDOWN_WON_WITH_PREFIX,
     ARIA_ROUND_RESULT,
     BTN_LEAVE_TABLE,
     BTN_READY,
@@ -20,6 +20,7 @@ interface ResultDockProps {
     isReadyEligible?: boolean;
     isActionPending?: boolean;
     isReadyCountdownActive?: boolean;
+    readyGateState?: GameState['readyGateState'];
     readyCountdownSecondsRemaining?: number;
     readyCount?: number;
     readyEligibleCount?: number;
@@ -32,9 +33,10 @@ interface ResultDockProps {
 export function ResultDock({
     showdownResult,
     isReady,
-    isReadyEligible = true,
+    isReadyEligible = false,
     isActionPending = false,
     isReadyCountdownActive = false,
+    readyGateState,
     readyCountdownSecondsRemaining = 0,
     readyCount = 0,
     readyEligibleCount = 0,
@@ -68,6 +70,14 @@ export function ResultDock({
     const individualAwards = winners
         .map((name) => ({ name, amount: showdownResult.players.find((player) => player.name === name)?.chipsWon ?? 0 }))
         .filter(({ amount }) => amount > 0);
+    const winnerHands = winners.map(name => {
+        const player = showdownResult.players.find(candidate => candidate.name === name);
+        return { name, hand: formatHandRank(player?.handRank, player?.bestHand) };
+    }).filter((entry): entry is { name: string; hand: string } => Boolean(entry.hand));
+    const countdownVisible = isReadyCountdownActive && readyGateState !== 'WAITING_FOR_PLAYERS'
+        && readyCountdownSecondsRemaining > 0;
+    const waitingForPlayers = readyGateState === 'WAITING_FOR_PLAYERS'
+        || (isReadyCountdownActive && readyCountdownSecondsRemaining <= 0);
 
     return (
         <section
@@ -88,29 +98,22 @@ export function ResultDock({
                                 <span className="sr-only">, </span>
                                 {SHOWDOWN_WON_WITH_PREFIX}<span className="text-zinc-300 font-semibold">{handText}</span>
                             </span>
-                        ) : winners.length > 0 && !isUncontested ? (
-                            <span className="text-sm text-zinc-400 truncate">
-                                {SHOWDOWN_WON_ROUND}
-                            </span>
                         ) : null}
-                        {winners.length === 1 && showdownResult.winningsPerPlayer != null && (
-                            <span className="font-bold text-gold-secondary text-sm md:text-base whitespace-nowrap tabular-nums">
-                                +{showdownResult.winningsPerPlayer.toLocaleString()} Chips
-                            </span>
-                        )}
                     </div>
-                    {individualAwards.length > 1 && (
+                    {individualAwards.length > 0 && (
                         <div className="text-xs text-zinc-300" aria-label="Contested awards">
                             {individualAwards.map(({ name, amount }) => `${name}: +${amount.toLocaleString()} chips`).join(' · ')}
                         </div>
                     )}
-                    {individualAwards.length === 0 && winners.length > 1 && showdownResult.winningsPerPlayer != null && (
-                        <div className="text-xs text-zinc-300">{showdownResult.winningsPerPlayer.toLocaleString()} chips each</div>
+                    {winnerHands.length > 0 && (
+                        <div className="text-xs text-zinc-400" aria-label="Winning hands">
+                            {winnerHands.map(({ name, hand }) => `${name}: ${hand}`).join(' · ')}
+                        </div>
                     )}
                 </div>
 
                 <div className="flex items-center gap-2 shrink-0">
-                    {isReadyCountdownActive && (
+                    {countdownVisible && (
                         <div className="flex items-center gap-1.5 text-xs">
                             <span className="text-white font-headline font-bold tabular-nums">
                                 {readyCountdownSecondsRemaining}s
@@ -127,7 +130,7 @@ export function ResultDock({
                             {BTN_LEAVE_TABLE}
                         </Button>
                     )}
-                    {isReadyEligible && (
+                    {countdownVisible && isReadyEligible && (
                         isReady ? (
                             <Button
                                 variant="secondary"
@@ -149,6 +152,9 @@ export function ResultDock({
                                 {BTN_READY}
                             </Button>
                         )
+                    )}
+                    {waitingForPlayers && (
+                        <span className="text-zinc-300 text-xs">Hand complete — waiting for players</span>
                     )}
                 </div>
             </div>

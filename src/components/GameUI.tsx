@@ -1,6 +1,7 @@
 import React from 'react';
 import { Crown } from 'lucide-react';
 import { cn } from '../lib/cn';
+import { normalizeCardCode } from '../lib/game';
 import { formatHandRank, formatHandRankShort, SHOWDOWN_UNUSED_CARD_CLASS } from '../lib/game';
 import { SHOWDOWN_BOARD_PLAYS_TOOLTIP } from '../constants/strings';
 import {
@@ -100,8 +101,9 @@ export const CardUI: React.FC<CardUIProps> = ({
         );
     }
 
-    const value = card.slice(0, -1);
-    const suitKey = card.slice(-1);
+    const normalizedCard = normalizeCardCode(card) ?? card;
+    const value = normalizedCard.slice(0, -1);
+    const suitKey = normalizedCard.slice(-1);
     const suit = SUITS[suitKey] || { icon: '?', color: 'text-zinc-400', name: 'Unknown' };
     const rankName = RANKS[value] || value;
     const label = `${rankName} of ${suit.name}`;

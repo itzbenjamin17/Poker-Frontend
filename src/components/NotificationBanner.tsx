@@ -2,11 +2,12 @@ import { motion, useReducedMotion } from 'motion/react';
 
 interface NotificationBannerProps {
     notification?: string | null;
+    sequence?: number;
 }
 
 const DISPLAY_MS = 4000;
 
-export function NotificationBanner({ notification = null }: NotificationBannerProps) {
+export function NotificationBanner({ notification = null, sequence = 0 }: NotificationBannerProps) {
     const prefersReducedMotion = useReducedMotion();
 
     if (!notification) {
@@ -15,7 +16,7 @@ export function NotificationBanner({ notification = null }: NotificationBannerPr
 
     return (
         <motion.div
-            key={notification}
+            key={`${sequence}:${notification}`}
             role="alert"
             aria-live="assertive"
             initial={prefersReducedMotion ? false : { opacity: 0, y: -24, scale: 0.95 }}
@@ -42,4 +43,3 @@ export function NotificationBanner({ notification = null }: NotificationBannerPr
         </motion.div>
     );
 }
-

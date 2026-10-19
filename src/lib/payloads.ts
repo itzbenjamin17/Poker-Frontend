@@ -12,6 +12,7 @@ import {
     ERROR_TECHNICAL,
 } from '../constants/strings';
 import { logger } from '../security/logger';
+import { normalizeCardCode } from './game';
 
 function isObject(value: unknown): value is Record<string, unknown> {
     return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -126,6 +127,9 @@ const gameState = shape({
     carryOverAmount: optional(nullable(nonnegative)), isAutoAdvancing: optional(boolean),
     autoAdvanceMessage: optional(text), isReadyCountdownActive: nullable(boolean),
     readyCountdownDeadlineEpochMs: nullable(nonnegative),
+    handNumber: optional(nonnegative), stateRevision: optional(nullable(nonnegative)),
+    serverTimeEpochMs: optional(nonnegative),
+    readyGateState: optional(member(['CLOSED', 'COUNTING_DOWN', 'WAITING_FOR_PLAYERS'])),
     claimWinAvailable: nullable(boolean), claimWinPlayerName: nullable(text),
 });
 
@@ -157,14 +161,23 @@ export function decodeGameStatePayload(value: unknown, source?: GameSnapshotSour
         'legalActions', 'minimumBetAmount', 'minimumRaiseAmount', 'winners', 'winningsPerPlayer', 'handSettled', 'carryOverAmount', 'isAutoAdvancing',
         'autoAdvanceMessage',
     ]);
+    if (!Array.isArray(value.communityCards)) {
+        return reject(gameState.diagnose(value, '$')!);
+    }
+    const normalizeCard = (entry: unknown) => typeof entry === 'string' ? normalizeCardCode(entry) ?? entry : entry;
+    decoded.communityCards = value.communityCards.map(normalizeCard);
     // The backend uses null when no player currently has the turn.
     if (decoded.currentPlayerName === null) decoded.currentPlayerName = '';
     if (decoded.currentPlayerId === null) decoded.currentPlayerId = '';
-    decoded.players = value.players.map(p => isObject(p) ? omitNulls(p, [
+    decoded.players = value.players.map(p => isObject(p) ? {
+        ...omitNulls(p, [
         'disconnectDeadlineEpochMs', 'isReadyForNextHand', 'isSmallBlind',
         'isBigBlind', 'isAllIn', 'isCurrentPlayer', 'holeCards', 'handRank',
         'bestHand', 'isWinner', 'chipsWon',
-    ]) : p);
+        ]),
+        ...(Array.isArray(p.holeCards) ? { holeCards: p.holeCards.map(normalizeCard) } : {}),
+        ...(Array.isArray(p.bestHand) ? { bestHand: p.bestHand.map(normalizeCard) } : {}),
+    } : p);
     const failure = gameState.diagnose(decoded, '$');
     return failure ? reject(failure) : decoded as IncomingGameStatePayload;
 }
@@ -209,7 +222,7 @@ export function isActionErrorPayload(value: unknown): value is ActionError {
     return Object.keys(value).length === 4 &&
         typeof value.code === 'string' && value.code.trim().length > 0 &&
         /^[A-Z][A-Z0-9_]*$/.test(value.code) &&
-        action(value.action) &&
+        (action(value.action) || value.action === 'READY' || value.action === 'UNREADY') &&
         typeof value.message === 'string' && value.message.trim().length > 0;
 }
 

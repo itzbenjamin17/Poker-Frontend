@@ -42,6 +42,8 @@ describe('useGameDispatcher', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         vi.useFakeTimers();
+        localStorage.clear();
+        sessionStorage.clear();
 
         transport = new InMemoryTransportAdapter();
         session = new GameSession({
@@ -204,7 +206,7 @@ describe('useGameDispatcher', () => {
         expect(session.getSnapshot().notification).toBe('Cannot claim win right now.');
     });
 
-    it('dispatch LEAVE_GAME calls leaveGame and leaveRoom', async () => {
+    it('dispatch LEAVE_GAME calls the shared room departure endpoint once', async () => {
         const leaveGameSpy = vi.mocked(pokerApi.leaveGame).mockResolvedValue();
         const leaveRoomSpy = vi.mocked(pokerApi.leaveRoom).mockResolvedValue();
         const clearShowdownSpy = vi.spyOn(session, 'clearShowdownTimers');
@@ -220,15 +222,16 @@ describe('useGameDispatcher', () => {
 
         expect(clearShowdownSpy).toHaveBeenCalled();
         expect(session.getSnapshot().privateState).toBeNull();
-        expect(leaveGameSpy).toHaveBeenCalledWith('GAME123', 'test-token');
+        expect(leaveGameSpy).not.toHaveBeenCalled();
         expect(leaveRoomSpy).toHaveBeenCalledWith('ROOM123', 'test-token');
+        expect(leaveRoomSpy).toHaveBeenCalledTimes(1);
         expect(onLeave).toHaveBeenCalled();
     });
 
-    it('dispatch LEAVE_GAME still calls leaveRoom and onLeave when leaveGame rejects with a network/500 error', async () => {
+    it('retains the session and surfaces an error when room departure fails', async () => {
         const error = Object.assign(new Error('Network failure'), { status: 500 });
-        const leaveGameSpy = vi.mocked(pokerApi.leaveGame).mockRejectedValue(error);
-        const leaveRoomSpy = vi.mocked(pokerApi.leaveRoom).mockResolvedValue();
+        const leaveGameSpy = vi.mocked(pokerApi.leaveGame);
+        const leaveRoomSpy = vi.mocked(pokerApi.leaveRoom).mockRejectedValue(error);
         const clearShowdownSpy = vi.spyOn(session, 'clearShowdownTimers');
         session.applyPrivateState({ playerId: 'p-1', holeCards: ['AS', 'KS'] });
         localStorage.setItem(
@@ -244,32 +247,34 @@ describe('useGameDispatcher', () => {
             await result.current.dispatch({ type: 'LEAVE_GAME' });
         });
 
-        expect(leaveGameSpy).toHaveBeenCalledWith('GAME123', 'test-token');
+        expect(leaveGameSpy).not.toHaveBeenCalled();
         expect(leaveRoomSpy).toHaveBeenCalledWith('ROOM123', 'test-token');
-        expect(localStorage.getItem('poker-game-end:ROOM123')).toBeNull();
-        expect(clearShowdownSpy).toHaveBeenCalled();
-        expect(session.getSnapshot().privateState).toBeNull();
-        expect(onLeave).toHaveBeenCalledTimes(1);
+        expect(leaveRoomSpy).toHaveBeenCalledTimes(1);
+        expect(clearShowdownSpy).not.toHaveBeenCalled();
+        expect(session.getSnapshot().privateState).not.toBeNull();
+        expect(onLeave).not.toHaveBeenCalled();
+        expect(session.getSnapshot().notification).toContain('Network failure');
     });
 
     it('dispatch LEAVE_REVIEW clears persisted game-end snapshot and calls onLeave even if REST fails', async () => {
-        vi.mocked(pokerApi.leaveGame).mockRejectedValue(new Error('404 Not Found'));
-        vi.mocked(pokerApi.leaveRoom).mockRejectedValue(new Error('404 Not Found'));
+        const leaveGameSpy = vi.mocked(pokerApi.leaveGame);
+        const leaveRoomSpy = vi.mocked(pokerApi.leaveRoom);
         const clearShowdownSpy = vi.spyOn(session, 'clearShowdownTimers');
-        localStorage.setItem(
-            'poker-game-end:ROOM123',
-            JSON.stringify({ winnerName: 'TestPlayer', isForfeit: false, message: 'TestPlayer wins!' })
-        );
-
         const { result } = renderHook(() => useGameDispatcher(), {
             wrapper: createWrapper(),
         });
+        sessionStorage.setItem(
+            'poker-game-end:ROOM123',
+            JSON.stringify({ winnerName: 'TestPlayer', isForfeit: false, message: 'TestPlayer wins!' })
+        );
 
         await act(async () => {
             await result.current.dispatch({ type: 'LEAVE_REVIEW' });
         });
 
-        expect(localStorage.getItem('poker-game-end:ROOM123')).toBeNull();
+        expect(sessionStorage.getItem('poker-game-end:ROOM123')).toBeNull();
+        expect(leaveRoomSpy).not.toHaveBeenCalled();
+        expect(leaveGameSpy).not.toHaveBeenCalled();
         expect(clearShowdownSpy).toHaveBeenCalled();
         expect(session.getSnapshot().gameState).toBeNull();
         expect(onLeave).toHaveBeenCalled();
@@ -279,7 +284,7 @@ describe('useGameDispatcher', () => {
     it('dispatch LEAVE_GAME calls onLeave even on 404 error', async () => {
         const error = new Error('Not Found') as Error & { status?: number };
         error.status = 404;
-        vi.mocked(pokerApi.leaveGame).mockRejectedValue(error);
+        vi.mocked(pokerApi.leaveRoom).mockRejectedValue(error);
 
         const { result } = renderHook(() => useGameDispatcher(), {
             wrapper: createWrapper(),
@@ -290,6 +295,7 @@ describe('useGameDispatcher', () => {
         });
 
         expect(onLeave).toHaveBeenCalled();
+        expect(pokerApi.leaveRoom).toHaveBeenCalledTimes(1);
         expect(session.getSnapshot().notification).toBeNull();
     });
 
@@ -310,5 +316,45 @@ describe('useGameDispatcher', () => {
         });
 
         expect(session.getSnapshot().notification).toBe('SOME_OTHER_ERROR');
+    });
+
+    it('handles HTTP 503 from START_GAME as retryable feedback and keeps controls usable', async () => {
+        const error503 = Object.assign(new Error('Server unavailable'), { status: 503 });
+        vi.mocked(pokerApi.startGame).mockRejectedValue(error503);
+        const { result } = renderHook(() => useGameDispatcher(), {
+            wrapper: createWrapper(),
+        });
+
+        await act(async () => {
+            await result.current.dispatch({ type: 'START_GAME' });
+        });
+
+        expect(result.current.isPending('START_GAME')).toBe(false);
+        expect(session.getSnapshot().error).toBeNull();
+        expect(session.getSnapshot().notification).toBe('Server unavailable');
+        expect(onLeave).not.toHaveBeenCalled();
+
+        await act(async () => {
+            await result.current.dispatch({ type: 'PLAY_ACTION', action: 'CHECK' });
+        });
+        expect(transport.getPublishedMessages('/app/GAME123/action')).toHaveLength(1);
+    });
+
+    it('handles HTTP 503 from CLAIM_WIN as retryable feedback and keeps session', async () => {
+        const error503 = Object.assign(new Error('Server recovering'), { status: 503 });
+        vi.mocked(pokerApi.claimWin).mockRejectedValue(error503);
+        const { result } = renderHook(() => useGameDispatcher(), {
+            wrapper: createWrapper(),
+        });
+
+        await act(async () => {
+            await result.current.dispatch({ type: 'CLAIM_WIN' });
+        });
+
+        expect(session.getSnapshot().claimPending).toBe(false);
+        expect(result.current.isPending('CLAIM_WIN')).toBe(false);
+        expect(session.getSnapshot().error).toBeNull();
+        expect(session.getSnapshot().notification).toBe('Server recovering');
+        expect(onLeave).not.toHaveBeenCalled();
     });
 });

@@ -25,7 +25,7 @@ test.describe('Item 35: Visual rendering of side pots in multi-way all-in', () =
 
     await page.addInitScript(
       ({ authToken, rId }) => {
-        window.localStorage.setItem(
+        window.sessionStorage.setItem(
           'poker-auth',
           JSON.stringify({
             token: authToken,

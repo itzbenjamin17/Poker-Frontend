@@ -2,7 +2,8 @@ import { useState, useCallback, useRef } from 'react';
 import { pokerApi } from '../services/api';
 import { savePersistedGameEnd } from '../services/gameEndStorage';
 import { useGameContext } from '../context/GameContext';
-import { normalizeErrorMessage, getErrorStatusCode } from '../lib/payloads';
+import { normalizeErrorMessage } from '../lib/payloads';
+import { getErrorStatusCode } from '../lib/payloads';
 import { logger } from '../security/logger';
 import type { ActionError, PokerAction } from '../types';
 
@@ -27,6 +28,7 @@ export function useGameDispatcher() {
         dispatch: contextDispatch,
         clearShowdownTimers,
         onLeave,
+        requestLeave,
     } = useGameContext();
     
     const [pendingCommands, setPendingCommands] = useState<Set<string>>(new Set());
@@ -80,36 +82,26 @@ export function useGameDispatcher() {
                 contextDispatch({ type: 'SET_CLAIM_PENDING', payload: true });
                 await pokerApi.claimWin(targetGameId, auth.token);
             } else if (command.type === 'LEAVE_GAME') {
-                session?.disconnect();
-                const logUnexpectedLeaveError = (op: string, err: unknown) => {
-                    const code = getErrorStatusCode(err);
-                    if (code !== 404 && code !== 403) {
-                        logger.warn(`LEAVE_GAME ${op} failed:`, err);
-                    }
-                };
-                if (gameState?.gameId) {
+                if (requestLeave) {
+                    if (!await requestLeave()) return;
+                    clearShowdownTimers();
+                    contextDispatch({ type: 'SET_PRIVATE', payload: null });
+                    contextDispatch({ type: 'CLEAR_GAME_STATE' });
+                    savePersistedGameEnd(auth.roomId, null);
+                    session?.disconnect();
+                } else {
                     try {
-                        await pokerApi.leaveGame(gameState.gameId, auth.token);
-                    } catch (err) {
-                        logUnexpectedLeaveError('leaveGame', err);
+                        await pokerApi.leaveRoom(auth.roomId, auth.token);
+                    } catch (error) {
+                        if (getErrorStatusCode(error) !== 404) throw error;
                     }
+                    clearShowdownTimers();
+                    savePersistedGameEnd(auth.roomId, null);
+                    contextDispatch({ type: 'SET_PRIVATE', payload: null });
+                    session?.disconnect();
+                    onLeave?.();
                 }
-                try {
-                    await pokerApi.leaveRoom(auth.roomId, auth.token);
-                } catch (err) {
-                    logUnexpectedLeaveError('leaveRoom', err);
-                }
-                clearShowdownTimers();
-                savePersistedGameEnd(auth.roomId, null);
-                contextDispatch({ type: 'SET_PRIVATE', payload: null });
-                onLeave?.();
             } else if (command.type === 'LEAVE_REVIEW') {
-                // Fire and forget REST calls, ignore failures
-                void pokerApi.leaveGame(targetGameId, auth.token)
-                    .catch((err) => logger.warn('LEAVE_REVIEW leaveGame failed:', err));
-                void pokerApi.leaveRoom(auth.roomId, auth.token)
-                    .catch((err) => logger.warn('LEAVE_REVIEW leaveRoom failed:', err));
-
                 clearShowdownTimers();
                 savePersistedGameEnd(auth.roomId, null);
                 contextDispatch({ type: 'CLEAR_GAME_STATE' });
@@ -121,12 +113,12 @@ export function useGameDispatcher() {
                 contextDispatch({ type: 'SET_CLAIM_PENDING', payload: false });
             }
             logger.error(`Failed ${command.type}:`, err);
-            const msg = normalizeErrorMessage(err instanceof Error ? err.message : 'Operation failed');
+            const msg = normalizeErrorMessage(err instanceof Error ? err.message : 'Operation failed') ?? 'Operation failed';
             contextDispatch({ type: 'SET_NOTIFICATION', payload: msg });
         } finally {
             setPending(command.type, false);
         }
-    }, [auth.roomId, auth.token, clearShowdownTimers, contextDispatch, gameState, onLeave, session, setPending]);
+    }, [auth.roomId, auth.token, clearShowdownTimers, contextDispatch, gameState, onLeave, requestLeave, session, setPending]);
 
     const onSocketError = useCallback((message: string) => {
         session?.handleActionError(message);

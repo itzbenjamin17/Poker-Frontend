@@ -1,9 +1,12 @@
-import { Suspense, lazy } from 'react';
+import { Suspense, lazy, useCallback, useRef, useState } from 'react';
 import Lobby from './Lobby';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { LoadingView } from './components/LoadingView';
 import { SESSION_RESTORING } from './constants/strings';
 import { useAuthSession } from './hooks/useAuthSession';
+import { pokerApi } from './services/api';
+import { getErrorStatusCode } from './lib/payloads';
+import { savePersistedGameEnd } from './services/gameEndStorage';
 
 class GameViewLoadError extends Error {}
 
@@ -20,7 +23,49 @@ function recoverApp(error: unknown) {
 }
 
 export default function App() {
-    const { auth, setAuth, clearAuth } = useAuthSession();
+    const { auth, setAuth, clearAuth, authExpired, dismissAuthExpired, getCurrentAuth } = useAuthSession();
+    const [leaveErrorState, setLeaveErrorState] = useState<{ token: string; message: string } | null>(null);
+    const leaveFlights = useRef(new Map<string, Promise<boolean>>());
+    const leaveError = auth && leaveErrorState?.token === auth.token ? leaveErrorState.message : null;
+    const requestLeave = useCallback(async (): Promise<boolean> => {
+        if (!auth) return true;
+        const existing = leaveFlights.current.get(auth.token);
+        if (existing) return existing;
+        const originatingAuth = auth;
+        setLeaveErrorState(null);
+        const request = (async () => {
+            try {
+                await pokerApi.leaveRoom(originatingAuth.roomId, originatingAuth.token);
+            } catch (error) {
+                const status = getErrorStatusCode(error);
+                if (status === 404 || status === 410) {
+                    // Room or seat is already gone; proceed to local departure
+                } else {
+                    const message = error instanceof Error ? error.message : 'Could not leave the room. Try again.';
+                    if (getCurrentAuth()?.token === originatingAuth.token) setLeaveErrorState({ token: originatingAuth.token, message });
+                    return false;
+                }
+            }
+            const current = getCurrentAuth();
+            if (!current || current.roomId !== originatingAuth.roomId) {
+                savePersistedGameEnd(originatingAuth.roomId, null);
+                return false;
+            }
+            if (current.token === originatingAuth.token) {
+                savePersistedGameEnd(originatingAuth.roomId, null);
+                clearAuth(originatingAuth.token);
+                return true;
+            }
+            return false;
+        })();
+        leaveFlights.current.set(originatingAuth.token, request);
+        try { return await request; }
+        finally { if (leaveFlights.current.get(originatingAuth.token) === request) leaveFlights.current.delete(originatingAuth.token); }
+    }, [auth, clearAuth, getCurrentAuth]);
+
+    const handleSetAuth = useCallback((data: Parameters<typeof setAuth>[0]) => {
+        setAuth(data);
+    }, [setAuth]);
 
     return (
         <div className="min-h-screen bg-surface selection:bg-emerald-primary selection:text-surface">
@@ -37,13 +82,22 @@ export default function App() {
                     </div>
                 </nav>
             )}
-
-            <ErrorBoundary onLeave={clearAuth} onReset={recoverApp}>
+            {!auth && authExpired && (
+                <div role="alert" className="fixed top-3 left-1/2 -translate-x-1/2 z-[100] rounded-xl border border-amber-300/30 bg-surface-high px-4 py-3 text-sm text-amber-100 shadow-lg">
+                    Your room session expired. Join or create a room to continue.
+                    <button type="button" className="ml-4 underline" onClick={dismissAuthExpired}>Dismiss</button>
+                </div>
+            )}
+            <ErrorBoundary onLeave={requestLeave} leaveError={leaveError} onReset={recoverApp}>
                 {!auth ? (
-                    <Lobby onAuth={setAuth} />
+                    <Lobby onAuth={handleSetAuth} />
                 ) : (
-                    <Suspense fallback={<LoadingView status={SESSION_RESTORING} onLeave={clearAuth} />}>
-                        <GameView auth={auth} onLeave={clearAuth} />
+                    <Suspense fallback={<LoadingView status={SESSION_RESTORING} onLeave={requestLeave} errorMessage={leaveError} />}>
+                        <GameView auth={auth} onLeave={() => {
+                            if (getCurrentAuth()?.token !== auth.token) return;
+                            savePersistedGameEnd(auth.roomId, null);
+                            clearAuth(auth.token);
+                        }} onRequestLeave={requestLeave} leaveError={leaveError} />
                     </Suspense>
                 )}
             </ErrorBoundary>

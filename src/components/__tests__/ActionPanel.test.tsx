@@ -26,43 +26,30 @@ const mockMe: Player = {
     hasFolded: false,
 };
 
-function renderActionPanel({
-    gameState = mockGameState,
-    me = mockMe,
-    isMyTurn = true,
-    isSelfDisconnected = false,
-    isReadyCountdownActive = false,
-    currentTurnPlayerName = 'TestPlayer',
-    isMobileLandscape = false,
-    isCompactTable = false,
-    raiseAmount = '',
-    raiseError = null,
-    actionError = null,
-    onRaiseChange = vi.fn(),
-    onAction = vi.fn(),
-    isActionPending = false,
-    bigBlind = 20,
-}: Partial<Parameters<typeof ActionPanel>[0]> = {}) {
+function renderActionPanel(props: Partial<Parameters<typeof ActionPanel>[0]> = {}) {
+    const onAction = props.onAction ?? vi.fn();
+    const onRaiseChange = props.onRaiseChange ?? vi.fn();
     return {
         onAction,
         onRaiseChange,
         ...render(
             <ActionPanel
-                gameState={gameState}
-                me={me}
-                isMyTurn={isMyTurn}
-                isSelfDisconnected={isSelfDisconnected}
-                isReadyCountdownActive={isReadyCountdownActive}
-                currentTurnPlayerName={currentTurnPlayerName}
-                isMobileLandscape={isMobileLandscape}
-                isCompactTable={isCompactTable}
-                raiseAmount={raiseAmount}
-                raiseError={raiseError}
-                actionError={actionError}
+                gameState={mockGameState}
+                me={mockMe}
+                isMyTurn={true}
+                isSelfDisconnected={false}
+                isReadyCountdownActive={false}
+                currentTurnPlayerName="TestPlayer"
+                isMobileLandscape={false}
+                isCompactTable={false}
+                raiseAmount=""
+                raiseError={null}
+                actionError={null}
                 onRaiseChange={onRaiseChange}
                 onAction={onAction}
-                isActionPending={isActionPending}
-                bigBlind={bigBlind}
+                isActionPending={false}
+                bigBlind={20}
+                {...props}
             />,
         ),
     };
@@ -154,6 +141,75 @@ describe('ActionPanel', () => {
         expect(onClearRaiseError).toHaveBeenCalled();
     });
 
+    it('keeps turn action buttons usable after a transient server error', async () => {
+        const user = userEvent.setup();
+        const onAction = vi.fn();
+        renderActionPanel({
+            gameState: { ...mockGameState, currentBet: 10, legalActions: ['FOLD', 'CHECK', 'RAISE'] },
+            me: { ...mockMe, currentBet: 10 },
+            isMyTurn: true,
+            actionError: { type: 'ACTION_ERROR', code: 'SERVER_UNAVAILABLE', action: 'CHECK', message: 'Server unavailable' },
+            onAction,
+        });
+
+        expect(screen.getByRole('alert')).toHaveTextContent('Server unavailable');
+        const foldBtn = screen.getByRole('button', { name: /fold/i });
+        const checkBtn = screen.getByRole('button', { name: /check/i });
+        const raiseBtn = screen.getByRole('button', { name: /^raise$/i });
+
+        expect(foldBtn).toBeEnabled();
+        expect(checkBtn).toBeEnabled();
+        expect(raiseBtn).toBeEnabled();
+
+        await user.click(foldBtn);
+        expect(onAction).toHaveBeenCalledWith('FOLD');
+    });
+
+    it('keeps ready controls usable after a transient server error', async () => {
+        const user = userEvent.setup();
+        const onReady = vi.fn();
+        renderActionPanel({
+            isMyTurn: false,
+            isReadyCountdownActive: true,
+            readyCountdownSecondsRemaining: 5,
+            readyCount: 1,
+            readyEligibleCount: 2,
+            readyEligiblePlayers: [mockMe, { ...mockMe, id: 'player-2', name: 'Bob' }],
+            isReadyEligible: true,
+            amReadyForNextHand: false,
+            actionError: { type: 'ACTION_ERROR', code: 'SERVER_UNAVAILABLE', action: 'READY', message: 'Server unavailable' },
+            onReady,
+        });
+
+        expect(screen.getByRole('alert')).toHaveTextContent('Server unavailable');
+        const readyBtn = screen.getByRole('button', { name: /^ready$/i });
+        expect(readyBtn).toBeEnabled();
+
+        await user.click(readyBtn);
+        expect(onReady).toHaveBeenCalled();
+    });
+
+    it('keeps raise controls usable when raise is rejected with a transient server error', () => {
+        render(<ActionPanel
+            gameState={{ ...mockGameState, currentBet: 10, legalActions: ['FOLD', 'CHECK', 'RAISE'] }}
+            me={{ ...mockMe, currentBet: 10 }}
+            isMyTurn
+            isSelfDisconnected={false}
+            isReadyCountdownActive={false}
+            isMobileLandscape={false}
+            isCompactTable={false}
+            raiseError={null}
+            actionError={{ type: 'ACTION_ERROR', code: 'SERVER_UNAVAILABLE', action: 'RAISE', message: 'Server unavailable' }}
+            onAction={vi.fn()}
+            isActionPending={false}
+        />);
+
+        expect(screen.getByRole('alert')).toHaveTextContent('Server unavailable');
+        expect(screen.getByLabelText(/raise amount/i)).toBeEnabled();
+        expect(screen.getByRole('button', { name: '3BB' })).toBeEnabled();
+        expect(screen.getByRole('button', { name: 'MAX' })).toBeEnabled();
+    });
+
     it('renders fold, check, and a progressive raise button on my turn', () => {
         renderActionPanel({
             gameState: { ...mockGameState, currentBet: 10, legalActions: ['FOLD', 'CHECK', 'RAISE'] },
@@ -232,13 +288,13 @@ describe('ActionPanel', () => {
         await user.click(screen.getByRole('button', { name: /^raise$/i }));
 
         await user.click(screen.getByRole('button', { name: /^3bb$/i }));
-        expect(onRaiseChange).toHaveBeenCalledWith('60');
+        expect(onRaiseChange).toHaveBeenCalledWith('70');
 
         await user.click(screen.getByRole('button', { name: /^1\/2 pot$/i }));
-        expect(onRaiseChange).toHaveBeenCalledWith('50');
+        expect(onRaiseChange).toHaveBeenCalledWith('60');
 
         await user.click(screen.getByRole('button', { name: /^pot$/i }));
-        expect(onRaiseChange).toHaveBeenCalledWith('100');
+        expect(onRaiseChange).toHaveBeenCalledWith('110');
 
         await user.click(screen.getByRole('button', { name: /^max$/i }));
         expect(onRaiseChange).toHaveBeenCalledWith('1000');
@@ -418,7 +474,7 @@ describe('ActionPanel', () => {
 
         // Adjusting the amount calls onRaiseChange (which clears raiseError in parent) and re-enables submission
         await user.click(screen.getByRole('button', { name: '3BB' }));
-        expect(onRaiseChange).toHaveBeenCalledWith('60');
+        expect(onRaiseChange).toHaveBeenCalledWith('70');
 
         rerender(
             <ActionPanel

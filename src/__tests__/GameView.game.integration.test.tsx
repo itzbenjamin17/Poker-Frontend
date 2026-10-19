@@ -17,6 +17,8 @@ describe('GameView - Game Table Integration', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     activeSubscriptions.clear()
+    sessionStorage.clear()
+    localStorage.clear()
   })
 
   it('transitions to table and shows action buttons on player turn', async () => {
@@ -297,7 +299,9 @@ describe('GameView - Game Table Integration', () => {
       })),
       http.get('/api/game/ROOM123/state', () => HttpResponse.json(createValidGameState({
         gameId: 'ROOM123',
+        handNumber: 5,
         phase: 'SHOWDOWN',
+        readyGateState: 'COUNTING_DOWN',
         pot: 300,
         communityCards: ['AH', 'KD', 'QC', 'JS', '2C'],
         currentPlayerId: null,
@@ -320,14 +324,16 @@ describe('GameView - Game Table Integration', () => {
     render(<GameView auth={auth} />)
 
     expect(await screen.findByRole('region', { name: /round result/i })).toBeInTheDocument()
-    expect(screen.getByText(/Opponent/)).toBeInTheDocument()
+    expect(within(screen.getByRole('region', { name: /round result/i })).getByText(/Opponent won!/i)).toBeInTheDocument()
     await MockStompClient.waitForSubscription('/game/ROOM123')
 
     // First ready-up broadcast without winners or revealed holeCards
     await act(async () => {
       MockStompClient.simulateMessage('/game/ROOM123', createValidGameState({
         gameId: 'ROOM123',
+        handNumber: 5,
         phase: 'SHOWDOWN',
+        readyGateState: 'COUNTING_DOWN',
         pot: 0,
         communityCards: ['AH', 'KD', 'QC', 'JS', '2C'],
         currentPlayerId: null,
@@ -346,7 +352,9 @@ describe('GameView - Game Table Integration', () => {
     await act(async () => {
       MockStompClient.simulateMessage('/game/ROOM123', createValidGameState({
         gameId: 'ROOM123',
+        handNumber: 5,
         phase: 'SHOWDOWN',
+        readyGateState: 'COUNTING_DOWN',
         pot: 0,
         communityCards: ['AH', 'KD', 'QC', 'JS', '2C'],
         currentPlayerId: null,
@@ -363,7 +371,7 @@ describe('GameView - Game Table Integration', () => {
 
     const roundResult = screen.getByRole('region', { name: /round result/i })
     expect(roundResult).toBeInTheDocument()
-    expect(within(roundResult).getByText(/Opponent/)).toBeInTheDocument()
+    expect(within(roundResult).getByText(/Opponent won!/i)).toBeInTheDocument()
     const opponentSeat = screen.getByRole('group', { name: /opponent seat/i })
     expect(within(opponentSeat).getByRole('img', { name: /ace of diamonds/i })).toBeInTheDocument()
   })

@@ -8,6 +8,13 @@ export function getPotBreakdown(gameState: Pick<GameState, 'pot' | 'pots'>): num
     return gameState.pots && gameState.pots.length > 0 ? gameState.pots : [gameState.pot];
 }
 
+/** Canonicalizes accepted card spellings for matching and rendering. */
+export function normalizeCardCode(value: string): string | null {
+    const normalized = value.trim().toUpperCase();
+    if (!/^(?:[2-9TJQKA]|10)[CDHS]$/.test(normalized)) return null;
+    return normalized.startsWith('10') ? `T${normalized.slice(2)}` : normalized;
+}
+
 const rankNames: Record<string, string> = {
     '2': '2', '3': '3', '4': '4', '5': '5', '6': '6', '7': '7', '8': '8', '9': '9', 'T': '10', 'J': 'Jack', 'Q': 'Queen', 'K': 'King', 'A': 'Ace'
 };
@@ -27,7 +34,7 @@ export function formatHandRank(handRank?: string, bestHand?: string[]): string |
         return hr.replace(/_/g, ' ');
     }
 
-    const normalizedCards = bestHand.map(c => c.trim().toUpperCase());
+    const normalizedCards = bestHand.map(normalizeCardCode).filter((card): card is string => card !== null);
     const ranks = normalizedCards.map(c => {
         const val = c.slice(0, -1);
         return val === '10' ? 'T' : val;
@@ -114,14 +121,15 @@ export function getShowdownHoleCardState(
         };
     }
 
-    const hasExplicitBestHand = Array.isArray(bestHand) && bestHand.length > 0;
+    const normalizedBestHand = Array.isArray(bestHand) ? bestHand.map(normalizeCardCode).filter((card): card is string => card !== null) : [];
+    const hasExplicitBestHand = normalizedBestHand.length > 0;
     const isCardInBestHand = (card: string) =>
-        hasExplicitBestHand && bestHand.includes(card);
+        hasExplicitBestHand && normalizedBestHand.includes(normalizeCardCode(card) ?? card);
     const isCardHighlighted = (card: string) =>
         isWinner && isCardInBestHand(card);
     const isCardUnused = (card: string) =>
-        hasExplicitBestHand && !bestHand.includes(card);
-    const playsTheBoard = hasExplicitBestHand && holeCards.every((c) => !bestHand.includes(c));
+        hasExplicitBestHand && !normalizedBestHand.includes(normalizeCardCode(card) ?? card);
+    const playsTheBoard = hasExplicitBestHand && holeCards.every((c) => !normalizedBestHand.includes(normalizeCardCode(c) ?? c));
 
     return {
         isCardInBestHand,

@@ -248,7 +248,7 @@ describe('GameUI Adversarial & Stress Testing', () => {
                 { card: '', labelMatch: /of Unknown/i },
                 { card: '9X', labelMatch: /9 of Unknown/i },
                 { card: 'ZZ', labelMatch: /Z of Unknown/i },
-                { card: '10H', labelMatch: /10 of Hearts/i },
+                { card: '10H', labelMatch: /ten of Hearts/i },
             ];
 
             edgeCases.forEach(({ card, labelMatch }) => {

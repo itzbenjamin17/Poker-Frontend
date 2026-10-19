@@ -49,6 +49,7 @@ describe('Disconnect & Leave Edge Cases', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         localStorage.clear();
+        sessionStorage.clear();
         window.innerWidth = 1280;
         window.innerHeight = 800;
         vi.mocked(pokerApi.getRoomInfo).mockResolvedValue({
@@ -76,7 +77,7 @@ describe('Disconnect & Leave Edge Cases', () => {
         vi.restoreAllMocks();
     });
 
-    it('does not flicker GameReviewView when LEAVE_GAME triggers a server GAME_END broadcast before leaveRoom finishes', async () => {
+    it('defers a server GAME_END review during leave and keeps it when departure fails', async () => {
         const transport = new InMemoryTransportAdapter();
         const clock = new TestClock(1000);
         const onLeave = vi.fn();
@@ -98,25 +99,13 @@ describe('Disconnect & Leave Edge Cases', () => {
             initialGameState,
         });
 
-        // When P2 calls leaveGame, the server immediately broadcasts GAME_END to /game/ROOM123
+        // When P2 calls the shared room departure endpoint, the server may broadcast GAME_END to /game/ROOM123
         // before leaveRoom finishes resolving.
-        let resolveLeaveRoom!: () => void;
-        vi.mocked(pokerApi.leaveGame).mockImplementation(async () => {
-            transport.simulateMessage('/game/ROOM123', {
-                type: 'GAME_END',
-                gameId: 'ROOM123',
-                winner: 'P1',
-                winnerChips: 1050,
-                isForfeit: true,
-                message: 'P1 wins by forfeit!',
-                finalState: initialGameState,
-            });
-        });
-        vi.mocked(pokerApi.leaveRoom).mockImplementation(
-            () => new Promise<void>((resolve) => { resolveLeaveRoom = resolve; })
-        );
+        const leaveResolvers: Array<(success: boolean) => void> = [];
+        const requestLeave = vi.fn(() => new Promise<boolean>((resolve) => { leaveResolvers.push(resolve); }));
 
-        render(<GameView auth={{ ...mockAuth, playerName: 'P2' }} onLeave={onLeave} session={session} />);
+        render(<GameView auth={{ ...mockAuth, playerName: 'P2' }} onLeave={onLeave} onRequestLeave={requestLeave}
+            leaveError="Network failure. Try again." session={session} />);
 
         const leaveBtn = await screen.findByRole('button', { name: /leave table/i });
         vi.spyOn(window, 'confirm').mockReturnValue(true);
@@ -125,14 +114,87 @@ describe('Disconnect & Leave Edge Cases', () => {
             leaveBtn.click();
         });
 
-        // While leaveRoom is still in flight, P2 must NOT see the GAME OVER review screen!
-        expect(session.getSnapshot().isGameOver).toBe(false);
+        transport.simulateMessage('/game/ROOM123', {
+            type: 'GAME_END', gameId: 'ROOM123', winner: 'P1', winnerChips: 1050,
+            isForfeit: true, message: 'P1 wins by forfeit!', finalState: initialGameState,
+        });
+
+        // Keep the table visible while the explicit departure is still pending.
+        expect(session.getSnapshot().isGameOver).toBe(true);
         expect(screen.queryByText(/GAME OVER/i)).not.toBeInTheDocument();
 
         await act(async () => {
-            resolveLeaveRoom();
+            leaveResolvers[0](false);
         });
-        expect(onLeave).toHaveBeenCalledTimes(1);
+        expect(await screen.findByRole('region', { name: /game review/i })).toBeInTheDocument();
+        expect(screen.getByRole('alert')).toHaveTextContent(/network failure/i);
+        expect(sessionStorage.getItem('poker-game-end:ROOM123')).not.toBeNull();
+        expect(onLeave).not.toHaveBeenCalled();
+
+        await act(async () => {
+            screen.getByRole('button', { name: /retry leave/i }).click();
+            expect(requestLeave).toHaveBeenCalledTimes(2);
+            leaveResolvers[1](true);
+        });
+        expect(requestLeave).toHaveBeenCalledTimes(2);
+        await act(async () => { await Promise.resolve(); });
+        expect(sessionStorage.getItem('poker-game-end:ROOM123')).toBeNull();
+    });
+
+    it('clears a GAME_END review after a successful standalone fallback leave and provider effects', async () => {
+        const transport = new InMemoryTransportAdapter();
+        const session = new GameSession({
+            auth: { ...mockAuth, playerName: 'P2' },
+            transport,
+            clock: new TestClock(1000),
+            initialRoomState: {
+                roomId: 'ROOM123', roomName: 'Test',
+                players: [{ name: 'P1', isHost: true }, { name: 'P2', isHost: false }],
+                gameStarted: true,
+            },
+            initialGameState,
+        });
+        let resolveLeave!: () => void;
+        vi.mocked(pokerApi.leaveRoom).mockReturnValueOnce(new Promise<void>((resolve) => { resolveLeave = resolve; }));
+        vi.spyOn(window, 'confirm').mockReturnValue(true);
+
+        render(<GameView auth={{ ...mockAuth, playerName: 'P2' }} session={session} />);
+        const leaveButton = await screen.findByRole('button', { name: /leave table/i });
+
+        await act(async () => {
+            leaveButton.click();
+        });
+        await act(async () => {
+            transport.simulateMessage('/game/ROOM123', {
+                type: 'GAME_END', gameId: 'ROOM123', winner: 'P1', winnerChips: 1050,
+                isForfeit: true, message: 'P1 wins by forfeit!', finalState: initialGameState,
+            });
+            resolveLeave();
+            await Promise.resolve();
+        });
+        expect(session.getSnapshot().gameEndResult).not.toBeNull();
+        await act(async () => { await Promise.resolve(); });
+
+        expect(pokerApi.leaveRoom).toHaveBeenCalledTimes(1);
+        expect(sessionStorage.getItem('poker-game-end:ROOM123')).toBeNull();
+    });
+
+    it('shows a failed leave and keeps retry available while a started game is still hydrating', async () => {
+        const transport = new InMemoryTransportAdapter();
+        const session = new GameSession({ auth: mockAuth, transport, clock: new TestClock(1000), initialRoomState: {
+            roomId: 'ROOM123', roomName: 'Test', players: [{ name: 'P1', isHost: true }], gameStarted: true,
+        } });
+        session.setHydrated(true);
+        vi.mocked(pokerApi.getGameState).mockImplementation(() => new Promise(() => {}));
+        const requestLeave = vi.fn().mockResolvedValue(false);
+        vi.spyOn(window, 'confirm').mockReturnValue(true);
+
+        render(<GameView auth={mockAuth} session={session} onRequestLeave={requestLeave} leaveError="Could not leave the room. Try again." />);
+
+        expect(await screen.findByText('Could not leave the room. Try again.')).toBeInTheDocument();
+        await act(async () => screen.getByRole('button', { name: /leave table/i }).click());
+        expect(requestLeave).toHaveBeenCalledTimes(1);
+        expect(screen.getByText('Could not leave the room. Try again.')).toBeInTheDocument();
     });
 
     it('schedules redirect to lobby when ACTION_ERROR reports "Game not found"', () => {

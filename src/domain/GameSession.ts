@@ -32,7 +32,6 @@ import { logger } from '../security/logger';
 import { SystemClock, type Clock, type TimerHandle } from './clock';
 import type { GameTransport, TransportStatus, TransportSubscription } from '../services/transport';
 
-const SHOWDOWN_FALLBACK_HIDE_MS = 65_000;
 const ROOM_CLOSED_REDIRECT_MS = 3_000;
 const ACTION_LOCK_TIMEOUT_MS = 3_000;
 const BASE_RETRY_DELAY_MS = 1_000;
@@ -68,13 +67,13 @@ export class GameSession {
 
     private actionTimeoutTimers = new Map<string, TimerHandle>();
     private notificationTimer: TimerHandle | null = null;
-    private showdownTimer: TimerHandle | null = null;
-    private showdownHideAt: number | null = null;
     private redirectTimer: TimerHandle | null = null;
     private recoveryTimer: TimerHandle | null = null;
     private inFlightRecovery: Promise<void> | null = null;
     private recoveryRetryAttempt = 0;
     private recoveryGeneration = 0;
+    private serverClockOffsetMs = 0;
+    private notificationSequence = 0;
 
     private snapshot: SessionSnapshot;
 
@@ -100,6 +99,7 @@ export class GameSession {
             showdown: null,
             showdownResult: null,
             notification: null,
+            notificationSequence: 0,
             loadingStatus: 'Connecting...',
             myPlayerId: null,
             claimPending: false,
@@ -141,6 +141,8 @@ export class GameSession {
     public now = (): number => {
         return this.clock.now();
     };
+
+    public displayNow = (): number => this.clock.now() + this.serverClockOffsetMs;
 
     public subscribe = (listener: () => void): (() => void) => {
         this.listeners.add(listener);
@@ -302,7 +304,12 @@ export class GameSession {
                     logger.warn('Invalid ACTION_ERROR contract:', { bytes: body.length });
                     return;
                 }
-                this.cancelActionLocks();
+                if (parsed.action === 'READY' || parsed.action === 'UNREADY') {
+                    this.releaseActionLock(parsed.action);
+                    this.setNotification(normalizeErrorMessage(parsed.message) || 'Could not update readiness. Please try again.');
+                } else {
+                    this.cancelActionLocks();
+                }
                 this.updateSnapshot(() => ({ error: parsed }));
                 if (parsed.code === 'GAME_NOT_FOUND') this.scheduleRedirect(SESSION_EXPIRED);
                 return;
@@ -347,9 +354,9 @@ export class GameSession {
         this.clearNotificationTimer();
         this.cancelRecovery();
         this.updateSnapshot(() => ({
-            notification: cleanMsg,
             loadingStatus: cleanMsg || STATUS_RETURNING,
         }));
+        this.setNotification(cleanMsg, 0);
         this.clearRedirectTimer();
         this.redirectTimer = this.clock.setTimeout(() => {
             this.onLeave?.();
@@ -369,9 +376,9 @@ export class GameSession {
                 if (this.snapshot.isGameOver) return;
                 this.clearNotificationTimer();
                 this.cancelRecovery();
+                this.setNotification(HOST_LEFT, 0);
                 this.updateSnapshot(() => ({
                     roomState: null,
-                    notification: HOST_LEFT,
                     loadingStatus: HOST_LEFT,
                 }));
                 this.clearRedirectTimer();
@@ -489,6 +496,10 @@ export class GameSession {
                 uncalledAmount: fs.uncalledAmount ?? undefined,
                 isReadyCountdownActive: fs.isReadyCountdownActive ?? undefined,
                 readyCountdownDeadlineEpochMs: fs.readyCountdownDeadlineEpochMs ?? undefined,
+                handNumber: typeof fs.handNumber === 'number' ? fs.handNumber : undefined,
+                stateRevision: typeof fs.stateRevision === 'number' ? fs.stateRevision : undefined,
+                serverTimeEpochMs: typeof fs.serverTimeEpochMs === 'number' ? fs.serverTimeEpochMs : undefined,
+                readyGateState: fs.readyGateState ?? undefined,
             };
         }
 
@@ -531,18 +542,45 @@ export class GameSession {
             pots: payload.pots ?? undefined,
             isReadyCountdownActive: payload.isReadyCountdownActive ?? undefined,
             readyCountdownDeadlineEpochMs: payload.readyCountdownDeadlineEpochMs ?? undefined,
+            handNumber: typeof payload.handNumber === 'number' ? payload.handNumber : undefined,
+            stateRevision: typeof payload.stateRevision === 'number' ? payload.stateRevision : undefined,
+            serverTimeEpochMs: payload.serverTimeEpochMs ?? undefined,
+            readyGateState: payload.readyGateState ?? undefined,
         };
 
         if (incomingData.phase !== 'SHOWDOWN') {
             incomingData.isReadyCountdownActive = false;
             incomingData.readyCountdownDeadlineEpochMs = undefined;
+            if (incomingData.readyGateState === undefined) incomingData.readyGateState = 'CLOSED';
+        } else if (incomingData.readyGateState === 'CLOSED' || incomingData.readyGateState === 'WAITING_FOR_PLAYERS') {
+            incomingData.isReadyCountdownActive = false;
+            incomingData.readyCountdownDeadlineEpochMs = undefined;
+        } else if (incomingData.readyGateState === 'COUNTING_DOWN') {
+            incomingData.isReadyCountdownActive = true;
         }
 
         const previousState = this.snapshot.gameState;
+        if (previousState && typeof incomingData.handNumber === 'number' && typeof previousState.handNumber === 'number') {
+            if (incomingData.handNumber < previousState.handNumber) return false;
+            if (incomingData.handNumber === previousState.handNumber
+                    && typeof incomingData.stateRevision === 'number'
+                    && typeof previousState.stateRevision === 'number'
+                    && incomingData.stateRevision < previousState.stateRevision) {
+                return false;
+            }
+        }
+        if (typeof payload.serverTimeEpochMs === 'number') {
+            this.serverClockOffsetMs = payload.serverTimeEpochMs - this.clock.now();
+        }
+        const sameHand = !previousState || incomingData.handNumber === undefined || previousState.handNumber === undefined
+            ? incomingData.phase === 'SHOWDOWN'
+            : incomingData.handNumber === previousState.handNumber;
         let data = incomingData;
         const hadWinnersBefore = Boolean(previousState?.winners && previousState.winners.length > 0);
 
-        if (previousState?.phase === 'SHOWDOWN' && incomingData.phase === 'SHOWDOWN') {
+        if (sameHand && previousState?.phase === 'SHOWDOWN' && incomingData.phase === 'SHOWDOWN'
+                && incomingData.readyGateState === undefined
+                && incomingData.isReadyCountdownActive === undefined) {
             const prevReadyActive = Boolean(previousState.isReadyCountdownActive);
             const inReadyActive = Boolean(incomingData.isReadyCountdownActive);
             const prevDeadline =
@@ -580,13 +618,8 @@ export class GameSession {
             }
         } else if (previousState?.phase !== 'SHOWDOWN' && incomingData.phase === 'SHOWDOWN') {
             // Guard against stale SHOWDOWN packets arriving after hand transitioned
-            const inDeadline =
-                typeof incomingData.readyCountdownDeadlineEpochMs === 'number'
-                    ? incomingData.readyCountdownDeadlineEpochMs
-                    : 0;
-            if (incomingData.isReadyCountdownActive && inDeadline > 0 && inDeadline <= this.clock.now()) {
-                return false;
-            }
+            // A past wall-clock deadline can reflect client/server skew. The
+            // authoritative SHOWDOWN snapshot remains valid during hydration.
         }
 
         if (typeof syncTime === 'number' && syncTime > this.lastStateSyncTime) {
@@ -597,7 +630,7 @@ export class GameSession {
         this.cancelActionLocks();
 
         // Preserve non-zero pot during showdown if server reports 0
-        if (data.phase === 'SHOWDOWN' && data.pot === 0 && previousState && previousState.pot > 0) {
+        if (sameHand && data.phase === 'SHOWDOWN' && data.pot === 0 && previousState && previousState.pot > 0) {
             data = {
                 ...data,
                 pot: previousState.pot,
@@ -613,7 +646,7 @@ export class GameSession {
             if (!hadWinnersBefore) nextShowdownResult = null;
             nextShowdown = data;
             nextShowdownResult = data;
-        } else if (data.phase === 'SHOWDOWN') {
+        } else if (data.phase === 'SHOWDOWN' && sameHand) {
             const currentShowdownResult =
                 this.snapshot.showdownResult ?? (previousState?.phase === 'SHOWDOWN' ? previousState : null);
             if (currentShowdownResult) {
@@ -652,23 +685,7 @@ export class GameSession {
             this.clearShowdownTimers();
         }
 
-        if (data.phase === 'SHOWDOWN') {
-            const deadline =
-                data.isReadyCountdownActive &&
-                typeof data.readyCountdownDeadlineEpochMs === 'number' &&
-                data.readyCountdownDeadlineEpochMs > 0
-                    ? data.readyCountdownDeadlineEpochMs
-                    : undefined;
-            const hideAt = deadline ?? this.showdownHideAt ?? this.clock.now() + SHOWDOWN_FALLBACK_HIDE_MS;
-            if (hideAt <= this.clock.now()) {
-                this.clearShowdownTimers();
-                this.showdownHideAt = hideAt;
-                nextShowdown = null;
-                nextShowdownResult = null;
-            } else {
-                this.scheduleShowdownHide(data);
-            }
-        }
+        if (data.phase === 'SHOWDOWN') this.clearShowdownTimers();
 
         let myPlayerId = this.snapshot.myPlayerId;
         const myPlayer = data.players.find((p) => p.name === this.auth.playerName);
@@ -679,6 +696,7 @@ export class GameSession {
         this.updateSnapshot(() => ({
             gameState: data,
             error: data.phase !== previousState?.phase || data.gameId !== previousState?.gameId ||
+                data.handNumber !== previousState?.handNumber ||
                 data.currentPlayerName !== this.auth.playerName ? null : this.snapshot.error,
             showdown: nextShowdown,
             showdownResult: nextShowdownResult,
@@ -1092,6 +1110,7 @@ export class GameSession {
         this.clearNotificationTimer();
         this.updateSnapshot(() => ({
             notification: msg,
+            notificationSequence: msg === null ? this.notificationSequence : ++this.notificationSequence,
         }));
 
         if (msg !== null && ms > 0) {
@@ -1114,36 +1133,7 @@ export class GameSession {
     // ── Showdown Timers ───────────────────────────────────────────────────────────
 
     public clearShowdownTimers = (): void => {
-        this.showdownHideAt = null;
-        if (this.showdownTimer !== null) {
-            this.clock.clearTimeout(this.showdownTimer);
-            this.showdownTimer = null;
-        }
-    };
-
-    public scheduleShowdownHide = (state: GameState): void => {
-        const previousHideAt = this.showdownHideAt;
-        this.clearShowdownTimers();
-
-        if (state.phase !== 'SHOWDOWN') return;
-
-        const deadlineMs =
-            state.isReadyCountdownActive &&
-            typeof state.readyCountdownDeadlineEpochMs === 'number' &&
-            state.readyCountdownDeadlineEpochMs > 0
-                ? state.readyCountdownDeadlineEpochMs
-                : undefined;
-
-        this.showdownHideAt = deadlineMs ?? previousHideAt ?? this.clock.now() + SHOWDOWN_FALLBACK_HIDE_MS;
-        const delay = Math.max(0, this.showdownHideAt - this.clock.now());
-
-        this.showdownTimer = this.clock.setTimeout(() => {
-            this.showdownTimer = null;
-            this.updateSnapshot(() => ({
-                showdown: null,
-                showdownResult: null,
-            }));
-        }, delay);
+        // Showdown timer retired; showdown results remain visible until next hand or departure.
     };
 
     private clearRedirectTimer(): void {

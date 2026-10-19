@@ -1,6 +1,6 @@
 import { test, expect, type BrowserContext } from './fixtures';
 
-test.describe('Item 33: Cross-tab authentication and synchronization', () => {
+test.describe('Tab-local authentication', () => {
   let contexts: BrowserContext[] = [];
 
   test.afterEach(async () => {
@@ -10,7 +10,7 @@ test.describe('Item 33: Cross-tab authentication and synchronization', () => {
     contexts = [];
   });
 
-  test('opening a second tab shares auth, and leaving in tab A redirects tab B to lobby', async ({
+  test('a second tab does not adopt tab A auth or follow tab A leave', async ({
     browser,
     createRoom,
     joinRoom,
@@ -40,16 +40,15 @@ test.describe('Item 33: Cross-tab authentication and synchronization', () => {
     const tabB = await hostContext.newPage();
     await tabB.goto('/');
 
-    // Tab B shares auth session and is immediately in the room
-    await expect(tabB.getByText(/game lobby/i)).toBeVisible();
-    await expect(tabB.getByText(roomName).first()).toBeVisible();
+    // Tab B starts with an independent, unauthenticated session.
+    await expect(tabB.getByRole('button', { name: /create game/i })).toBeVisible();
 
     // 3. Start game so host is at the active game table
     await tabA.getByRole('button', { name: /start game/i }).click();
 
-    // Both tabs should transition to the Game Table view
+    // Tab A enters the game while Tab B stays in its own lobby.
     await expect(tabA.getByRole('button', { name: /leave table/i })).toBeVisible();
-    await expect(tabB.getByRole('button', { name: /leave table/i })).toBeVisible();
+    await expect(tabB.getByRole('button', { name: /create game/i })).toBeVisible();
 
     // 4. Tab A clicks "Leave Table"
     tabA.on('dialog', async (dialog) => {
@@ -60,7 +59,7 @@ test.describe('Item 33: Cross-tab authentication and synchronization', () => {
     // Tab A clears auth and returns to lobby home
     await expect(tabA.getByRole('button', { name: /create game/i })).toBeVisible();
 
-    // 5. Tab B detects storage event (poker-auth removed) and returns to lobby home
+    // Tab B remains in its independent lobby throughout.
     await expect(tabB.getByRole('button', { name: /create game/i })).toBeVisible();
   });
 });

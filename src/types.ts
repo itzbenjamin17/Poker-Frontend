@@ -5,6 +5,7 @@ export { cn };
 export type PlayerStatus = 'ACTIVE' | 'FOLDED' | 'OUT' | 'ALL_IN' | 'DISCONNECTED';
 export type WsStatus = 'connected' | 'reconnecting' | 'disconnected';
 export type GamePhase = 'PRE_FLOP' | 'FLOP' | 'TURN' | 'RIVER' | 'SHOWDOWN';
+export type ReadyGateState = 'CLOSED' | 'COUNTING_DOWN' | 'WAITING_FOR_PLAYERS';
 export type PokerAction = 'FOLD' | 'CHECK' | 'CALL' | 'BET' | 'RAISE' | 'ALL_IN';
 
 export interface Player {
@@ -29,6 +30,10 @@ export interface Player {
 
 export interface GameState {
     gameId: string;
+    handNumber?: number;
+    stateRevision?: number;
+    serverTimeEpochMs?: number;
+    readyGateState?: ReadyGateState;
     maxPlayers: number;
     pot: number;
     pots?: number[];
@@ -130,6 +135,10 @@ export type IncomingGameStatePayload = Omit<
     | 'pots'
     | 'isReadyCountdownActive'
     | 'readyCountdownDeadlineEpochMs'
+    | 'handNumber'
+    | 'stateRevision'
+    | 'serverTimeEpochMs'
+    | 'readyGateState'
 > & {
     gameId?: string;
     claimWinAvailable?: boolean | null;
@@ -138,6 +147,10 @@ export type IncomingGameStatePayload = Omit<
     pots?: number[] | null;
     isReadyCountdownActive?: boolean | null;
     readyCountdownDeadlineEpochMs?: number | null;
+    handNumber?: number | null;
+    stateRevision?: number | null;
+    serverTimeEpochMs?: number | null;
+    readyGateState?: ReadyGateState | null;
 };
 
 export type IncomingPrivateStatePayload = {
@@ -164,7 +177,7 @@ export type TableTier = 'compact' | 'standard' | 'wide';
 export interface ActionError {
     type: 'ACTION_ERROR';
     code: string;
-    action: PokerAction;
+    action: PokerAction | 'READY' | 'UNREADY';
     message: string;
 }
 
@@ -183,6 +196,7 @@ export interface SessionSnapshot {
     showdown: GameState | null;
     showdownResult: GameState | null;
     notification: string | null;
+    notificationSequence?: number;
     loadingStatus: string;
     myPlayerId: string | null;
     claimPending: boolean;

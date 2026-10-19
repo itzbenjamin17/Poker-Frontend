@@ -65,6 +65,7 @@ describe('GameTableView', () => {
         raiseError: null,
         onAction: vi.fn(),
         onReady: vi.fn(),
+        onUnready: vi.fn(),
         onClaimWin: vi.fn(),
         onLeaveGame: vi.fn(),
         onRaiseChange: vi.fn(),
@@ -238,6 +239,37 @@ describe('GameTableView', () => {
 
             expect(screen.queryByRole('region', { name: /round result/i })).not.toBeInTheDocument();
             expect(screen.getByRole('region', { name: /action dock/i })).toBeInTheDocument();
+        });
+
+        it('wires the fallback Unready control and respects pending state', async () => {
+            const user = (await import('@testing-library/user-event')).default.setup();
+            const readyHero = { ...defaultPlayer, isReadyForNextHand: true };
+            const showdownState: GameState = {
+                ...mockGameState, phase: 'SHOWDOWN', players: [readyHero, opponentPlayer],
+                readyGateState: 'COUNTING_DOWN', isReadyCountdownActive: true,
+                readyCountdownDeadlineEpochMs: 112000,
+            };
+            const { unmount } = render(<GameTableView {...defaultProps} gameState={showdownState} nowMs={100000} />);
+            const unready = screen.getByRole('button', { name: /^unready$/i });
+            expect(unready).toBeEnabled();
+            await user.click(unready);
+            expect(defaultProps.onUnready).toHaveBeenCalledTimes(1);
+            expect(defaultProps.onReady).not.toHaveBeenCalled();
+
+            unmount();
+            render(<GameTableView {...defaultProps} gameState={showdownState} nowMs={100000} isActionPending />);
+            expect(screen.getByRole('button', { name: /^unready$/i })).toBeDisabled();
+        });
+
+        it('shows the authoritative waiting-for-players gate in the SHOWDOWN fallback', () => {
+            const waitingState: GameState = {
+                ...mockGameState,
+                phase: 'SHOWDOWN',
+                readyGateState: 'WAITING_FOR_PLAYERS',
+                isReadyCountdownActive: false,
+            };
+            render(<GameTableView {...defaultProps} gameState={waitingState} showdownResult={null} />);
+            expect(screen.getByText('Hand complete — waiting for players')).toBeInTheDocument();
         });
     });
 

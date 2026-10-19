@@ -148,7 +148,7 @@ describe('GameSession Domain Store', () => {
             transport.simulateMessage('/game/room-123', flopState);
 
             expect(session.getSnapshot().gameState?.phase).toBe('FLOP');
-            expect(session.getSnapshot().gameState?.communityCards).toEqual(['As', 'Kd', 'Qc']);
+            expect(session.getSnapshot().gameState?.communityCards).toEqual(['AS', 'KD', 'QC']);
             expect(session.getSnapshot().gameState?.pot).toBe(50);
         });
 
@@ -287,7 +287,7 @@ describe('GameSession Domain Store', () => {
             session.disconnect();
         });
 
-        it('preserves pot during showdown and clears showdown after countdown ticks', () => {
+        it('preserves the showdown result after countdown expiry until the server advances the hand', () => {
             const { session, transport, clock } = createSession(new TestClock(10_000));
             session.connect();
             transport.simulateStatus('connected');
@@ -337,10 +337,10 @@ describe('GameSession Domain Store', () => {
             clock.tick(4999);
             expect(session.getSnapshot().showdown).not.toBeNull();
 
-            // Reaching deadline clears showdown
+            // Countdown time controls only the display; the result remains authoritative.
             clock.tick(1);
-            expect(session.getSnapshot().showdown).toBeNull();
-            expect(session.getSnapshot().showdownResult).toBeNull();
+            expect(session.getSnapshot().showdown).not.toBeNull();
+            expect(session.getSnapshot().showdownResult?.winners).toEqual(['Hero']);
         });
 
         it('cancels showdown timers immediately when next hand starts', () => {
@@ -367,6 +367,7 @@ describe('GameSession Domain Store', () => {
             clock.tick(2000);
             transport.simulateMessage('/game/room-123', {
                 phase: 'PRE_FLOP',
+                handNumber: 2,
                 pot: 15,
                 currentBet: 10,
                 communityCards: [],
@@ -392,6 +393,7 @@ describe('GameSession Domain Store', () => {
             // Currently in PRE_FLOP
             transport.simulateMessage('/game/room-123', {
                 phase: 'PRE_FLOP',
+                handNumber: 2,
                 pot: 15,
                 currentBet: 10,
                 communityCards: [],
@@ -404,6 +406,7 @@ describe('GameSession Domain Store', () => {
             // Stale SHOWDOWN packet arrives with already expired deadline (19_000 <= 20_000)
             transport.simulateMessage('/game/room-123', {
                 phase: 'SHOWDOWN',
+                handNumber: 1,
                 pot: 300,
                 currentBet: 0,
                 communityCards: ['Ah', 'Kh'],
@@ -419,12 +422,13 @@ describe('GameSession Domain Store', () => {
             expect(session.getSnapshot().showdown).toBeNull();
         });
 
-        it('does not clear a PLAY_ACTION lock or advance the revision for an expired SHOWDOWN frame', () => {
+        it('ignores an older hand before changing the clock or action lock', () => {
             const { session, transport } = createSession(new TestClock(20_000));
             session.connect();
             transport.simulateStatus('connected');
             transport.simulateMessage('/game/room-123', createValidGameState({
                 gameId: 'room-123',
+                handNumber: 2,
                 players: [createValidPlayer({ id: 'hero-id', name: 'Hero' })],
             }));
             session.playAction('CHECK');
@@ -433,6 +437,8 @@ describe('GameSession Domain Store', () => {
             transport.simulateMessage('/game/room-123', createValidGameState({
                 gameId: 'room-123',
                 phase: 'SHOWDOWN',
+                handNumber: 1,
+                serverTimeEpochMs: 999_000,
                 currentPlayerName: '',
                 currentPlayerId: '',
                 isReadyCountdownActive: true,
@@ -442,9 +448,115 @@ describe('GameSession Domain Store', () => {
             expect(session.getSnapshot().pendingActions.has('PLAY_ACTION')).toBe(true);
             expect(session.getStateSyncRevision()).toBe(revisionBefore);
             expect(session.getSnapshot().gameState?.phase).toBe('PRE_FLOP');
+            expect(session.displayNow()).toBe(20_000);
         });
 
-        it('does not resurrect showdown when a duplicate frame arrives at the exact deadline', () => {
+        it('accepts initial hydration with stateRevision', () => {
+            const { session } = createSession();
+            expect(session.getSnapshot().gameState).toBeNull();
+
+            const accepted = session.applyGameState(createValidGameState({
+                handNumber: 1,
+                stateRevision: 1,
+                pot: 50,
+            }) as unknown as IncomingGameStatePayload);
+
+            expect(accepted).toBe(true);
+            expect(session.getSnapshot().gameState?.handNumber).toBe(1);
+            expect(session.getSnapshot().gameState?.stateRevision).toBe(1);
+            expect(session.getSnapshot().gameState?.pot).toBe(50);
+        });
+
+        it('rejects stale snapshot with lower stateRevision on the same hand', () => {
+            const { session, transport } = createSession();
+            session.connect();
+            transport.simulateStatus('connected');
+
+            // Newer WebSocket update applied first (hand 2, stateRevision 5)
+            session.applyGameState(createValidGameState({
+                handNumber: 2,
+                stateRevision: 5,
+                pot: 100,
+            }) as unknown as IncomingGameStatePayload);
+
+            // Stale REST snapshot arrives later with stateRevision 4 for same hand 2
+            const accepted = session.applyGameState(createValidGameState({
+                handNumber: 2,
+                stateRevision: 4,
+                pot: 50,
+            }) as unknown as IncomingGameStatePayload);
+
+            expect(accepted).toBe(false);
+            expect(session.getSnapshot().gameState?.stateRevision).toBe(5);
+            expect(session.getSnapshot().gameState?.pot).toBe(100);
+        });
+
+        it('accepts newer snapshot with higher stateRevision on the same hand', () => {
+            const { session, transport } = createSession();
+            session.connect();
+            transport.simulateStatus('connected');
+
+            session.applyGameState(createValidGameState({
+                handNumber: 2,
+                stateRevision: 5,
+                pot: 100,
+            }) as unknown as IncomingGameStatePayload);
+
+            const accepted = session.applyGameState(createValidGameState({
+                handNumber: 2,
+                stateRevision: 6,
+                pot: 150,
+            }) as unknown as IncomingGameStatePayload);
+
+            expect(accepted).toBe(true);
+            expect(session.getSnapshot().gameState?.stateRevision).toBe(6);
+            expect(session.getSnapshot().gameState?.pot).toBe(150);
+        });
+
+        it('accepts the recovered same-hand revision that follows its pre-restart snapshot', () => {
+            const { session } = createSession();
+            session.applyGameState(createValidGameState({
+                handNumber: 7,
+                stateRevision: 18,
+                pot: 100,
+            }) as unknown as IncomingGameStatePayload);
+
+            const accepted = session.applyGameState(createValidGameState({
+                handNumber: 7,
+                stateRevision: 19,
+                pot: 125,
+            }) as unknown as IncomingGameStatePayload);
+
+            expect(accepted).toBe(true);
+            expect(session.getSnapshot().gameState?.stateRevision).toBe(19);
+            expect(session.getSnapshot().gameState?.pot).toBe(125);
+        });
+
+        it('accepts new hand even if stateRevision is lower than previous hand', () => {
+            const { session, transport } = createSession();
+            session.connect();
+            transport.simulateStatus('connected');
+
+            session.applyGameState(createValidGameState({
+                handNumber: 2,
+                stateRevision: 10,
+                pot: 200,
+            }) as unknown as IncomingGameStatePayload);
+
+            // New hand (handNumber 3) with a lower revision (e.g. 1) must be accepted
+            const accepted = session.applyGameState(createValidGameState({
+                handNumber: 3,
+                stateRevision: 1,
+                pot: 30,
+            }) as unknown as IncomingGameStatePayload);
+
+            expect(accepted).toBe(true);
+            expect(session.getSnapshot().gameState?.handNumber).toBe(3);
+            expect(session.getSnapshot().gameState?.stateRevision).toBe(1);
+            expect(session.getSnapshot().gameState?.pot).toBe(30);
+        });
+
+        it('retains showdown when duplicate frames arrive after the displayed countdown reaches zero', () => {
             const { session, transport, clock } = createSession(new TestClock(1_000));
             session.connect();
             transport.simulateStatus('connected');
@@ -461,12 +573,47 @@ describe('GameSession Domain Store', () => {
             transport.simulateMessage('/game/room-123', showdown);
             expect(session.getSnapshot().showdown).not.toBeNull();
             clock.tick(100);
-            expect(session.getSnapshot().showdown).toBeNull();
+            expect(session.getSnapshot().showdown).not.toBeNull();
 
             transport.simulateMessage('/game/room-123', showdown);
-            expect(session.getSnapshot().showdown).toBeNull();
+            expect(session.getSnapshot().showdown).not.toBeNull();
             clock.tick(250);
-            expect(session.getSnapshot().showdown).toBeNull();
+            expect(session.getSnapshot().showdown).not.toBeNull();
+        });
+
+        it('accepts an initial SHOWDOWN with a past client-clock deadline when server time shows it is current', () => {
+            const { session, transport } = createSession(new TestClock(20_000));
+            session.connect();
+            transport.simulateStatus('connected');
+            transport.simulateMessage('/game/room-123', createValidGameState({
+                phase: 'SHOWDOWN',
+                handNumber: 3,
+                serverTimeEpochMs: 10_000,
+                readyGateState: 'COUNTING_DOWN',
+                isReadyCountdownActive: true,
+                readyCountdownDeadlineEpochMs: 15_000,
+                winners: ['Hero'],
+                players: [createValidPlayer({ id: 'hero-id', name: 'Hero', isWinner: true, chipsWon: 100 })],
+            }));
+
+            expect(session.getSnapshot().gameState?.phase).toBe('SHOWDOWN');
+            expect(session.getSnapshot().showdownResult?.winners).toEqual(['Hero']);
+            expect(session.displayNow()).toBe(10_000);
+        });
+
+        it('honors an explicit ready-gate closure instead of retaining the old deadline', () => {
+            const { session } = createSession(new TestClock(10_000));
+            session.applyGameState(createValidGameState({
+                phase: 'SHOWDOWN', handNumber: 4, readyGateState: 'COUNTING_DOWN',
+                isReadyCountdownActive: true, readyCountdownDeadlineEpochMs: 25_000,
+            }));
+            session.applyGameState(createValidGameState({
+                phase: 'SHOWDOWN', handNumber: 4, readyGateState: 'CLOSED',
+                isReadyCountdownActive: false, readyCountdownDeadlineEpochMs: null,
+            }));
+            expect(session.getSnapshot().gameState?.readyGateState).toBe('CLOSED');
+            expect(session.getSnapshot().gameState?.isReadyCountdownActive).toBe(false);
+            expect(session.getSnapshot().gameState?.readyCountdownDeadlineEpochMs).toBeUndefined();
         });
 
         it('preserves showdown winners, handRank, bestHand, and holeCards across multiple ready-up updates without winners', () => {
@@ -555,10 +702,10 @@ describe('GameSession Domain Store', () => {
             expect(showdownResult?.winners).toEqual(['Alice']);
             expect(showdownResult?.pot).toBe(600);
             expect(showdownResult?.players[0].handRank).toBe('FULL_HOUSE');
-            expect(showdownResult?.players[0].bestHand).toEqual(['Ah', 'Ad', 'As', 'Kc', 'Kh']);
-            expect(showdownResult?.players[0].holeCards).toEqual(['As', 'Kh']);
+            expect(showdownResult?.players[0].bestHand).toEqual(['AH', 'AD', 'AS', 'KC', 'KH']);
+            expect(showdownResult?.players[0].holeCards).toEqual(['AS', 'KH']);
             expect(showdownResult?.players[0].isReadyForNextHand).toBe(true);
-            expect(showdownResult?.players[1].holeCards).toEqual(['Qh', 'Qd']);
+            expect(showdownResult?.players[1].holeCards).toEqual(['QH', 'QD']);
             expect(showdownResult?.players[1].isReadyForNextHand).toBe(true);
             expect(showdown?.winners).toEqual(['Alice']);
             expect(gameState?.winners).toEqual(['Alice']);
@@ -641,6 +788,38 @@ describe('GameSession Domain Store', () => {
             expect(session.getSnapshot().pendingActions.has('PLAY_ACTION')).toBe(false);
             expect(session.getSnapshot().error).toEqual({ type: 'ACTION_ERROR', code: 'MIN_RAISE', action: 'RAISE', message: 'Min raise: 50; yours: 25' });
             expect(session.getSnapshot().notification).toBeNull();
+        });
+
+        it('releases only the matching readiness lock for an explicit readiness rejection', () => {
+            const { session, transport } = createSession();
+            session.connect();
+            transport.simulateStatus('connected');
+            session.ready();
+            session.playAction('CHECK');
+            transport.simulateMessage('/user/queue/private', {
+                type: 'ACTION_ERROR', code: 'READY_REJECTED', action: 'READY', message: 'No longer eligible',
+            });
+            expect(session.getSnapshot().pendingActions.has('READY')).toBe(false);
+            expect(session.getSnapshot().pendingActions.has('PLAY_ACTION')).toBe(true);
+            expect(session.getSnapshot().notification).toBe('No longer eligible');
+            const firstSequence = session.getSnapshot().notificationSequence;
+            session.ready();
+            transport.simulateMessage('/user/queue/private', {
+                type: 'ACTION_ERROR', code: 'READY_REJECTED', action: 'READY', message: 'No longer eligible',
+            });
+            expect(session.getSnapshot().notificationSequence).toBeGreaterThan(firstSequence ?? 0);
+            expect(session.getSnapshot().pendingActions.has('PLAY_ACTION')).toBe(true);
+        });
+
+        it('keeps a readiness lock on a generic private notification', () => {
+            const { session, transport } = createSession();
+            session.connect();
+            transport.simulateStatus('connected');
+            session.ready();
+            transport.simulateMessage('/user/queue/private', {
+                type: 'PLAYER_NOTIFICATION', message: 'Informational only',
+            });
+            expect(session.getSnapshot().pendingActions.has('READY')).toBe(true);
         });
 
         it('accepts an unfamiliar action-error code and replaces prior feedback', () => {
@@ -732,6 +911,14 @@ describe('GameSession Domain Store', () => {
 
             clock.tick(1);
             expect(session.getSnapshot().notification).toBeNull();
+        });
+
+        it('increments notification sequence when identical text is emitted again', () => {
+            const { session } = createSession();
+            session.setNotification('Same message');
+            const firstSequence = session.getSnapshot().notificationSequence;
+            session.setNotification('Same message');
+            expect(session.getSnapshot().notificationSequence).toBe((firstSequence ?? 0) + 1);
         });
 
         it('does not allow an earlier notification timer to overwrite ROOM_CLOSED (HOST_LEFT) notification', () => {

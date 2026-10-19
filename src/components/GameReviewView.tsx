@@ -15,9 +15,11 @@ export interface GameReviewViewProps {
     gameEndResult: GameEndResult | null;
     gameState?: GameState | null;
     onLeave: () => void;
+    leaveError?: string | null;
+    onRetryLeave?: () => void;
 }
 
-export function GameReviewView({ gameEndResult, gameState, onLeave }: GameReviewViewProps) {
+export function GameReviewView({ gameEndResult, gameState, onLeave, leaveError, onRetryLeave }: GameReviewViewProps) {
     if (!gameEndResult) return null;
 
     const winnerName = gameEndResult.winnerName;
@@ -129,13 +131,21 @@ export function GameReviewView({ gameEndResult, gameState, onLeave }: GameReview
 
                 {/* Action */}
                 <div className="flex justify-center pt-8">
-                    <Button
-                        onClick={onLeave}
-                        variant="ghost"
-                        className="w-full max-w-xs px-6 py-4 text-base md:w-auto md:max-w-none md:px-12 md:py-6 md:text-xl font-bold tracking-[0.2em] md:tracking-[0.3em] uppercase border-2 border-white/20 hover:bg-white hover:text-black transition-all"
-                    >
-                        {BTN_LEAVE_REVIEW}
-                    </Button>
+                    <div className="flex w-full max-w-xs flex-col items-center gap-3 md:w-auto md:max-w-none">
+                        {leaveError && <p role="alert" className="text-sm text-red-400 text-center">{leaveError}</p>}
+                        {leaveError && onRetryLeave && (
+                            <Button onClick={onRetryLeave} variant="outline" className="w-full">
+                                Retry leave
+                            </Button>
+                        )}
+                        <Button
+                            onClick={onLeave}
+                            variant="ghost"
+                            className="w-full max-w-xs px-6 py-4 text-base md:w-auto md:max-w-none md:px-12 md:py-6 md:text-xl font-bold tracking-[0.2em] md:tracking-[0.3em] uppercase border-2 border-white/20 hover:bg-white hover:text-black transition-all"
+                        >
+                            {BTN_LEAVE_REVIEW}
+                        </Button>
+                    </div>
                 </div>
             </div>
         </main>

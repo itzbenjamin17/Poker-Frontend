@@ -17,6 +17,8 @@ describe('GameView - Actions & Flows Integration', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         activeSubscriptions.clear();
+        sessionStorage.clear();
+        localStorage.clear();
     });
 
     it('submits Fold action and publishes STOMP frame', async () => {
