@@ -40,8 +40,12 @@ export interface GameState {
     currentPlayerName: string;
     currentPlayerId: string;
     legalActions?: PokerAction[];
+    minimumBetAmount?: number | null;
+    minimumRaiseAmount?: number | null;
     winners?: string[];
-    winningsPerPlayer?: number;
+    winningsPerPlayer?: number | null;
+    handSettled?: boolean | null;
+    carryOverAmount?: number | null;
     isAutoAdvancing?: boolean;
     autoAdvanceMessage?: string;
     isReadyCountdownActive?: boolean;

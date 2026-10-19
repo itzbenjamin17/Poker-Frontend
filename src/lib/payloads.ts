@@ -120,8 +120,10 @@ const gameState = shape({
     phase: member(['PRE_FLOP', 'FLOP', 'TURN', 'RIVER', 'SHOWDOWN']),
     currentBet: nonnegative, communityCards: list(card, 5), players: list(player, 10),
     currentPlayerName: text, currentPlayerId: text,
-    legalActions: optional(list(action, 6)), winners: optional(list(text, 10)),
-    winningsPerPlayer: optional(nonnegative), isAutoAdvancing: optional(boolean),
+    legalActions: optional(list(action, 6)), minimumBetAmount: optional(nullable(nonnegative)),
+    minimumRaiseAmount: optional(nullable(nonnegative)), winners: optional(list(text, 10)),
+    winningsPerPlayer: optional(nullable(nonnegative)), handSettled: optional(nullable(boolean)),
+    carryOverAmount: optional(nullable(nonnegative)), isAutoAdvancing: optional(boolean),
     autoAdvanceMessage: optional(text), isReadyCountdownActive: nullable(boolean),
     readyCountdownDeadlineEpochMs: nullable(nonnegative),
     claimWinAvailable: nullable(boolean), claimWinPlayerName: nullable(text),
@@ -152,7 +154,7 @@ export function decodeGameStatePayload(value: unknown, source?: GameSnapshotSour
         return reject(gameState.diagnose(value, '$')!);
     }
     const decoded = omitNulls(value, [
-        'legalActions', 'winners', 'winningsPerPlayer', 'isAutoAdvancing',
+        'legalActions', 'minimumBetAmount', 'minimumRaiseAmount', 'winners', 'winningsPerPlayer', 'handSettled', 'carryOverAmount', 'isAutoAdvancing',
         'autoAdvanceMessage',
     ]);
     // The backend uses null when no player currently has the turn.

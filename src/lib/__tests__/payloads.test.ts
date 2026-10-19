@@ -18,6 +18,13 @@ import { createValidGameState, createValidPlayer } from '../../test/fixtures';
 
 describe('lib/payloads - Type Guards and Normalizers', () => {
     describe('isGameStatePayload', () => {
+        it('accepts nullable awards and empty legal actions, but rejects unsafe minima', () => {
+            expect(isGameStatePayload(createValidGameState({
+                legalActions: [], minimumBetAmount: null, minimumRaiseAmount: 60,
+                winningsPerPlayer: null, handSettled: true, carryOverAmount: 10,
+            }))).toBe(true);
+            expect(isGameStatePayload(createValidGameState({ minimumRaiseAmount: Number.MAX_SAFE_INTEGER + 1 }))).toBe(false);
+        });
         it('returns true for a valid complete game state payload', () => {
             const valid = createValidGameState({
                 pot: 30,

@@ -607,8 +607,9 @@ export class GameSession {
 
         let nextShowdown: GameState | null = this.snapshot.showdown;
         let nextShowdownResult: GameState | null = this.snapshot.showdownResult;
+        const hasAuthoritativeSettlement = data.handSettled === true;
 
-        if (data.winners && data.winners.length > 0) {
+        if ((data.winners && data.winners.length > 0) || hasAuthoritativeSettlement) {
             if (!hadWinnersBefore) nextShowdownResult = null;
             nextShowdown = data;
             nextShowdownResult = data;
@@ -616,22 +617,25 @@ export class GameSession {
             const currentShowdownResult =
                 this.snapshot.showdownResult ?? (previousState?.phase === 'SHOWDOWN' ? previousState : null);
             if (currentShowdownResult) {
+                const settledVoid = hasAuthoritativeSettlement && (data.winners?.length ?? 0) === 0;
                 const mergedPlayers = data.players.map((p) => {
                     const prevP = currentShowdownResult.players.find((prev) => prev.name === p.name);
                     return {
                         ...p,
-                        holeCards: p.holeCards && p.holeCards.length > 0 ? p.holeCards : prevP?.holeCards,
-                        handRank: p.handRank ?? prevP?.handRank,
-                        bestHand: p.bestHand ?? prevP?.bestHand,
-                        isWinner: p.isWinner ?? prevP?.isWinner,
-                        chipsWon: p.chipsWon ?? prevP?.chipsWon,
+                        holeCards: settledVoid ? undefined : (p.holeCards && p.holeCards.length > 0 ? p.holeCards : prevP?.holeCards),
+                        handRank: settledVoid ? undefined : (p.handRank ?? prevP?.handRank),
+                        bestHand: settledVoid ? undefined : (p.bestHand ?? prevP?.bestHand),
+                        isWinner: hasAuthoritativeSettlement ? p.isWinner : (p.isWinner ?? prevP?.isWinner),
+                        chipsWon: hasAuthoritativeSettlement ? p.chipsWon : (p.chipsWon ?? prevP?.chipsWon),
                     };
                 });
                 const mergedState: GameState = {
                     ...data,
                     players: mergedPlayers,
-                    winners: data.winners ?? currentShowdownResult.winners,
-                    winningsPerPlayer: data.winningsPerPlayer ?? currentShowdownResult.winningsPerPlayer,
+                    winners: hasAuthoritativeSettlement ? (data.winners ?? []) : (data.winners ?? currentShowdownResult.winners),
+                    winningsPerPlayer: hasAuthoritativeSettlement ? data.winningsPerPlayer : (data.winningsPerPlayer ?? currentShowdownResult.winningsPerPlayer),
+                    handSettled: data.handSettled ?? currentShowdownResult.handSettled,
+                    carryOverAmount: hasAuthoritativeSettlement ? data.carryOverAmount : (data.carryOverAmount ?? currentShowdownResult.carryOverAmount),
                     pot: data.pot > 0 ? data.pot : currentShowdownResult.pot,
                     pots: data.pots ?? currentShowdownResult.pots,
                 };

@@ -69,6 +69,59 @@ function renderActionPanel({
 }
 
 describe('ActionPanel', () => {
+    it('uses the server full incremental raise minimum as its default', async () => {
+        const user = userEvent.setup();
+        renderActionPanel({
+            gameState: { ...mockGameState, minimumRaiseAmount: 60 },
+        });
+        await user.click(screen.getByRole('button', { name: /^raise$/i }));
+        expect(screen.getByRole('slider', { name: /raise amount/i })).toHaveValue('60');
+        expect(screen.getByText('60')).toBeInTheDocument();
+    });
+    it('submits the backend minimum in incremental chips after the call amount', async () => {
+        const user = userEvent.setup();
+        const onAction = vi.fn();
+        renderActionPanel({
+            gameState: { ...mockGameState, currentBet: 20, minimumRaiseAmount: 60 },
+            me: { ...mockMe, currentBet: 10 },
+            onAction,
+        });
+        await user.click(screen.getByRole('button', { name: /^raise$/i }));
+        await user.click(screen.getByRole('button', { name: /^raise$/i }));
+        expect(onAction).toHaveBeenCalledWith('RAISE', 60);
+    });
+
+    it('suppresses controls for empty authoritative actions or auto-advance despite a stale actor id', () => {
+        const staleActor = { ...mockGameState, currentPlayerId: 'p-1', legalActions: [] };
+        const { rerender } = renderActionPanel({ gameState: staleActor });
+        const actionButtons = () => ['fold', 'check', 'call', 'raise', 'bet', 'all in']
+            .flatMap((name) => screen.queryAllByRole('button', { name: new RegExp(name, 'i') }));
+        expect(actionButtons()).toHaveLength(0);
+
+        rerender(<ActionPanel
+            gameState={{ ...mockGameState, isAutoAdvancing: true }}
+            me={mockMe} isMyTurn isSelfDisconnected={false} isReadyCountdownActive={false}
+            isMobileLandscape={false} isCompactTable={false} raiseError={null} onAction={vi.fn()}
+            isActionPending={false}
+        />);
+        expect(actionButtons()).toHaveLength(0);
+    });
+
+    it('keeps a short whole-stack call available below the server full minimum', async () => {
+        const user = userEvent.setup();
+        const onAction = vi.fn();
+        renderActionPanel({
+            gameState: { ...mockGameState, currentBet: 100, minimumRaiseAmount: 150,
+                legalActions: ['FOLD', 'CALL', 'ALL_IN'] },
+            me: { ...mockMe, chips: 80, currentBet: 20 },
+            onAction,
+        });
+        expect(screen.queryByRole('button', { name: /^raise$/i })).not.toBeInTheDocument();
+        const allIn = screen.getByRole('button', { name: /all in 80/i });
+        expect(allIn).toBeInTheDocument();
+        await user.click(allIn);
+        expect(onAction).toHaveBeenCalledWith('ALL_IN');
+    });
     it('keeps an unfamiliar check error in the Action Panel with its supplied wording', () => {
         renderActionPanel({
             gameState: { ...mockGameState, currentBet: 10, legalActions: ['FOLD', 'CHECK'] },

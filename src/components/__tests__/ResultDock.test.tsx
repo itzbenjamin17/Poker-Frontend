@@ -40,6 +40,31 @@ const showdownState: GameState = {
 };
 
 describe('ResultDock', () => {
+    it('shows distinct contested awards without claiming an equal tie', () => {
+        render(<ResultDock showdownResult={{
+            ...showdownState,
+            winners: ['Hero', 'Villain'],
+            winningsPerPlayer: null,
+            players: showdownState.players.map((player) => ({
+                ...player,
+                chipsWon: player.name === 'Hero' ? 150 : 200,
+            })),
+        }} />);
+        expect(screen.getByText(/contested pots awarded to hero, villain/i)).toBeInTheDocument();
+        expect(screen.getByText(/Hero: \+150 chips · Villain: \+200 chips/)).toBeInTheDocument();
+        expect(screen.queryByText(/tie|equally/i)).not.toBeInTheDocument();
+    });
+
+    it('renders an explicitly settled void hand and its carry-over', () => {
+        render(<ResultDock showdownResult={{
+            ...showdownState,
+            winners: [],
+            handSettled: true,
+            carryOverAmount: 250,
+        }} />);
+        expect(screen.getByText(/hand complete · 250 chips carry over/i)).toBeInTheDocument();
+        expect(screen.queryByText(/processing results/i)).not.toBeInTheDocument();
+    });
     it('renders the Ready button by default when isReadyEligible is omitted', async () => {
         const user = userEvent.setup();
         const onReady = vi.fn();

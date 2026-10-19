@@ -108,8 +108,8 @@ describe('GameView - Collapsed Round Summary Integration', () => {
         });
 
         const summary = await screen.findByRole('region', { name: /round result/i });
-        expect(within(summary).getByText(/it's a tie: testplayer, opponent/i)).toBeInTheDocument();
-        expect(within(summary).getByText(/pot split equally/i)).toBeInTheDocument();
+        expect(within(summary).getByText(/contested pots awarded to testplayer, opponent/i)).toBeInTheDocument();
+        expect(within(summary).queryByText(/tie|equally/i)).not.toBeInTheDocument();
         expect(within(summary).queryByText(/testplayer won!/i)).not.toBeInTheDocument();
         expect(within(summary).getAllByText(/500 Chips/i).length).toBeGreaterThan(0);
     });

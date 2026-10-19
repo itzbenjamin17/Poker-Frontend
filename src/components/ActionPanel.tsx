@@ -157,10 +157,10 @@ export function ActionPanel({
     }, [gameState.legalActions, gameState.currentBet, me]);
 
     const actionType: AmountAction = legalActions.has('BET') ? 'BET' : 'RAISE';
-    const minBetAmount = bigBlind;
-    const minRaiseAmount = actionType === 'BET'
+    const minBetAmount = gameState.minimumBetAmount ?? bigBlind;
+    const minRaiseAmount = gameState.minimumRaiseAmount ?? (actionType === 'BET'
         ? minBetAmount
-        : Math.max(0, (gameState.currentBet || 0) - (me?.currentBet ?? 0)) + minBetAmount;
+        : Math.max(0, (gameState.currentBet || 0) - (me?.currentBet ?? 0)) + minBetAmount);
     const availableChips = me?.chips ?? 0;
     const callAmount = Math.max(0, (gameState.currentBet || 0) - (me?.currentBet ?? 0));
     const clamp = (val: number) => Math.min(availableChips, Math.max(minRaiseAmount, val));

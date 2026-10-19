@@ -4,8 +4,9 @@ import type { GameState } from '../types';
 import {
     SHOWDOWN_ROUND_RESULT,
     SHOWDOWN_PROCESSING,
-    SHOWDOWN_TIE_PREFIX, SHOWDOWN_FORFEIT_SUFFIX, SHOWDOWN_WIN_SUFFIX,
-    SHOWDOWN_POT_SPLIT, SHOWDOWN_WON_WITH_PREFIX, SHOWDOWN_WON_ROUND,
+    SHOWDOWN_HAND_COMPLETE, SHOWDOWN_CARRY_OVER, SHOWDOWN_MULTIPLE_WINNERS,
+    SHOWDOWN_FORFEIT_SUFFIX, SHOWDOWN_WIN_SUFFIX,
+    SHOWDOWN_WON_WITH_PREFIX, SHOWDOWN_WON_ROUND,
     ARIA_ROUND_RESULT,
     BTN_LEAVE_TABLE,
     BTN_READY,
@@ -53,14 +54,20 @@ export function ResultDock({
             .every((player) => player.status === 'FOLDED' || player.status === 'OUT' || player.hasFolded)
     );
 
-    const handText = !isUncontested ? formatHandRank(winningPlayer?.handRank, winningPlayer?.bestHand) : null;
-    const outcomeText = winners.length > 1
-        ? `${SHOWDOWN_TIE_PREFIX}${winners.join(', ')}`
+    const handText = winners.length === 1 && !isUncontested ? formatHandRank(winningPlayer?.handRank, winningPlayer?.bestHand) : null;
+    const settledVoid = showdownResult.handSettled === true && winners.length === 0;
+    const outcomeText = settledVoid
+        ? `${SHOWDOWN_HAND_COMPLETE}${(showdownResult.carryOverAmount ?? 0) > 0 ? ` · ${showdownResult.carryOverAmount!.toLocaleString()} ${SHOWDOWN_CARRY_OVER}` : ''}`
+        : winners.length > 1
+        ? `${SHOWDOWN_MULTIPLE_WINNERS} ${winners.join(', ')}`
         : winners.length === 1
             ? isUncontested
                 ? `${winners[0]}${SHOWDOWN_FORFEIT_SUFFIX}`
                 : `${winners[0]}${SHOWDOWN_WIN_SUFFIX}`
             : SHOWDOWN_PROCESSING;
+    const individualAwards = winners
+        .map((name) => ({ name, amount: showdownResult.players.find((player) => player.name === name)?.chipsWon ?? 0 }))
+        .filter(({ amount }) => amount > 0);
 
     return (
         <section
@@ -86,17 +93,20 @@ export function ResultDock({
                                 {SHOWDOWN_WON_ROUND}
                             </span>
                         ) : null}
-                        {winners.length > 1 && (
-                            <span className="text-sm text-zinc-400 truncate">
-                                {SHOWDOWN_POT_SPLIT}
-                            </span>
-                        )}
-                        {showdownResult.winningsPerPlayer != null && (
+                        {winners.length === 1 && showdownResult.winningsPerPlayer != null && (
                             <span className="font-bold text-gold-secondary text-sm md:text-base whitespace-nowrap tabular-nums">
                                 +{showdownResult.winningsPerPlayer.toLocaleString()} Chips
                             </span>
                         )}
                     </div>
+                    {individualAwards.length > 1 && (
+                        <div className="text-xs text-zinc-300" aria-label="Contested awards">
+                            {individualAwards.map(({ name, amount }) => `${name}: +${amount.toLocaleString()} chips`).join(' · ')}
+                        </div>
+                    )}
+                    {individualAwards.length === 0 && winners.length > 1 && showdownResult.winningsPerPlayer != null && (
+                        <div className="text-xs text-zinc-300">{showdownResult.winningsPerPlayer.toLocaleString()} chips each</div>
+                    )}
                 </div>
 
                 <div className="flex items-center gap-2 shrink-0">

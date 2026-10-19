@@ -236,6 +236,57 @@ describe('GameSession Domain Store', () => {
     });
 
     describe('Showdown Countdowns & Controllable Clock Ticks', () => {
+        it('does not resurrect an obsolete equal-share scalar after an authoritative unequal result', () => {
+            const { session, transport } = createSession(new TestClock(10_000));
+            session.connect();
+            transport.simulateStatus('connected');
+            transport.simulateMessage('/game/room-123', createValidGameState({
+                phase: 'SHOWDOWN', winners: ['Hero'], winningsPerPlayer: 175,
+                players: [createValidPlayer({ name: 'Hero', isWinner: true, chipsWon: 175 })],
+            }));
+            transport.simulateMessage('/game/room-123', createValidGameState({
+                phase: 'SHOWDOWN', winners: ['Hero', 'Villain'], winningsPerPlayer: null, handSettled: true,
+                players: [
+                    createValidPlayer({ name: 'Hero', isWinner: true, chipsWon: 150 }),
+                    createValidPlayer({ id: 'p2', name: 'Villain', isWinner: true, chipsWon: 200 }),
+                ],
+            }));
+            expect(session.getSnapshot().showdownResult?.winningsPerPlayer).toBeUndefined();
+            expect(session.getSnapshot().showdownResult?.players.map((player) => player.chipsWon)).toEqual([150, 200]);
+            session.disconnect();
+        });
+
+        it('clears revealed winner metadata when the next authoritative settled result is a void hand', () => {
+            const { session, transport } = createSession(new TestClock(10_000));
+            session.connect();
+            transport.simulateStatus('connected');
+            transport.simulateMessage('/game/room-123', createValidGameState({
+                phase: 'SHOWDOWN', winners: ['Hero'], winningsPerPlayer: 175,
+                players: [createValidPlayer({
+                    id: 'hero-id', name: 'Hero', isWinner: true, chipsWon: 175,
+                    holeCards: ['Ah', 'Ad'], bestHand: ['Ah', 'Ad', 'As', 'Kc', 'Kh'], handRank: 'FULL_HOUSE',
+                })],
+            }));
+            transport.simulateMessage('/game/room-123', createValidGameState({
+                phase: 'SHOWDOWN', handSettled: true, winners: [], winningsPerPlayer: null,
+                pot: 200, carryOverAmount: 200, isReadyCountdownActive: true,
+                players: [createValidPlayer({ id: 'hero-id', name: 'Hero' })],
+            }));
+
+            const result = session.getSnapshot().showdownResult;
+            expect(result?.handSettled).toBe(true);
+            expect(result?.winners).toEqual([]);
+            expect(result?.winningsPerPlayer).toBeUndefined();
+            expect(result?.players[0]).toMatchObject({ name: 'Hero' });
+            expect(result?.players[0].isWinner).toBeUndefined();
+            expect(result?.players[0].chipsWon).toBeUndefined();
+            expect(result?.players[0].holeCards).toBeUndefined();
+            expect(result?.players[0].bestHand).toBeUndefined();
+            expect(result?.players[0].handRank).toBeUndefined();
+            expect(result?.carryOverAmount).toBe(200);
+            session.disconnect();
+        });
+
         it('preserves pot during showdown and clears showdown after countdown ticks', () => {
             const { session, transport, clock } = createSession(new TestClock(10_000));
             session.connect();
