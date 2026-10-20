@@ -70,6 +70,7 @@ test.describe('Item 35: Visual rendering of side pots in multi-way all-in', () =
         contentType: 'application/json',
         body: JSON.stringify({
           gameId: roomId,
+          handNumber: 1,
           maxPlayers: 3,
           phase: 'RIVER',
           pot: 500,
@@ -91,7 +92,7 @@ test.describe('Item 35: Visual rendering of side pots in multi-way all-in', () =
     await page.route(`**/api/game/${roomId}/private-state`, (route) =>
       route.fulfill({
         contentType: 'application/json',
-        body: JSON.stringify({ playerId: 'p-1', holeCards: ['AS', 'KS'] }),
+        body: JSON.stringify({ playerId: 'p-1', handNumber: 1, holeCards: ['AS', 'KS'] }),
       }),
     );
 

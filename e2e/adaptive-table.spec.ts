@@ -254,7 +254,7 @@ test.describe('Adaptive table-first foundation', () => {
     }));
     await hostPage.route('**/api/game/ROOM123/private-state', (route) => route.fulfill({
       contentType: 'application/json',
-      body: JSON.stringify({ playerId: 'p-1', holeCards: ['AS', 'KS'] }),
+      body: JSON.stringify({ playerId: 'p-1', handNumber: 1, holeCards: ['AS', 'KS'] }),
     }));
     await hostPage.goto('/');
     await expect(hostPage.getByLabel(/main pot/i)).toContainText('20');
@@ -334,6 +334,7 @@ test.describe('Adaptive table-first foundation', () => {
       contentType: 'application/json',
       body: JSON.stringify({
         gameId: 'ROOM123',
+        handNumber: 1,
         maxPlayers: 6,
         phase: 'FLOP',
         pot: 30,
@@ -354,7 +355,7 @@ test.describe('Adaptive table-first foundation', () => {
     }));
     await hostPage.route('**/api/game/ROOM123/private-state', (route) => route.fulfill({
       contentType: 'application/json',
-      body: JSON.stringify({ playerId: 'p-1', holeCards: ['AS', 'KS'] }),
+      body: JSON.stringify({ playerId: 'p-1', handNumber: 1, holeCards: ['AS', 'KS'] }),
     }));
     await hostPage.goto('/');
     await expect(hostPage.getByRole('region', { name: /action dock/i })).toContainText(/waiting for player 2 to act/i);
@@ -438,7 +439,7 @@ test.describe('Adaptive table-first foundation', () => {
     }));
     await hostPage.route('**/api/game/ROOM123/private-state', (route) => route.fulfill({
       contentType: 'application/json',
-      body: JSON.stringify({ playerId: 'p-1', holeCards: ['AS', '2D'] }),
+      body: JSON.stringify({ playerId: 'p-1', handNumber: 1, holeCards: ['AS', '2D'] }),
     }));
 
     await hostPage.goto('/');
