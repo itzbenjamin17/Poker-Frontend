@@ -9,7 +9,7 @@ import {
     BTN_JOINING,
     ERROR_JOIN_FALLBACK,
 } from '../../constants/strings';
-import { VALIDATION, validateJoin } from './validation';
+import { VALIDATION, validateJoin, parseJoinRoomSubmission } from './validation';
 import { useLobbyRequest } from './useLobbyRequest';
 import type { LobbyRequestLock } from './useLobbyRequest';
 import type { AuthResponse } from '../../types';
@@ -28,6 +28,7 @@ export function JoinRoomForm({ onAuth, onError, isSubmitting, loading = false, d
     const [joinData, setJoinData] = useState({
         roomName: '',
         playerName: '',
+        password: '',
     });
 
     const submitting = isSubmitting ?? loading;
@@ -45,10 +46,9 @@ export function JoinRoomForm({ onAuth, onError, isSubmitting, loading = false, d
             return;
         }
 
-        const roomName = joinData.roomName.trim();
-        const playerName = joinData.playerName.trim();
+        const submissionData = parseJoinRoomSubmission(joinData);
 
-        await run(signal => pokerApi.joinRoom({ roomName, playerName }, signal), ERROR_JOIN_FALLBACK);
+        await run(signal => pokerApi.joinRoom(submissionData, signal), ERROR_JOIN_FALLBACK);
     };
 
     return (
@@ -70,6 +70,7 @@ export function JoinRoomForm({ onAuth, onError, isSubmitting, loading = false, d
                         onChange={e => setJoinData({ ...joinData, roomName: e.target.value })}
                         required
                         maxLength={VALIDATION.roomName.max}
+                        disabled={isDisabled}
                     />
                     <Input
                         label="Player Alias"
@@ -78,6 +79,16 @@ export function JoinRoomForm({ onAuth, onError, isSubmitting, loading = false, d
                         onChange={e => setJoinData({ ...joinData, playerName: e.target.value })}
                         required
                         maxLength={VALIDATION.playerName.max}
+                        disabled={isDisabled}
+                    />
+                    <Input
+                        label="Password (Optional)"
+                        type="password"
+                        placeholder="Enter Room Password (Optional)"
+                        value={joinData.password}
+                        onChange={e => setJoinData({ ...joinData, password: e.target.value })}
+                        maxLength={VALIDATION.password.max}
+                        disabled={isDisabled}
                     />
                     <Button
                         size="xl"

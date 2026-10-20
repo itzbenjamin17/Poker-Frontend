@@ -451,5 +451,122 @@ describe('api service', () => {
             }
         });
     });
+
+    describe('optional password field in createRoom and joinRoom payloads', () => {
+        it('createRoom transmits entered password unchanged including leading and trailing spaces', async () => {
+            let capturedBody: Record<string, unknown> | null = null;
+            server.use(
+                http.post('/api/room/create', async ({ request }) => {
+                    capturedBody = (await request.json()) as Record<string, unknown>;
+                    return HttpResponse.json({
+                        message: 'Room created successfully',
+                        data: {
+                            token: 'mock-jwt-token',
+                            roomId: 'ABCD',
+                            playerName: 'Alice',
+                        },
+                    });
+                })
+            );
+
+            await pokerApi.createRoom({
+                roomName: 'High Roller',
+                playerName: 'Alice',
+                maxPlayers: 6,
+                smallBlind: 10,
+                bigBlind: 20,
+                buyIn: 500,
+                password: '  secretPass123  ',
+            });
+
+            expect(capturedBody).toEqual(expect.objectContaining({
+                password: '  secretPass123  ',
+            }));
+        });
+
+        it('createRoom omits password field when password is empty or whitespace-only', async () => {
+            let capturedBody: Record<string, unknown> | null = null;
+            server.use(
+                http.post('/api/room/create', async ({ request }) => {
+                    capturedBody = (await request.json()) as Record<string, unknown>;
+                    return HttpResponse.json({
+                        message: 'Room created successfully',
+                        data: {
+                            token: 'mock-jwt-token',
+                            roomId: 'ABCD',
+                            playerName: 'Alice',
+                        },
+                    });
+                })
+            );
+
+            await pokerApi.createRoom({
+                roomName: 'High Roller',
+                playerName: 'Alice',
+                maxPlayers: 6,
+                smallBlind: 10,
+                bigBlind: 20,
+                buyIn: 500,
+                password: '   ',
+            });
+
+            expect(capturedBody).not.toBeNull();
+            expect(capturedBody).not.toHaveProperty('password');
+        });
+
+        it('joinRoom transmits entered password unchanged including leading and trailing spaces', async () => {
+            let capturedBody: Record<string, unknown> | null = null;
+            server.use(
+                http.post('/api/room/join', async ({ request }) => {
+                    capturedBody = (await request.json()) as Record<string, unknown>;
+                    return HttpResponse.json({
+                        message: 'Successfully joined room',
+                        data: {
+                            token: 'mock-jwt-token',
+                            roomId: 'Room99',
+                            playerName: 'Bob',
+                        },
+                    });
+                })
+            );
+
+            await pokerApi.joinRoom({
+                roomName: 'Room99',
+                playerName: 'Bob',
+                password: '  secretPass123  ',
+            });
+
+            expect(capturedBody).toEqual(expect.objectContaining({
+                password: '  secretPass123  ',
+            }));
+        });
+
+        it('joinRoom omits password field when password is empty or whitespace-only', async () => {
+            let capturedBody: Record<string, unknown> | null = null;
+            server.use(
+                http.post('/api/room/join', async ({ request }) => {
+                    capturedBody = (await request.json()) as Record<string, unknown>;
+                    return HttpResponse.json({
+                        message: 'Successfully joined room',
+                        data: {
+                            token: 'mock-jwt-token',
+                            roomId: 'Room99',
+                            playerName: 'Bob',
+                        },
+                    });
+                })
+            );
+
+            await pokerApi.joinRoom({
+                roomName: 'Room99',
+                playerName: 'Bob',
+                password: '   ',
+            });
+
+            expect(capturedBody).not.toBeNull();
+            expect(capturedBody).not.toHaveProperty('password');
+        });
+    });
 });
+
 

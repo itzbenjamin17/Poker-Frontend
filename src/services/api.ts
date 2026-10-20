@@ -195,18 +195,34 @@ export const pokerApi = {
         buyIn: number;
         password?: string;
     }, signal?: AbortSignal): Promise<AuthResponse> {
+        const body: Record<string, unknown> = { ...payload };
+        if (payload.password !== undefined) {
+            if (payload.password.trim().length === 0) {
+                delete body.password;
+            } else {
+                body.password = payload.password;
+            }
+        }
         const data = await fetchApi<ApiResponse<TokenResponse>>(`${API_BASE}/room/create`, {
             method: 'POST',
-            body: JSON.stringify(payload),
+            body: JSON.stringify(body),
             signal,
         });
         return normalizeAuthResponse(data);
     },
 
     async joinRoom(payload: { roomName: string; playerName: string; password?: string }, signal?: AbortSignal): Promise<AuthResponse> {
+        const body: Record<string, unknown> = { ...payload };
+        if (payload.password !== undefined) {
+            if (payload.password.trim().length === 0) {
+                delete body.password;
+            } else {
+                body.password = payload.password;
+            }
+        }
         const data = await fetchApi<ApiResponse<TokenResponse>>(`${API_BASE}/room/join`, {
             method: 'POST',
-            body: JSON.stringify(payload),
+            body: JSON.stringify(body),
             signal,
         });
         return normalizeAuthResponse(data);
