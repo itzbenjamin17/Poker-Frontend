@@ -181,12 +181,23 @@ export interface ActionError {
     message: string;
 }
 
+export type Card = string;
+
+export interface PrivatePlayerState {
+    playerId: string;
+    handNumber: number;
+    holeCards: Card[];
+}
+
+export type PublicGameStateResponse = GameState;
+
 export interface GameEndResult {
+    gameId: string;
     winnerName: string | null;
     winnerChips?: number;
     isForfeit: boolean;
     message: string;
-    finalState?: GameState;
+    finalState?: PublicGameStateResponse | null;
 }
 
 export interface SessionSnapshot {

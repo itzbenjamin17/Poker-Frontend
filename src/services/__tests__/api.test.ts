@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { http, HttpResponse } from 'msw';
 import { server } from '../../test/mocks/server';
-import { isJwtValid, getErrorMessage, pokerApi } from '../api';
+import { isJwtValid, getErrorMessage, pokerApi, HttpError, MalformedResponseError } from '../api';
 
 function toBase64Url(str: string): string {
     return btoa(str).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
@@ -567,6 +567,201 @@ describe('api service', () => {
             expect(capturedBody).not.toHaveProperty('password');
         });
     });
+
+    describe('signal propagation on state queries', () => {
+        it('getRoomData supports optional signal and aborts when signal is cancelled', async () => {
+            const controller = new AbortController();
+            controller.abort();
+            await expect(pokerApi.getRoomData('room-1', controller.signal)).rejects.toThrow();
+        });
+
+        it('getPublicGameState supports optional signal and aborts when signal is cancelled', async () => {
+            const controller = new AbortController();
+            controller.abort();
+            await expect(pokerApi.getPublicGameState('game-1', controller.signal)).rejects.toThrow();
+        });
+
+        it('getPrivatePlayerState supports optional signal and aborts when signal is cancelled', async () => {
+            const validToken = createJwt({ exp: Math.floor(Date.now() / 1000) + 3600 });
+            const controller = new AbortController();
+            controller.abort();
+            await expect(pokerApi.getPrivatePlayerState('game-1', validToken, controller.signal)).rejects.toThrow();
+        });
+    });
+
+    describe('getReview and claimWin', () => {
+        const validToken = createJwt({ exp: Math.floor(Date.now() / 1000) + 3600 });
+
+        describe('getReview', () => {
+            it('returns decoded GameEndResult on HTTP 200', async () => {
+                server.use(
+                    http.get('/api/game/:gameId/review', () => {
+                        return HttpResponse.json({
+                            gameId: 'game-100',
+                            winner: 'Alice',
+                            winnerChips: 3000,
+                            isForfeit: false,
+                            message: 'Alice won with Full House',
+                        });
+                    })
+                );
+
+                const result = await pokerApi.getReview('game-100', validToken);
+                expect(result).toEqual({
+                    gameId: 'game-100',
+                    winnerName: 'Alice',
+                    winnerChips: 3000,
+                    isForfeit: false,
+                    message: 'Alice won with Full House',
+                });
+            });
+
+            it('throws HttpError with status 409 when game has not finished', async () => {
+                server.use(
+                    http.get('/api/game/:gameId/review', () => {
+                        return HttpResponse.json(
+                            { message: 'Game has not finished' },
+                            { status: 409 }
+                        );
+                    })
+                );
+
+                await expect(pokerApi.getReview('game-100', validToken)).rejects.toSatisfy((err) => {
+                    expect(err).toBeInstanceOf(HttpError);
+                    expect(err).toMatchObject({
+                        status: 409,
+                        message: 'Game has not finished',
+                    });
+                    return true;
+                });
+            });
+
+            it('throws HttpError with status 404 when game is not found', async () => {
+                server.use(
+                    http.get('/api/game/:gameId/review', () => {
+                        return HttpResponse.json(
+                            { message: 'Game not found' },
+                            { status: 404 }
+                        );
+                    })
+                );
+
+                await expect(pokerApi.getReview('game-100', validToken)).rejects.toSatisfy((err) => {
+                    expect(err).toBeInstanceOf(HttpError);
+                    expect(err).toMatchObject({
+                        status: 404,
+                        message: 'Game not found',
+                    });
+                    return true;
+                });
+            });
+
+            it('throws HttpError with status 403 on authorization failure', async () => {
+                server.use(
+                    http.get('/api/game/:gameId/review', () => {
+                        return HttpResponse.json(
+                            { message: 'You are no longer part of this game.' },
+                            { status: 403 }
+                        );
+                    })
+                );
+
+                await expect(pokerApi.getReview('game-100', validToken)).rejects.toSatisfy((err) => {
+                    expect(err).toBeInstanceOf(HttpError);
+                    expect(err).toMatchObject({
+                        status: 403,
+                        message: 'You are no longer part of this game.',
+                    });
+                    return true;
+                });
+            });
+
+            it('throws MalformedResponseError on invalid terminal payload shape', async () => {
+                server.use(
+                    http.get('/api/game/:gameId/review', () => {
+                        return HttpResponse.json({
+                            corrupted: 'payload',
+                        });
+                    })
+                );
+
+                await expect(pokerApi.getReview('game-100', validToken)).rejects.toThrow(MalformedResponseError);
+            });
+
+            it('propagates abort signal to fetch', async () => {
+                const controller = new AbortController();
+                controller.abort();
+                await expect(pokerApi.getReview('game-100', validToken, controller.signal)).rejects.toThrow();
+            });
+        });
+
+        describe('claimWin', () => {
+            it('returns decoded ApiResponse<GameEndResult> on HTTP 200', async () => {
+                server.use(
+                    http.post('/api/game/:gameId/claim-win', () => {
+                        return HttpResponse.json({
+                            message: 'Win claimed successfully',
+                            data: {
+                                gameId: 'game-100',
+                                winner: 'Alice',
+                                winnerChips: 2500,
+                                isForfeit: true,
+                                message: 'Alice claimed win by disconnect',
+                            },
+                        });
+                    })
+                );
+
+                const response = await pokerApi.claimWin('game-100', validToken);
+                expect(response).toEqual({
+                    message: 'Win claimed successfully',
+                    data: {
+                        gameId: 'game-100',
+                        winnerName: 'Alice',
+                        winnerChips: 2500,
+                        isForfeit: true,
+                        message: 'Alice claimed win by disconnect',
+                    },
+                });
+            });
+
+            it('throws HttpError on 403 forbidden claim', async () => {
+                server.use(
+                    http.post('/api/game/:gameId/claim-win', () => {
+                        return HttpResponse.json(
+                            { message: 'Claim win is not available' },
+                            { status: 403 }
+                        );
+                    })
+                );
+
+                await expect(pokerApi.claimWin('game-100', validToken)).rejects.toMatchObject({
+                    status: 403,
+                    message: 'Claim win is not available',
+                });
+            });
+
+            it('throws MalformedResponseError when data envelope is malformed', async () => {
+                server.use(
+                    http.post('/api/game/:gameId/claim-win', () => {
+                        return HttpResponse.json({
+                            message: 'Success',
+                            data: { invalid: 'game-end' },
+                        });
+                    })
+                );
+
+                await expect(pokerApi.claimWin('game-100', validToken)).rejects.toThrow(MalformedResponseError);
+            });
+
+            it('propagates abort signal to fetch', async () => {
+                const controller = new AbortController();
+                controller.abort();
+                await expect(pokerApi.claimWin('game-100', validToken, controller.signal)).rejects.toThrow();
+            });
+        });
+    });
 });
+
 
 

@@ -206,6 +206,7 @@ describe('useGameWebSocket', () => {
 
         expect(session.getSnapshot().isGameOver).toBe(true);
         expect(session.getSnapshot().gameEndResult).toEqual({
+            gameId: 'ROOM123',
             winnerName: 'Player1',
             winnerChips: 500,
             isForfeit: false,
@@ -215,7 +216,7 @@ describe('useGameWebSocket', () => {
     });
 
     it('ignores subsequent game updates after game end', async () => {
-        session.setGameEndResult({ winnerName: 'Player1', isForfeit: false, message: 'Done' });
+        session.setGameEndResult({ gameId: 'ROOM123', winnerName: 'Player1', isForfeit: false, message: 'Done' });
 
         renderHook(() => useGameWebSocket({ onSocketError }), {
             wrapper: createWrapper(),
@@ -235,7 +236,7 @@ describe('useGameWebSocket', () => {
     });
 
     it('does not schedule redirect on 403 after game end', async () => {
-        session.setGameEndResult({ winnerName: 'Player1', isForfeit: false, message: 'Done' });
+        session.setGameEndResult({ gameId: 'ROOM123', winnerName: 'Player1', isForfeit: false, message: 'Done' });
 
         // Mock pokerApi.getGameState to reject with 403
         vi.mocked(pokerApi.getGameState).mockRejectedValue({ status: 403 });
@@ -255,7 +256,7 @@ describe('useGameWebSocket', () => {
     });
 
     it('ignores ROOM_CLOSED after game end', async () => {
-        session.setGameEndResult({ winnerName: 'Player1', isForfeit: false, message: 'Done' });
+        session.setGameEndResult({ gameId: 'ROOM123', winnerName: 'Player1', isForfeit: false, message: 'Done' });
 
         renderHook(() => useGameWebSocket({ onSocketError }), {
             wrapper: createWrapper(),
@@ -383,7 +384,7 @@ describe('useGameWebSocket', () => {
 
         // Simulate game end while connected
         act(() => {
-            session.setGameEndResult({ winnerName: 'Player1', isForfeit: false, message: 'Done' });
+            session.setGameEndResult({ gameId: 'ROOM123', winnerName: 'Player1', isForfeit: false, message: 'Done' });
         });
         rerender();
 
@@ -739,7 +740,7 @@ describe('useGameWebSocket', () => {
         const callsBeforeEnd = vi.mocked(pokerApi.getGameState).mock.calls.length;
 
         act(() => {
-            session3.setGameEndResult({ winnerName: 'TestPlayer', isForfeit: false, message: 'Game over' });
+            session3.setGameEndResult({ gameId: 'ROOM123', winnerName: 'TestPlayer', isForfeit: false, message: 'Game over' });
         });
 
         expect(session3.hasPendingRecoveryTimer()).toBe(false);

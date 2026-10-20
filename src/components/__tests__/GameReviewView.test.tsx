@@ -46,6 +46,7 @@ describe('GameReviewView', () => {
         render(
             <GameReviewView
                 gameEndResult={{
+                    gameId: 'ROOM1',
                     winnerName: 'WinnerPlayer',
                     winnerChips: 5000,
                     isForfeit: false,
@@ -74,6 +75,7 @@ describe('GameReviewView', () => {
         render(
             <GameReviewView
                 gameEndResult={{
+                    gameId: 'ROOM1',
                     winnerName: 'WinnerPlayer',
                     isForfeit: true,
                     message: 'LoserPlayer left the game.',
@@ -90,6 +92,7 @@ describe('GameReviewView', () => {
         render(
             <GameReviewView
                 gameEndResult={{
+                    gameId: 'ROOM1',
                     winnerName: 'WinnerPlayer',
                     isForfeit: false,
                     message: 'Game Over',

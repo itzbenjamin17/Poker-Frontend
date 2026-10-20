@@ -966,6 +966,7 @@ describe('GameSession Domain Store', () => {
             transport.simulateMessage('/room/room-123', { message: 'ROOM_CLOSED' });
 
             session.setGameEndResult({
+                gameId: 'room-123',
                 winnerName: 'Hero',
                 isForfeit: false,
                 message: 'Hero wins',

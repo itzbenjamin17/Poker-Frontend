@@ -1,7 +1,8 @@
 import { Client, ReconnectionTimeMode } from '@stomp/stompjs';
-import type { ApiResponse, AuthResponse, RoomDataResponse, TokenResponse } from '../types';
+import type { ApiResponse, AuthResponse, GameEndResult, RoomDataResponse, TokenResponse } from '../types';
 import { logger } from '../security/logger';
 import { ERROR_MALFORMED_AUTH, ERROR_MALFORMED_RESPONSE, ERROR_REQUEST_TIMEOUT } from '../constants/strings';
+import { decodeGameEndResult } from '../lib/payloads';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api';
 const REQUEST_TIMEOUT_MS = 15000;
@@ -17,7 +18,15 @@ function getWebSocketUrl(): string {
     return 'ws://localhost:8080/ws';
 }
 
-type ApiError = Error & { status: number };
+export class HttpError extends Error {
+    readonly status: number;
+
+    constructor(status: number, message: string) {
+        super(message);
+        this.status = status;
+        this.name = 'HttpError';
+    }
+}
 
 /** A successful HTTP response that cannot satisfy the expected JSON object contract.
  * Carries structural information only; never retains the response body.
@@ -32,10 +41,8 @@ export class MalformedResponseError extends Error {
     }
 }
 
-function buildApiError(status: number, message: string): ApiError {
-    const error = new Error(message) as ApiError;
-    error.status = status;
-    return error;
+function buildApiError(status: number, message: string): HttpError {
+    return new HttpError(status, message);
 }
 
 export async function getErrorMessage(res: Response, fallback: string): Promise<string> {
@@ -228,16 +235,61 @@ export const pokerApi = {
         return normalizeAuthResponse(data);
     },
 
-    async getRoomInfo(roomId: string, token: string): Promise<RoomDataResponse> {
-        return fetchApi<RoomDataResponse>(`${API_BASE}/room/${encodeURIComponent(roomId)}`, { method: 'GET', token, expectJson: true });
+    async getRoomData(roomId: string, tokenOrSignal?: string | AbortSignal, signal?: AbortSignal): Promise<RoomDataResponse> {
+        const token = typeof tokenOrSignal === 'string' ? tokenOrSignal : undefined;
+        const sig = tokenOrSignal instanceof AbortSignal ? tokenOrSignal : signal;
+        return fetchApi<RoomDataResponse>(`${API_BASE}/room/${encodeURIComponent(roomId)}`, {
+            method: 'GET',
+            token,
+            signal: sig,
+            expectJson: true,
+        });
     },
 
-    async getGameState(gameId: string, token: string): Promise<unknown> {
-        return fetchApi<unknown>(`${API_BASE}/game/${encodeURIComponent(gameId)}/state`, { method: 'GET', token, expectJson: true });
+    async getRoomInfo(roomId: string, token: string, signal?: AbortSignal): Promise<RoomDataResponse> {
+        return this.getRoomData(roomId, token, signal);
     },
 
-    async getPrivateState(gameId: string, token: string): Promise<unknown> {
-        return fetchApi<unknown>(`${API_BASE}/game/${encodeURIComponent(gameId)}/private-state`, { method: 'GET', token, expectJson: true });
+    async getPublicGameState(gameId: string, tokenOrSignal?: string | AbortSignal, signal?: AbortSignal): Promise<unknown> {
+        const token = typeof tokenOrSignal === 'string' ? tokenOrSignal : undefined;
+        const sig = tokenOrSignal instanceof AbortSignal ? tokenOrSignal : signal;
+        return fetchApi<unknown>(`${API_BASE}/game/${encodeURIComponent(gameId)}/state`, {
+            method: 'GET',
+            token,
+            signal: sig,
+            expectJson: true,
+        });
+    },
+
+    async getGameState(gameId: string, token: string, signal?: AbortSignal): Promise<unknown> {
+        return this.getPublicGameState(gameId, token, signal);
+    },
+
+    async getPrivatePlayerState(gameId: string, token: string, signal?: AbortSignal): Promise<unknown> {
+        return fetchApi<unknown>(`${API_BASE}/game/${encodeURIComponent(gameId)}/private-state`, {
+            method: 'GET',
+            token,
+            signal,
+            expectJson: true,
+        });
+    },
+
+    async getPrivateState(gameId: string, token: string, signal?: AbortSignal): Promise<unknown> {
+        return this.getPrivatePlayerState(gameId, token, signal);
+    },
+
+    async getReview(gameId: string, token: string, signal?: AbortSignal): Promise<GameEndResult> {
+        const raw = await fetchApi<unknown>(`${API_BASE}/game/${encodeURIComponent(gameId)}/review`, {
+            method: 'GET',
+            token,
+            signal,
+            expectJson: true,
+        });
+        const decoded = decodeGameEndResult(raw, gameId);
+        if (!decoded) {
+            throw new MalformedResponseError(raw === null ? 'null' : Array.isArray(raw) ? 'array' : typeof raw);
+        }
+        return decoded;
     },
 
     async leaveRoom(roomId: string, token: string, keepalive = false): Promise<void> {
@@ -252,9 +304,24 @@ export const pokerApi = {
         return fetchApi<unknown>(`${API_BASE}/room/${encodeURIComponent(roomId)}/start-game`, { method: 'POST', token });
     },
 
-    async claimWin(gameId: string, token: string): Promise<boolean> {
-        await fetchApi<void>(`${API_BASE}/game/${encodeURIComponent(gameId)}/claim-win`, { method: 'POST', token });
-        return true;
+    async claimWin(gameId: string, token: string, signal?: AbortSignal): Promise<ApiResponse<GameEndResult>> {
+        const raw = await fetchApi<ApiResponse<unknown>>(`${API_BASE}/game/${encodeURIComponent(gameId)}/claim-win`, {
+            method: 'POST',
+            token,
+            signal,
+            expectJson: true,
+        });
+        if (!raw || typeof raw !== 'object' || typeof raw.message !== 'string' || !('data' in raw)) {
+            throw new MalformedResponseError(raw === null ? 'null' : typeof raw);
+        }
+        const decoded = decodeGameEndResult(raw.data, gameId);
+        if (!decoded) {
+            throw new MalformedResponseError(raw.data === null ? 'null' : typeof raw.data);
+        }
+        return {
+            message: raw.message,
+            data: decoded,
+        };
     },
 };
 

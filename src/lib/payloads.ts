@@ -1,7 +1,11 @@
 import type {
     ActionError,
+    Card,
+    GameEndResult,
     IncomingGameStatePayload,
     IncomingPrivateStatePayload,
+    PrivatePlayerState,
+    PublicGameStateResponse,
     RoomDataResponse,
     RoomState,
     RoomUpdate,
@@ -182,6 +186,12 @@ export function decodeGameStatePayload(value: unknown, source?: GameSnapshotSour
     return failure ? reject(failure) : decoded as IncomingGameStatePayload;
 }
 
+export function decodePublicGameState(value: unknown, source?: GameSnapshotSource): PublicGameStateResponse | null {
+    const decoded = decodeGameStatePayload(value, source);
+    if (!decoded) return null;
+    return decoded as PublicGameStateResponse;
+}
+
 export function isRoomDataPayload(value: unknown): value is RoomDataResponse {
     return fields(value, {
         roomId: text, roomName: text, maxPlayers: capacity,
@@ -254,6 +264,137 @@ export function isPrivateStatePayload(value: unknown): value is IncomingPrivateS
         (typeof value.playerId === 'string' || value.playerId === undefined) &&
         (value.holeCards == null || list(card, 2)(value.holeCards))
     );
+}
+
+export function decodePrivatePlayerState(value: unknown): PrivatePlayerState | null {
+    if (!isObject(value)) return null;
+
+    if (typeof value.playerId !== 'string' || value.playerId.trim().length === 0) {
+        return null;
+    }
+    const playerId = value.playerId.trim();
+
+    if (
+        typeof value.handNumber !== 'number' ||
+        !Number.isSafeInteger(value.handNumber) ||
+        value.handNumber < 0
+    ) {
+        return null;
+    }
+    const handNumber = value.handNumber;
+
+    let holeCards: Card[];
+    if (value.holeCards === null || (Array.isArray(value.holeCards) && value.holeCards.length === 0)) {
+        holeCards = [];
+    } else if (Array.isArray(value.holeCards) && value.holeCards.length === 2) {
+        const normalized: Card[] = [];
+        for (const c of value.holeCards) {
+            if (!card(c)) return null;
+            const norm = typeof c === 'string' ? normalizeCardCode(c) ?? c : null;
+            if (!norm) return null;
+            normalized.push(norm);
+        }
+        holeCards = normalized;
+    } else {
+        return null;
+    }
+
+    return {
+        playerId,
+        handNumber,
+        holeCards,
+    };
+}
+
+export function validatePrivatePlayerIdentity(
+    privateState: PrivatePlayerState,
+    publicState: PublicGameStateResponse,
+    authPlayerName: string
+): boolean {
+    if (
+        !privateState ||
+        !publicState ||
+        !Array.isArray(publicState.players) ||
+        typeof authPlayerName !== 'string' ||
+        authPlayerName.trim().length === 0
+    ) {
+        return false;
+    }
+    const matchingPlayer = publicState.players.find(p => p && p.name === authPlayerName);
+    if (!matchingPlayer || typeof matchingPlayer.id !== 'string') {
+        return false;
+    }
+    return matchingPlayer.id === privateState.playerId;
+}
+
+export function decodeGameEndResult(value: unknown, expectedGameId?: string): GameEndResult | null {
+    if (!isObject(value)) return null;
+
+    let gameId: string | undefined;
+    if (typeof value.gameId === 'string' && value.gameId.trim().length > 0) {
+        gameId = value.gameId.trim();
+        if (expectedGameId !== undefined && gameId !== expectedGameId) {
+            return null;
+        }
+    } else if (
+        (value.gameId === undefined || value.gameId === null) &&
+        expectedGameId !== undefined &&
+        expectedGameId.trim().length > 0
+    ) {
+        gameId = expectedGameId.trim();
+    } else {
+        return null;
+    }
+
+    const rawWinner = 'winnerName' in value ? value.winnerName : ('winner' in value ? value.winner : null);
+    if (rawWinner !== null && typeof rawWinner !== 'string') {
+        return null;
+    }
+    const winnerName = typeof rawWinner === 'string' ? rawWinner : null;
+
+    let winnerChips: number | undefined;
+    if (value.winnerChips !== undefined && value.winnerChips !== null) {
+        if (typeof value.winnerChips !== 'number' || !Number.isSafeInteger(value.winnerChips) || value.winnerChips < 0) {
+            return null;
+        }
+        winnerChips = value.winnerChips;
+    }
+
+    if (typeof value.isForfeit !== 'boolean') {
+        return null;
+    }
+    const isForfeit = value.isForfeit;
+
+    if (typeof value.message !== 'string' || value.message.trim().length === 0) {
+        return null;
+    }
+    const message = value.message.trim();
+
+    let finalState: PublicGameStateResponse | null | undefined = undefined;
+    if (value.finalState !== undefined && value.finalState !== null) {
+        const decodedFinal = decodePublicGameState(value.finalState);
+        if (!decodedFinal) {
+            return null;
+        }
+        if (decodedFinal.gameId && decodedFinal.gameId !== gameId) {
+            return null;
+        }
+        if (!decodedFinal.gameId) {
+            decodedFinal.gameId = gameId;
+        }
+        finalState = decodedFinal;
+    } else if (value.finalState === null) {
+        finalState = null;
+    }
+
+    return {
+        gameId,
+        winnerName,
+        ...(winnerChips !== undefined ? { winnerChips } : {}),
+        isForfeit,
+        message,
+        ...(finalState !== undefined ? { finalState } : {}),
+    };
 }
 
 export function isRoomUpdatePayload(value: unknown): value is RoomUpdate {

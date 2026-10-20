@@ -459,6 +459,7 @@ export class GameSession {
     }
 
     private handleGameEnd(payload: {
+        gameId?: string | null;
         winner?: string | null;
         winnerChips?: number | null;
         isForfeit?: boolean | null;
@@ -511,6 +512,7 @@ export class GameSession {
             typeof payload.winnerChips === 'number' ? payload.winnerChips : fallbackWinnerChips;
 
         const gameEndResult: GameEndResult = {
+            gameId: (typeof payload.gameId === 'string' && payload.gameId) || this.auth.roomId,
             winnerName,
             winnerChips,
             isForfeit,
