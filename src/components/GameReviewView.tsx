@@ -22,10 +22,26 @@ export interface GameReviewViewProps {
 export function GameReviewView({ gameEndResult, gameState, onLeave, leaveError, onRetryLeave }: GameReviewViewProps) {
     if (!gameEndResult) return null;
 
+    const activeState = gameEndResult.finalState ?? gameState;
     const winnerName = gameEndResult.winnerName;
     const isForfeit = gameEndResult.isForfeit;
     const winnerChips = gameEndResult.winnerChips;
     const message = formatEndMessage(gameEndResult.message);
+
+    const sourcePlayers = activeState?.players ?? [];
+    const sortedPlayers = sourcePlayers
+        .map((player, index) => ({ player, index }))
+        .sort((a, b) => {
+            if (winnerName) {
+                if (a.player.name === winnerName) return -1;
+                if (b.player.name === winnerName) return 1;
+            }
+            if (b.player.chips !== a.player.chips) {
+                return b.player.chips - a.player.chips;
+            }
+            return a.index - b.index;
+        })
+        .map(({ player }) => player);
 
     return (
         <main
@@ -73,7 +89,7 @@ export function GameReviewView({ gameEndResult, gameState, onLeave, leaveError, 
                     </h2>
                     <div className="flex justify-center">
                         <CommunityCardsArea
-                            communityCards={gameState?.communityCards ?? []}
+                            communityCards={activeState?.communityCards ?? []}
                             scale={1.2}
                         />
                     </div>
@@ -85,8 +101,10 @@ export function GameReviewView({ gameEndResult, gameState, onLeave, leaveError, 
                         Final Standings
                     </h2>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {(gameState?.players ?? []).map((player) => {
-                            const isWinner = player.isWinner || player.name === winnerName;
+                        {sortedPlayers.map((player) => {
+                            const isWinner = winnerName
+                                ? player.name === winnerName
+                                : Boolean(player.isWinner);
                             return (
                                 <div
                                     key={player.id}

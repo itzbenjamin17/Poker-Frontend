@@ -42,6 +42,7 @@ export type Action =
     | { type: 'SET_WS_STATUS'; payload: WsStatus }
     | { type: 'SET_HYDRATED'; payload: boolean }
     | { type: 'SET_GAME_END_RESULT'; payload: GameEndResult | null }
+    | { type: 'INSTALL_TERMINAL_RESULT'; payload: GameEndResult }
     | { type: 'CLEAR_GAME_STATE' };
 
 export interface GameContextValue extends GameContextState {

@@ -83,7 +83,28 @@ export function useGameDispatcher() {
                 void session?.synchronizeSession({ resetBudget: true });
             } else if (command.type === 'CLAIM_WIN') {
                 contextDispatch({ type: 'SET_CLAIM_PENDING', payload: true });
-                await pokerApi.claimWin(targetGameId, auth.token);
+                session?.setClaimPending(true);
+                try {
+                    const res = await pokerApi.claimWin(targetGameId, auth.token);
+                    session?.installTerminalResult(res.data);
+                } catch (claimErr) {
+                    const statusCode = getErrorStatusCode(claimErr);
+                    const isDefiniteRejection = statusCode !== null && statusCode >= 400 && statusCode < 500 && statusCode !== 408;
+                    if (isDefiniteRejection) {
+                        contextDispatch({ type: 'SET_CLAIM_PENDING', payload: false });
+                        session?.setClaimPending(false);
+                        throw claimErr;
+                    }
+
+                    try {
+                        const review = await pokerApi.getReview(targetGameId, auth.token);
+                        session?.installTerminalResult(review);
+                    } catch {
+                        contextDispatch({ type: 'SET_CLAIM_PENDING', payload: false });
+                        session?.setClaimPending(false);
+                        throw claimErr;
+                    }
+                }
             } else if (command.type === 'LEAVE_GAME') {
                 session?.setPendingLeave(true);
                 try {
@@ -116,6 +137,8 @@ export function useGameDispatcher() {
                 }
             } else if (command.type === 'LEAVE_REVIEW') {
                 clearShowdownTimers();
+                session?.disconnect();
+                session?.setGameEndResult(null);
                 savePersistedGameEnd(auth.roomId, null);
                 contextDispatch({ type: 'CLEAR_GAME_STATE' });
                 onLeave?.();
@@ -124,6 +147,7 @@ export function useGameDispatcher() {
         } catch (err) {
             if (command.type === 'CLAIM_WIN') {
                 contextDispatch({ type: 'SET_CLAIM_PENDING', payload: false });
+                session?.setClaimPending(false);
             }
             logger.error(`Failed ${command.type}:`, err);
             const msg = normalizeErrorMessage(err instanceof Error ? err.message : 'Operation failed') ?? 'Operation failed';

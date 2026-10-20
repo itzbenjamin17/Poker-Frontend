@@ -105,4 +105,160 @@ describe('GameReviewView', () => {
         expect(screen.queryByLabelText(/Action dock/i)).not.toBeInTheDocument();
         expect(screen.queryByText(/LEAVE TABLE/i)).not.toBeInTheDocument();
     });
+
+    it('renders board and players from gameEndResult.finalState when provided rather than gameState', () => {
+        const finalState: GameState = {
+            ...mockGameState,
+            communityCards: ['2C', '3D', '4H', '5S', '9C'],
+            players: [
+                {
+                    id: 'p-final-1',
+                    name: 'FinalWinner',
+                    chips: 8000,
+                    status: 'ACTIVE',
+                    currentBet: 0,
+                    hasFolded: false,
+                    isReadyForNextHand: false,
+                    isWinner: true,
+                    holeCards: ['AH', 'AC'],
+                },
+                {
+                    id: 'p-final-2',
+                    name: 'FinalRunnerUp',
+                    chips: 2000,
+                    status: 'ACTIVE',
+                    currentBet: 0,
+                    hasFolded: false,
+                    isReadyForNextHand: false,
+                    isWinner: false,
+                    holeCards: ['KH', 'KC'],
+                },
+            ],
+        };
+
+        render(
+            <GameReviewView
+                gameEndResult={{
+                    gameId: 'ROOM1',
+                    winnerName: 'FinalWinner',
+                    winnerChips: 8000,
+                    isForfeit: false,
+                    message: 'FinalWinner won',
+                    finalState,
+                }}
+                gameState={mockGameState}
+                onLeave={mockOnLeave}
+            />
+        );
+
+        expect(screen.getByText('FinalWinner')).toBeInTheDocument();
+        expect(screen.getByText('FinalRunnerUp')).toBeInTheDocument();
+        expect(screen.queryByText('WinnerPlayer')).not.toBeInTheDocument();
+        expect(screen.queryByText('LoserPlayer')).not.toBeInTheDocument();
+    });
+
+    it('awards exactly one champion WINNER badge when winnerName exists even if other players have isWinner true', () => {
+        const stateWithMultipleWinners: GameState = {
+            ...mockGameState,
+            players: [
+                {
+                    id: 'p-1',
+                    name: 'PlayerOne',
+                    chips: 1000,
+                    status: 'ACTIVE',
+                    currentBet: 0,
+                    hasFolded: false,
+                    isReadyForNextHand: false,
+                    isWinner: true, // leftover from previous round
+                },
+                {
+                    id: 'p-2',
+                    name: 'PlayerTwo',
+                    chips: 9000,
+                    status: 'ACTIVE',
+                    currentBet: 0,
+                    hasFolded: false,
+                    isReadyForNextHand: false,
+                    isWinner: false,
+                },
+            ],
+        };
+
+        render(
+            <GameReviewView
+                gameEndResult={{
+                    gameId: 'ROOM1',
+                    winnerName: 'PlayerTwo',
+                    winnerChips: 9000,
+                    isForfeit: false,
+                    message: 'PlayerTwo won',
+                }}
+                gameState={stateWithMultipleWinners}
+                onLeave={mockOnLeave}
+            />
+        );
+
+        const winnerBadges = screen.getAllByText('WINNER');
+        expect(winnerBadges).toHaveLength(1);
+        expect(winnerBadges[0].closest('div')).toHaveTextContent('PlayerTwo');
+    });
+
+    it('sorts standings champion first, then descending chips, retaining original seat order for equal stacks without mutating source', () => {
+        const sourcePlayers = Object.freeze([
+            { id: 'p-1', name: 'Seat1Equal', chips: 1500, status: 'ACTIVE' as const, currentBet: 0, hasFolded: false, isReadyForNextHand: false },
+            { id: 'p-2', name: 'Seat2Low', chips: 500, status: 'ACTIVE' as const, currentBet: 0, hasFolded: false, isReadyForNextHand: false },
+            { id: 'p-3', name: 'Seat3Champion', chips: 3000, status: 'ACTIVE' as const, currentBet: 0, hasFolded: false, isReadyForNextHand: false },
+            { id: 'p-4', name: 'Seat4High', chips: 4000, status: 'ACTIVE' as const, currentBet: 0, hasFolded: false, isReadyForNextHand: false },
+            { id: 'p-5', name: 'Seat5Equal', chips: 1500, status: 'ACTIVE' as const, currentBet: 0, hasFolded: false, isReadyForNextHand: false },
+        ]);
+
+        const state: GameState = {
+            ...mockGameState,
+            players: sourcePlayers as unknown as GameState['players'],
+        };
+
+        const { container } = render(
+            <GameReviewView
+                gameEndResult={{
+                    gameId: 'ROOM1',
+                    winnerName: 'Seat3Champion',
+                    winnerChips: 3000,
+                    isForfeit: false,
+                    message: 'Champion won',
+                }}
+                gameState={state}
+                onLeave={mockOnLeave}
+            />
+        );
+
+        // Expected order:
+        // 1. Champion: Seat3Champion (chips 3000, but champion comes first)
+        // 2. Highest chips: Seat4High (chips 4000)
+        // 3. Equal chips seat 1: Seat1Equal (chips 1500)
+        // 4. Equal chips seat 5: Seat5Equal (chips 1500)
+        // 5. Lowest chips: Seat2Low (chips 500)
+        const playerNames = Array.from(container.querySelectorAll('.truncate')).map((el) => el.textContent);
+        expect(playerNames).toEqual(['Seat3Champion', 'Seat4High', 'Seat1Equal', 'Seat5Equal', 'Seat2Low']);
+    });
+
+    it('invokes onLeave when clicking Leave review button', async () => {
+        const user = (await import('@testing-library/user-event')).default.setup();
+        render(
+            <GameReviewView
+                gameEndResult={{
+                    gameId: 'ROOM1',
+                    winnerName: 'Seat3Champion',
+                    winnerChips: 3000,
+                    isForfeit: false,
+                    message: 'Champion won',
+                }}
+                gameState={mockGameState}
+                onLeave={mockOnLeave}
+            />
+        );
+
+        const leaveBtn = screen.getByRole('button', { name: /LEAVE/i });
+        await user.click(leaveBtn);
+        expect(mockOnLeave).toHaveBeenCalledTimes(1);
+    });
 });

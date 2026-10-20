@@ -183,7 +183,7 @@ describe('GameTableView', () => {
             expect(dock).toHaveAttribute('data-is-compact', 'false');
         });
 
-        it('derives isMobileLandscape and isCompactTable from mobile landscape viewport dimensions and renders mobile Leave button in ActionPanel', () => {
+        it('derives isMobileLandscape and isCompactTable from mobile landscape viewport dimensions and suppresses dock leave controls', () => {
             window.innerWidth = 740;
             window.innerHeight = 360;
 
@@ -194,7 +194,7 @@ describe('GameTableView', () => {
 
             const actionDock = screen.getByRole('region', { name: /action dock/i });
             expect(actionDock).toBeInTheDocument();
-            expect(screen.getByRole('button', { name: /^leave$/i })).toBeInTheDocument();
+            expect(screen.queryByRole('button', { name: /^leave$/i })).not.toBeInTheDocument();
         });
 
         it('forwards ready eligibility and countdown props to ResultDock during SHOWDOWN', () => {

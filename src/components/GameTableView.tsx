@@ -8,7 +8,7 @@ import { ReconnectOverlay, RoomStage, RoomDock, useOrientationGating } from './P
 import { LiveTableStage } from './LiveTableStage';
 import { GameContext } from '../context/GameContext';
 
-import type { ActionError, GameState, PokerAction, RoomState, WsStatus } from '../types';
+import type { ActionError, GameState, Player, PokerAction, RoomState, WsStatus } from '../types';
 import {
     BTN_LEAVE_TABLE, BTN_CLAIM_WIN, BTN_CLAIMING,
     WAITING_RECONNECT_PREFIX, WAITING_RECONNECT_SUFFIX,
@@ -93,36 +93,82 @@ export function GameTableView({
         !hasShellHeader &&
         (wsStatus !== 'connected' || effectiveIsRecovering || effectiveRecoveryFailed);
 
-    const effectivePlayerName = playerName ?? auth?.playerName;
-    const players = gameState?.players;
+    const effectivePlayerName = playerName ?? auth?.playerName ?? null;
+    const players = useMemo(() => gameState?.players ?? [], [gameState?.players]);
+
+    const resolvedHero = useMemo(() => {
+        if (!players.length) return null;
+        if (effectivePlayerName) {
+            const foundByName = players.find((p) => p.name === effectivePlayerName);
+            if (foundByName) return foundByName;
+        }
+        if (!effectivePlayerName && myPlayerId) {
+            const foundById = players.find((p) => p.id === myPlayerId);
+            if (foundById) return foundById;
+        }
+        return null;
+    }, [players, effectivePlayerName, myPlayerId]);
+
+    const resolvedHeroId = useMemo(() => {
+        if (resolvedHero) return resolvedHero.id;
+        if (effectivePlayerName) {
+            if (myPlayerId && players.some((p) => p.id === myPlayerId && p.name === effectivePlayerName)) {
+                return myPlayerId;
+            }
+            return null;
+        }
+        return myPlayerId ?? null;
+    }, [resolvedHero, effectivePlayerName, myPlayerId, players]);
 
     const orderedPlayers = useMemo(() => {
-        if (!players) return [];
-        const myIndex = players.findIndex(
-            (p) => p.id === myPlayerId || (effectivePlayerName && p.name === effectivePlayerName)
-        );
+        if (!players.length) return [];
+        let myIndex = -1;
+        if (resolvedHeroId) {
+            myIndex = players.findIndex((p) => p.id === resolvedHeroId);
+        }
+        if (myIndex < 0 && effectivePlayerName) {
+            myIndex = players.findIndex((p) => p.name === effectivePlayerName);
+        }
         return myIndex <= 0
             ? players
             : [...players.slice(myIndex), ...players.slice(0, myIndex)];
-    }, [players, myPlayerId, effectivePlayerName]);
+    }, [players, resolvedHeroId, effectivePlayerName]);
 
     const readyEligiblePlayers = useMemo(
-        () => players ? players.filter((player) => player.status !== 'OUT' && player.status !== 'DISCONNECTED' && player.chips > 0) : [],
+        () => players.filter((player) => player.status !== 'OUT' && player.status !== 'DISCONNECTED' && player.chips > 0),
         [players]
     );
 
+    const currentPlayerId = gameState?.currentPlayerId;
+    const currentPlayerName = gameState?.currentPlayerName;
+
+    const reconnectingOpponent = useMemo(() => {
+        if (!players.length) return null;
+        const isQualifying = (p: Player) =>
+            p.status === 'DISCONNECTED' &&
+            p.id !== resolvedHeroId &&
+            (!effectivePlayerName || p.name !== effectivePlayerName) &&
+            !p.hasFolded &&
+            p.status !== 'FOLDED';
+
+        const currentTurnActor = players.find(
+            (p) => p.id === currentPlayerId || (Boolean(currentPlayerName) && p.name === currentPlayerName)
+        );
+        if (currentTurnActor && isQualifying(currentTurnActor)) {
+            return currentTurnActor;
+        }
+
+        return players.find(isQualifying) ?? null;
+    }, [players, currentPlayerId, currentPlayerName, resolvedHeroId, effectivePlayerName]);
+
     if (!gameState || !roomState) return null;
 
-    const me = gameState.players.find((p) => p.id === myPlayerId);
+    const me = resolvedHero ?? (resolvedHeroId ? players.find((p) => p.id === resolvedHeroId) : undefined);
 
-    const isMyTurn = gameState.currentPlayerId === myPlayerId;
+    const isMyTurn = Boolean(resolvedHeroId && gameState.currentPlayerId === resolvedHeroId);
     const isSelfDisconnected = me?.status === 'DISCONNECTED';
     const isReadyCountdownActive = Boolean(gameState.isReadyCountdownActive && gameState.readyGateState !== 'WAITING_FOR_PLAYERS');
     const currentTurnPlayer = gameState.players.find((p) => p.id === gameState.currentPlayerId);
-    const disconnectedPlayer = currentTurnPlayer?.status === 'DISCONNECTED'
-        ? currentTurnPlayer
-        : gameState.players.find((p) => p.status === 'DISCONNECTED');
-    const isWaitingForReconnect = Boolean(disconnectedPlayer);
 
     const canClaimWin = Boolean(
         gameState.claimWinAvailable &&
@@ -138,8 +184,6 @@ export function GameTableView({
     const readyCountdownSecondsRemaining = isReadyCountdownActive && typeof gameState.readyCountdownDeadlineEpochMs === 'number'
         ? Math.max(0, Math.ceil((gameState.readyCountdownDeadlineEpochMs - nowMs) / 1000))
         : 0;
-
-    const bottomCanvasWidthClass = 'w-full min-w-0';
 
     return (
         <main
@@ -161,9 +205,7 @@ export function GameTableView({
                 />
             )}
 
-            {/* Showdown Modal removed in favor of ResultDock */}
-
-            {/* Leave Button */}
+            {/* Standalone Leave Button */}
             {!hasShellHeader && (
                 <div className="absolute top-4 left-3 md:top-24 md:left-8 z-40">
                     <Button
@@ -184,42 +226,50 @@ export function GameTableView({
             {/* WebSocket connection status badge */}
             {!hasShellHeader && <WsStatusBadge status={wsStatus} />}
 
-            {canClaimWin && (
-                <div className="absolute bottom-6 left-4 md:bottom-6 md:left-8 z-40">
-                    <Button
-                        variant="primary"
-                        size="sm"
-                        onClick={onClaimWin}
-                        disabled={claimPending}
-                        className="shadow-[0_0_24px_rgba(170,234,208,0.35)]"
-                    >
-                        {claimPending ? BTN_CLAIMING : BTN_CLAIM_WIN}
-                    </Button>
-                </div>
-            )}
-
             {/* Table Area */}
             <RoomStage>
+                {/* Remote Reconnect Banner overlay inside RoomStage */}
+                {reconnectingOpponent && (
+                    <div
+                        data-testid="remote-reconnect-banner"
+                        className="absolute top-2 left-1/2 -translate-x-1/2 z-30 pointer-events-none px-4 w-full max-w-xl"
+                    >
+                        <div className="mx-auto bg-amber-500/20 border border-amber-300/40 rounded-xl px-4 py-2.5 text-center backdrop-blur-md shadow-lg">
+                            <p className="text-amber-200 font-headline font-bold uppercase tracking-wider text-xs md:text-sm">
+                                {WAITING_RECONNECT_PREFIX}{reconnectingOpponent.name}{WAITING_RECONNECT_SUFFIX}
+                            </p>
+                        </div>
+                    </div>
+                )}
+
                 <LiveTableStage
                     nowMs={nowMs}
                     gameState={gameState}
                     orderedPlayers={orderedPlayers}
-                    myPlayerId={myPlayerId}
+                    myPlayerId={resolvedHeroId}
                     showdown={showdown}
                     privateState={privateState}
                 />
-            </RoomStage>
 
-            {/* Waiting for reconnect banner */}
-            {isWaitingForReconnect && disconnectedPlayer && !isCompactTable && (
-                <div className={cn('px-4 md:px-8 pb-3', bottomCanvasWidthClass)}>
-                    <div className="mx-auto max-w-3xl bg-amber-500/20 border border-amber-300/40 rounded-xl px-4 py-3 text-center backdrop-blur-md">
-                        <p className="text-amber-200 font-headline font-bold uppercase tracking-wider text-xs md:text-sm">
-                            {WAITING_RECONNECT_PREFIX}{disconnectedPlayer.name}{WAITING_RECONNECT_SUFFIX}
-                        </p>
+                {/* Claim Win Button: Place inside RoomStage at bottom-left with 8px inset */}
+                {canClaimWin && (
+                    <div
+                        data-testid="claim-win-container"
+                        className="absolute left-[8px] bottom-[8px] z-30"
+                        style={{ position: 'absolute', left: 8, bottom: 8 }}
+                    >
+                        <Button
+                            variant="primary"
+                            size="sm"
+                            onClick={onClaimWin}
+                            disabled={claimPending}
+                            className="shadow-[0_0_24px_rgba(170,234,208,0.35)]"
+                        >
+                            {claimPending ? BTN_CLAIMING : BTN_CLAIM_WIN}
+                        </Button>
                     </div>
-                </div>
-            )}
+                )}
+            </RoomStage>
 
             {/* Stable action slot - the table keeps the same height as turns change */}
             <RoomDock
@@ -243,7 +293,6 @@ export function GameTableView({
                         onReady={onReady}
                         onUnready={onUnready}
                         isMobileLandscape={isMobileLandscape}
-                        onLeaveGame={onLeaveGame}
                     />
                 ) : (
                     <ActionPanel
@@ -272,7 +321,6 @@ export function GameTableView({
                         onReady={onReady}
                         onUnready={onUnready}
                         bigBlind={roomState.bigBlind ?? 50}
-                        onLeaveGame={onLeaveGame}
                     />
                 )}
             </RoomDock>

@@ -128,9 +128,9 @@ function GameViewInner() {
                 header={
                     <RoomHeader
                         roomName={roomState?.roomName}
-                        playerCount={0}
+                        playerCount={roomState?.players?.length ?? 0}
                         wsStatus={wsStatus}
-                            onLeave={handleLeaveRequest}
+                        onLeave={handleLeaveRequest}
                         confirmLeave={false}
                     />
                 }
