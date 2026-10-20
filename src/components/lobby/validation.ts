@@ -4,10 +4,16 @@ import {
     VALIDATION_MAX_PLAYERS,
     VALIDATION_ROOM_NAME_CONTROL,
     VALIDATION_PLAYER_ALIAS_CONTROL,
+    VALIDATION_ROOM_NAME_FORMAT,
+    VALIDATION_PLAYER_ALIAS_FORMAT,
+    VALIDATION_ROOM_NAME_HTML,
+    VALIDATION_PLAYER_ALIAS_HTML,
+    VALIDATION_PASSWORD_CONTROL,
     VALIDATION_BIG_BLIND_MIN_RATIO,
     VALIDATION_BUY_IN_MIN_BIG_BLIND,
     formatRoomNameMaxError,
     formatPlayerAliasMaxError,
+    formatPasswordMaxError,
     formatSmallBlindRangeError,
     formatBigBlindRangeError,
     formatBuyInRangeError,
@@ -16,11 +22,17 @@ import {
 export const VALIDATION = {
     roomName: { min: 1, max: 50 },
     playerName: { min: 1, max: 30 },
+    password: { max: 50 },
     maxPlayers: { min: 2, max: 10 },
     smallBlind: { min: 1, max: 10_000 },
     bigBlind: { min: 2, max: 20_000 },
     buyIn: { min: 20, max: 1_000_000 },
 };
+
+const FORMAT_CHARS_REGEX = /\p{Cf}/u;
+const HTML_TAGS_REGEX = /<[^>]*>/;
+// eslint-disable-next-line no-control-regex
+const PASSWORD_CONTROL_REGEX = /[\u0000-\u001F\u007F-\u009F]/;
 
 function parseInteger(value: number | string): number {
     if (typeof value === 'number') {
@@ -33,18 +45,61 @@ function parseInteger(value: number | string): number {
     return Number.parseInt(trimmed, 10);
 }
 
+export function validatePassword(password?: string): string | null {
+    if (password === undefined || password === null || password === '') {
+        return null;
+    }
+    if (password.length > VALIDATION.password.max) {
+        return formatPasswordMaxError(VALIDATION.password.max);
+    }
+    if (PASSWORD_CONTROL_REGEX.test(password)) {
+        return VALIDATION_PASSWORD_CONTROL;
+    }
+    return null;
+}
+
+export function normalizePassword(password?: string): string | undefined {
+    if (password === undefined || password === null) {
+        return undefined;
+    }
+    if (password.trim().length === 0) {
+        return undefined;
+    }
+    return password;
+}
+
 export function validateJoin(data: {
     roomName: string;
     playerName: string;
+    password?: string;
 }): string | null {
-    if (!data.roomName.trim()) return VALIDATION_ROOM_NAME_REQUIRED;
-    if (data.roomName.trim().length > VALIDATION.roomName.max) return formatRoomNameMaxError(VALIDATION.roomName.max);
+    if (FORMAT_CHARS_REGEX.test(data.roomName))
+        return VALIDATION_ROOM_NAME_FORMAT;
+    if (HTML_TAGS_REGEX.test(data.roomName))
+        return VALIDATION_ROOM_NAME_HTML;
+    if (!data.roomName.trim())
+        return VALIDATION_ROOM_NAME_REQUIRED;
+    if (data.roomName.trim().length > VALIDATION.roomName.max)
+        return formatRoomNameMaxError(VALIDATION.roomName.max);
     if (/\p{Cc}/u.test(data.roomName.trim()))
         return VALIDATION_ROOM_NAME_CONTROL;
-    if (!data.playerName.trim()) return VALIDATION_PLAYER_ALIAS_REQUIRED;
-    if (data.playerName.trim().length > VALIDATION.playerName.max) return formatPlayerAliasMaxError(VALIDATION.playerName.max);
+
+    if (FORMAT_CHARS_REGEX.test(data.playerName))
+        return VALIDATION_PLAYER_ALIAS_FORMAT;
+    if (HTML_TAGS_REGEX.test(data.playerName))
+        return VALIDATION_PLAYER_ALIAS_HTML;
+    if (!data.playerName.trim())
+        return VALIDATION_PLAYER_ALIAS_REQUIRED;
+    if (data.playerName.trim().length > VALIDATION.playerName.max)
+        return formatPlayerAliasMaxError(VALIDATION.playerName.max);
     if (/\p{Cc}/u.test(data.playerName.trim()))
         return VALIDATION_PLAYER_ALIAS_CONTROL;
+
+    if (data.password !== undefined) {
+        const passwordError = validatePassword(data.password);
+        if (passwordError) return passwordError;
+    }
+
     return null;
 }
 
@@ -55,6 +110,7 @@ export function validateCreate(data: {
     smallBlind: number | string;
     bigBlind: number | string;
     buyIn: number | string;
+    password?: string;
 }): string | null {
     const joinError = validateJoin(data);
     if (joinError) return joinError;
@@ -88,7 +144,9 @@ export function parseCreateRoomSubmission(data: {
     smallBlind: number | string;
     bigBlind: number | string;
     buyIn: number | string;
+    password?: string;
 }) {
+    const password = normalizePassword(data.password);
     return {
         roomName: data.roomName.trim(),
         playerName: data.playerName.trim(),
@@ -96,6 +154,21 @@ export function parseCreateRoomSubmission(data: {
         smallBlind: parseInteger(data.smallBlind),
         bigBlind: parseInteger(data.bigBlind),
         buyIn: parseInteger(data.buyIn),
+        ...(password !== undefined ? { password } : {}),
     };
 }
+
+export function parseJoinRoomSubmission(data: {
+    roomName: string;
+    playerName: string;
+    password?: string;
+}) {
+    const password = normalizePassword(data.password);
+    return {
+        roomName: data.roomName.trim(),
+        playerName: data.playerName.trim(),
+        ...(password !== undefined ? { password } : {}),
+    };
+}
+
 

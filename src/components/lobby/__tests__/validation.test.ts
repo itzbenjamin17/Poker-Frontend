@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, test, expect } from 'vitest';
-import { validateCreate, validateJoin, VALIDATION } from '../validation';
+import { validateCreate, validateJoin, validatePassword, normalizePassword, parseCreateRoomSubmission, parseJoinRoomSubmission, VALIDATION } from '../validation';
 
 describe('validateCreate', () => {
     const validConfig = {
@@ -116,4 +116,179 @@ describe('validateJoin', () => {
         expect(validateJoin({ roomName: 'PokerRoom', playerName: `Alice${control}` }))
             .toBe('Player alias cannot contain control characters.');
     });
+
+    test.each([
+        ['\u200B', 'zero-width space'],
+        ['\u200C', 'zero-width non-joiner'],
+        ['\u200D', 'zero-width joiner'],
+        ['\u200E', 'left-to-right mark'],
+        ['\u200F', 'right-to-left mark'],
+        ['\u202A', 'left-to-right embedding'],
+        ['\u202E', 'right-to-left override'],
+        ['\u2066', 'left-to-right isolate'],
+        ['\uFEFF', 'byte order mark'],
+    ])('rejects Unicode Cf format character %s (%s) in room name and player alias', (char) => {
+        expect(validateJoin({ roomName: `Room${char}1`, playerName: 'Alice' }))
+            .toBe('Room name cannot contain format characters.');
+        expect(validateJoin({ roomName: 'Room1', playerName: `Alice${char}` }))
+            .toBe('Player alias cannot contain format characters.');
+    });
+
+    test('rejects raw room name and player alias with Cf characters before trimming', () => {
+        expect(validateJoin({ roomName: '  \u200B  ', playerName: 'Alice' }))
+            .toBe('Room name cannot contain format characters.');
+        expect(validateJoin({ roomName: 'Room1', playerName: '  \uFEFF  ' }))
+            .toBe('Player alias cannot contain format characters.');
+        expect(validateJoin({ roomName: '\u200B   Room', playerName: 'Alice' }))
+            .toBe('Room name cannot contain format characters.');
+        expect(validateJoin({ roomName: 'Room1', playerName: 'Alice   \u200D' }))
+            .toBe('Player alias cannot contain format characters.');
+    });
+
+    test.each([
+        '<script>alert(1)</script>',
+        '<b>Room</b>',
+        '<img src=x onerror=alert(1)>',
+        '<div>',
+        '<>',
+    ])('rejects HTML tag %s in room name and player alias', (tag) => {
+        expect(validateJoin({ roomName: tag, playerName: 'Alice' }))
+            .toBe('Room name cannot contain HTML tags.');
+        expect(validateJoin({ roomName: 'Room1', playerName: tag }))
+            .toBe('Player alias cannot contain HTML tags.');
+    });
+
+    test('preserves valid international Unicode names without prohibited characters', () => {
+        expect(validateJoin({ roomName: '東京ポーカー', playerName: '田中' })).toBeNull();
+        expect(validateJoin({ roomName: 'Café des Joueurs', playerName: 'René' })).toBeNull();
+        expect(validateJoin({ roomName: 'Sala de Póker', playerName: 'José María' })).toBeNull();
+        expect(validateJoin({ roomName: 'Покер Клуб', playerName: 'Иван' })).toBeNull();
+    });
+
+    test('validates optional password in validateJoin', () => {
+        expect(validateJoin({ roomName: 'Room', playerName: 'Alice', password: 'valid-password' })).toBeNull();
+        expect(validateJoin({ roomName: 'Room', playerName: 'Alice', password: 'a'.repeat(51) }))
+            .toBe('Password must be at most 50 characters.');
+        expect(validateJoin({ roomName: 'Room', playerName: 'Alice', password: 'bad\u0000pass' }))
+            .toBe('Password cannot contain control characters.');
+    });
 });
+
+describe('validatePassword', () => {
+    test('allows undefined, empty, or whitespace-only passwords', () => {
+        expect(validatePassword(undefined)).toBeNull();
+        expect(validatePassword('')).toBeNull();
+        expect(validatePassword('   ')).toBeNull();
+    });
+
+    test('allows valid passwords up to 50 characters', () => {
+        expect(validatePassword('secret123')).toBeNull();
+        expect(validatePassword('a'.repeat(50))).toBeNull();
+    });
+
+    test('rejects passwords exceeding 50 characters', () => {
+        expect(validatePassword('a'.repeat(51))).toBe('Password must be at most 50 characters.');
+    });
+
+    test.each([
+        '\u0000',
+        '\u001F',
+        '\u007F',
+        '\u0080',
+        '\u009F',
+    ])('rejects control character %j in passwords', (ctrl) => {
+        expect(validatePassword(`pass${ctrl}word`)).toBe('Password cannot contain control characters.');
+    });
+
+    test('applies no Unicode format character restriction or HTML tag sanitization to passwords', () => {
+        expect(validatePassword('pass\u200Bword')).toBeNull();
+        expect(validatePassword('<b>secret</b>')).toBeNull();
+        expect(validatePassword('パスワード')).toBeNull();
+    });
+});
+
+describe('normalizePassword', () => {
+    test('normalizes undefined, empty, or whitespace-only passwords to undefined', () => {
+        expect(normalizePassword(undefined)).toBeUndefined();
+        expect(normalizePassword('')).toBeUndefined();
+        expect(normalizePassword('   ')).toBeUndefined();
+        expect(normalizePassword('\t \n')).toBeUndefined();
+    });
+
+    test('transmits non-empty password unchanged, including leading/trailing spaces', () => {
+        expect(normalizePassword('secret')).toBe('secret');
+        expect(normalizePassword('  secret123  ')).toBe('  secret123  ');
+        expect(normalizePassword(' spaced pass ')).toBe(' spaced pass ');
+    });
+});
+
+describe('parseCreateRoomSubmission and parseJoinRoomSubmission', () => {
+    test('omits whitespace-only or undefined password in parseCreateRoomSubmission', () => {
+        const parsedWithout = parseCreateRoomSubmission({
+            roomName: ' Room 1 ',
+            playerName: ' Alice ',
+            maxPlayers: 6,
+            smallBlind: 10,
+            bigBlind: 20,
+            buyIn: 1000,
+        });
+        expect(parsedWithout.password).toBeUndefined();
+
+        const parsedWhitespace = parseCreateRoomSubmission({
+            roomName: ' Room 1 ',
+            playerName: ' Alice ',
+            maxPlayers: 6,
+            smallBlind: 10,
+            bigBlind: 20,
+            buyIn: 1000,
+            password: '   ',
+        });
+        expect(parsedWhitespace.password).toBeUndefined();
+    });
+
+    test('preserves entered password in parseCreateRoomSubmission', () => {
+        const parsed = parseCreateRoomSubmission({
+            roomName: ' Room 1 ',
+            playerName: ' Alice ',
+            maxPlayers: 6,
+            smallBlind: 10,
+            bigBlind: 20,
+            buyIn: 1000,
+            password: '  secret123  ',
+        });
+        expect(parsed.password).toBe('  secret123  ');
+    });
+
+    test('parseJoinRoomSubmission trims names and handles password', () => {
+        const withoutPass = parseJoinRoomSubmission({
+            roomName: ' Room 1 ',
+            playerName: ' Alice ',
+        });
+        expect(withoutPass).toEqual({
+            roomName: 'Room 1',
+            playerName: 'Alice',
+        });
+
+        const withPass = parseJoinRoomSubmission({
+            roomName: ' Room 1 ',
+            playerName: ' Alice ',
+            password: '  secret123  ',
+        });
+        expect(withPass).toEqual({
+            roomName: 'Room 1',
+            playerName: 'Alice',
+            password: '  secret123  ',
+        });
+
+        const withBlankPass = parseJoinRoomSubmission({
+            roomName: ' Room 1 ',
+            playerName: ' Alice ',
+            password: '   ',
+        });
+        expect(withBlankPass).toEqual({
+            roomName: 'Room 1',
+            playerName: 'Alice',
+        });
+    });
+});
+

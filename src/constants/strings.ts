@@ -41,6 +41,19 @@ export const VALIDATION_ROOM_NAME_CONTROL =
     'Room name cannot contain control characters.';
 export const VALIDATION_PLAYER_ALIAS_CONTROL =
     'Player alias cannot contain control characters.';
+export const VALIDATION_ROOM_NAME_FORMAT =
+    'Room name cannot contain format characters.';
+export const VALIDATION_PLAYER_ALIAS_FORMAT =
+    'Player alias cannot contain format characters.';
+export const VALIDATION_ROOM_NAME_HTML =
+    'Room name cannot contain HTML tags.';
+export const VALIDATION_PLAYER_ALIAS_HTML =
+    'Player alias cannot contain HTML tags.';
+export const VALIDATION_PASSWORD_CONTROL =
+    'Password cannot contain control characters.';
+export const VALIDATION_PASSWORD_MAX =
+    'Password must be at most 50 characters.';
+export const formatPasswordMaxError = (max: number) => `Password must be at most ${max} characters.`;
 export const ERROR_MALFORMED_RESPONSE =
     'The server returned an invalid response. Please try again.';
 export const ERROR_COPY_ROOM_CODE = 'Could not copy room code.';

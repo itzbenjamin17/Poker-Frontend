@@ -28,6 +28,7 @@ export function CreateRoomForm({ onAuth, onError, isSubmitting, loading = false,
     const [createData, setCreateData] = useState({
         roomName: '',
         playerName: '',
+        password: '',
         maxPlayers: 6,
         smallBlind: '25',
         bigBlind: '50',
@@ -74,6 +75,7 @@ export function CreateRoomForm({ onAuth, onError, isSubmitting, loading = false,
                             onChange={e => setCreateData({ ...createData, roomName: e.target.value })}
                             required
                             maxLength={VALIDATION.roomName.max}
+                            disabled={isDisabled}
                         />
                     </div>
                     <div className="col-span-full">
@@ -84,6 +86,18 @@ export function CreateRoomForm({ onAuth, onError, isSubmitting, loading = false,
                             onChange={e => setCreateData({ ...createData, playerName: e.target.value })}
                             required
                             maxLength={VALIDATION.playerName.max}
+                            disabled={isDisabled}
+                        />
+                    </div>
+                    <div className="col-span-full">
+                        <Input
+                            label="Password (Optional)"
+                            type="password"
+                            placeholder="Enter Room Password (Optional)"
+                            value={createData.password}
+                            onChange={e => setCreateData({ ...createData, password: e.target.value })}
+                            maxLength={VALIDATION.password.max}
+                            disabled={isDisabled}
                         />
                     </div>
                     <Input
@@ -93,6 +107,7 @@ export function CreateRoomForm({ onAuth, onError, isSubmitting, loading = false,
                         onChange={e => setCreateData({ ...createData, smallBlind: e.target.value })}
                         min={VALIDATION.smallBlind.min}
                         max={VALIDATION.smallBlind.max}
+                        disabled={isDisabled}
                     />
                     <Input
                         label="Big Blind"
@@ -101,6 +116,7 @@ export function CreateRoomForm({ onAuth, onError, isSubmitting, loading = false,
                         onChange={e => setCreateData({ ...createData, bigBlind: e.target.value })}
                         min={VALIDATION.bigBlind.min}
                         max={VALIDATION.bigBlind.max}
+                        disabled={isDisabled}
                     />
                     <div className="space-y-3">
                         <div className="flex items-baseline justify-between">
@@ -119,6 +135,7 @@ export function CreateRoomForm({ onAuth, onError, isSubmitting, loading = false,
                             max={VALIDATION.maxPlayers.max}
                             step={1}
                             value={createData.maxPlayers}
+                            disabled={isDisabled}
                             onChange={e => {
                                 const v = Number.parseInt(e.target.value, 10);
                                 setCreateData({ ...createData, maxPlayers: Number.isNaN(v) ? createData.maxPlayers : v });
@@ -138,6 +155,7 @@ export function CreateRoomForm({ onAuth, onError, isSubmitting, loading = false,
                         onChange={e => setCreateData({ ...createData, buyIn: e.target.value })}
                         min={VALIDATION.buyIn.min}
                         max={VALIDATION.buyIn.max}
+                        disabled={isDisabled}
                     />
 
                     <div className="col-span-full mt-4">
