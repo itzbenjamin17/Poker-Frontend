@@ -77,29 +77,42 @@ export function useGameDispatcher() {
             setPending(command.type, true);
             
             if (command.type === 'START_GAME') {
+                if (session?.isStarted()) return;
                 await pokerApi.startGame(auth.roomId, auth.token);
+                session?.markGameStarted();
+                void session?.synchronizeSession({ resetBudget: true });
             } else if (command.type === 'CLAIM_WIN') {
                 contextDispatch({ type: 'SET_CLAIM_PENDING', payload: true });
                 await pokerApi.claimWin(targetGameId, auth.token);
             } else if (command.type === 'LEAVE_GAME') {
-                if (requestLeave) {
-                    if (!await requestLeave()) return;
-                    clearShowdownTimers();
-                    contextDispatch({ type: 'SET_PRIVATE', payload: null });
-                    contextDispatch({ type: 'CLEAR_GAME_STATE' });
-                    savePersistedGameEnd(auth.roomId, null);
-                    session?.disconnect();
-                } else {
-                    try {
-                        await pokerApi.leaveRoom(auth.roomId, auth.token);
-                    } catch (error) {
-                        if (getErrorStatusCode(error) !== 404) throw error;
+                session?.setPendingLeave(true);
+                try {
+                    if (requestLeave) {
+                        const success = await requestLeave();
+                        if (!success) {
+                            session?.setPendingLeave(false);
+                            return;
+                        }
+                        clearShowdownTimers();
+                        contextDispatch({ type: 'SET_PRIVATE', payload: null });
+                        contextDispatch({ type: 'CLEAR_GAME_STATE' });
+                        savePersistedGameEnd(auth.roomId, null);
+                        session?.disconnect();
+                    } else {
+                        try {
+                            await pokerApi.leaveRoom(auth.roomId, auth.token);
+                        } catch (error) {
+                            if (getErrorStatusCode(error) !== 404) throw error;
+                        }
+                        clearShowdownTimers();
+                        savePersistedGameEnd(auth.roomId, null);
+                        contextDispatch({ type: 'SET_PRIVATE', payload: null });
+                        session?.disconnect();
+                        onLeave?.();
                     }
-                    clearShowdownTimers();
-                    savePersistedGameEnd(auth.roomId, null);
-                    contextDispatch({ type: 'SET_PRIVATE', payload: null });
-                    session?.disconnect();
-                    onLeave?.();
+                } catch (leaveErr) {
+                    session?.setPendingLeave(false);
+                    throw leaveErr;
                 }
             } else if (command.type === 'LEAVE_REVIEW') {
                 clearShowdownTimers();

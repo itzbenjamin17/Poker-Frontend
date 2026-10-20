@@ -3,9 +3,10 @@ import { describe, expect, it, vi } from 'vitest';
 import { GameSession } from '../GameSession';
 import { TestClock } from '../clock';
 import { InMemoryTransportAdapter } from '../../services/transport';
-import type { AuthResponse, IncomingGameStatePayload } from '../../types';
+import type { AuthResponse, IncomingGameStatePayload, RoomDataResponse } from '../../types';
 import { HOST_LEFT } from '../../constants/strings';
-import { createValidGameState, createValidPlayer } from '../../test/fixtures';
+import { createValidGameState, createValidPlayer, createValidRoomData, createMockJwt } from '../../test/fixtures';
+import { pokerApi } from '../../services/api';
 
 describe('GameSession Domain Store', () => {
     const auth: AuthResponse = {
@@ -1020,4 +1021,393 @@ describe('GameSession Domain Store', () => {
             expect(session.getSnapshot().gameState?.phase).toBe('SHOWDOWN');
         });
     });
+
+    describe('Guarded Synchronization Workflow, Private-Card Ordering & Room Reconciliation (Ticket #46)', () => {
+        const validToken = createMockJwt();
+        const authedUser: AuthResponse = {
+            roomId: 'room-123',
+            playerName: 'Hero',
+            token: validToken,
+            message: 'Success',
+        };
+
+        function createAuthedSession(clock = new TestClock(1000)) {
+            const transport = new InMemoryTransportAdapter();
+            const onLeave = vi.fn();
+            const session = new GameSession({
+                auth: authedUser,
+                transport,
+                clock,
+                onLeave,
+            });
+            return { session, transport, clock, onLeave };
+        }
+
+        it('Attempt A fails publicly; delayed private response arrives after successful B and changes nothing', async () => {
+            const { session } = createAuthedSession();
+            session.setRoomState({ roomId: 'room-123', gameStarted: true });
+
+            let resolveAttemptBPrivate!: (val: unknown) => void;
+            let resolveAttemptAPrivate!: (val: unknown) => void;
+
+            vi.spyOn(pokerApi, 'getPublicGameState')
+                .mockRejectedValueOnce(new Error('Network error on A'))
+                .mockResolvedValueOnce(createValidGameState({
+                    gameId: 'room-123',
+                    handNumber: 2,
+                    players: [{ id: 'hero-p1', name: 'Hero', chips: 1000 }],
+                }));
+
+            vi.spyOn(pokerApi, 'getPrivatePlayerState')
+                .mockImplementationOnce(() => new Promise((resolve) => { resolveAttemptAPrivate = resolve; }))
+                .mockImplementationOnce(() => new Promise((resolve) => { resolveAttemptBPrivate = resolve; }));
+
+            void session.synchronizeSession();
+            await Promise.resolve();
+
+            const promiseB = session.synchronizeSession({ resetBudget: true });
+            await Promise.resolve();
+
+            resolveAttemptBPrivate({
+                playerId: 'hero-p1',
+                handNumber: 2,
+                holeCards: ['AH', 'KH'],
+            });
+            await promiseB;
+
+            expect(session.getSnapshot().gameState?.handNumber).toBe(2);
+            expect(session.getSnapshot().privateState?.holeCards).toEqual(['AH', 'KH']);
+
+            resolveAttemptAPrivate({
+                playerId: 'hero-p1',
+                handNumber: 1,
+                holeCards: ['2C', '3D'],
+            });
+            await Promise.resolve();
+
+            expect(session.getSnapshot().gameState?.handNumber).toBe(2);
+            expect(session.getSnapshot().privateState?.holeCards).toEqual(['AH', 'KH']);
+        });
+
+        it('same-clock-time attempts cannot reorder state', async () => {
+            const clock = new TestClock(5000);
+            const { session } = createAuthedSession(clock);
+            session.setRoomState({ roomId: 'room-123', gameStarted: true });
+
+            let resolveAttempt1Public!: (val: unknown) => void;
+            let resolveAttempt2Public!: (val: unknown) => void;
+
+            vi.spyOn(pokerApi, 'getPublicGameState')
+                .mockImplementationOnce(() => new Promise((res) => { resolveAttempt1Public = res; }))
+                .mockImplementationOnce(() => new Promise((res) => { resolveAttempt2Public = res; }));
+            vi.spyOn(pokerApi, 'getPrivatePlayerState')
+                .mockResolvedValueOnce({ playerId: 'hero-p1', handNumber: 1, holeCards: ['2C', '3D'] })
+                .mockResolvedValueOnce({ playerId: 'hero-p1', handNumber: 2, holeCards: ['AH', 'KH'] });
+
+            const p1 = session.synchronizeSession();
+            const p2 = session.synchronizeSession();
+
+            resolveAttempt2Public(createValidGameState({
+                gameId: 'room-123',
+                handNumber: 2,
+                pot: 200,
+                players: [{ id: 'hero-p1', name: 'Hero', chips: 800 }],
+            }));
+            await p2;
+
+            expect(session.getSnapshot().gameState?.handNumber).toBe(2);
+            expect(session.getSnapshot().gameState?.pot).toBe(200);
+            expect(session.getSnapshot().privateState?.holeCards).toEqual(['AH', 'KH']);
+
+            resolveAttempt1Public(createValidGameState({
+                gameId: 'room-123',
+                handNumber: 1,
+                pot: 100,
+                players: [{ id: 'hero-p1', name: 'Hero', chips: 900 }],
+            }));
+            await p1;
+
+            expect(session.getSnapshot().gameState?.handNumber).toBe(2);
+            expect(session.getSnapshot().gameState?.pot).toBe(200);
+            expect(session.getSnapshot().privateState?.holeCards).toEqual(['AH', 'KH']);
+        });
+
+        it('public/private REST responses straddle a hand change without publishing a partial pair', async () => {
+            const { session } = createAuthedSession();
+            session.setRoomState({ roomId: 'room-123', gameStarted: true });
+
+            vi.spyOn(pokerApi, 'getPublicGameState').mockResolvedValueOnce(createValidGameState({
+                gameId: 'room-123',
+                handNumber: 1,
+                pot: 50,
+                players: [{ id: 'hero-p1', name: 'Hero', chips: 950 }],
+            }));
+            vi.spyOn(pokerApi, 'getPrivatePlayerState').mockResolvedValueOnce({
+                playerId: 'hero-p1',
+                handNumber: 2,
+                holeCards: ['AS', 'KS'],
+            });
+
+            await session.synchronizeSession();
+
+            expect(session.getSnapshot().gameState).toBeNull();
+            expect(session.getSnapshot().privateState).toBeNull();
+            expect(session.hasPendingRecoveryTimer()).toBe(true);
+        });
+
+        it('both STOMP delivery orders work: private-before-public and public-before-private', () => {
+            const { session, transport } = createAuthedSession();
+            session.connect();
+
+            // Order A: public-before-private for hand 1
+            transport.simulateMessage('/game/room-123', createValidGameState({
+                gameId: 'room-123',
+                handNumber: 1,
+                phase: 'PRE_FLOP',
+                players: [{ id: 'hero-p1', name: 'Hero', chips: 1000 }],
+            }));
+            expect(session.getSnapshot().gameState?.handNumber).toBe(1);
+            expect(session.getSnapshot().privateState).toBeNull();
+
+            transport.simulateMessage('/user/queue/private', {
+                playerId: 'hero-p1',
+                handNumber: 1,
+                holeCards: ['QH', 'QD'],
+            });
+            expect(session.getSnapshot().privateState?.holeCards).toEqual(['QH', 'QD']);
+
+            // Order B: private-before-public for hand 2
+            transport.simulateMessage('/user/queue/private', {
+                playerId: 'hero-p1',
+                handNumber: 2,
+                holeCards: ['AH', 'KH'],
+            });
+            expect(session.getSnapshot().privateState?.holeCards).toEqual(['QH', 'QD']);
+
+            transport.simulateMessage('/game/room-123', createValidGameState({
+                gameId: 'room-123',
+                handNumber: 2,
+                phase: 'PRE_FLOP',
+                players: [{ id: 'hero-p1', name: 'Hero', chips: 1000 }],
+            }));
+            expect(session.getSnapshot().gameState?.handNumber).toBe(2);
+            expect(session.getSnapshot().privateState?.holeCards).toEqual(['AH', 'KH']);
+        });
+
+        it('newer live data supersedes REST, with and without matching private state', async () => {
+            const { session, transport } = createAuthedSession();
+            session.connect();
+            session.setRoomState({ roomId: 'room-123', gameStarted: true });
+
+            // Case A: With matching private state -> succeeds without rollback
+            let resolveRestPublic!: (val: unknown) => void;
+            vi.spyOn(pokerApi, 'getPublicGameState').mockImplementationOnce(
+                () => new Promise((res) => { resolveRestPublic = res; })
+            );
+            vi.spyOn(pokerApi, 'getPrivatePlayerState').mockResolvedValueOnce({
+                playerId: 'hero-p1',
+                handNumber: 1,
+                holeCards: ['2C', '3D'],
+            });
+
+            const syncA = session.synchronizeSession();
+
+            transport.simulateMessage('/game/room-123', createValidGameState({
+                gameId: 'room-123',
+                handNumber: 2,
+                players: [{ id: 'hero-p1', name: 'Hero', chips: 1000 }],
+            }));
+            transport.simulateMessage('/user/queue/private', {
+                playerId: 'hero-p1',
+                handNumber: 2,
+                holeCards: ['AH', 'KH'],
+            });
+            expect(session.getSnapshot().gameState?.handNumber).toBe(2);
+            expect(session.getSnapshot().privateState?.holeCards).toEqual(['AH', 'KH']);
+
+            resolveRestPublic(createValidGameState({
+                gameId: 'room-123',
+                handNumber: 1,
+                players: [{ id: 'hero-p1', name: 'Hero', chips: 1000 }],
+            }));
+            await syncA;
+
+            expect(session.getSnapshot().gameState?.handNumber).toBe(2);
+            expect(session.getSnapshot().privateState?.holeCards).toEqual(['AH', 'KH']);
+            expect(session.hasPendingRecoveryTimer()).toBe(false);
+
+            // Case B: Without matching private state -> retries
+            let resolveRestPublicB!: (val: unknown) => void;
+            vi.spyOn(pokerApi, 'getPublicGameState').mockImplementationOnce(
+                () => new Promise((res) => { resolveRestPublicB = res; })
+            );
+            vi.spyOn(pokerApi, 'getPrivatePlayerState').mockResolvedValueOnce({
+                playerId: 'hero-p1',
+                handNumber: 2,
+                holeCards: ['AH', 'KH'],
+            });
+
+            const syncB = session.synchronizeSession();
+
+            transport.simulateMessage('/game/room-123', createValidGameState({
+                gameId: 'room-123',
+                handNumber: 3,
+                players: [{ id: 'hero-p1', name: 'Hero', chips: 1000 }],
+            }));
+            expect(session.getSnapshot().privateState).toBeNull();
+
+            resolveRestPublicB(createValidGameState({
+                gameId: 'room-123',
+                handNumber: 2,
+                players: [{ id: 'hero-p1', name: 'Hero', chips: 1000 }],
+            }));
+            await syncB;
+
+            expect(session.hasPendingRecoveryTimer()).toBe(true);
+        });
+
+        it('malformed room/public/private/review responses follow the failure table and retain auth', async () => {
+            const { session } = createAuthedSession();
+
+            vi.spyOn(pokerApi, 'getRoomData').mockResolvedValueOnce({ invalid: 'room-data' } as any);
+            await session.synchronizeSession();
+            expect(session.hasPendingRecoveryTimer()).toBe(true);
+            expect(session.getSnapshot().recoveryFailed).toBe(false);
+
+            session.clearRecoveryTimer();
+            session.setRoomState({ roomId: 'room-123', gameStarted: true });
+
+            vi.spyOn(pokerApi, 'getPublicGameState').mockResolvedValueOnce({ not: 'a-game-state' });
+            vi.spyOn(pokerApi, 'getPrivatePlayerState').mockResolvedValueOnce({ playerId: 'hero-p1', handNumber: 1, holeCards: [] });
+            await session.synchronizeSession({ resetBudget: true });
+            expect(session.hasPendingRecoveryTimer()).toBe(true);
+
+            session.clearRecoveryTimer();
+
+            vi.spyOn(pokerApi, 'getPublicGameState').mockResolvedValueOnce(createValidGameState({
+                gameId: 'room-123',
+                handNumber: 1,
+                players: [{ id: 'hero-p1', name: 'Hero', chips: 1000 }],
+            }));
+            vi.spyOn(pokerApi, 'getPrivatePlayerState').mockResolvedValueOnce({ invalid: 'private-state' });
+            await session.synchronizeSession({ resetBudget: true });
+            expect(session.hasPendingRecoveryTimer()).toBe(true);
+
+            session.clearRecoveryTimer();
+
+            vi.spyOn(pokerApi, 'getPublicGameState').mockRejectedValueOnce({ status: 404 });
+            vi.spyOn(pokerApi, 'getReview').mockResolvedValueOnce({ invalid: 'review' } as any);
+            await session.synchronizeSession({ resetBudget: true });
+            expect(session.hasPendingRecoveryTimer()).toBe(true);
+        });
+
+        it('private 403/404 reaches terminal fallback; private timeout/503 retries', async () => {
+            const { session } = createAuthedSession();
+            session.setRoomState({ roomId: 'room-123', gameStarted: true });
+
+            vi.spyOn(pokerApi, 'getPublicGameState').mockResolvedValueOnce(createValidGameState({ gameId: 'room-123' }));
+            vi.spyOn(pokerApi, 'getPrivatePlayerState').mockRejectedValueOnce({ status: 404 });
+            vi.spyOn(pokerApi, 'getReview').mockResolvedValueOnce({
+                gameId: 'room-123',
+                winnerName: 'Hero',
+                winnerChips: 2000,
+                isForfeit: false,
+                message: 'Game over review',
+            });
+
+            await session.synchronizeSession();
+
+            expect(session.getSnapshot().isGameOver).toBe(true);
+            expect(session.getSnapshot().gameEndResult?.winnerName).toBe('Hero');
+            expect(session.getSnapshot().loadingStatus).toBe('Connected.');
+
+            const { session: session2 } = createAuthedSession();
+            session2.setRoomState({ roomId: 'room-123', gameStarted: true });
+
+            const getReviewSpy = vi.spyOn(pokerApi, 'getReview').mockClear();
+            vi.spyOn(pokerApi, 'getPublicGameState').mockResolvedValueOnce(createValidGameState({ gameId: 'room-123' }));
+            vi.spyOn(pokerApi, 'getPrivatePlayerState').mockRejectedValueOnce({ status: 503 });
+
+            await session2.synchronizeSession();
+
+            expect(getReviewSpy).not.toHaveBeenCalled();
+            expect(session2.hasPendingRecoveryTimer()).toBe(true);
+            expect(session2.getSnapshot().isGameOver).toBe(false);
+        });
+
+        it('concurrent room updates preserve membership and started evidence', async () => {
+            const { session, transport } = createAuthedSession();
+            session.connect();
+
+            let resolveRoomData!: (val: RoomDataResponse) => void;
+            vi.spyOn(pokerApi, 'getRoomData').mockImplementationOnce(
+                () => new Promise((res) => { resolveRoomData = res; })
+            );
+
+            const syncPromise = session.synchronizeSession();
+
+            transport.simulateMessage('/room/room-123', {
+                message: 'PLAYER_JOINED',
+                data: {
+                    roomId: 'room-123',
+                    players: [
+                        { name: 'Hero', isHost: true },
+                        { name: 'Player2', isHost: false },
+                        { name: 'Player3', isHost: false },
+                    ],
+                },
+            });
+            transport.simulateMessage('/room/room-123', {
+                message: 'GAME_STARTED',
+                data: {
+                    gameId: 'room-123',
+                    message: 'Game has started',
+                },
+            });
+
+            expect(session.getSnapshot().roomState?.players).toHaveLength(3);
+            expect(session.isStarted()).toBe(true);
+
+            resolveRoomData(createValidRoomData({
+                roomId: 'room-123',
+                gameStarted: false,
+                players: [
+                    { name: 'Hero', isHost: true, joinedAt: '2026-01-01T00:00:00Z' },
+                    { name: 'Player2', isHost: false, joinedAt: '2026-01-01T00:00:00Z' },
+                ],
+            }));
+            await syncPromise;
+
+            expect(session.getSnapshot().roomState?.players).toHaveLength(3);
+            expect(session.getSnapshot().roomState?.gameStarted).toBe(true);
+            expect(session.isStarted()).toBe(true);
+        });
+
+        it('GAME_END during pending leave retains established success/failure behavior', async () => {
+            const { session, transport } = createAuthedSession();
+            session.connect();
+
+            session.setPendingLeave(true);
+            expect(session.hasLifecyclePermission()).toBe(false);
+
+            transport.simulateMessage('/game/room-123', {
+                type: 'GAME_END',
+                winner: 'Hero',
+                winnerChips: 2000,
+                isForfeit: false,
+                message: 'Hero won during leave',
+            });
+
+            expect(session.getSnapshot().isGameOver).toBe(true);
+            expect(session.getSnapshot().gameEndResult?.winnerName).toBe('Hero');
+
+            session.setPendingLeave(false);
+            expect(session.getSnapshot().isGameOver).toBe(true);
+            expect(session.getSnapshot().gameEndResult?.winnerName).toBe('Hero');
+
+            session.disconnect();
+            expect(session.getSnapshot().wsStatus).toBe('disconnected');
+        });
+    });
 });
+

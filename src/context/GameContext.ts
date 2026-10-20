@@ -52,7 +52,7 @@ export interface GameContextValue extends GameContextState {
     session?: GameSession;
     transport?: GameTransport;
     dispatch: React.Dispatch<Action>;
-    applyIncomingGameState: (payload: IncomingGameStatePayload) => void;
+    applyIncomingGameState: (payload: IncomingGameStatePayload) => boolean;
     applyIncomingPrivateState: (payload: IncomingPrivateStatePayload) => void;
     clearShowdownTimers: () => void;
     retryConnection?: () => void;

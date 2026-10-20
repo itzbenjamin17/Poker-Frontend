@@ -31,12 +31,21 @@ import {
 import { logger } from '../security/logger';
 import { SystemClock, type Clock, type TimerHandle } from './clock';
 import type { GameTransport, TransportStatus, TransportSubscription } from '../services/transport';
+import { loadSessionData, type SyncResult } from './sessionSync';
 
 const ROOM_CLOSED_REDIRECT_MS = 3_000;
 const ACTION_LOCK_TIMEOUT_MS = 3_000;
 const BASE_RETRY_DELAY_MS = 1_000;
 const MAX_RETRY_DELAY_MS = 8_000;
 const MAX_RECOVERY_RETRIES = 3;
+
+const PHASE_ORDER: Record<string, number> = {
+    PRE_FLOP: 0,
+    FLOP: 1,
+    TURN: 2,
+    RIVER: 3,
+    SHOWDOWN: 4,
+};
 
 export interface GameSessionOptions {
     auth: AuthResponse;
@@ -62,14 +71,22 @@ export class GameSession {
     private unsubStatus?: () => void;
     private unsubError?: () => void;
     private lastStateSyncTime = 0;
+    private roomRevision = 0;
     private stateSyncRevision = 0;
     private privateSyncRevision = 0;
+    private attemptId = 0;
+    private activeAttemptController: AbortController | null = null;
+    private gameStarted = false;
+    private bufferedPrivateState: { handNumber: number; playerId: string; holeCards: string[] } | null = null;
+    private currentPrivateHandNumber: number | null = null;
+    private lifecyclePermission = true;
+    private isLeavingPending = false;
+    private isDisposed = false;
 
     private actionTimeoutTimers = new Map<string, TimerHandle>();
     private notificationTimer: TimerHandle | null = null;
     private redirectTimer: TimerHandle | null = null;
     private recoveryTimer: TimerHandle | null = null;
-    private inFlightRecovery: Promise<void> | null = null;
     private recoveryRetryAttempt = 0;
     private recoveryGeneration = 0;
     private serverClockOffsetMs = 0;
@@ -91,6 +108,7 @@ export class GameSession {
         };
 
         const isGameOver = Boolean(options.initialGameEndResult);
+        this.gameStarted = Boolean(initialRoom.gameStarted);
 
         this.snapshot = Object.freeze({
             roomState: initialRoom,
@@ -136,6 +154,56 @@ export class GameSession {
 
     public getPrivateSyncRevision(): number {
         return this.privateSyncRevision;
+    }
+
+    public getAttemptId(): number {
+        return this.attemptId;
+    }
+
+    public getRoomRevision(): number {
+        return this.roomRevision;
+    }
+
+    public isStarted(): boolean {
+        return this.gameStarted || Boolean(this.snapshot.roomState?.gameStarted);
+    }
+
+    public hasGameStarted(): boolean {
+        return this.gameStarted;
+    }
+
+    public markGameStarted(): void {
+        this.gameStarted = true;
+        if (this.snapshot.roomState && !this.snapshot.roomState.gameStarted) {
+            this.updateSnapshot((prev) => ({
+                roomState: prev.roomState ? { ...prev.roomState, gameStarted: true } : null,
+            }));
+        }
+    }
+
+    public hasLifecyclePermission(): boolean {
+        return (
+            this.lifecyclePermission &&
+            !this.snapshot.isGameOver &&
+            !this.isDisposed &&
+            this.redirectTimer === null &&
+            !this.isLeavingPending
+        );
+    }
+
+    public setPendingLeave(pending: boolean): void {
+        if (pending) {
+            this.isLeavingPending = true;
+            if (this.activeAttemptController) {
+                this.activeAttemptController.abort();
+                this.activeAttemptController = null;
+            }
+        } else {
+            this.isLeavingPending = false;
+            if (!this.snapshot.isGameOver && !this.isDisposed) {
+                void this.synchronizeSession({ resetBudget: true });
+            }
+        }
     }
 
     public now = (): number => {
@@ -220,6 +288,9 @@ export class GameSession {
             this.disconnect();
             this.transport = transportOverride;
         }
+        if (!this.snapshot.isGameOver && !this.isDisposed && this.redirectTimer === null) {
+            this.lifecyclePermission = true;
+        }
 
         this.cleanupSubscriptions();
 
@@ -248,6 +319,11 @@ export class GameSession {
     }
 
     public disconnect(): void {
+        this.lifecyclePermission = false;
+        if (this.activeAttemptController) {
+            this.activeAttemptController.abort();
+            this.activeAttemptController = null;
+        }
         this.cancelActionLocks();
         this.clearShowdownTimers();
         this.clearNotificationTimer();
@@ -260,6 +336,11 @@ export class GameSession {
         }));
 
         this.transport.disconnect();
+    }
+
+    public dispose(): void {
+        this.isDisposed = true;
+        this.disconnect();
     }
 
     // ── Status & Error Handlers ───────────────────────────────────────────────────
@@ -286,9 +367,11 @@ export class GameSession {
     private handleTransportError(errorMsg: string): void {
         if (this.snapshot.isGameOver) return;
 
-        this.updateSnapshot(() => ({
-            wsStatus: 'reconnecting',
-        }));
+        if (this.snapshot.wsStatus !== 'disconnected') {
+            this.updateSnapshot(() => ({
+                wsStatus: 'reconnecting',
+            }));
+        }
 
         this.handleActionError(errorMsg);
     }
@@ -321,6 +404,35 @@ export class GameSession {
             }
 
             if (isPrivateStatePayload(parsed)) {
+                const currentHandNumber = this.snapshot.gameState?.handNumber ?? null;
+                const { handNumber, playerId, holeCards } = parsed;
+
+                if (typeof handNumber === 'number') {
+                    // Older hand: reject
+                    if (currentHandNumber !== null && handNumber < currentHandNumber) {
+                        return;
+                    }
+
+                    // Future hand (or public state not yet arrived): buffer
+                    if (currentHandNumber === null || handNumber > currentHandNumber) {
+                        this.bufferedPrivateState = {
+                            handNumber,
+                            playerId: playerId ?? '',
+                            holeCards: Array.isArray(holeCards) ? holeCards : [],
+                        };
+                        return;
+                    }
+
+                    // Current hand (handNumber === currentHandNumber)
+                    const myPlayer = this.snapshot.gameState?.players.find((p) => p.name === this.auth.playerName);
+                    if (myPlayer?.id && myPlayer.id !== playerId) {
+                        return;
+                    }
+
+                    this.bufferedPrivateState = null;
+                    this.currentPrivateHandNumber = handNumber;
+                }
+
                 this.privateSyncRevision += 1;
                 this.applyPrivateState(parsed);
             }
@@ -350,6 +462,11 @@ export class GameSession {
 
     public scheduleRedirect(message: string): void {
         if (this.snapshot.isGameOver) return;
+        this.lifecyclePermission = false;
+        if (this.activeAttemptController) {
+            this.activeAttemptController.abort();
+            this.activeAttemptController = null;
+        }
         const cleanMsg = normalizeErrorMessage(message);
         this.clearNotificationTimer();
         this.cancelRecovery();
@@ -374,6 +491,11 @@ export class GameSession {
 
             if (update.message === 'ROOM_CLOSED') {
                 if (this.snapshot.isGameOver) return;
+                this.lifecyclePermission = false;
+                if (this.activeAttemptController) {
+                    this.activeAttemptController.abort();
+                    this.activeAttemptController = null;
+                }
                 this.clearNotificationTimer();
                 this.cancelRecovery();
                 this.setNotification(HOST_LEFT, 0);
@@ -389,11 +511,34 @@ export class GameSession {
                 return;
             }
 
+            if (update.message === 'GAME_STARTED') {
+                if (update.data?.gameId && update.data.gameId !== this.auth.roomId) return;
+                this.markGameStarted();
+                this.roomRevision += 1;
+                void this.synchronizeSession({ resetBudget: true });
+                return;
+            }
+
             if (
                 update.message === 'ROOM_CREATED' ||
                 update.message === 'PLAYER_JOINED' ||
                 update.message === 'PLAYER_LEFT'
             ) {
+                const heroStillInRoom = update.data.players.some((p) => p.name === this.auth.playerName);
+                if (!heroStillInRoom) {
+                    if (this.isLeavingPending) {
+                        return;
+                    }
+                    this.scheduleRedirect(SESSION_SEAT_GONE);
+                    return;
+                }
+
+                this.roomRevision += 1;
+                const gameStarted = this.isStarted() || Boolean(update.data.gameStarted);
+                if (gameStarted) {
+                    this.markGameStarted();
+                }
+
                 this.updateSnapshot((prev) => ({
                     roomState: {
                         roomId: update.data.roomId ?? prev.roomState?.roomId ?? this.auth.roomId,
@@ -404,7 +549,7 @@ export class GameSession {
                         smallBlind: update.data.smallBlind ?? prev.roomState?.smallBlind,
                         bigBlind: update.data.bigBlind ?? prev.roomState?.bigBlind,
                         canStartGame: update.data.canStartGame ?? prev.roomState?.canStartGame,
-                        gameStarted: update.data.gameStarted ?? prev.roomState?.gameStarted,
+                        gameStarted,
                     },
                 }));
             }
@@ -562,13 +707,23 @@ export class GameSession {
         }
 
         const previousState = this.snapshot.gameState;
-        if (previousState && typeof incomingData.handNumber === 'number' && typeof previousState.handNumber === 'number') {
-            if (incomingData.handNumber < previousState.handNumber) return false;
-            if (incomingData.handNumber === previousState.handNumber
-                    && typeof incomingData.stateRevision === 'number'
-                    && typeof previousState.stateRevision === 'number'
-                    && incomingData.stateRevision < previousState.stateRevision) {
-                return false;
+        if (previousState) {
+            const incomingHand = incomingData.handNumber ?? 0;
+            const prevHand = previousState.handNumber ?? 0;
+            if (incomingHand < prevHand) return false;
+            if (incomingHand === prevHand) {
+                if (
+                    typeof incomingData.stateRevision === 'number' &&
+                    typeof previousState.stateRevision === 'number' &&
+                    incomingData.stateRevision < previousState.stateRevision
+                ) {
+                    return false;
+                }
+                const inPhase = PHASE_ORDER[incomingData.phase] ?? 0;
+                const prevPhase = PHASE_ORDER[previousState.phase] ?? 0;
+                if (inPhase < prevPhase) {
+                    return false;
+                }
             }
         }
         if (typeof payload.serverTimeEpochMs === 'number') {
@@ -695,8 +850,33 @@ export class GameSession {
             myPlayerId = myPlayer.id;
         }
 
+        let nextPrivateState = this.snapshot.privateState;
+        const handChanged =
+            typeof data.handNumber === 'number' &&
+            data.handNumber !== previousState?.handNumber;
+
+        if (handChanged) {
+            if (
+                this.bufferedPrivateState &&
+                this.bufferedPrivateState.handNumber === data.handNumber &&
+                (!myPlayer?.id || this.bufferedPrivateState.playerId === myPlayer.id)
+            ) {
+                nextPrivateState = { holeCards: this.bufferedPrivateState.holeCards };
+                this.currentPrivateHandNumber = data.handNumber;
+                if (this.bufferedPrivateState.playerId) {
+                    myPlayerId = this.bufferedPrivateState.playerId;
+                }
+                this.bufferedPrivateState = null;
+                this.privateSyncRevision += 1;
+            } else {
+                nextPrivateState = null;
+                this.currentPrivateHandNumber = null;
+            }
+        }
+
         this.updateSnapshot(() => ({
             gameState: data,
+            privateState: nextPrivateState,
             error: data.phase !== previousState?.phase || data.gameId !== previousState?.gameId ||
                 data.handNumber !== previousState?.handNumber ||
                 data.currentPlayerName !== this.auth.playerName ? null : this.snapshot.error,
@@ -710,12 +890,16 @@ export class GameSession {
 
     public applyPrivateState(payload: IncomingPrivateStatePayload | { holeCards: string[] } | null): void {
         if (!payload) {
+            this.currentPrivateHandNumber = null;
             this.updateSnapshot(() => ({
                 privateState: null,
             }));
             return;
         }
         const nextHoleCards = Array.isArray(payload.holeCards) ? payload.holeCards : [];
+        if ('handNumber' in payload && typeof payload.handNumber === 'number') {
+            this.currentPrivateHandNumber = payload.handNumber;
+        }
         this.updateSnapshot((prev) => ({
             privateState: { holeCards: nextHoleCards },
             myPlayerId: ('playerId' in payload && payload.playerId) ? payload.playerId : prev.myPlayerId,
@@ -804,8 +988,11 @@ export class GameSession {
     };
 
     public cancelRecovery = (): void => {
+        if (this.activeAttemptController) {
+            this.activeAttemptController.abort();
+            this.activeAttemptController = null;
+        }
         this.recoveryGeneration += 1;
-        this.inFlightRecovery = null;
         this.recoveryRetryAttempt = 0;
         this.clearRecoveryTimer();
         this.updateSnapshot(() => ({
@@ -814,44 +1001,29 @@ export class GameSession {
         }));
     };
 
-    public recoverState = (
-        step: () => Promise<void>,
-        options: { resetBudget: boolean } = { resetBudget: false },
+    public synchronizeSession = (
+        options: { resetBudget?: boolean } = {}
     ): Promise<void> => {
-        if (this.snapshot.isGameOver) return Promise.resolve();
+        if (!this.hasLifecyclePermission()) {
+            return Promise.resolve();
+        }
 
-        const shouldResetBudget = options.resetBudget || Boolean(this.snapshot.recoveryFailed);
+        const shouldResetBudget = options?.resetBudget || Boolean(this.snapshot.recoveryFailed);
         if (shouldResetBudget) {
             this.recoveryRetryAttempt = 0;
             this.clearRecoveryTimer();
         }
 
-        if (this.inFlightRecovery) {
-            return this.inFlightRecovery;
+        if (this.activeAttemptController) {
+            this.activeAttemptController.abort();
+            this.activeAttemptController = null;
         }
 
-        if (!shouldResetBudget && this.hasPendingRecoveryTimer()) {
-            return Promise.resolve();
-        }
+        const attempt = ++this.attemptId;
+        const attemptRoomRevision = this.roomRevision;
+        const controller = new AbortController();
+        this.activeAttemptController = controller;
 
-        return this.runRecoveryAttempt(step);
-    };
-
-    private computeRecoveryBackoffMs(attempt: number): number {
-        const expDelay = Math.min(
-            MAX_RETRY_DELAY_MS,
-            BASE_RETRY_DELAY_MS * Math.pow(2, Math.max(0, attempt - 1)),
-        );
-        const jitter = Math.abs(Math.imul(this.clock.now() ^ attempt, 2654435761)) % 250;
-        return Math.min(MAX_RETRY_DELAY_MS, expDelay + jitter);
-    }
-
-    private runRecoveryAttempt(step: () => Promise<void>): Promise<void> {
-        if (this.snapshot.isGameOver) return Promise.resolve();
-        if (this.inFlightRecovery) return this.inFlightRecovery;
-
-        this.clearRecoveryTimer();
-        const generation = this.recoveryGeneration;
         const showRecoveringOverlay =
             this.recoveryRetryAttempt > 0 ||
             Boolean(this.snapshot.isRecovering) ||
@@ -863,69 +1035,203 @@ export class GameSession {
             loadingStatus: STATUS_RECOVERING_TABLE,
         }));
 
-        let stepPromise: Promise<void>;
-        try {
-            stepPromise = Promise.resolve(step());
-        } catch (err) {
-            stepPromise = Promise.reject(err);
-        }
-
-        const attemptPromise = stepPromise
-            .then(() => {
-                if (this.recoveryGeneration !== generation || this.snapshot.isGameOver) return;
-                this.recoveryRetryAttempt = 0;
-                this.clearRecoveryTimer();
-                this.updateSnapshot(() => ({
-                    isRecovering: false,
-                    recoveryFailed: false,
-                    loadingStatus: STATUS_CONNECTED,
-                }));
+        const syncPromise = loadSessionData({
+            auth: this.auth,
+            isStarted: () => this.isStarted(),
+            isHydrated: () => this.snapshot.isHydrated,
+            signal: controller.signal,
+        })
+            .then((result) => {
+                if (controller.signal.aborted || attempt !== this.attemptId) {
+                    return;
+                }
+                if (!this.hasLifecyclePermission()) {
+                    return;
+                }
+                this.commitSyncResult(result, attemptRoomRevision);
             })
             .catch((err) => {
-                if (this.recoveryGeneration !== generation || this.snapshot.isGameOver) return;
-                const code = getErrorStatusCode(err);
-                if (code === 403) {
-                    this.recoveryRetryAttempt = 0;
-                    this.scheduleRedirect(SESSION_SEAT_GONE);
+                if (controller.signal.aborted || attempt !== this.attemptId) {
                     return;
                 }
-                if (code === 404) {
-                    this.recoveryRetryAttempt = 0;
-                    this.scheduleRedirect(SESSION_EXPIRED);
+                if (!this.hasLifecyclePermission()) {
                     return;
                 }
-
-                logger.warn('State recovery attempt failed:', err);
-
-                if (this.recoveryRetryAttempt < MAX_RECOVERY_RETRIES) {
-                    this.recoveryRetryAttempt += 1;
-                    const delayMs = this.computeRecoveryBackoffMs(this.recoveryRetryAttempt);
-                    this.updateSnapshot(() => ({
-                        isRecovering: true,
-                        recoveryFailed: false,
-                        loadingStatus: STATUS_RECOVERING_TABLE,
-                    }));
-                    this.scheduleRecoveryRetry(() => {
-                        if (this.recoveryGeneration === generation && !this.snapshot.isGameOver) {
-                            void this.runRecoveryAttempt(step);
-                        }
-                    }, delayMs);
-                } else {
-                    this.updateSnapshot(() => ({
-                        isRecovering: false,
-                        recoveryFailed: true,
-                        loadingStatus: STATUS_RECOVERING_TABLE,
-                    }));
-                }
+                this.handleSyncFailure(err);
             })
             .finally(() => {
-                if (this.inFlightRecovery === attemptPromise) {
-                    this.inFlightRecovery = null;
+                if (this.activeAttemptController === controller) {
+                    this.activeAttemptController = null;
                 }
             });
 
-        this.inFlightRecovery = attemptPromise;
-        return attemptPromise;
+        return syncPromise;
+    };
+
+    public recoverState = (
+        _step?: () => Promise<void>,
+        options: { resetBudget: boolean } = { resetBudget: false }
+    ): Promise<void> => {
+        return this.synchronizeSession(options);
+    };
+
+    private commitSyncResult(result: SyncResult, attemptRoomRevision: number): void {
+        if (result.type === 'TERMINAL') {
+            this.installTerminalResult(result.review);
+            return;
+        }
+
+        if (result.type === 'LOBBY') {
+            if (this.roomRevision === attemptRoomRevision) {
+                this.updateSnapshot(() => ({
+                    roomState: result.room,
+                }));
+            }
+            if (result.room.gameStarted) {
+                this.markGameStarted();
+            }
+            this.recoveryRetryAttempt = 0;
+            this.clearRecoveryTimer();
+            this.updateSnapshot(() => ({
+                isHydrated: true,
+                loadingStatus: STATUS_CONNECTED,
+                isRecovering: false,
+                recoveryFailed: false,
+            }));
+            return;
+        }
+
+        if (result.type === 'LIVE') {
+            this.markGameStarted();
+            if (result.room && this.roomRevision === attemptRoomRevision) {
+                this.updateSnapshot(() => ({
+                    roomState: result.room ?? null,
+                }));
+            }
+
+            const accepted = this.applyGameState(result.publicState, this.clock.now());
+            if (accepted) {
+                this.stateSyncRevision += 1;
+                this.applyPrivateState(result.privateState);
+                this.privateSyncRevision += 1;
+                this.recoveryRetryAttempt = 0;
+                this.clearRecoveryTimer();
+                this.updateSnapshot(() => ({
+                    isHydrated: true,
+                    loadingStatus: STATUS_CONNECTED,
+                    isRecovering: false,
+                    recoveryFailed: false,
+                }));
+            } else {
+                const currentLiveState = this.snapshot.gameState;
+                if (
+                    this.snapshot.privateState === null &&
+                    (result.privateState.handNumber === currentLiveState?.handNumber ||
+                        currentLiveState?.handNumber === undefined)
+                ) {
+                    this.applyPrivateState(result.privateState);
+                    this.privateSyncRevision += 1;
+                }
+                const heroInGame = currentLiveState?.players.some((p) => p.name === this.auth.playerName) ?? false;
+                const isCoherent =
+                    !heroInGame ||
+                    (this.snapshot.privateState !== null &&
+                        this.currentPrivateHandNumber === currentLiveState?.handNumber);
+
+                if (isCoherent) {
+                    this.recoveryRetryAttempt = 0;
+                    this.clearRecoveryTimer();
+                    this.updateSnapshot(() => ({
+                        isHydrated: true,
+                        loadingStatus: STATUS_CONNECTED,
+                        isRecovering: false,
+                        recoveryFailed: false,
+                    }));
+                } else {
+                    this.scheduleNextRecoveryRetry();
+                }
+            }
+        }
+    }
+
+    private handleSyncFailure(err: unknown): void {
+        const code = getErrorStatusCode(err);
+        if (code === 401) {
+            this.cancelRecovery();
+            if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+                window.dispatchEvent(new CustomEvent('auth-expired', { detail: { token: this.auth.token } }));
+            }
+            return;
+        }
+        if (code === 403) {
+            this.cancelRecovery();
+            if (this.isLeavingPending) {
+                return;
+            }
+            this.scheduleRedirect(SESSION_SEAT_GONE);
+            return;
+        }
+        if (code === 404) {
+            this.cancelRecovery();
+            this.scheduleRedirect(SESSION_EXPIRED);
+            return;
+        }
+
+        logger.warn('State recovery attempt failed:', err);
+        this.scheduleNextRecoveryRetry();
+    }
+
+    private scheduleNextRecoveryRetry(): void {
+        if (this.snapshot.isGameOver || this.isDisposed || !this.hasLifecyclePermission()) {
+            return;
+        }
+        this.clearRecoveryTimer();
+        if (this.recoveryRetryAttempt < MAX_RECOVERY_RETRIES) {
+            this.recoveryRetryAttempt += 1;
+            const delayMs = this.computeRecoveryBackoffMs(this.recoveryRetryAttempt);
+            this.updateSnapshot(() => ({
+                isRecovering: true,
+                recoveryFailed: false,
+                loadingStatus: STATUS_RECOVERING_TABLE,
+            }));
+            this.scheduleRecoveryRetry(() => {
+                if (this.hasLifecyclePermission()) {
+                    void this.synchronizeSession();
+                }
+            }, delayMs);
+        } else {
+            this.updateSnapshot(() => ({
+                isRecovering: false,
+                recoveryFailed: true,
+                loadingStatus: STATUS_RECOVERING_TABLE,
+            }));
+        }
+    }
+
+    private installTerminalResult(result: GameEndResult): void {
+        this.clearRecoveryTimer();
+        this.clearRedirectTimer();
+        this.cancelActionLocks();
+        this.clearShowdownTimers();
+        this.clearNotificationTimer();
+        this.recoveryRetryAttempt = 0;
+
+        this.setGameEndResult(result);
+        this.updateSnapshot(() => ({
+            isHydrated: true,
+            loadingStatus: STATUS_CONNECTED,
+            isRecovering: false,
+            recoveryFailed: false,
+        }));
+    }
+
+    private computeRecoveryBackoffMs(attempt: number): number {
+        const expDelay = Math.min(
+            MAX_RETRY_DELAY_MS,
+            BASE_RETRY_DELAY_MS * Math.pow(2, Math.max(0, attempt - 1)),
+        );
+        const jitter = Math.abs(Math.imul(this.clock.now() ^ attempt, 2654435761)) % 250;
+        return Math.min(MAX_RETRY_DELAY_MS, expDelay + jitter);
     }
 
     public setGameEndResult(result: GameEndResult | null): void {

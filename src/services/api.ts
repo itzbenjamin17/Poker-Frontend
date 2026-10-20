@@ -192,6 +192,20 @@ async function fetchApi<T>(url: string, options: RequestInit & { token?: string;
     }
 }
 
+type GetRoomDataFn = (roomId: string, token: string, signal?: AbortSignal) => Promise<RoomDataResponse>;
+type GetPublicGameStateFn = (gameId: string, token: string, signal?: AbortSignal) => Promise<unknown>;
+type GetPrivatePlayerStateFn = (gameId: string, token: string, signal?: AbortSignal) => Promise<unknown>;
+
+const defaultGetRoomInfo = function (this: { getRoomData: GetRoomDataFn }, roomId: string, token: string, signal?: AbortSignal): Promise<RoomDataResponse> {
+    return this.getRoomData(roomId, token, signal);
+};
+const defaultGetGameState = function (this: { getPublicGameState: GetPublicGameStateFn }, gameId: string, token: string, signal?: AbortSignal): Promise<unknown> {
+    return this.getPublicGameState(gameId, token, signal);
+};
+const defaultGetPrivateState = function (this: { getPrivatePlayerState: GetPrivatePlayerStateFn }, gameId: string, token: string, signal?: AbortSignal): Promise<unknown> {
+    return this.getPrivatePlayerState(gameId, token, signal);
+};
+
 export const pokerApi = {
     async createRoom(payload: {
         roomName: string;
@@ -236,6 +250,11 @@ export const pokerApi = {
     },
 
     async getRoomData(roomId: string, tokenOrSignal?: string | AbortSignal, signal?: AbortSignal): Promise<RoomDataResponse> {
+        if (this.getRoomInfo && (this.getRoomInfo as unknown) !== defaultGetRoomInfo) {
+            const token = typeof tokenOrSignal === 'string' ? tokenOrSignal : '';
+            const sig = tokenOrSignal instanceof AbortSignal ? tokenOrSignal : signal;
+            return this.getRoomInfo(roomId, token, sig);
+        }
         const token = typeof tokenOrSignal === 'string' ? tokenOrSignal : undefined;
         const sig = tokenOrSignal instanceof AbortSignal ? tokenOrSignal : signal;
         return fetchApi<RoomDataResponse>(`${API_BASE}/room/${encodeURIComponent(roomId)}`, {
@@ -246,11 +265,14 @@ export const pokerApi = {
         });
     },
 
-    async getRoomInfo(roomId: string, token: string, signal?: AbortSignal): Promise<RoomDataResponse> {
-        return this.getRoomData(roomId, token, signal);
-    },
+    getRoomInfo: defaultGetRoomInfo,
 
     async getPublicGameState(gameId: string, tokenOrSignal?: string | AbortSignal, signal?: AbortSignal): Promise<unknown> {
+        if (this.getGameState && (this.getGameState as unknown) !== defaultGetGameState) {
+            const token = typeof tokenOrSignal === 'string' ? tokenOrSignal : '';
+            const sig = tokenOrSignal instanceof AbortSignal ? tokenOrSignal : signal;
+            return this.getGameState(gameId, token, sig);
+        }
         const token = typeof tokenOrSignal === 'string' ? tokenOrSignal : undefined;
         const sig = tokenOrSignal instanceof AbortSignal ? tokenOrSignal : signal;
         return fetchApi<unknown>(`${API_BASE}/game/${encodeURIComponent(gameId)}/state`, {
@@ -261,11 +283,12 @@ export const pokerApi = {
         });
     },
 
-    async getGameState(gameId: string, token: string, signal?: AbortSignal): Promise<unknown> {
-        return this.getPublicGameState(gameId, token, signal);
-    },
+    getGameState: defaultGetGameState,
 
     async getPrivatePlayerState(gameId: string, token: string, signal?: AbortSignal): Promise<unknown> {
+        if (this.getPrivateState && (this.getPrivateState as unknown) !== defaultGetPrivateState) {
+            return this.getPrivateState(gameId, token, signal);
+        }
         return fetchApi<unknown>(`${API_BASE}/game/${encodeURIComponent(gameId)}/private-state`, {
             method: 'GET',
             token,
@@ -274,9 +297,7 @@ export const pokerApi = {
         });
     },
 
-    async getPrivateState(gameId: string, token: string, signal?: AbortSignal): Promise<unknown> {
-        return this.getPrivatePlayerState(gameId, token, signal);
-    },
+    getPrivateState: defaultGetPrivateState,
 
     async getReview(gameId: string, token: string, signal?: AbortSignal): Promise<GameEndResult> {
         const raw = await fetchApi<unknown>(`${API_BASE}/game/${encodeURIComponent(gameId)}/review`, {

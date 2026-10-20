@@ -110,35 +110,37 @@ describe('useSessionHydration', () => {
         expect(onLeave).toHaveBeenCalledTimes(1);
     });
 
-    it('redirects to lobby if session hydration times out after 120 seconds', async () => {
-        // Mock getRoomInfo to hang indefinitely (never resolve)
-        const getRoomInfoSpy = vi.spyOn(pokerApi, 'getRoomInfo').mockReturnValue(new Promise(() => {}));
+    it('bounds retries to 1 initial plus 3 retries and exposes initialLoadFailed on exhaustion', async () => {
+        vi.spyOn(pokerApi, 'getRoomInfo').mockRejectedValue({ status: 503 });
 
-        renderHook(() => useSessionHydration());
+        const { result } = renderHook(() => useSessionHydration());
 
-        expect(getRoomInfoSpy).toHaveBeenCalled();
-        expect(dispatch).toHaveBeenCalledWith({
-            type: 'SET_LOADING_STATUS',
-            payload: 'Connecting...',
+        // Initial attempt 1 + 3 retries across backoff
+        for (let i = 0; i < 4; i++) {
+            await act(async () => {
+                await vi.advanceTimersByTimeAsync(9000);
+            });
+        }
+
+        expect(pokerApi.getRoomInfo).toHaveBeenCalledTimes(4);
+        expect(result.current.initialLoadFailed).toBe(true);
+        expect(dispatch).not.toHaveBeenCalledWith({ type: 'SET_HYDRATED', payload: true });
+        expect(dispatch).not.toHaveBeenCalledWith({ type: 'SET_LOADING_STATUS', payload: 'Connected.' });
+
+        // retryInitialLoad triggers a new attempt with reset budget
+        vi.mocked(pokerApi.getRoomInfo).mockResolvedValueOnce(createValidRoomData({
+            roomId: 'ROOM123',
+            gameStarted: false,
+            players: [{ name: 'TestPlayer', isHost: true, joinedAt: '2026-05-22T00:00:00Z' }],
+        }));
+
+        await act(async () => {
+            result.current.retryInitialLoad();
+            await Promise.resolve();
         });
 
-        // Fast-forward 120 seconds to trigger the timeout
-        act(() => {
-            vi.advanceTimersByTime(120000);
-        });
-
-        // Should trigger redirect message
-        expect(dispatch).toHaveBeenCalledWith({
-            type: 'SET_NOTIFICATION',
-            payload: 'Session expired. Returning to lobby...',
-        });
-
-        // Fast-forward 3 seconds to complete redirection
-        act(() => {
-            vi.advanceTimersByTime(3000);
-        });
-
-        expect(onLeave).toHaveBeenCalledTimes(1);
+        expect(result.current.initialLoadFailed).toBe(false);
+        expect(dispatch).toHaveBeenCalledWith({ type: 'SET_HYDRATED', payload: true });
     });
 
     it('does not mark hydration complete when unmounted during the private-state fetch', async () => {

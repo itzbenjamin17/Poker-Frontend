@@ -4,6 +4,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { useGameWebSocket } from '../useGameWebSocket';
 import { GameProvider } from '../../context/GameProvider';
 import { GameSession } from '../../domain/GameSession';
+import { TestClock } from '../../domain/clock';
+import type { Client } from '@stomp/stompjs';
 import { pokerApi } from '../../services/api';
 import { StompTransportAdapter, InMemoryTransportAdapter } from '../../services/transport';
 import { MockStompClient, activeSubscriptions } from '../../test/mocks/stomp';
@@ -52,9 +54,16 @@ describe('useGameWebSocket', () => {
         activeSubscriptions.clear();
         vi.useFakeTimers();
 
-        vi.mocked(pokerApi.getRoomInfo).mockResolvedValue(createValidRoomData());
-        vi.mocked(pokerApi.getGameState).mockResolvedValue(createValidGameState());
-        vi.mocked(pokerApi.getPrivateState).mockResolvedValue({});
+        vi.mocked(pokerApi.getRoomInfo).mockResolvedValue(createValidRoomData({
+            players: [{ name: 'TestPlayer', isHost: true }],
+        }));
+        vi.mocked(pokerApi.getGameState).mockResolvedValue(createValidGameState({
+            players: [{ id: 'p-1', name: 'TestPlayer', chips: 1000, currentBet: 0, status: 'ACTIVE', hasFolded: false }],
+        }));
+        vi.mocked(pokerApi.getPrivateState).mockResolvedValue({
+            playerId: 'p-1',
+            holeCards: [],
+        });
 
         session = new GameSession({
             auth: mockAuth,
@@ -1083,6 +1092,97 @@ describe('useGameWebSocket', () => {
         expect(session.getSnapshot().recoveryFailed).toBe(false);
         expect(session.getSnapshot().gameState?.phase).toBe('RIVER');
     });
+
+    it('wakeup/online cannot restart recovery during redirect or successful leave; failed leave resumes it', async () => {
+        const inMemoryTransport = new InMemoryTransportAdapter();
+        session.setRoomState({ roomId: 'ROOM123', gameStarted: true });
+        const syncSpy = vi.spyOn(session, 'synchronizeSession').mockResolvedValue();
+
+        renderHook(() => useGameWebSocket({ onSocketError, transport: inMemoryTransport }), {
+            wrapper: createWrapper(),
+        });
+        syncSpy.mockClear();
+
+        session.scheduleRedirect('Host left');
+        expect(session.hasLifecyclePermission()).toBe(false);
+
+        window.dispatchEvent(new Event('online'));
+        document.dispatchEvent(new Event('visibilitychange'));
+        expect(syncSpy).not.toHaveBeenCalled();
+
+        const session2 = new GameSession({
+            auth: mockAuth,
+            transport: inMemoryTransport,
+            clock: new TestClock(1000),
+            onLeave,
+        });
+        session2.setRoomState({ roomId: 'ROOM123', gameStarted: true });
+        const syncSpy2 = vi.spyOn(session2, 'synchronizeSession').mockResolvedValue();
+
+        renderHook(() => useGameWebSocket({ onSocketError, transport: inMemoryTransport }), {
+            wrapper: createWrapper(session2),
+        });
+        syncSpy2.mockClear();
+
+        session2.disconnect();
+        expect(session2.hasLifecyclePermission()).toBe(false);
+
+        window.dispatchEvent(new Event('online'));
+        document.dispatchEvent(new Event('visibilitychange'));
+        expect(syncSpy2).not.toHaveBeenCalled();
+
+        const session3 = new GameSession({
+            auth: mockAuth,
+            transport: inMemoryTransport,
+            clock: new TestClock(1000),
+            onLeave,
+        });
+        session3.setRoomState({ roomId: 'ROOM123', gameStarted: true });
+        const syncSpy3 = vi.spyOn(session3, 'synchronizeSession').mockResolvedValue();
+
+        session3.setPendingLeave(true);
+        expect(session3.hasLifecyclePermission()).toBe(false);
+
+        session3.setPendingLeave(false);
+        expect(syncSpy3).toHaveBeenCalledWith({ resetBudget: true });
+    });
+
+    it('out-of-order reconnect completions activate only the latest generation', async () => {
+        const mockClient = {
+            active: true,
+            activate: vi.fn(),
+            deactivate: vi.fn(),
+            subscribe: vi.fn(),
+            publish: vi.fn(),
+            onConnect: undefined,
+            onWebSocketClose: undefined,
+            onStompError: undefined,
+            beforeConnect: undefined,
+        } as unknown as Client;
+
+        let resolveDeactivate1!: () => void;
+        let resolveDeactivate2!: () => void;
+
+        vi.mocked(mockClient.deactivate)
+            .mockImplementationOnce(() => new Promise<void>((res) => { resolveDeactivate1 = res; }))
+            .mockImplementationOnce(() => new Promise<void>((res) => { resolveDeactivate2 = res; }));
+
+        const adapter = new StompTransportAdapter(mockClient);
+
+        adapter.forceReconnect();
+        adapter.forceReconnect();
+
+        resolveDeactivate1();
+        await Promise.resolve();
+
+        expect(mockClient.activate).not.toHaveBeenCalled();
+
+        resolveDeactivate2();
+        await Promise.resolve();
+
+        expect(mockClient.activate).toHaveBeenCalledTimes(1);
+    });
 });
+
 
 

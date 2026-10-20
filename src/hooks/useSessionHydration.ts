@@ -22,6 +22,18 @@ import {
 } from '../constants/strings';
 
 const ROOM_CLOSED_REDIRECT_MS = 3_000;
+const BASE_RETRY_DELAY_MS = 1_000;
+const MAX_RETRY_DELAY_MS = 8_000;
+const MAX_HYDRATION_RETRIES = 3;
+
+function computeHydrationBackoffMs(attempt: number): number {
+    const expDelay = Math.min(
+        MAX_RETRY_DELAY_MS,
+        BASE_RETRY_DELAY_MS * Math.pow(2, Math.max(0, attempt - 1)),
+    );
+    const jitter = Math.abs(Math.imul(Date.now() ^ attempt, 2654435761)) % 250;
+    return Math.min(MAX_RETRY_DELAY_MS, expDelay + jitter);
+}
 
 /**
  * Performs the initial REST hydration of room and game state.
@@ -59,9 +71,8 @@ export function useSessionHydration() {
 
     useEffect(() => {
         let mounted = true;
-        let hasTimedOut = false;
         const generation = ++attemptRef.current;
-        const isCurrent = () => mounted && !hasTimedOut && generation === attemptRef.current;
+        const isCurrent = () => mounted && generation === attemptRef.current;
         const failInitialLoad = () => {
             if (gameStateRef.current) {
                 dispatch({ type: 'SET_HYDRATED', payload: true });
@@ -94,15 +105,8 @@ export function useSessionHydration() {
             }, ROOM_CLOSED_REDIRECT_MS);
         };
 
-        const timeoutId = setTimeout(() => {
-            if (isCurrent()) {
-                logger.error('Session hydration timed out.');
-                hasTimedOut = true;
-                redirectToLobby(SESSION_EXPIRED);
-            }
-        }, 120_000);
-
         const hydrateSession = async () => {
+            let retryCount = 0;
             try {
                 dispatch({ type: 'SET_LOADING_STATUS', payload: STATUS_CONNECTING });
 
@@ -117,10 +121,16 @@ export function useSessionHydration() {
                         if (statusCode === 403 || statusCode === 404) {
                             redirectToLobby(SESSION_EXPIRED);
                             return;
-                        } else {
+                        }
+                        if (retryCount < MAX_HYDRATION_RETRIES) {
+                            retryCount += 1;
                             logger.error('Room info fetch error, retrying:', err);
                             dispatch({ type: 'SET_LOADING_STATUS', payload: STATUS_RECONNECTING });
-                            await new Promise(resolve => setTimeout(resolve, 1500));
+                            const delayMs = computeHydrationBackoffMs(retryCount);
+                            await new Promise(resolve => setTimeout(resolve, delayMs));
+                        } else {
+                            failInitialLoad();
+                            return;
                         }
                     }
                 }
@@ -173,10 +183,16 @@ export function useSessionHydration() {
                         if (statusCode === 404) {
                             redirectToLobby(SESSION_EXPIRED);
                             return;
-                        } else {
+                        }
+                        if (retryCount < MAX_HYDRATION_RETRIES) {
+                            retryCount += 1;
                             logger.error('Game snapshot fetch error, retrying:', err);
                             dispatch({ type: 'SET_LOADING_STATUS', payload: STATUS_RECONNECTING_TABLE });
-                            await new Promise(resolve => setTimeout(resolve, 1500));
+                            const delayMs = computeHydrationBackoffMs(retryCount);
+                            await new Promise(resolve => setTimeout(resolve, delayMs));
+                        } else {
+                            failInitialLoad();
+                            return;
                         }
                     }
                 }
@@ -208,7 +224,7 @@ export function useSessionHydration() {
 
                 failInitialLoad();
             } finally {
-                clearTimeout(timeoutId);
+                // complete
             }
         };
 
@@ -216,7 +232,6 @@ export function useSessionHydration() {
 
         return () => {
             mounted = false;
-            clearTimeout(timeoutId);
             if (redirectTimerRef.current !== null) clearTimeout(redirectTimerRef.current);
         };
     }, [auth.playerName, auth.roomId, auth.token, dispatch, applyIncomingGameState, applyIncomingPrivateState, gameEndResult, attempt]);
