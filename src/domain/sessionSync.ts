@@ -136,16 +136,7 @@ export async function loadSessionData(deps: SessionSyncDeps): Promise<SyncResult
         throw new MalformedResponseError(receivedType(publicRaw));
     }
 
-    const rawToDecode =
-        typeof privateRaw === 'object' &&
-        privateRaw !== null &&
-        !Array.isArray(privateRaw) &&
-        (privateRaw as Record<string, unknown>).handNumber === undefined &&
-        typeof (privateRaw as Record<string, unknown>).playerId === 'string'
-            ? { ...(privateRaw as Record<string, unknown>), handNumber: publicState.handNumber ?? 0 }
-            : privateRaw;
-
-    const privateState = decodePrivatePlayerState(rawToDecode);
+    const privateState = decodePrivatePlayerState(privateRaw);
     if (!privateState) {
         throw new MalformedResponseError(receivedType(privateRaw));
     }

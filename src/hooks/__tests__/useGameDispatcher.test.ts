@@ -254,10 +254,10 @@ describe('useGameDispatcher', () => {
         expect(session.getSnapshot().notification).toBe('Technical difficulties.');
     });
 
-    it('dispatch CLAIM_WIN resets claimPending to false and sets notification without getReview when pokerApi.claimWin rejects with 403', async () => {
+    it('dispatch CLAIM_WIN attempts review recovery when pokerApi.claimWin rejects with 403 and resets claimPending on failure', async () => {
         const error = Object.assign(new Error('Cannot claim win right now.'), { status: 403 });
         vi.mocked(pokerApi.claimWin).mockRejectedValue(error);
-        const getReviewSpy = vi.mocked(pokerApi.getReview);
+        const getReviewSpy = vi.mocked(pokerApi.getReview).mockRejectedValue(new Error('No review available'));
         const { result } = renderHook(() => useGameDispatcher(), {
             wrapper: createWrapper(),
         });
@@ -266,7 +266,7 @@ describe('useGameDispatcher', () => {
             await result.current.dispatch({ type: 'CLAIM_WIN' });
         });
 
-        expect(getReviewSpy).not.toHaveBeenCalled();
+        expect(getReviewSpy).toHaveBeenCalledWith('GAME123', 'test-token');
         expect(session.getSnapshot().claimPending).toBe(false);
         expect(session.getSnapshot().notification).toBe('Cannot claim win right now.');
     });

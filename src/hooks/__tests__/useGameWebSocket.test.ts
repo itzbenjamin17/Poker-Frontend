@@ -62,6 +62,7 @@ describe('useGameWebSocket', () => {
         }));
         vi.mocked(pokerApi.getPrivateState).mockResolvedValue({
             playerId: 'p-1',
+            handNumber: 0,
             holeCards: [],
         });
 
@@ -495,6 +496,7 @@ describe('useGameWebSocket', () => {
         });
         const validPrivateState = {
             playerId: 'p-1',
+            handNumber: 0,
             holeCards: ['AS', 'AD'],
         };
 
@@ -793,6 +795,7 @@ describe('useGameWebSocket', () => {
             }));
         vi.mocked(pokerApi.getPrivateState).mockResolvedValue({
             playerId: 'p-1',
+            handNumber: 0,
             holeCards: ['KH', 'KD'],
         } as never);
 
@@ -888,6 +891,7 @@ describe('useGameWebSocket', () => {
         );
         vi.mocked(pokerApi.getPrivateState).mockResolvedValueOnce({
             playerId: 'p-1',
+            handNumber: 0,
             holeCards: ['AS', 'KS'],
         } as never);
 
@@ -1044,6 +1048,7 @@ describe('useGameWebSocket', () => {
             }));
         vi.mocked(pokerApi.getPrivateState).mockResolvedValue({
             playerId: 'p-1',
+            handNumber: 0,
             holeCards: ['AS', 'KS'],
         } as never);
 

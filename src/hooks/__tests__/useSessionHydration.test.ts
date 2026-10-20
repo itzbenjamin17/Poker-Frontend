@@ -3,7 +3,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { useSessionHydration } from '../useSessionHydration';
 import { useGameContext } from '../../context/GameContext';
 import { pokerApi } from '../../services/api';
-import { createValidGameState, createValidRoomData } from '../../test/fixtures';
+import { createMockJwt, createValidGameState, createValidRoomData } from '../../test/fixtures';
+import { SESSION_EXPIRED, SESSION_SEAT_GONE } from '../../constants/strings';
 
 vi.mock('../../context/GameContext', () => ({
     useGameContext: vi.fn(),
@@ -11,7 +12,7 @@ vi.mock('../../context/GameContext', () => ({
 
 describe('useSessionHydration', () => {
     const mockAuth = {
-        token: 'test-token',
+        token: createMockJwt(),
         roomId: 'ROOM123',
         playerName: 'TestPlayer',
         message: 'Success',
@@ -69,7 +70,7 @@ describe('useSessionHydration', () => {
             await Promise.resolve();
         });
 
-        expect(getRoomInfoSpy).toHaveBeenCalledWith('ROOM123', 'test-token');
+        expect(getRoomInfoSpy).toHaveBeenCalledWith('ROOM123', mockAuth.token);
         expect(dispatch).toHaveBeenCalledWith({
             type: 'SET_ROOM',
             payload: expect.objectContaining({
@@ -175,5 +176,130 @@ describe('useSessionHydration', () => {
         });
 
         expect(dispatch).not.toHaveBeenCalledWith({ type: 'SET_HYDRATED', payload: true });
+    });
+
+    describe('review recovery on 403 / 404 failures', () => {
+        const terminalReview = {
+            gameId: 'ROOM123',
+            winnerName: 'TestPlayer',
+            winnerChips: 1000,
+            isForfeit: false,
+            message: 'Game Over',
+        };
+
+        it('installs terminal result when room 404 recovers via review 200', async () => {
+            vi.spyOn(pokerApi, 'getRoomInfo').mockRejectedValue({ status: 404 });
+            const getReviewSpy = vi.spyOn(pokerApi, 'getReview').mockResolvedValue(terminalReview);
+
+            renderHook(() => useSessionHydration());
+
+            await act(async () => {
+                await Promise.resolve();
+                await Promise.resolve();
+            });
+
+            expect(getReviewSpy).toHaveBeenCalledWith('ROOM123', mockAuth.token);
+            expect(dispatch).toHaveBeenCalledWith({
+                type: 'INSTALL_TERMINAL_RESULT',
+                payload: terminalReview,
+            });
+            expect(dispatch).toHaveBeenCalledWith({
+                type: 'SET_HYDRATED',
+                payload: true,
+            });
+            expect(onLeave).not.toHaveBeenCalled();
+        });
+
+        it('installs terminal result when game state 404 recovers via review 200', async () => {
+            vi.spyOn(pokerApi, 'getRoomInfo').mockResolvedValue(createValidRoomData({
+                roomId: 'ROOM123',
+                gameStarted: true,
+                players: [{ name: 'TestPlayer', isHost: true, joinedAt: '2026-05-22T00:00:00Z' }],
+            }));
+            vi.spyOn(pokerApi, 'getGameState').mockRejectedValue({ status: 404 });
+            const getReviewSpy = vi.spyOn(pokerApi, 'getReview').mockResolvedValue(terminalReview);
+
+            renderHook(() => useSessionHydration());
+
+            await act(async () => {
+                await Promise.resolve();
+                await Promise.resolve();
+            });
+
+            expect(getReviewSpy).toHaveBeenCalledWith('ROOM123', mockAuth.token);
+            expect(dispatch).toHaveBeenCalledWith({
+                type: 'INSTALL_TERMINAL_RESULT',
+                payload: terminalReview,
+            });
+            expect(dispatch).toHaveBeenCalledWith({
+                type: 'SET_HYDRATED',
+                payload: true,
+            });
+            expect(onLeave).not.toHaveBeenCalled();
+        });
+
+        it('honors original 404 failure with session expired redirect when review returns 404 or 409', async () => {
+            vi.spyOn(pokerApi, 'getRoomInfo').mockRejectedValue({ status: 404 });
+            vi.spyOn(pokerApi, 'getReview').mockRejectedValue({ status: 404 });
+
+            renderHook(() => useSessionHydration());
+
+            await act(async () => {
+                await Promise.resolve();
+                await Promise.resolve();
+            });
+
+            expect(dispatch).toHaveBeenCalledWith({
+                type: 'SET_NOTIFICATION',
+                payload: SESSION_EXPIRED,
+            });
+
+            act(() => {
+                vi.advanceTimersByTime(3000);
+            });
+
+            expect(onLeave).toHaveBeenCalledTimes(1);
+        });
+
+        it('triggers seat-gone redirect when review returns 403', async () => {
+            vi.spyOn(pokerApi, 'getRoomInfo').mockRejectedValue({ status: 404 });
+            vi.spyOn(pokerApi, 'getReview').mockRejectedValue({ status: 403 });
+
+            renderHook(() => useSessionHydration());
+
+            await act(async () => {
+                await Promise.resolve();
+                await Promise.resolve();
+            });
+
+            expect(dispatch).toHaveBeenCalledWith({
+                type: 'SET_NOTIFICATION',
+                payload: SESSION_SEAT_GONE,
+            });
+
+            act(() => {
+                vi.advanceTimersByTime(3000);
+            });
+
+            expect(onLeave).toHaveBeenCalledTimes(1);
+        });
+
+        it('retries when review returns 500 / network error and fails load upon exhaustion', async () => {
+            vi.spyOn(pokerApi, 'getRoomInfo').mockRejectedValue({ status: 404 });
+            vi.spyOn(pokerApi, 'getReview').mockRejectedValue({ status: 500 });
+
+            const { result } = renderHook(() => useSessionHydration());
+
+            // 1 initial + 3 retries across backoff
+            for (let i = 0; i < 4; i++) {
+                await act(async () => {
+                    await vi.advanceTimersByTimeAsync(9000);
+                });
+            }
+
+            expect(pokerApi.getReview).toHaveBeenCalledTimes(4);
+            expect(result.current.initialLoadFailed).toBe(true);
+            expect(onLeave).not.toHaveBeenCalled();
+        });
     });
 });

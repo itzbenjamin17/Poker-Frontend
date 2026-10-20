@@ -8,7 +8,7 @@ import { ReconnectOverlay, RoomStage, RoomDock, useOrientationGating } from './P
 import { LiveTableStage } from './LiveTableStage';
 import { GameContext } from '../context/GameContext';
 
-import type { ActionError, GameState, Player, PokerAction, RoomState, WsStatus } from '../types';
+import type { ActionError, AuthResponse, GameState, Player, PokerAction, RoomState, WsStatus } from '../types';
 import {
     BTN_LEAVE_TABLE, BTN_CLAIM_WIN, BTN_CLAIMING,
     WAITING_RECONNECT_PREFIX, WAITING_RECONNECT_SUFFIX,
@@ -18,8 +18,8 @@ export interface GameTableViewProps {
     /** Domain & session state */
     gameState: GameState | null;
     roomState: RoomState | null;
-    auth?: { playerName: string } | null;
-    playerName?: string;
+    auth?: AuthResponse | { playerName: string; token?: string; roomId?: string } | null;
+    playerName?: string | null;
     myPlayerId?: string | null;
     privateState?: { holeCards: string[] } | null;
     showdown?: GameState | null;
@@ -37,7 +37,7 @@ export interface GameTableViewProps {
     isMobileLandscape?: boolean;
     nowMs: number;
     raiseAmount?: string;
-    raiseError: string | null;
+    raiseError?: string | null;
     actionError?: ActionError | null;
     onAction: (action: PokerAction, amount?: number) => void;
     onReady: () => void;
@@ -46,7 +46,7 @@ export interface GameTableViewProps {
     onLeaveGame: () => void;
     onRaiseChange?: (val: string) => void;
     onClearRaiseError?: () => void;
-    isActionPending: boolean;
+    isActionPending?: boolean;
     hasShellHeader?: boolean;
 }
 
@@ -70,7 +70,7 @@ export function GameTableView({
     isMobileLandscape: propIsMobileLandscape,
     nowMs,
     raiseAmount,
-    raiseError,
+    raiseError = null,
     actionError,
     onAction,
     onReady,
@@ -79,7 +79,7 @@ export function GameTableView({
     onLeaveGame,
     onRaiseChange,
     onClearRaiseError,
-    isActionPending,
+    isActionPending = false,
     hasShellHeader = false,
 }: GameTableViewProps) {
     const gameContext = useContext(GameContext);
@@ -148,8 +148,7 @@ export function GameTableView({
             p.status === 'DISCONNECTED' &&
             p.id !== resolvedHeroId &&
             (!effectivePlayerName || p.name !== effectivePlayerName) &&
-            !p.hasFolded &&
-            p.status !== 'FOLDED';
+            !p.hasFolded;
 
         const currentTurnActor = players.find(
             (p) => p.id === currentPlayerId || (Boolean(currentPlayerName) && p.name === currentPlayerName)
@@ -256,7 +255,6 @@ export function GameTableView({
                     <div
                         data-testid="claim-win-container"
                         className="absolute left-[8px] bottom-[8px] z-30"
-                        style={{ position: 'absolute', left: 8, bottom: 8 }}
                     >
                         <Button
                             variant="primary"

@@ -15,6 +15,7 @@ vi.mock('../services/api', async (importOriginal) => {
             getRoomInfo: vi.fn().mockResolvedValue(null),
             getGameState: vi.fn().mockResolvedValue(null),
             getPrivateState: vi.fn().mockResolvedValue(null),
+            getReview: vi.fn().mockRejectedValue(Object.assign(new Error('Review not found'), { status: 404 })),
             startGame: vi.fn(),
             claimWin: vi.fn(),
             leaveGame: vi.fn(),

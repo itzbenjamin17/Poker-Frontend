@@ -88,14 +88,6 @@ export function useGameDispatcher() {
                     const res = await pokerApi.claimWin(targetGameId, auth.token);
                     session?.installTerminalResult(res.data);
                 } catch (claimErr) {
-                    const statusCode = getErrorStatusCode(claimErr);
-                    const isDefiniteRejection = statusCode !== null && statusCode >= 400 && statusCode < 500 && statusCode !== 408;
-                    if (isDefiniteRejection) {
-                        contextDispatch({ type: 'SET_CLAIM_PENDING', payload: false });
-                        session?.setClaimPending(false);
-                        throw claimErr;
-                    }
-
                     try {
                         const review = await pokerApi.getReview(targetGameId, auth.token);
                         session?.installTerminalResult(review);

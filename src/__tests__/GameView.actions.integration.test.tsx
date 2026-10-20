@@ -51,6 +51,7 @@ describe('GameView - Actions & Flows Integration', () => {
             }))),
             http.get('/api/game/ROOM123/private-state', () => HttpResponse.json({
                 playerId: 'p-1',
+                handNumber: 0,
                 holeCards: ['AS', 'KS'],
             }))
         );
@@ -111,6 +112,7 @@ describe('GameView - Actions & Flows Integration', () => {
             }))),
             http.get('/api/game/ROOM123/private-state', () => HttpResponse.json({
                 playerId: 'p-1',
+                handNumber: 0,
                 holeCards: ['AS', 'KS'],
             }))
         );
@@ -165,6 +167,7 @@ describe('GameView - Actions & Flows Integration', () => {
             }))),
             http.get('/api/game/ROOM123/private-state', () => HttpResponse.json({
                 playerId: 'p-1',
+                handNumber: 0,
                 holeCards: ['AS', 'KS'],
             }))
         );
@@ -214,7 +217,7 @@ describe('GameView - Actions & Flows Integration', () => {
             render(<GameView auth={auth} onLeave={onLeaveSpy} />);
 
             await waitFor(() => {
-                expect(screen.getByText(/Session expired\. Returning to lobby/i)).toBeInTheDocument();
+                expect(screen.getByText(/Your seat is no longer active\. Returning to lobby|Session expired\. Returning to lobby/i)).toBeInTheDocument();
             });
 
             await act(async () => {
@@ -249,6 +252,7 @@ describe('GameView - Actions & Flows Integration', () => {
             }))),
             http.get('/api/game/ROOM123/private-state', () => HttpResponse.json({
                 playerId: 'p-1',
+                handNumber: 0,
                 holeCards: ['AS', 'KS'],
             }))
         );
@@ -282,6 +286,7 @@ describe('GameView - Actions & Flows Integration', () => {
             }))),
             http.get('/api/game/ROOM123/private-state', () => HttpResponse.json({
                 playerId: 'p-1',
+                handNumber: 0,
                 holeCards: ['AS', 'KS'],
             }))
         );
@@ -339,6 +344,7 @@ describe('GameView - Actions & Flows Integration', () => {
             }))),
             http.get('/api/game/ROOM123/private-state', () => HttpResponse.json({
                 playerId: 'p-1',
+                handNumber: 0,
                 holeCards: ['AS', 'KS'],
             })),
             http.post('/api/game/ROOM123/leave', () => new HttpResponse(null, { status: 200 })),
@@ -454,6 +460,7 @@ describe('GameView - Actions & Flows Integration', () => {
             }))),
             http.get('/api/game/ROOM123/private-state', () => HttpResponse.json({
                 playerId: 'p-1',
+                handNumber: 0,
                 holeCards: ['AS', 'KS'],
             }))
         );

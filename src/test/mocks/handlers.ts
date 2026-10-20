@@ -67,5 +67,10 @@ export const handlers = [
   // Default game private state handler (404 = not started)
   http.get('/api/game/:gameId/private-state', () => {
     return new HttpResponse(null, { status: 404 })
+  }),
+
+  // Default review handler (404 = not in review)
+  http.get('/api/game/:gameId/review', () => {
+    return new HttpResponse(null, { status: 404 })
   })
 ]

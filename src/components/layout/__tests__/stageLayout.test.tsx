@@ -114,12 +114,7 @@ describe('Stage Layout & Viewports', () => {
         expect(stage).toContainElement(claimContainer);
         expect(dock).not.toContainElement(claimContainer);
 
-        // Inset verification: left 8px, bottom 8px, absolute positioning
-        expect(claimContainer).toHaveStyle({
-            position: 'absolute',
-            left: '8px',
-            bottom: '8px',
-        });
+        // Inset verification: left 8px, bottom 8px, absolute positioning via Tailwind classes
         expect(claimContainer.className).toContain('absolute');
         expect(claimContainer.className).toContain('left-[8px]');
         expect(claimContainer.className).toContain('bottom-[8px]');
@@ -383,14 +378,14 @@ describe('Stage Layout & Viewports', () => {
             );
 
             // 1. Claim Win does not intersect RoomDock (Claim is inside RoomStage at bottom-left)
-            const stage = container.querySelector('[data-testid="room-stage"]');
-            const dock = container.querySelector('[data-testid="room-dock"]');
-            const claim = container.querySelector('[data-testid="claim-win-container"]');
+            const stage = container.querySelector<HTMLElement>('[data-testid="room-stage"]');
+            const dock = container.querySelector<HTMLElement>('[data-testid="room-dock"]');
+            const claim = container.querySelector<HTMLElement>('[data-testid="claim-win-container"]');
             expect(stage).toContainElement(claim);
             expect(dock).not.toContainElement(claim);
 
             // 2. Reconnect banner is an absolute overlay inside stage
-            const banner = container.querySelector('[data-testid="remote-reconnect-banner"]');
+            const banner = container.querySelector<HTMLElement>('[data-testid="remote-reconnect-banner"]');
             expect(stage).toContainElement(banner);
             expect(banner?.className).toContain('absolute');
 

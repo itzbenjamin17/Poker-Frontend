@@ -3,7 +3,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { GameTableView } from '../../GameTableView';
 import { GameSession } from '../../../domain/GameSession';
 import { InMemoryTransportAdapter } from '../../../services/transport';
-import type { GameState, RoomState } from '../../../types';
+import type { AuthResponse, GameState, RoomState } from '../../../types';
 import '@testing-library/jest-dom';
 
 describe('Table Identity Resolution', () => {
@@ -182,7 +182,7 @@ describe('Table Identity Resolution', () => {
     });
 
     it('populates session hero identity from initial state, accepted state, and setGameState', () => {
-        const auth = { token: 'tok', roomId: 'ROOM123', playerName: 'Alice' };
+        const auth: AuthResponse = { token: 'tok', roomId: 'ROOM123', playerName: 'Alice', message: 'Success' };
         const transport = new InMemoryTransportAdapter();
 
         // 1. Initial state constructor resolution

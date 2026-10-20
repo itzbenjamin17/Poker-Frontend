@@ -43,7 +43,7 @@ export function useSessionHydration() {
     const {
         auth, onLeave, dispatch,
         applyIncomingGameState, applyIncomingPrivateState,
-        gameEndResult, gameState,
+        gameEndResult, gameState, session,
     } = useGameContext();
 
     const lastStateSyncTimeRef = useRef<number>(0);
@@ -105,6 +105,44 @@ export function useSessionHydration() {
             }, ROOM_CLOSED_REDIRECT_MS);
         };
 
+        const handleTerminalReview = async (originalStatus: number): Promise<boolean> => {
+            try {
+                if (typeof pokerApi.getReview !== 'function') {
+                    if (originalStatus === 403) {
+                        redirectToLobby(SESSION_SEAT_GONE);
+                    } else {
+                        redirectToLobby(SESSION_EXPIRED);
+                    }
+                    return false;
+                }
+                const review = await pokerApi.getReview(auth.roomId, auth.token);
+                if (!isCurrent()) return false;
+                if (session) {
+                    session.installTerminalResult(review);
+                }
+                dispatch({ type: 'INSTALL_TERMINAL_RESULT', payload: review });
+                dispatch({ type: 'SET_HYDRATED', payload: true });
+                dispatch({ type: 'SET_LOADING_STATUS', payload: STATUS_CONNECTED });
+                return true;
+            } catch (reviewErr) {
+                if (!isCurrent()) return false;
+                const reviewStatus = getErrorStatusCode(reviewErr);
+                if (reviewStatus === 403) {
+                    redirectToLobby(SESSION_SEAT_GONE);
+                    return false;
+                }
+                if (reviewStatus === 404 || reviewStatus === 409) {
+                    if (originalStatus === 403) {
+                        redirectToLobby(SESSION_SEAT_GONE);
+                    } else {
+                        redirectToLobby(SESSION_EXPIRED);
+                    }
+                    return false;
+                }
+                throw reviewErr;
+            }
+        };
+
         const hydrateSession = async () => {
             let retryCount = 0;
             try {
@@ -114,14 +152,21 @@ export function useSessionHydration() {
                 let roomData = null;
                 while (!roomData && isCurrent()) {
                     try {
-                        roomData = await pokerApi.getRoomInfo(auth.roomId, auth.token);
+                        try {
+                            roomData = await pokerApi.getRoomInfo(auth.roomId, auth.token);
+                        } catch (fetchErr) {
+                            if (!isCurrent()) return;
+                            const statusCode = getErrorStatusCode(fetchErr);
+                            if (statusCode === 403 || statusCode === 404) {
+                                const installed = await handleTerminalReview(statusCode);
+                                if (!isCurrent()) return;
+                                if (installed) return;
+                                return;
+                            }
+                            throw fetchErr;
+                        }
                     } catch (err) {
                         if (!isCurrent()) return;
-                        const statusCode = getErrorStatusCode(err);
-                        if (statusCode === 403 || statusCode === 404) {
-                            redirectToLobby(SESSION_EXPIRED);
-                            return;
-                        }
                         if (retryCount < MAX_HYDRATION_RETRIES) {
                             retryCount += 1;
                             logger.error('Room info fetch error, retrying:', err);
@@ -163,9 +208,21 @@ export function useSessionHydration() {
                 let fetchTime = 0;
                 while (!fetched && isCurrent()) {
                     try {
-                        fetchTime = Date.now();
-                        snapshot = await pokerApi.getGameState(auth.roomId, auth.token);
-                        fetched = true;
+                        try {
+                            fetchTime = Date.now();
+                            snapshot = await pokerApi.getGameState(auth.roomId, auth.token);
+                            fetched = true;
+                        } catch (fetchErr) {
+                            if (!isCurrent()) return;
+                            const statusCode = getErrorStatusCode(fetchErr);
+                            if (statusCode === 403 || statusCode === 404) {
+                                const installed = await handleTerminalReview(statusCode);
+                                if (!isCurrent()) return;
+                                if (installed) return;
+                                return;
+                            }
+                            throw fetchErr;
+                        }
                     } catch (err) {
                         if (!isCurrent()) return;
                         if (err instanceof MalformedResponseError) {
@@ -173,15 +230,6 @@ export function useSessionHydration() {
                                 path: '$', expected: 'object', receivedType: err.receivedType,
                             });
                             failInitialLoad();
-                            return;
-                        }
-                        const statusCode = getErrorStatusCode(err);
-                        if (statusCode === 403) {
-                            redirectToLobby(SESSION_SEAT_GONE);
-                            return;
-                        }
-                        if (statusCode === 404) {
-                            redirectToLobby(SESSION_EXPIRED);
                             return;
                         }
                         if (retryCount < MAX_HYDRATION_RETRIES) {
@@ -204,18 +252,44 @@ export function useSessionHydration() {
                     lastStateSyncTimeRef.current = fetchTime;
                     applyIncomingGameState(decodedSnapshot);
 
-                    try {
-                        const privateSnapshot = await pokerApi.getPrivateState(auth.roomId, auth.token);
-                        if (isCurrent() && isPrivateStatePayload(privateSnapshot)) {
-                            applyIncomingPrivateState(privateSnapshot);
+                    let privateSnapshot: unknown = null;
+                    let privateFetched = false;
+                    while (!privateFetched && isCurrent()) {
+                        try {
+                            try {
+                                privateSnapshot = await pokerApi.getPrivateState(auth.roomId, auth.token);
+                                privateFetched = true;
+                            } catch (privateErr) {
+                                if (!isCurrent()) return;
+                                const code = getErrorStatusCode(privateErr);
+                                if (code === 403 || code === 404) {
+                                    const installed = await handleTerminalReview(code);
+                                    if (!isCurrent()) return;
+                                    if (installed) return;
+                                    return;
+                                }
+                                throw privateErr;
+                            }
+                        } catch (err) {
+                            if (!isCurrent()) return;
+                            if (retryCount < MAX_HYDRATION_RETRIES) {
+                                retryCount += 1;
+                                logger.error('Private snapshot fetch error, retrying:', err);
+                                dispatch({ type: 'SET_LOADING_STATUS', payload: STATUS_RECONNECTING_TABLE });
+                                const delayMs = computeHydrationBackoffMs(retryCount);
+                                await new Promise(resolve => setTimeout(resolve, delayMs));
+                            } else {
+                                failInitialLoad();
+                                return;
+                            }
                         }
-                    } catch (privateErr) {
-                        if (!isCurrent()) return;
-                        const code = getErrorStatusCode(privateErr);
-                        if (code !== 404) logger.warn('Private snapshot fetch error:', privateErr);
                     }
 
                     if (!isCurrent()) return;
+
+                    if (isPrivateStatePayload(privateSnapshot)) {
+                        applyIncomingPrivateState(privateSnapshot);
+                    }
 
                     dispatch({ type: 'SET_HYDRATED', payload: true });
                     dispatch({ type: 'SET_LOADING_STATUS', payload: STATUS_SEAT_RESTORED });
@@ -234,7 +308,7 @@ export function useSessionHydration() {
             mounted = false;
             if (redirectTimerRef.current !== null) clearTimeout(redirectTimerRef.current);
         };
-    }, [auth.playerName, auth.roomId, auth.token, dispatch, applyIncomingGameState, applyIncomingPrivateState, gameEndResult, attempt]);
+    }, [auth.playerName, auth.roomId, auth.token, dispatch, applyIncomingGameState, applyIncomingPrivateState, gameEndResult, attempt, session]);
 
     return { initialLoadFailed, retryInitialLoad };
 }
