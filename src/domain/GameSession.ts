@@ -13,6 +13,7 @@ import type {
 import {
     getErrorStatusCode,
     decodeGameStatePayload,
+    decodeGameEndResult,
     isGameEndPayload,
     isActionErrorPayload,
     isPrivateStatePayload,
@@ -20,7 +21,6 @@ import {
     normalizeErrorMessage,
 } from '../lib/payloads';
 import {
-    GAME_FINISHED_FALLBACK,
     HOST_LEFT,
     SESSION_EXPIRED,
     SESSION_SEAT_GONE,
@@ -110,16 +110,25 @@ export class GameSession {
         const isGameOver = Boolean(options.initialGameEndResult);
         this.gameStarted = Boolean(initialRoom.gameStarted);
 
+        const initialGameState = options.initialGameState ?? options.initialGameEndResult?.finalState ?? null;
+        let initialHeroId: string | null = null;
+        if (initialGameState?.players && options.auth.playerName) {
+            const hero = initialGameState.players.find((p) => p.name === options.auth.playerName);
+            if (hero?.id) {
+                initialHeroId = hero.id;
+            }
+        }
+
         this.snapshot = Object.freeze({
             roomState: initialRoom,
-            gameState: options.initialGameState ?? options.initialGameEndResult?.finalState ?? null,
+            gameState: initialGameState,
             privateState: null,
             showdown: null,
             showdownResult: null,
             notification: null,
             notificationSequence: 0,
             loadingStatus: 'Connecting...',
-            myPlayerId: null,
+            myPlayerId: initialHeroId,
             claimPending: false,
             wsStatus: 'disconnected' as WsStatus,
             isHydrated: false,
@@ -576,8 +585,14 @@ export class GameSession {
         const messageType = typeof p.type === 'string' ? p.type : null;
         const messageText = typeof p.message === 'string' ? p.message : null;
 
-        if (isGameEndPayload(parsed)) {
-            this.handleGameEnd(parsed);
+        if (messageType === 'GAME_END' || isGameEndPayload(parsed)) {
+            const decoded = decodeGameEndResult(parsed, this.auth.roomId);
+            if (!decoded) {
+                logger.warn('Rejected terminal STOMP payload:', parsed);
+                void this.synchronizeSession();
+                return;
+            }
+            this.installTerminalResult(decoded);
             return;
         }
 
@@ -601,78 +616,6 @@ export class GameSession {
         if (this.applyGameState(gamePayload, this.clock.now())) {
             this.stateSyncRevision += 1;
         }
-    }
-
-    private handleGameEnd(payload: {
-        gameId?: string | null;
-        winner?: string | null;
-        winnerChips?: number | null;
-        isForfeit?: boolean | null;
-        message?: string | null;
-        finalState?: unknown;
-    }): void {
-        if (this.snapshot.isGameOver) return;
-
-        this.cancelActionLocks();
-        this.clearRedirectTimer();
-        this.clearShowdownTimers();
-        this.clearNotificationTimer();
-        this.cancelRecovery();
-
-        const endMsg = normalizeErrorMessage(payload.message ?? GAME_FINISHED_FALLBACK);
-        const winnerName = typeof payload.winner === 'string' ? payload.winner : null;
-        const isForfeit = payload.isForfeit === true;
-
-        let finalGameState: GameState | undefined = undefined;
-        const fs = decodeGameStatePayload(payload.finalState);
-        if (fs) {
-            let pot = fs.pot;
-            let pots = fs.pots ?? undefined;
-            if (fs.phase === 'SHOWDOWN' && fs.pot === 0 && this.snapshot.gameState && this.snapshot.gameState.pot > 0) {
-                pot = this.snapshot.gameState.pot;
-                pots = this.snapshot.gameState.pots;
-            }
-            finalGameState = {
-                ...fs,
-                gameId: fs.gameId ?? this.auth.roomId,
-                pot,
-                pots,
-                claimWinAvailable: fs.claimWinAvailable ?? undefined,
-                claimWinPlayerName: fs.claimWinPlayerName ?? undefined,
-                uncalledAmount: fs.uncalledAmount ?? undefined,
-                isReadyCountdownActive: fs.isReadyCountdownActive ?? undefined,
-                readyCountdownDeadlineEpochMs: fs.readyCountdownDeadlineEpochMs ?? undefined,
-                handNumber: typeof fs.handNumber === 'number' ? fs.handNumber : undefined,
-                stateRevision: typeof fs.stateRevision === 'number' ? fs.stateRevision : undefined,
-                serverTimeEpochMs: typeof fs.serverTimeEpochMs === 'number' ? fs.serverTimeEpochMs : undefined,
-                readyGateState: fs.readyGateState ?? undefined,
-            };
-        }
-
-        const stateForWinner = finalGameState ?? this.snapshot.gameState;
-        const fallbackWinnerChips = winnerName
-            ? stateForWinner?.players.find((p) => p.name === winnerName)?.chips
-            : undefined;
-        const winnerChips =
-            typeof payload.winnerChips === 'number' ? payload.winnerChips : fallbackWinnerChips;
-
-        const gameEndResult: GameEndResult = {
-            gameId: (typeof payload.gameId === 'string' && payload.gameId) || this.auth.roomId,
-            winnerName,
-            winnerChips,
-            isForfeit,
-            message: endMsg || GAME_FINISHED_FALLBACK,
-            finalState: finalGameState,
-        };
-
-        this.updateSnapshot(() => ({
-            isGameOver: true,
-            gameEndResult,
-            gameState: finalGameState ?? this.snapshot.gameState,
-            showdown: null,
-            showdownResult: null,
-            notification: null,
-        }));
     }
 
     // ── Public State Mutation Methods ─────────────────────────────────────────────
@@ -848,6 +791,10 @@ export class GameSession {
         const myPlayer = data.players.find((p) => p.name === this.auth.playerName);
         if (myPlayer?.id) {
             myPlayerId = myPlayer.id;
+        } else if (!this.auth.playerName && this.snapshot.myPlayerId) {
+            myPlayerId = this.snapshot.myPlayerId;
+        } else if (this.auth.playerName && myPlayerId && !data.players.some((p) => p.id === myPlayerId && p.name === this.auth.playerName)) {
+            myPlayerId = null;
         }
 
         let nextPrivateState = this.snapshot.privateState;
@@ -863,7 +810,7 @@ export class GameSession {
             ) {
                 nextPrivateState = { holeCards: this.bufferedPrivateState.holeCards };
                 this.currentPrivateHandNumber = data.handNumber;
-                if (this.bufferedPrivateState.playerId) {
+                if (this.bufferedPrivateState.playerId && (!myPlayer?.id || this.bufferedPrivateState.playerId === myPlayer.id)) {
                     myPlayerId = this.bufferedPrivateState.playerId;
                 }
                 this.bufferedPrivateState = null;
@@ -900,15 +847,43 @@ export class GameSession {
         if ('handNumber' in payload && typeof payload.handNumber === 'number') {
             this.currentPrivateHandNumber = payload.handNumber;
         }
-        this.updateSnapshot((prev) => ({
+        let myPlayerId = this.snapshot.myPlayerId;
+        if ('playerId' in payload && payload.playerId) {
+            const suppliedId = payload.playerId;
+            const currentPlayers = this.snapshot.gameState?.players;
+            if (this.auth.playerName && currentPlayers && currentPlayers.length > 0) {
+                const hero = currentPlayers.find((p) => p.name === this.auth.playerName);
+                if (hero) {
+                    myPlayerId = hero.id;
+                } else {
+                    const matchedById = currentPlayers.find((p) => p.id === suppliedId);
+                    if (matchedById && matchedById.name === this.auth.playerName) {
+                        myPlayerId = suppliedId;
+                    }
+                }
+            } else {
+                myPlayerId = suppliedId;
+            }
+        }
+        this.updateSnapshot(() => ({
             privateState: { holeCards: nextHoleCards },
-            myPlayerId: ('playerId' in payload && payload.playerId) ? payload.playerId : prev.myPlayerId,
+            myPlayerId,
         }));
     }
 
     public setGameState(gameState: GameState | null): void {
+        let myPlayerId = this.snapshot.myPlayerId;
+        if (gameState?.players) {
+            const hero = gameState.players.find((p) => p.name === this.auth.playerName);
+            if (hero?.id) {
+                myPlayerId = hero.id;
+            } else if (this.auth.playerName && myPlayerId && !gameState.players.some((p) => p.id === myPlayerId && p.name === this.auth.playerName)) {
+                myPlayerId = null;
+            }
+        }
         this.updateSnapshot(() => ({
             gameState,
+            myPlayerId,
         }));
     }
 
@@ -937,8 +912,15 @@ export class GameSession {
     }
 
     public setMyPlayerId(id: string | null): void {
+        let effectiveId = id;
+        if (id && this.auth.playerName && this.snapshot.gameState?.players) {
+            const hero = this.snapshot.gameState.players.find((p) => p.name === this.auth.playerName);
+            if (hero && hero.id !== id) {
+                effectiveId = hero.id;
+            }
+        }
         this.updateSnapshot(() => ({
-            myPlayerId: id,
+            myPlayerId: effectiveId,
         }));
     }
 
@@ -1208,7 +1190,9 @@ export class GameSession {
         }
     }
 
-    private installTerminalResult(result: GameEndResult): void {
+    public installTerminalResult(result: GameEndResult): void {
+        if (this.snapshot.isGameOver) return;
+
         this.clearRecoveryTimer();
         this.clearRedirectTimer();
         this.cancelActionLocks();
@@ -1216,8 +1200,43 @@ export class GameSession {
         this.clearNotificationTimer();
         this.recoveryRetryAttempt = 0;
 
-        this.setGameEndResult(result);
+        let nextGameState = this.snapshot.gameState;
+        if (result.finalState) {
+            const fs = result.finalState;
+            if (fs.phase === 'SHOWDOWN' && fs.pot === 0 && this.snapshot.gameState && this.snapshot.gameState.pot > 0) {
+                nextGameState = {
+                    ...fs,
+                    pot: this.snapshot.gameState.pot,
+                    pots: this.snapshot.gameState.pots,
+                };
+            } else {
+                nextGameState = fs;
+            }
+        }
+
+        const stateForWinner = nextGameState ?? this.snapshot.gameState;
+        const winnerName = result.winnerName;
+        const fallbackWinnerChips = winnerName
+            ? stateForWinner?.players.find((p) => p.name === winnerName)?.chips
+            : undefined;
+        const winnerChips =
+            typeof result.winnerChips === 'number' ? result.winnerChips : fallbackWinnerChips;
+
+        const terminalResult: GameEndResult = {
+            ...result,
+            winnerChips,
+            finalState: nextGameState ?? undefined,
+        };
+
+        this.cancelRecovery();
         this.updateSnapshot(() => ({
+            isGameOver: true,
+            gameEndResult: terminalResult,
+            gameState: nextGameState,
+            showdown: null,
+            showdownResult: null,
+            notification: null,
+            claimPending: false,
             isHydrated: true,
             loadingStatus: STATUS_CONNECTED,
             isRecovering: false,
@@ -1258,6 +1277,7 @@ export class GameSession {
         this.updateSnapshot(() => ({
             gameEndResult: result,
             isGameOver: result !== null,
+            claimPending: false,
             gameState: nextGameState,
             showdown: null,
             showdownResult: null,

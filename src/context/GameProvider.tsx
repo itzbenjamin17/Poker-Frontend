@@ -99,6 +99,9 @@ export function GameProvider({
             case 'SET_GAME_END_RESULT':
                 session.setGameEndResult(action.payload);
                 break;
+            case 'INSTALL_TERMINAL_RESULT':
+                session.installTerminalResult(action.payload);
+                break;
             case 'CLEAR_GAME_STATE':
                 session.clearGameState();
                 break;

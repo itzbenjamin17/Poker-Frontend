@@ -13,6 +13,7 @@ vi.mock('../../services/api', () => ({
     pokerApi: {
         startGame: vi.fn(),
         claimWin: vi.fn(),
+        getReview: vi.fn(),
         leaveGame: vi.fn(),
         leaveRoom: vi.fn(),
     },
@@ -178,15 +179,18 @@ describe('useGameDispatcher', () => {
         expect(session.getSnapshot().notification).toBe('Start failed');
     });
 
-    it('dispatch CLAIM_WIN calls pokerApi', async () => {
+    it('dispatch CLAIM_WIN success installs terminal result and clears claimPending', async () => {
+        const installSpy = vi.spyOn(session, 'installTerminalResult');
+        const terminalData = {
+            gameId: 'ROOM123',
+            winnerName: 'TestPlayer',
+            winnerChips: 1980,
+            isForfeit: true,
+            message: 'Win claimed',
+        };
         const claimWinSpy = vi.mocked(pokerApi.claimWin).mockResolvedValue({
             message: 'Win claimed',
-            data: {
-                gameId: 'ROOM123',
-                winnerName: 'TestPlayer',
-                isForfeit: true,
-                message: 'Win claimed',
-            },
+            data: terminalData,
         });
         const { result } = renderHook(() => useGameDispatcher(), {
             wrapper: createWrapper(),
@@ -196,13 +200,26 @@ describe('useGameDispatcher', () => {
             await result.current.dispatch({ type: 'CLAIM_WIN' });
         });
 
-        expect(session.getSnapshot().claimPending).toBe(true);
         expect(claimWinSpy).toHaveBeenCalledWith('GAME123', 'test-token');
+        expect(installSpy).toHaveBeenCalledWith(terminalData);
+        expect(session.getSnapshot().claimPending).toBe(false);
+        expect(session.getSnapshot().isGameOver).toBe(true);
+        expect(session.getSnapshot().gameEndResult?.winnerName).toBe('TestPlayer');
     });
 
-    it('dispatch CLAIM_WIN resets claimPending to false and sets notification when pokerApi.claimWin rejects with 403', async () => {
-        const error = Object.assign(new Error('Cannot claim win right now.'), { status: 403 });
-        vi.mocked(pokerApi.claimWin).mockRejectedValue(error);
+    it('dispatch CLAIM_WIN triggers review recovery via pokerApi.getReview on network/timeout failure and installs terminal result', async () => {
+        const networkError = new TypeError('Failed to fetch');
+        vi.mocked(pokerApi.claimWin).mockRejectedValue(networkError);
+        const reviewResult = {
+            gameId: 'ROOM123',
+            winnerName: 'TestPlayer',
+            winnerChips: 2000,
+            isForfeit: true,
+            message: 'Recovered review: TestPlayer won',
+        };
+        const getReviewSpy = vi.mocked(pokerApi.getReview).mockResolvedValue(reviewResult);
+        const installSpy = vi.spyOn(session, 'installTerminalResult');
+
         const { result } = renderHook(() => useGameDispatcher(), {
             wrapper: createWrapper(),
         });
@@ -211,6 +228,45 @@ describe('useGameDispatcher', () => {
             await result.current.dispatch({ type: 'CLAIM_WIN' });
         });
 
+        expect(getReviewSpy).toHaveBeenCalledWith('GAME123', 'test-token');
+        expect(installSpy).toHaveBeenCalledWith(reviewResult);
+        expect(session.getSnapshot().claimPending).toBe(false);
+        expect(session.getSnapshot().isGameOver).toBe(true);
+        expect(session.getSnapshot().gameEndResult?.winnerName).toBe('TestPlayer');
+    });
+
+    it('dispatch CLAIM_WIN clears claimPending and exposes retry when review recovery is exhausted', async () => {
+        const error500 = Object.assign(new Error('Internal Server Error'), { status: 500 });
+        vi.mocked(pokerApi.claimWin).mockRejectedValue(error500);
+        vi.mocked(pokerApi.getReview).mockRejectedValue(new Error('Review unavailable'));
+
+        const { result } = renderHook(() => useGameDispatcher(), {
+            wrapper: createWrapper(),
+        });
+
+        await act(async () => {
+            await result.current.dispatch({ type: 'CLAIM_WIN' });
+        });
+
+        expect(session.getSnapshot().claimPending).toBe(false);
+        expect(session.getSnapshot().isGameOver).toBe(false);
+        expect(result.current.isPending('CLAIM_WIN')).toBe(false);
+        expect(session.getSnapshot().notification).toBe('Technical difficulties.');
+    });
+
+    it('dispatch CLAIM_WIN resets claimPending to false and sets notification without getReview when pokerApi.claimWin rejects with 403', async () => {
+        const error = Object.assign(new Error('Cannot claim win right now.'), { status: 403 });
+        vi.mocked(pokerApi.claimWin).mockRejectedValue(error);
+        const getReviewSpy = vi.mocked(pokerApi.getReview);
+        const { result } = renderHook(() => useGameDispatcher(), {
+            wrapper: createWrapper(),
+        });
+
+        await act(async () => {
+            await result.current.dispatch({ type: 'CLAIM_WIN' });
+        });
+
+        expect(getReviewSpy).not.toHaveBeenCalled();
         expect(session.getSnapshot().claimPending).toBe(false);
         expect(session.getSnapshot().notification).toBe('Cannot claim win right now.');
     });
