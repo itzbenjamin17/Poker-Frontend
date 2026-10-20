@@ -2,6 +2,10 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
     decodeGameStatePayload,
+    decodePublicGameState,
+    decodePrivatePlayerState,
+    validatePrivatePlayerIdentity,
+    decodeGameEndResult,
     isGameStatePayload,
     isGameEndPayload,
     isPrivateStatePayload,
@@ -340,4 +344,226 @@ describe('lib/payloads - Type Guards and Normalizers', () => {
             expect(normalizeErrorMessage('  Player name already taken  ')).toBe('Player name already taken');
         });
     });
+
+    describe('decodePrivatePlayerState', () => {
+        it('decodes valid private state with exactly 2 hole cards and normalizes card codes', () => {
+            const result = decodePrivatePlayerState({
+                playerId: 'player-1',
+                handNumber: 3,
+                holeCards: ['As', '10d'],
+            });
+            expect(result).toEqual({
+                playerId: 'player-1',
+                handNumber: 3,
+                holeCards: ['AS', 'TD'],
+            });
+        });
+
+        it('decodes valid private state with 0 hole cards (empty array)', () => {
+            const result = decodePrivatePlayerState({
+                playerId: 'player-1',
+                handNumber: 0,
+                holeCards: [],
+            });
+            expect(result).toEqual({
+                playerId: 'player-1',
+                handNumber: 0,
+                holeCards: [],
+            });
+        });
+
+        it('normalizes null holeCards to empty array', () => {
+            const result = decodePrivatePlayerState({
+                playerId: 'player-1',
+                handNumber: 2,
+                holeCards: null,
+            });
+            expect(result).toEqual({
+                playerId: 'player-1',
+                handNumber: 2,
+                holeCards: [],
+            });
+        });
+
+        it.each([
+            ['1 card', { playerId: 'p1', handNumber: 1, holeCards: ['AS'] }],
+            ['3 cards', { playerId: 'p1', handNumber: 1, holeCards: ['AS', 'KD', 'QH'] }],
+            ['invalid card code', { playerId: 'p1', handNumber: 1, holeCards: ['AS', 'INVALID'] }],
+            ['negative handNumber', { playerId: 'p1', handNumber: -1, holeCards: ['AS', 'KD'] }],
+            ['float handNumber', { playerId: 'p1', handNumber: 1.5, holeCards: ['AS', 'KD'] }],
+            ['string handNumber', { playerId: 'p1', handNumber: '1', holeCards: ['AS', 'KD'] }],
+            ['missing handNumber', { playerId: 'p1', holeCards: ['AS', 'KD'] }],
+            ['empty playerId', { playerId: '', handNumber: 1, holeCards: ['AS', 'KD'] }],
+            ['whitespace-only playerId', { playerId: '   ', handNumber: 1, holeCards: ['AS', 'KD'] }],
+            ['missing playerId', { handNumber: 1, holeCards: ['AS', 'KD'] }],
+            ['missing holeCards', { playerId: 'p1', handNumber: 1 }],
+            ['holeCards is not array or null', { playerId: 'p1', handNumber: 1, holeCards: 'AS' }],
+            ['null input', null],
+            ['primitive input', 'string-payload'],
+        ])('fails decoding (returns null) for %s', (_desc, payload) => {
+            expect(decodePrivatePlayerState(payload)).toBeNull();
+        });
+    });
+
+    describe('validatePrivatePlayerIdentity', () => {
+        const publicState = createValidGameState({
+            players: [
+                createValidPlayer({ id: 'p-alice', name: 'Alice' }),
+                createValidPlayer({ id: 'p-bob', name: 'Bob' }),
+            ],
+        });
+
+        it('returns true when private playerId matches the public player whose name equals authPlayerName', () => {
+            const privateState = { playerId: 'p-alice', handNumber: 1, holeCards: ['AS', 'KD'] };
+            expect(validatePrivatePlayerIdentity(privateState, publicState, 'Alice')).toBe(true);
+        });
+
+        it('returns false when private playerId does not match the public player whose name equals authPlayerName', () => {
+            const privateState = { playerId: 'p-bob', handNumber: 1, holeCards: ['AS', 'KD'] };
+            expect(validatePrivatePlayerIdentity(privateState, publicState, 'Alice')).toBe(false);
+        });
+
+        it('returns false when authPlayerName is not found in public roster', () => {
+            const privateState = { playerId: 'p-alice', handNumber: 1, holeCards: ['AS', 'KD'] };
+            expect(validatePrivatePlayerIdentity(privateState, publicState, 'Charlie')).toBe(false);
+        });
+
+        it('returns false for null, undefined, or empty inputs', () => {
+            const privateState = { playerId: 'p-alice', handNumber: 1, holeCards: ['AS', 'KD'] };
+            expect(validatePrivatePlayerIdentity(null as any, publicState, 'Alice')).toBe(false);
+            expect(validatePrivatePlayerIdentity(privateState, null as any, 'Alice')).toBe(false);
+            expect(validatePrivatePlayerIdentity(privateState, publicState, '')).toBe(false);
+        });
+    });
+
+    describe('decodeGameEndResult and decodePublicGameState', () => {
+        it('decodes public game state via decodePublicGameState', () => {
+            const valid = createValidGameState({ pot: 100 });
+            const decoded = decodePublicGameState(valid);
+            expect(decoded).not.toBeNull();
+            expect(decoded?.pot).toBe(100);
+        });
+
+        it('decodes valid terminal result with full fields', () => {
+            const payload = {
+                gameId: 'game-123',
+                winnerName: 'Alice',
+                winnerChips: 2000,
+                isForfeit: false,
+                message: 'Alice won with a flush',
+            };
+            const result = decodeGameEndResult(payload);
+            expect(result).toEqual({
+                gameId: 'game-123',
+                winnerName: 'Alice',
+                winnerChips: 2000,
+                isForfeit: false,
+                message: 'Alice won with a flush',
+            });
+        });
+
+        it('accepts backend wire property "winner" as fallback for "winnerName"', () => {
+            const payload = {
+                gameId: 'game-123',
+                winner: 'Alice',
+                winnerChips: 2000,
+                isForfeit: false,
+                message: 'Alice won',
+            };
+            const result = decodeGameEndResult(payload);
+            expect(result?.winnerName).toBe('Alice');
+        });
+
+        it('accepts null winnerName', () => {
+            const payload = {
+                gameId: 'game-123',
+                winnerName: null,
+                isForfeit: true,
+                message: 'Game abandoned',
+            };
+            const result = decodeGameEndResult(payload);
+            expect(result).not.toBeNull();
+            expect(result?.winnerName).toBeNull();
+        });
+
+        it('accepts omitted optional winnerChips', () => {
+            const payload = {
+                gameId: 'game-123',
+                winnerName: 'Bob',
+                isForfeit: false,
+                message: 'Bob won',
+            };
+            const result = decodeGameEndResult(payload);
+            expect(result).not.toBeNull();
+            expect(result?.winnerChips).toBeUndefined();
+        });
+
+        it('decodes and validates matching finalState when present', () => {
+            const finalState = createValidGameState({ gameId: 'game-123', pot: 500 });
+            const payload = {
+                gameId: 'game-123',
+                winnerName: 'Alice',
+                winnerChips: 1500,
+                isForfeit: false,
+                message: 'Alice won',
+                finalState,
+            };
+            const result = decodeGameEndResult(payload);
+            expect(result).not.toBeNull();
+            expect(result?.finalState?.gameId).toBe('game-123');
+            expect(result?.finalState?.pot).toBe(500);
+        });
+
+        it('rejects terminal payload when finalState gameId does not match terminal gameId', () => {
+            const finalState = createValidGameState({ gameId: 'different-game-id' });
+            const payload = {
+                gameId: 'game-123',
+                winnerName: 'Alice',
+                isForfeit: false,
+                message: 'Alice won',
+                finalState,
+            };
+            expect(decodeGameEndResult(payload)).toBeNull();
+        });
+
+        it('rejects terminal payload when finalState fails decoding', () => {
+            const payload = {
+                gameId: 'game-123',
+                winnerName: 'Alice',
+                isForfeit: false,
+                message: 'Alice won',
+                finalState: { pot: -100 }, // Corrupted money
+            };
+            expect(decodeGameEndResult(payload)).toBeNull();
+        });
+
+        it.each<[string, unknown, string | undefined]>([
+            ['negative winnerChips', { gameId: 'g1', winnerName: 'A', winnerChips: -1, isForfeit: false, message: 'm' }, undefined],
+            ['float winnerChips', { gameId: 'g1', winnerName: 'A', winnerChips: 1.5, isForfeit: false, message: 'm' }, undefined],
+            ['string winnerChips', { gameId: 'g1', winnerName: 'A', winnerChips: '500', isForfeit: false, message: 'm' }, undefined],
+            ['empty gameId', { gameId: '', winnerName: 'A', isForfeit: false, message: 'm' }, undefined],
+            ['missing gameId without fallback', { winnerName: 'A', isForfeit: false, message: 'm' }, undefined],
+            ['mismatched expectedGameId', { gameId: 'g1', winnerName: 'A', isForfeit: false, message: 'm' }, 'g2'],
+            ['non-boolean isForfeit', { gameId: 'g1', winnerName: 'A', isForfeit: 'true', message: 'm' }, undefined],
+            ['empty message', { gameId: 'g1', winnerName: 'A', isForfeit: false, message: '   ' }, undefined],
+            ['non-string message', { gameId: 'g1', winnerName: 'A', isForfeit: false, message: 123 }, undefined],
+            ['invalid winnerName type', { gameId: 'g1', winnerName: 123, isForfeit: false, message: 'm' }, undefined],
+            ['null input', null, undefined],
+        ])('rejects malformed terminal data: %s', (_desc, payload, expectedGameId) => {
+            expect(decodeGameEndResult(payload, expectedGameId)).toBeNull();
+        });
+
+        it('uses fallbackGameId when gameId is omitted from payload', () => {
+            const payload = {
+                winnerName: 'Alice',
+                winnerChips: 500,
+                isForfeit: false,
+                message: 'Alice won',
+            };
+            const result = decodeGameEndResult(payload, 'fallback-room');
+            expect(result).not.toBeNull();
+            expect(result?.gameId).toBe('fallback-room');
+        });
+    });
 });
+

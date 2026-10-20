@@ -178,7 +178,15 @@ describe('useGameDispatcher', () => {
     });
 
     it('dispatch CLAIM_WIN calls pokerApi', async () => {
-        const claimWinSpy = vi.mocked(pokerApi.claimWin).mockResolvedValue(true);
+        const claimWinSpy = vi.mocked(pokerApi.claimWin).mockResolvedValue({
+            message: 'Win claimed',
+            data: {
+                gameId: 'ROOM123',
+                winnerName: 'TestPlayer',
+                isForfeit: true,
+                message: 'Win claimed',
+            },
+        });
         const { result } = renderHook(() => useGameDispatcher(), {
             wrapper: createWrapper(),
         });

@@ -1,6 +1,16 @@
 import type { GameEndResult } from '../types';
+import { decodeGameEndResult } from '../lib/payloads';
 
 const GAME_END_STORAGE_PREFIX = 'poker-game-end:';
+
+function parseAndValidateGameEnd(raw: string, roomId: string): GameEndResult | null {
+    try {
+        const parsed = JSON.parse(raw);
+        return decodeGameEndResult(parsed, roomId);
+    } catch {
+        return null;
+    }
+}
 
 /**
  * Reads a previously frozen final-game snapshot from sessionStorage so a page
@@ -9,32 +19,71 @@ const GAME_END_STORAGE_PREFIX = 'poker-game-end:';
  * cleaned up the room, kicking the player back to the lobby).
  */
 export function loadPersistedGameEnd(roomId: string): GameEndResult | null {
+    const key = GAME_END_STORAGE_PREFIX + roomId;
+
+    let rawSession: string | null = null;
     try {
-        const key = GAME_END_STORAGE_PREFIX + roomId;
-        let raw = sessionStorage.getItem(key);
-        if (!raw) {
-            // One-time migration for this tab from the previous shared store.
-            raw = localStorage.getItem(key);
-            if (raw) sessionStorage.setItem(key, raw);
-            localStorage.removeItem(key);
-        }
-        if (!raw) return null;
-        const parsed = JSON.parse(raw);
-        if (parsed && typeof parsed === 'object' && 'isForfeit' in parsed && 'message' in parsed) {
-            return parsed as GameEndResult;
-        }
-        return null;
+        rawSession = sessionStorage.getItem(key);
     } catch {
+        // Storage access denied (SecurityError)
+    }
+
+    if (rawSession !== null) {
+        const validated = parseAndValidateGameEnd(rawSession, roomId);
+        if (validated) {
+            return validated;
+        }
+        try {
+            sessionStorage.removeItem(key);
+        } catch {
+            // Storage access denied
+        }
         return null;
     }
+
+    // Check legacy localStorage for one-time tab migration
+    let rawLocal: string | null = null;
+    try {
+        rawLocal = localStorage.getItem(key);
+    } catch {
+        // Storage access denied
+    }
+
+    if (rawLocal !== null) {
+        const validated = parseAndValidateGameEnd(rawLocal, roomId);
+        if (validated) {
+            try {
+                sessionStorage.setItem(key, JSON.stringify(validated));
+            } catch {
+                // Storage denied / quota exceeded
+            }
+            try {
+                localStorage.removeItem(key);
+            } catch {
+                // Storage access denied
+            }
+            return validated;
+        } else {
+            // Purge invalid legacy entry
+            try {
+                localStorage.removeItem(key);
+            } catch {
+                // Storage access denied
+            }
+            return null;
+        }
+    }
+
+    return null;
 }
 
 export function savePersistedGameEnd(roomId: string, result: GameEndResult | null): void {
+    const key = GAME_END_STORAGE_PREFIX + roomId;
     try {
         if (result) {
-            sessionStorage.setItem(GAME_END_STORAGE_PREFIX + roomId, JSON.stringify(result));
+            sessionStorage.setItem(key, JSON.stringify(result));
         } else {
-            sessionStorage.removeItem(GAME_END_STORAGE_PREFIX + roomId);
+            sessionStorage.removeItem(key);
         }
     } catch {
         // Ignore storage errors (private browsing, quota exceeded, etc.)

@@ -396,19 +396,21 @@ describe('GameView - Actions & Flows Integration', () => {
         // Simulate a previous session having already recorded a game end - this
         // is what GameProvider persists to localStorage when GAME_END arrives.
         localStorage.setItem('poker-game-end:ROOM123', JSON.stringify({
+            gameId: 'ROOM123',
             winnerName: 'TestPlayer',
             winnerChips: 2000,
             isForfeit: false,
             message: 'TestPlayer won the game!',
-            finalState: {
+            finalState: createValidGameState({
+                gameId: 'ROOM123',
                 phase: 'SHOWDOWN',
                 pot: 30,
                 players: [
-                    { id: 'p-1', name: 'TestPlayer', chips: 2000, currentBet: 0, status: 'ACTIVE', isWinner: true },
-                    { id: 'p-2', name: 'Opponent', chips: 0, currentBet: 0, status: 'ACTIVE' },
+                    { id: 'p-1', name: 'TestPlayer', chips: 2000, currentBet: 0, status: 'ACTIVE', hasFolded: false, isWinner: true },
+                    { id: 'p-2', name: 'Opponent', chips: 0, currentBet: 0, status: 'ACTIVE', hasFolded: false },
                 ],
                 communityCards: ['AH', 'KH', 'QD', 'JS', '2C'],
-            },
+            }),
         }));
 
         // The room/game no longer exist server-side (already cleaned up) - if
