@@ -193,13 +193,22 @@ export function decodePublicGameState(value: unknown, source?: GameSnapshotSourc
 }
 
 export function isRoomDataPayload(value: unknown): value is RoomDataResponse {
+    if (!isObject(value)) return false;
     return fields(value, {
         roomId: text, roomName: text, maxPlayers: capacity,
         buyIn: nonnegative, smallBlind: nonnegative, bigBlind: nonnegative,
         createdAt: text, hostName: text, currentPlayers: nonnegative,
         canStartGame: boolean, gameStarted: boolean,
-        players: list(shape({ name: text, isHost: boolean, joinedAt: text }), 10),
+        players: list(roomPlayer, 10),
     });
+}
+
+export function decodeRoomDataResponse(value: unknown): RoomDataResponse | null {
+    if (!isObject(value)) return null;
+    if (isRoomDataPayload(value)) {
+        return value;
+    }
+    return null;
 }
 
 export function mapRoomDataToRoomState(
@@ -401,6 +410,12 @@ export function isRoomUpdatePayload(value: unknown): value is RoomUpdate {
     if (!isObject(value) || typeof value.message !== 'string') return false;
     if (value.message === 'ROOM_CLOSED') {
         return value.data == null || fields(value.data, { roomId: optional(text) });
+    }
+    if (value.message === 'GAME_STARTED') {
+        return isObject(value.data) && fields(value.data, {
+            gameId: text,
+            message: optional(text),
+        });
     }
     if (
         value.message === 'ROOM_CREATED' ||

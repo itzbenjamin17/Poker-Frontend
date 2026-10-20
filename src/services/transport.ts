@@ -157,23 +157,33 @@ export class StompTransportAdapter implements GameTransport {
     }
 
     public forceReconnect(): void {
-        this.lifecycleGeneration += 1;
+        const generation = ++this.lifecycleGeneration;
         this.isActive = true;
         if (typeof (this.client as unknown as { forceDisconnect?: () => void }).forceDisconnect === 'function') {
             (this.client as unknown as { forceDisconnect: () => void }).forceDisconnect();
         }
         if (typeof this.client.deactivate === 'function') {
-            const result = this.client.deactivate({ force: true }) as Promise<void> | undefined;
-            if (result && typeof result.then === 'function') {
-                void result.finally(() => {
-                    if (this.isActive) {
-                        this.client.activate();
-                    }
-                });
-                return;
+            try {
+                const result = this.client.deactivate({ force: true }) as Promise<void> | undefined;
+                if (result && typeof result.then === 'function') {
+                    void result
+                        .then(() => {
+                            if (this.isActive && generation === this.lifecycleGeneration) {
+                                this.client.activate();
+                            }
+                        })
+                        .catch((err) => {
+                            logger.warn('Transport deactivation failed during forceReconnect:', err);
+                        });
+                    return;
+                }
+            } catch (err) {
+                logger.warn('Transport deactivation threw during forceReconnect:', err);
             }
         }
-        this.client.activate();
+        if (this.isActive && generation === this.lifecycleGeneration) {
+            this.client.activate();
+        }
     }
 
     public disconnect(): void {

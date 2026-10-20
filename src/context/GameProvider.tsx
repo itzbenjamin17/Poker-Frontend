@@ -106,7 +106,7 @@ export function GameProvider({
     }, [session]);
 
     const applyIncomingGameState = useCallback((payload: IncomingGameStatePayload) => {
-        session.applyGameState(payload);
+        return session.applyGameState(payload);
     }, [session]);
 
     const applyIncomingPrivateState = useCallback((payload: IncomingPrivateStatePayload) => {

@@ -7,6 +7,7 @@ import { GameSession } from '../../domain/GameSession';
 import { InMemoryTransportAdapter } from '../../services/transport';
 import { pokerApi } from '../../services/api';
 import type { GameState } from '../../types';
+import { createValidGameState } from '../../test/fixtures';
 
 vi.mock('../../services/api', () => ({
     pokerApi: {
@@ -365,4 +366,30 @@ describe('useGameDispatcher', () => {
         expect(session.getSnapshot().notification).toBe('Server recovering');
         expect(onLeave).not.toHaveBeenCalled();
     });
+
+    it('missing GAME_STARTED or public STOMP after successful Start still reaches the table through REST; duplicate clicks produce one POST', async () => {
+        const startGameSpy = vi.mocked(pokerApi.startGame).mockResolvedValue({});
+        const syncSpy = vi.spyOn(session, 'synchronizeSession').mockImplementation(async () => {
+            session.setGameState(createValidGameState({ gameId: 'ROOM123', phase: 'PRE_FLOP' }));
+        });
+
+        const { result } = renderHook(() => useGameDispatcher(), {
+            wrapper: createWrapper(),
+        });
+
+        await act(async () => {
+            await result.current.dispatch({ type: 'START_GAME' });
+        });
+
+        expect(startGameSpy).toHaveBeenCalledTimes(1);
+        expect(session.isStarted()).toBe(true);
+        expect(syncSpy).toHaveBeenCalled();
+        expect(session.getSnapshot().gameState?.phase).toBe('PRE_FLOP');
+
+        await act(async () => {
+            await result.current.dispatch({ type: 'START_GAME' });
+        });
+        expect(startGameSpy).toHaveBeenCalledTimes(1);
+    });
 });
+

@@ -65,6 +65,10 @@ export type RoomUpdate =
     | {
         message: 'ROOM_CREATED' | 'PLAYER_JOINED' | 'PLAYER_LEFT';
         data: Partial<RoomState> & { players: NonNullable<RoomState['players']> };
+    }
+    | {
+        message: 'GAME_STARTED';
+        data: { gameId: string; message?: string };
     };
 
 export interface RoomDataResponse {
@@ -155,6 +159,7 @@ export type IncomingGameStatePayload = Omit<
 
 export type IncomingPrivateStatePayload = {
     playerId?: string;
+    handNumber?: number;
     holeCards?: string[] | null;
 };
 

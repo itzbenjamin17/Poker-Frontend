@@ -1,14 +1,6 @@
 import { useEffect, useRef } from 'react';
-import { MalformedResponseError, pokerApi } from '../services/api';
 import { logger } from '../security/logger';
 import { useGameContext } from '../context/GameContext';
-import {
-    decodeGameStatePayload,
-    isPrivateStatePayload,
-    isRoomDataPayload,
-    mapRoomDataToRoomState,
-    reportRejectedGameSnapshot,
-} from '../lib/payloads';
 import type { Client } from '@stomp/stompjs';
 import {
     StompTransportAdapter,
@@ -56,7 +48,7 @@ export function useGameWebSocket(options: UseGameWebSocketOptions = {}) {
         let disposed = false;
 
         const isCancelled = () =>
-            disposed || gameEndedRef.current || session.getSnapshot().isGameOver;
+            disposed || gameEndedRef.current || session.getSnapshot().isGameOver || !session.hasLifecyclePermission();
 
         const transport = options.transport ?? session.getTransport();
         transportRef.current = transport;
@@ -64,81 +56,24 @@ export function useGameWebSocket(options: UseGameWebSocketOptions = {}) {
             stompClientRef.current = transport.getClient();
         }
 
-        const executeRecoveryStep = async (): Promise<void> => {
-            let currentRoom = session.getSnapshot().roomState;
-
-            if (!currentRoom || !currentRoom.gameStarted) {
-                const roomBeforeSync = currentRoom;
-                if (typeof pokerApi.getRoomInfo === 'function') {
-                    const roomData = await Promise.resolve(pokerApi.getRoomInfo(auth.roomId, auth.token));
-                    if (isCancelled()) return;
-                    if (
-                        isRoomDataPayload(roomData) &&
-                        session.getSnapshot().roomState === roomBeforeSync
-                    ) {
-                        const updatedRoom = mapRoomDataToRoomState(roomData, auth.roomId);
-                        session.setRoomState(updatedRoom);
-                    }
-                }
-                currentRoom = session.getSnapshot().roomState;
-            }
-
-            if (isCancelled() || !currentRoom?.gameStarted) {
-                return;
-            }
-
-            const syncTime = session.now();
-            const syncRevision = session.getStateSyncRevision();
-            const privateRevision = session.getPrivateSyncRevision();
-
-            const publicPromise = Promise.resolve(pokerApi.getGameState(auth.roomId, auth.token)).then(
-                (snapshot) => {
-                    if (isCancelled()) return;
-                    const decodedSnapshot = decodeGameStatePayload(snapshot, 'REST recovery game snapshot');
-                    if (
-                        decodedSnapshot &&
-                        session.getStateSyncRevision() === syncRevision &&
-                        syncTime >= session.getLastStateSyncTime()
-                    ) {
-                        session.applyGameState(decodedSnapshot, syncTime);
-                    }
-                },
-                (error: unknown) => {
-                    if (isCancelled()) return;
-                    if (error instanceof MalformedResponseError) {
-                        reportRejectedGameSnapshot('REST recovery game snapshot', {
-                            path: '$', expected: 'object', receivedType: error.receivedType,
-                        });
-                    }
-                    throw error;
-                },
-            );
-
-            const privatePromise = Promise.resolve(pokerApi.getPrivateState(auth.roomId, auth.token)).then(
-                (privateSnapshot) => {
-                    if (isCancelled()) return;
-                    if (
-                        isPrivateStatePayload(privateSnapshot) &&
-                        session.getPrivateSyncRevision() === privateRevision
-                    ) {
-                        session.applyPrivateState(privateSnapshot);
-                    }
-                }
-            );
-
-            await Promise.all([publicPromise, privatePromise]);
-        };
+        let inFlightRecovery: Promise<void> | null = null;
 
         const startRecoveryWorkflow = ({ resetBudget }: { resetBudget: boolean }) => {
-            if (isCancelled()) return;
-            void session.recoverState(executeRecoveryStep, { resetBudget });
+            if (isCancelled() || !session.hasLifecyclePermission()) return;
+            if (inFlightRecovery) return;
+            if (!resetBudget && session.hasPendingRecoveryTimer()) return;
+            inFlightRecovery = session.synchronizeSession({ resetBudget }).finally(() => {
+                inFlightRecovery = null;
+            });
         };
 
         const unsubConnect = session.onConnect(() => {
+            if (isCancelled() || !session.hasLifecyclePermission()) return;
             startRecoveryWorkflow({ resetBudget: true });
         });
 
         const triggerReconnect = () => {
+            if (!session.hasLifecyclePermission()) return;
             if (typeof transport.forceReconnect === 'function') {
                 transport.forceReconnect();
             } else {
@@ -147,7 +82,7 @@ export function useGameWebSocket(options: UseGameWebSocketOptions = {}) {
         };
 
         const unsubManualRetry = session.onManualRetry(() => {
-            if (isCancelled()) return;
+            if (isCancelled() || !session.hasLifecyclePermission()) return;
             if (!transport.isConnected?.()) {
                 triggerReconnect();
             }
@@ -158,7 +93,7 @@ export function useGameWebSocket(options: UseGameWebSocketOptions = {}) {
 
         const handleWakeup = () => {
             if (document.visibilityState !== 'visible') return;
-            if (isCancelled()) return;
+            if (isCancelled() || !session.hasLifecyclePermission()) return;
             if (!transport.isConnected?.()) {
                 logger.log('Tab woke up and WebSocket is disconnected. Forcing reconnect...');
                 triggerReconnect();
@@ -167,7 +102,7 @@ export function useGameWebSocket(options: UseGameWebSocketOptions = {}) {
         };
 
         const handleOnline = () => {
-            if (isCancelled()) return;
+            if (isCancelled() || !session.hasLifecyclePermission()) return;
             if (!transport.isConnected?.()) {
                 logger.log('Browser came online. Forcing reconnect...');
                 triggerReconnect();
