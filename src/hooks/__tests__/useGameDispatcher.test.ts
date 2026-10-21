@@ -9,15 +9,20 @@ import { pokerApi } from '../../services/api';
 import type { GameState } from '../../types';
 import { createValidGameState } from '../../test/fixtures';
 
-vi.mock('../../services/api', () => ({
-    pokerApi: {
-        startGame: vi.fn(),
-        claimWin: vi.fn(),
-        getReview: vi.fn(),
-        leaveGame: vi.fn(),
-        leaveRoom: vi.fn(),
-    },
-}));
+vi.mock('../../services/api', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('../../services/api')>();
+    return {
+        ...actual,
+        pokerApi: {
+            ...actual.pokerApi,
+            startGame: vi.fn(),
+            claimWin: vi.fn(),
+            getReview: vi.fn(),
+            leaveGame: vi.fn(),
+            leaveRoom: vi.fn(),
+        },
+    };
+});
 
 describe('useGameDispatcher', () => {
     const mockAuth = {

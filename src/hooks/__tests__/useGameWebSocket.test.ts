@@ -142,6 +142,7 @@ describe('useGameWebSocket', () => {
 
         const privatePayload = {
             playerId: 'p-1',
+            handNumber: 0,
             holeCards: ['AS', 'KS'],
         };
         act(() => {
@@ -959,6 +960,7 @@ describe('useGameWebSocket', () => {
         act(() => {
             inMemoryTransport.simulateMessage('/user/queue/private', {
                 playerId: 'p-1',
+                handNumber: 0,
                 holeCards: ['AH', 'KH'],
             });
         });

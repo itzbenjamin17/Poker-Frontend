@@ -159,10 +159,11 @@ describe('GameSession Domain Store', () => {
 
             transport.simulateMessage('/user/queue/private', {
                 playerId: 'hero-p1',
+                handNumber: 0,
                 holeCards: ['Ah', 'Kh'],
             });
 
-            expect(session.getSnapshot().privateState?.holeCards).toEqual(['Ah', 'Kh']);
+            expect(session.getSnapshot().privateState?.holeCards).toEqual(['AH', 'KH']);
             expect(session.getSnapshot().myPlayerId).toBe('hero-p1');
         });
 

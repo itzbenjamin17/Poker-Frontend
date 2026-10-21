@@ -85,7 +85,7 @@ describe('initial hydration attempt lifecycle', () => {
 
         const { unmount } = renderHook(() => useSessionHydration(), { wrapper });
         await act(async () => { await Promise.resolve(); });
-        if (stage === 'private') expect(session.getSnapshot().gameState).not.toBeNull();
+        if (stage === 'private') expect(session.getSnapshot().gameState).toBeNull();
         expect(session.getSnapshot().isHydrated).toBe(false);
         unmount();
         const departed = session.getSnapshot();
@@ -108,7 +108,7 @@ describe('initial hydration attempt lifecycle', () => {
             .mockResolvedValue({ holeCards: ['AH', 'KH'] });
         const { result } = renderHook(() => useSessionHydration(), { wrapper });
         await act(async () => { await Promise.resolve(); });
-        expect(session.getSnapshot().gameState?.pot).toBe(10);
+        expect(session.getSnapshot().gameState).toBeNull();
         expect(session.getSnapshot().isHydrated).toBe(false);
 
         await act(async () => result.current.retryInitialLoad());

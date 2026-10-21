@@ -2,11 +2,12 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { MalformedResponseError, pokerApi } from '../services/api';
 import { logger } from '../security/logger';
 import { useGameContext } from '../context/GameContext';
+import type { IncomingPrivateStatePayload, RoomDataResponse } from '../types';
 import {
     decodeGameStatePayload,
+    decodePrivatePlayerState,
     isPrivateStatePayload,
     getErrorStatusCode,
-    mapRoomDataToRoomState,
     normalizeErrorMessage,
     reportRejectedGameSnapshot,
 } from '../lib/payloads';
@@ -72,7 +73,11 @@ export function useSessionHydration() {
     useEffect(() => {
         let mounted = true;
         const generation = ++attemptRef.current;
-        const isCurrent = () => mounted && generation === attemptRef.current;
+        const isCurrent = () =>
+            mounted &&
+            generation === attemptRef.current &&
+            (session ? session.hasLifecyclePermission() : true);
+
         const failInitialLoad = () => {
             if (gameStateRef.current) {
                 dispatch({ type: 'SET_HYDRATED', payload: true });
@@ -148,8 +153,7 @@ export function useSessionHydration() {
             try {
                 dispatch({ type: 'SET_LOADING_STATUS', payload: STATUS_CONNECTING });
 
-                // ── Room info ────────────────────────────────────────────────────
-                let roomData = null;
+                let roomData: RoomDataResponse | null = null;
                 while (!roomData && isCurrent()) {
                     try {
                         try {
@@ -159,8 +163,7 @@ export function useSessionHydration() {
                             const statusCode = getErrorStatusCode(fetchErr);
                             if (statusCode === 403 || statusCode === 404) {
                                 const installed = await handleTerminalReview(statusCode);
-                                if (!isCurrent()) return;
-                                if (installed) return;
+                                if (!isCurrent() || installed) return;
                                 return;
                             }
                             throw fetchErr;
@@ -180,30 +183,27 @@ export function useSessionHydration() {
                     }
                 }
 
-                if (!isCurrent() || !roomData) return;
+                if (!isCurrent()) return;
 
                 const playerStillInRoom =
-                    Array.isArray(roomData.players) &&
-                    roomData.players.some((p: { name?: string }) => p.name === auth.playerName);
+                    Array.isArray(roomData?.players) &&
+                    roomData.players.some((p: { name: string }) => p && p.name === auth.playerName);
 
                 if (!playerStillInRoom) {
                     redirectToLobby(SESSION_SEAT_GONE);
                     return;
                 }
 
-                dispatch({
-                    type: 'SET_ROOM',
-                    payload: mapRoomDataToRoomState(roomData, auth.roomId),
-                });
-
                 if (!roomData.gameStarted) {
+                    dispatch({ type: 'SET_ROOM', payload: roomData });
                     dispatch({ type: 'SET_HYDRATED', payload: true });
                     dispatch({ type: 'SET_LOADING_STATUS', payload: STATUS_CONNECTED });
                     return;
                 }
 
-                // ── Game state ───────────────────────────────────────────────────
-                let snapshot: unknown;
+                dispatch({ type: 'SET_ROOM', payload: roomData });
+
+                let snapshot: unknown = null;
                 let fetched = false;
                 let fetchTime = 0;
                 while (!fetched && isCurrent()) {
@@ -217,8 +217,7 @@ export function useSessionHydration() {
                             const statusCode = getErrorStatusCode(fetchErr);
                             if (statusCode === 403 || statusCode === 404) {
                                 const installed = await handleTerminalReview(statusCode);
-                                if (!isCurrent()) return;
-                                if (installed) return;
+                                if (!isCurrent() || installed) return;
                                 return;
                             }
                             throw fetchErr;
@@ -248,49 +247,76 @@ export function useSessionHydration() {
                 if (!isCurrent()) return;
 
                 const decodedSnapshot = decodeGameStatePayload(snapshot, 'initial REST game snapshot');
-                if (decodedSnapshot && fetchTime >= lastStateSyncTimeRef.current) {
-                    lastStateSyncTimeRef.current = fetchTime;
-                    applyIncomingGameState(decodedSnapshot);
+                if (!decodedSnapshot) {
+                    failInitialLoad();
+                    return;
+                }
 
-                    let privateSnapshot: unknown = null;
-                    let privateFetched = false;
-                    while (!privateFetched && isCurrent()) {
+                let privateSnapshot: unknown = null;
+                let privateFetched = false;
+                while (!privateFetched && isCurrent()) {
+                    try {
                         try {
-                            try {
-                                privateSnapshot = await pokerApi.getPrivateState(auth.roomId, auth.token);
-                                privateFetched = true;
-                            } catch (privateErr) {
-                                if (!isCurrent()) return;
-                                const code = getErrorStatusCode(privateErr);
-                                if (code === 403 || code === 404) {
-                                    const installed = await handleTerminalReview(code);
-                                    if (!isCurrent()) return;
-                                    if (installed) return;
-                                    return;
-                                }
-                                throw privateErr;
-                            }
-                        } catch (err) {
+                            privateSnapshot = await pokerApi.getPrivateState(auth.roomId, auth.token);
+                            privateFetched = true;
+                        } catch (privateErr) {
                             if (!isCurrent()) return;
-                            if (retryCount < MAX_HYDRATION_RETRIES) {
-                                retryCount += 1;
-                                logger.error('Private snapshot fetch error, retrying:', err);
-                                dispatch({ type: 'SET_LOADING_STATUS', payload: STATUS_RECONNECTING_TABLE });
-                                const delayMs = computeHydrationBackoffMs(retryCount);
-                                await new Promise(resolve => setTimeout(resolve, delayMs));
-                            } else {
-                                failInitialLoad();
+                            const code = getErrorStatusCode(privateErr);
+                            if (code === 403 || code === 404) {
+                                const installed = await handleTerminalReview(code);
+                                if (!isCurrent() || installed) return;
                                 return;
                             }
+                            throw privateErr;
+                        }
+                    } catch (err) {
+                        if (!isCurrent()) return;
+                        if (retryCount < MAX_HYDRATION_RETRIES) {
+                            retryCount += 1;
+                            logger.error('Private snapshot fetch error, retrying:', err);
+                            dispatch({ type: 'SET_LOADING_STATUS', payload: STATUS_RECONNECTING_TABLE });
+                            const delayMs = computeHydrationBackoffMs(retryCount);
+                            await new Promise(resolve => setTimeout(resolve, delayMs));
+                        } else {
+                            failInitialLoad();
+                            return;
                         }
                     }
+                }
 
-                    if (!isCurrent()) return;
+                if (!isCurrent()) return;
 
-                    if (isPrivateStatePayload(privateSnapshot)) {
-                        applyIncomingPrivateState(privateSnapshot);
+                // Validate private state strictly before committing
+                let validPrivatePayload: IncomingPrivateStatePayload | null = null;
+                const decodedPrivate = decodePrivatePlayerState(privateSnapshot);
+                if (decodedPrivate) {
+                    const hero = decodedSnapshot.players?.find(p => p.name === auth.playerName);
+                    if (hero?.id && hero.id !== decodedPrivate.playerId) {
+                        failInitialLoad();
+                        return;
                     }
+                    if (decodedSnapshot.handNumber !== undefined && decodedPrivate.handNumber !== decodedSnapshot.handNumber) {
+                        failInitialLoad();
+                        return;
+                    }
+                    validPrivatePayload = decodedPrivate;
+                } else if (
+                    isPrivateStatePayload(privateSnapshot) &&
+                    Array.isArray(privateSnapshot.holeCards) &&
+                    (privateSnapshot.holeCards.length === 0 || privateSnapshot.holeCards.length === 2)
+                ) {
+                    validPrivatePayload = privateSnapshot;
+                } else {
+                    // Malformed private data: contract failure! Cannot complete hydration!
+                    failInitialLoad();
+                    return;
+                }
 
+                // Coherent atomic commit: Apply both public and private state together
+                if (fetchTime >= lastStateSyncTimeRef.current) {
+                    lastStateSyncTimeRef.current = fetchTime;
+                    applyIncomingGameState(decodedSnapshot);
+                    applyIncomingPrivateState(validPrivatePayload);
                     dispatch({ type: 'SET_HYDRATED', payload: true });
                     dispatch({ type: 'SET_LOADING_STATUS', payload: STATUS_SEAT_RESTORED });
                     return;

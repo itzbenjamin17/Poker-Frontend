@@ -88,10 +88,22 @@ export function useGameDispatcher() {
                     const res = await pokerApi.claimWin(targetGameId, auth.token);
                     session?.installTerminalResult(res.data);
                 } catch (claimErr) {
-                    try {
-                        const review = await pokerApi.getReview(targetGameId, auth.token);
+                    let review = null;
+                    const maxRetries = 3;
+                    for (let attempt = 0; attempt < maxRetries; attempt++) {
+                        try {
+                            review = await pokerApi.getReview(targetGameId, auth.token);
+                            break;
+                        } catch (revErr) {
+                            const status = getErrorStatusCode(revErr);
+                            if (status === 409 || status === 403 || status === 404) {
+                                break;
+                            }
+                        }
+                    }
+                    if (review) {
                         session?.installTerminalResult(review);
-                    } catch {
+                    } else {
                         contextDispatch({ type: 'SET_CLAIM_PENDING', payload: false });
                         session?.setClaimPending(false);
                         throw claimErr;

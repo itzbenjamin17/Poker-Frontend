@@ -14,9 +14,9 @@ import {
     getErrorStatusCode,
     decodeGameStatePayload,
     decodeGameEndResult,
+    decodePrivatePlayerState,
     isGameEndPayload,
     isActionErrorPayload,
-    isPrivateStatePayload,
     isRoomUpdatePayload,
     normalizeErrorMessage,
 } from '../lib/payloads';
@@ -32,6 +32,7 @@ import { logger } from '../security/logger';
 import { SystemClock, type Clock, type TimerHandle } from './clock';
 import type { GameTransport, TransportStatus, TransportSubscription } from '../services/transport';
 import { loadSessionData, type SyncResult } from './sessionSync';
+import { pokerApi } from '../services/api';
 
 const ROOM_CLOSED_REDIRECT_MS = 3_000;
 const ACTION_LOCK_TIMEOUT_MS = 3_000;
@@ -55,6 +56,7 @@ export interface GameSessionOptions {
     initialGameState?: GameState | null;
     initialGameEndResult?: GameEndResult | null;
     onLeave?: () => void;
+    pokerApi?: typeof pokerApi;
 }
 
 export class GameSession {
@@ -62,6 +64,7 @@ export class GameSession {
     private transport: GameTransport;
     private readonly clock: Clock;
     private onLeave?: () => void;
+    private readonly api: typeof pokerApi;
 
     private listeners = new Set<() => void>();
     private connectListeners = new Set<() => void>();
@@ -99,6 +102,7 @@ export class GameSession {
         this.transport = options.transport;
         this.clock = options.clock ?? new SystemClock();
         this.onLeave = options.onLeave;
+        this.api = options.pokerApi ?? pokerApi;
 
         const initialRoom: RoomState = options.initialRoomState ?? {
             roomId: options.auth.roomId,
@@ -245,6 +249,10 @@ export class GameSession {
     public retryConnection = (): void => {
         if (this.snapshot.isGameOver) return;
         this.clearRecoveryTimer();
+        if (this.snapshot.claimPending) {
+            const targetGameId = this.snapshot.gameState?.gameId ?? this.auth.roomId;
+            void this.recoverClaimReview(targetGameId, undefined, { resetBudget: true });
+        }
         for (const listener of this.manualRetryListeners) {
             listener();
         }
@@ -408,42 +416,46 @@ export class GameSession {
             }
 
             if (parsed?.type === 'PLAYER_NOTIFICATION' && typeof parsed.message === 'string') {
+                const targetPlayer = typeof parsed.playerName === 'string' ? parsed.playerName.trim() : typeof parsed.recipient === 'string' ? parsed.recipient.trim() : null;
+                if (targetPlayer && targetPlayer !== this.auth.playerName) {
+                    return;
+                }
                 this.setNotification(normalizeErrorMessage(parsed.message));
                 return;
             }
 
-            if (isPrivateStatePayload(parsed)) {
+            const decodedPrivate = decodePrivatePlayerState(parsed);
+            if (decodedPrivate) {
                 const currentHandNumber = this.snapshot.gameState?.handNumber ?? null;
-                const { handNumber, playerId, holeCards } = parsed;
+                const { handNumber, playerId, holeCards } = decodedPrivate;
 
-                if (typeof handNumber === 'number') {
-                    // Older hand: reject
-                    if (currentHandNumber !== null && handNumber < currentHandNumber) {
-                        return;
-                    }
-
-                    // Future hand (or public state not yet arrived): buffer
-                    if (currentHandNumber === null || handNumber > currentHandNumber) {
-                        this.bufferedPrivateState = {
-                            handNumber,
-                            playerId: playerId ?? '',
-                            holeCards: Array.isArray(holeCards) ? holeCards : [],
-                        };
-                        return;
-                    }
-
-                    // Current hand (handNumber === currentHandNumber)
-                    const myPlayer = this.snapshot.gameState?.players.find((p) => p.name === this.auth.playerName);
-                    if (myPlayer?.id && myPlayer.id !== playerId) {
-                        return;
-                    }
-
-                    this.bufferedPrivateState = null;
-                    this.currentPrivateHandNumber = handNumber;
+                // Match player identity with roster when gameState is present
+                const myPlayer = this.snapshot.gameState?.players.find((p) => p.name === this.auth.playerName);
+                if (myPlayer?.id && myPlayer.id !== playerId) {
+                    return;
                 }
 
+                // Older hand: reject
+                if (currentHandNumber !== null && handNumber < currentHandNumber) {
+                    return;
+                }
+
+                // Future hand: buffer until that hand begins
+                if (currentHandNumber !== null && handNumber > currentHandNumber) {
+                    this.bufferedPrivateState = {
+                        handNumber,
+                        playerId,
+                        holeCards,
+                    };
+                    return;
+                }
+
+                // Current hand (handNumber === currentHandNumber)
+                this.bufferedPrivateState = null;
+                this.currentPrivateHandNumber = handNumber;
+
                 this.privateSyncRevision += 1;
-                this.applyPrivateState(parsed);
+                this.applyPrivateState(decodedPrivate);
             }
         } catch {
             logger.warn('Ignoring malformed private payload:', { bytes: body.length });
@@ -601,6 +613,12 @@ export class GameSession {
             messageType === 'AUTO_ADVANCE_START' ||
             messageType === 'AUTO_ADVANCE_COMPLETE'
         ) {
+            if (messageType === 'PLAYER_NOTIFICATION') {
+                const targetPlayer = typeof p.playerName === 'string' ? p.playerName.trim() : typeof p.recipient === 'string' ? p.recipient.trim() : null;
+                if (targetPlayer && targetPlayer !== this.auth.playerName) {
+                    return;
+                }
+            }
             const cleanNotification = messageText?.trim();
             if (cleanNotification) {
                 this.setNotification(cleanNotification);
@@ -1003,6 +1021,7 @@ export class GameSession {
 
         const attempt = ++this.attemptId;
         const attemptRoomRevision = this.roomRevision;
+        const attemptPrivateRevision = this.privateSyncRevision;
         const controller = new AbortController();
         this.activeAttemptController = controller;
 
@@ -1030,7 +1049,7 @@ export class GameSession {
                 if (!this.hasLifecyclePermission()) {
                     return;
                 }
-                this.commitSyncResult(result, attemptRoomRevision);
+                this.commitSyncResult(result, attemptRoomRevision, attemptPrivateRevision);
             })
             .catch((err) => {
                 if (controller.signal.aborted || attempt !== this.attemptId) {
@@ -1050,6 +1069,96 @@ export class GameSession {
         return syncPromise;
     };
 
+    public recoverClaimReview = async (
+        targetGameId: string,
+        originalErr?: unknown,
+        options: { resetBudget?: boolean } = {}
+    ): Promise<void> => {
+        if (this.snapshot.isGameOver || this.isDisposed || !this.hasLifecyclePermission()) {
+            return;
+        }
+
+        if (options.resetBudget || Boolean(this.snapshot.recoveryFailed)) {
+            this.recoveryRetryAttempt = 0;
+            this.clearRecoveryTimer();
+        }
+
+        this.updateSnapshot(() => ({
+            claimPending: true,
+            isRecovering: true,
+            recoveryFailed: false,
+            loadingStatus: STATUS_RECOVERING_TABLE,
+        }));
+
+        try {
+            const review = await this.api.getReview(targetGameId, this.auth.token);
+            this.installTerminalResult(review);
+        } catch (err) {
+            if (this.snapshot.isGameOver || this.isDisposed || !this.hasLifecyclePermission()) {
+                return;
+            }
+            const status = getErrorStatusCode(err);
+            if (status === 409) {
+                this.clearRecoveryTimer();
+                this.recoveryRetryAttempt = 0;
+                this.updateSnapshot(() => ({
+                    claimPending: false,
+                    isRecovering: false,
+                    recoveryFailed: false,
+                }));
+                const msg =
+                    normalizeErrorMessage(originalErr instanceof Error ? originalErr.message : 'Claim failed') ??
+                    'Claim failed';
+                this.setNotification(msg);
+                return;
+            }
+            if (status === 404) {
+                this.clearRecoveryTimer();
+                this.updateSnapshot(() => ({
+                    claimPending: false,
+                    isRecovering: false,
+                    recoveryFailed: false,
+                }));
+                this.scheduleRedirect(SESSION_EXPIRED);
+                return;
+            }
+            if (status === 403) {
+                this.clearRecoveryTimer();
+                this.updateSnapshot(() => ({
+                    claimPending: false,
+                    isRecovering: false,
+                    recoveryFailed: false,
+                }));
+                this.scheduleRedirect(SESSION_SEAT_GONE);
+                return;
+            }
+
+            this.clearRecoveryTimer();
+            if (this.recoveryRetryAttempt < MAX_RECOVERY_RETRIES) {
+                this.recoveryRetryAttempt += 1;
+                const delayMs = this.computeRecoveryBackoffMs(this.recoveryRetryAttempt);
+                this.updateSnapshot(() => ({
+                    claimPending: true,
+                    isRecovering: true,
+                    recoveryFailed: false,
+                    loadingStatus: STATUS_RECOVERING_TABLE,
+                }));
+                this.scheduleRecoveryRetry(() => {
+                    if (this.hasLifecyclePermission() && !this.snapshot.isGameOver) {
+                        void this.recoverClaimReview(targetGameId, originalErr);
+                    }
+                }, delayMs);
+            } else {
+                this.updateSnapshot(() => ({
+                    claimPending: true,
+                    isRecovering: false,
+                    recoveryFailed: true,
+                    loadingStatus: STATUS_RECOVERING_TABLE,
+                }));
+            }
+        }
+    };
+
     public recoverState = (
         _step?: () => Promise<void>,
         options: { resetBudget: boolean } = { resetBudget: false }
@@ -1057,7 +1166,11 @@ export class GameSession {
         return this.synchronizeSession(options);
     };
 
-    private commitSyncResult(result: SyncResult, attemptRoomRevision: number): void {
+    private commitSyncResult(
+        result: SyncResult,
+        attemptRoomRevision: number,
+        attemptPrivateRevision: number
+    ): void {
         if (result.type === 'TERMINAL') {
             this.installTerminalResult(result.review);
             return;
@@ -1094,8 +1207,13 @@ export class GameSession {
             const accepted = this.applyGameState(result.publicState, this.clock.now());
             if (accepted) {
                 this.stateSyncRevision += 1;
-                this.applyPrivateState(result.privateState);
-                this.privateSyncRevision += 1;
+                if (this.privateSyncRevision === attemptPrivateRevision) {
+                    const currentHand = this.snapshot.gameState?.handNumber;
+                    if (currentHand === undefined || currentHand === null || result.privateState.handNumber === currentHand) {
+                        this.applyPrivateState(result.privateState);
+                        this.privateSyncRevision += 1;
+                    }
+                }
                 this.recoveryRetryAttempt = 0;
                 this.clearRecoveryTimer();
                 this.updateSnapshot(() => ({
@@ -1107,6 +1225,7 @@ export class GameSession {
             } else {
                 const currentLiveState = this.snapshot.gameState;
                 if (
+                    this.privateSyncRevision === attemptPrivateRevision &&
                     this.snapshot.privateState === null &&
                     (result.privateState.handNumber === currentLiveState?.handNumber ||
                         currentLiveState?.handNumber === undefined)

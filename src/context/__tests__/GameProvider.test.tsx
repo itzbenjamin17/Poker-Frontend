@@ -340,12 +340,13 @@ describe('GameProvider and useGameContext', () => {
             });
             transport.simulateMessage('/user/queue/private', {
                 playerId: 'p-1',
+                handNumber: 0,
                 holeCards: ['As', 'Ks'],
             });
         });
 
         expect(screen.getByTestId('phase')).toHaveTextContent('PRE_FLOP');
-        expect(screen.getByTestId('hole-cards')).toHaveTextContent('As,Ks');
+        expect(screen.getByTestId('hole-cards')).toHaveTextContent(/AS,KS/i);
 
         // Outgoing PLAY_ACTION flows through GameSession and acquires GameSession action lock
         await user.click(screen.getByRole('button', { name: 'Raise 100' }));
