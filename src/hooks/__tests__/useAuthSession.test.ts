@@ -71,14 +71,104 @@ describe('useAuthSession', () => {
         expect(localStorage.getItem('poker-auth')).toBeNull();
     });
 
-    it('clears storage and returns null auth when storage has invalid shape', async () => {
-        localStorage.setItem('poker-auth', JSON.stringify({ token: '', roomId: 'room-1' }));
+    it('clears storage and returns null auth when storage has invalid shape', async () => {
+        localStorage.setItem('poker-auth', JSON.stringify({ token: '', roomId: 'room-1' }));
+
+        const { useAuthSession } = await import('../useAuthSession');
+        const { result } = renderHook(() => useAuthSession());
+
+        expect(result.current.auth).toBeNull();
+        expect(localStorage.getItem('poker-auth')).toBeNull();
+    });
+
+    it('clears storage and returns null auth when stored auth has empty or whitespace message', async () => {
+        const invalidMessageAuth = {
+            token: createJwt({ exp: Math.floor(Date.now() / 1000) + 3600 }),
+            roomId: 'room-1',
+            playerName: 'Alice',
+            message: '   ',
+        };
+        sessionStorage.setItem('poker-auth', JSON.stringify(invalidMessageAuth));
 
         const { useAuthSession } = await import('../useAuthSession');
         const { result } = renderHook(() => useAuthSession());
 
         expect(result.current.auth).toBeNull();
-        expect(localStorage.getItem('poker-auth')).toBeNull();
+        expect(sessionStorage.getItem('poker-auth')).toBeNull();
+    });
+
+    it('clears storage and returns null auth when stored auth has whitespace-only token or identity', async () => {
+        const whitespaceTokenAuth = {
+            token: '   ',
+            roomId: 'room-1',
+            playerName: 'Alice',
+            message: 'ok',
+        };
+        sessionStorage.setItem('poker-auth', JSON.stringify(whitespaceTokenAuth));
+
+        const { useAuthSession } = await import('../useAuthSession');
+        const { result } = renderHook(() => useAuthSession());
+
+        expect(result.current.auth).toBeNull();
+        expect(sessionStorage.getItem('poker-auth')).toBeNull();
+    });
+
+    it('defensively rejects invalid auth in setAuth and leaves current valid auth and storage untouched', async () => {
+        const { useAuthSession } = await import('../useAuthSession');
+        const { result } = renderHook(() => useAuthSession());
+
+        const validAuth = {
+            token: createJwt({ exp: Math.floor(Date.now() / 1000) + 3600 }),
+            roomId: 'room-valid',
+            playerName: 'ValidUser',
+            message: 'Success',
+        };
+
+        act(() => {
+            result.current.setAuth(validAuth);
+        });
+
+        expect(result.current.auth).toEqual(validAuth);
+        expect(JSON.parse(sessionStorage.getItem('poker-auth')!)).toEqual(validAuth);
+
+        // Attempt invalid updates:
+        act(() => {
+            result.current.setAuth({
+                token: '',
+                roomId: 'room-2',
+                playerName: 'BadUser',
+                message: 'Fail',
+            } as any);
+        });
+        expect(result.current.auth).toEqual(validAuth);
+        expect(result.current.getCurrentAuth()).toEqual(validAuth);
+        expect(JSON.parse(sessionStorage.getItem('poker-auth')!)).toEqual(validAuth);
+
+        act(() => {
+            result.current.setAuth({
+                token: validAuth.token,
+                roomId: 'room-valid',
+                playerName: 'ValidUser',
+                message: '   ',
+            } as any);
+        });
+        expect(result.current.auth).toEqual(validAuth);
+        expect(result.current.getCurrentAuth()).toEqual(validAuth);
+        expect(JSON.parse(sessionStorage.getItem('poker-auth')!)).toEqual(validAuth);
+
+        act(() => {
+            result.current.setAuth(null as any);
+        });
+        expect(result.current.auth).toEqual(validAuth);
+        expect(result.current.getCurrentAuth()).toEqual(validAuth);
+        expect(JSON.parse(sessionStorage.getItem('poker-auth')!)).toEqual(validAuth);
+
+        act(() => {
+            result.current.setAuth([] as any);
+        });
+        expect(result.current.auth).toEqual(validAuth);
+        expect(result.current.getCurrentAuth()).toEqual(validAuth);
+        expect(JSON.parse(sessionStorage.getItem('poker-auth')!)).toEqual(validAuth);
     });
 
     it('writes to sessionStorage when setAuth is called', async () => {
@@ -228,8 +318,8 @@ describe('useAuthSession', () => {
     it('does not let stale token cleanup clear a replacement session', async () => {
         const { useAuthSession } = await import('../useAuthSession');
         const { result } = renderHook(() => useAuthSession());
-        const oldAuth = { token: createJwt({ exp: Math.floor(Date.now() / 1000) + 3600, id: 'old' }), roomId: 'old', playerName: 'A', message: '' };
-        const newAuth = { token: createJwt({ exp: Math.floor(Date.now() / 1000) + 3600, id: 'new' }), roomId: 'new', playerName: 'B', message: '' };
+        const oldAuth = { token: createJwt({ exp: Math.floor(Date.now() / 1000) + 3600, id: 'old' }), roomId: 'old', playerName: 'A', message: 'Old' };
+        const newAuth = { token: createJwt({ exp: Math.floor(Date.now() / 1000) + 3600, id: 'new' }), roomId: 'new', playerName: 'B', message: 'New' };
         act(() => result.current.setAuth(oldAuth));
         act(() => result.current.setAuth(newAuth));
         act(() => result.current.clearAuth(oldAuth.token));

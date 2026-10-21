@@ -48,7 +48,7 @@ export function useGameWebSocket(options: UseGameWebSocketOptions = {}) {
         let disposed = false;
 
         const isCancelled = () =>
-            disposed || gameEndedRef.current || session.getSnapshot().isGameOver || !session.hasLifecyclePermission();
+            disposed || gameEndedRef.current || session.getSnapshot().isGameOver || !session.hasLifecyclePermission() || Boolean(session.getSnapshot().isRedirecting) || !session.isAttached();
 
         const transport = options.transport ?? session.getTransport();
         transportRef.current = transport;
@@ -74,7 +74,7 @@ export function useGameWebSocket(options: UseGameWebSocketOptions = {}) {
         });
 
         const triggerReconnect = () => {
-            if (!session.hasLifecyclePermission()) return;
+            if (!session.hasLifecyclePermission() || session.getSnapshot().isRedirecting || !session.isAttached()) return;
             if (typeof transport.forceReconnect === 'function') {
                 transport.forceReconnect();
             } else {

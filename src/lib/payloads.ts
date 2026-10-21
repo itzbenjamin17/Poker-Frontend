@@ -1,5 +1,6 @@
 import type {
     ActionError,
+    AuthResponse,
     Card,
     GameEndResult,
     IncomingGameStatePayload,
@@ -20,6 +21,16 @@ import { normalizeCardCode } from './game';
 
 function isObject(value: unknown): value is Record<string, unknown> {
     return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+export function isAuthResponse(value: unknown): value is AuthResponse {
+    if (!isObject(value)) return false;
+    return (
+        typeof value.token === 'string' && value.token.trim().length > 0 &&
+        typeof value.roomId === 'string' && value.roomId.trim().length > 0 &&
+        typeof value.playerName === 'string' && value.playerName.trim().length > 0 &&
+        typeof value.message === 'string' && value.message.trim().length > 0
+    );
 }
 
 interface ValidationFailure {
@@ -412,7 +423,22 @@ export function isRoomUpdatePayload(value: unknown): value is RoomUpdate {
         return value.data == null || fields(value.data, { roomId: optional(text) });
     }
     if (value.message === 'GAME_STARTED') {
-        return isObject(value.data) && fields(value.data, {
+        if (!isObject(value.data)) return false;
+        const data = value.data;
+        if ('players' in data && Array.isArray(data.players)) {
+            return fields(data, {
+                roomId: optional(text),
+                roomName: optional(text),
+                players: list(roomPlayer, 10),
+                maxPlayers: optional(capacity),
+                buyIn: optional(nonnegative),
+                smallBlind: optional(nonnegative),
+                bigBlind: optional(nonnegative),
+                canStartGame: optional(boolean),
+                gameStarted: optional(boolean),
+            });
+        }
+        return fields(data, {
             gameId: text,
             message: optional(text),
         });
@@ -443,13 +469,39 @@ export function getErrorStatusCode(error: unknown): number | undefined {
 export function normalizeErrorMessage(message: string | null): string | null {
     if (!message) return null;
     const msg = message.trim();
+    if (msg.length === 0) return null;
+
+    if (
+        /<!DOCTYPE/i.test(msg) ||
+        /<(?:\/?[a-z][a-z0-9_-]*\b|!doctype)[^>]*>/i.test(msg)
+    ) {
+        return ERROR_TECHNICAL;
+    }
+
+    if (
+        msg.startsWith('{') ||
+        msg.startsWith('[') ||
+        /\{[\s\S]*"[^"]+"\s*:[\s\S]*\}/.test(msg) ||
+        /\[[\s\S]*\{[\s\S]*\}[\s\S]*\]/.test(msg)
+    ) {
+        return ERROR_INVALID_FORMAT;
+    }
     if (msg.includes('Cannot deserialize') || msg.includes('JSON parse error') || msg.includes('HttpMessageNotReadable')) {
         return ERROR_INVALID_FORMAT;
     }
     if (/internal server error/i.test(msg) || /\b(?:status(?:\s+code)?|http|error)\s*:?\s*500\b/i.test(msg)) {
         return ERROR_TECHNICAL;
     }
-    if (msg.includes('java.lang') || msg.includes('org.springframework')) return ERROR_SYSTEM;
+    if (
+        msg.includes('java.lang') ||
+        msg.includes('org.springframework') ||
+        msg.includes('NullPointerException') ||
+        /\b[A-Za-z0-9_]*Exception\b/i.test(msg) ||
+        /\bat\s+[a-zA-Z0-9_$]+(?:\.[a-zA-Z0-9_$]+)+/.test(msg) ||
+        /\bCaused by:\s*/i.test(msg)
+    ) {
+        return ERROR_SYSTEM;
+    }
     const MAX_LENGTH = 80;
     return msg.length > MAX_LENGTH ? msg.substring(0, MAX_LENGTH - 3) + '...' : msg;
 }

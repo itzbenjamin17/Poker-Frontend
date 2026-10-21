@@ -2,7 +2,7 @@ import { Client, ReconnectionTimeMode } from '@stomp/stompjs';
 import type { ApiResponse, AuthResponse, GameEndResult, RoomDataResponse, TokenResponse } from '../types';
 import { logger } from '../security/logger';
 import { ERROR_MALFORMED_AUTH, ERROR_MALFORMED_RESPONSE, ERROR_REQUEST_TIMEOUT } from '../constants/strings';
-import { decodeGameEndResult } from '../lib/payloads';
+import { decodeGameEndResult, isAuthResponse, normalizeErrorMessage } from '../lib/payloads';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api';
 const REQUEST_TIMEOUT_MS = 15000;
@@ -53,11 +53,20 @@ export async function getErrorMessage(res: Response, fallback: string): Promise<
         const contentType = res.headers.get('content-type') ?? '';
         if (contentType.includes('application/json')) {
             const data = await res.json();
-            if (typeof data?.message === 'string' && data.message.trim()) return data.message;
-            if (typeof data?.error === 'string' && data.error.trim()) return data.error;
+            if (typeof data?.message === 'string' && data.message.trim()) {
+                const normalized = normalizeErrorMessage(data.message);
+                if (normalized && normalized.trim().length > 0) return normalized;
+            }
+            if (typeof data?.error === 'string' && data.error.trim()) {
+                const normalized = normalizeErrorMessage(data.error);
+                if (normalized && normalized.trim().length > 0) return normalized;
+            }
         } else {
             const text = await res.text();
-            if (text.trim()) return text;
+            if (text.trim()) {
+                const normalized = normalizeErrorMessage(text);
+                if (normalized && normalized.trim().length > 0) return normalized;
+            }
         }
     } catch {
         // Keep fallback when payload parsing fails.
@@ -65,24 +74,43 @@ export async function getErrorMessage(res: Response, fallback: string): Promise<
     return fallback;
 }
 
-function normalizeAuthResponse(res: ApiResponse<TokenResponse>): AuthResponse {
+function normalizeAuthResponse(res: unknown): AuthResponse {
     if (
         !res ||
         typeof res !== 'object' ||
-        !res.data ||
-        typeof res.data !== 'object' ||
-        typeof res.data.token !== 'string' ||
-        typeof res.data.roomId !== 'string' ||
-        typeof res.data.playerName !== 'string'
+        Array.isArray(res)
     ) {
         throw buildApiError(500, ERROR_MALFORMED_AUTH);
     }
-    return {
-        message: res.message,
-        token: res.data.token,
-        roomId: res.data.roomId,
-        playerName: res.data.playerName,
+    const r = res as Record<string, unknown>;
+    if (typeof r.message !== 'string' || r.message.trim().length === 0) {
+        throw buildApiError(500, ERROR_MALFORMED_AUTH);
+    }
+    if (
+        !r.data ||
+        typeof r.data !== 'object' ||
+        Array.isArray(r.data)
+    ) {
+        throw buildApiError(500, ERROR_MALFORMED_AUTH);
+    }
+    const d = r.data as Record<string, unknown>;
+    if (
+        typeof d.token !== 'string' || d.token.trim().length === 0 ||
+        typeof d.roomId !== 'string' || d.roomId.trim().length === 0 ||
+        typeof d.playerName !== 'string' || d.playerName.trim().length === 0
+    ) {
+        throw buildApiError(500, ERROR_MALFORMED_AUTH);
+    }
+    const auth: AuthResponse = {
+        message: r.message,
+        token: d.token,
+        roomId: d.roomId,
+        playerName: d.playerName,
     };
+    if (!isAuthResponse(auth)) {
+        throw buildApiError(500, ERROR_MALFORMED_AUTH);
+    }
+    return auth;
 }
 
 /** Decode JWT payload and check exp claim. Returns false if expired or malformed. */
@@ -292,16 +320,16 @@ export const pokerApi = {
         return decoded;
     },
 
-    async leaveRoom(roomId: string, token: string, keepalive = false): Promise<void> {
-        await fetchApi<void>(`${API_BASE}/room/${encodeURIComponent(roomId)}/leave`, { method: 'POST', token, keepalive });
+    async leaveRoom(roomId: string, token: string, keepalive = false, signal?: AbortSignal): Promise<void> {
+        await fetchApi<void>(`${API_BASE}/room/${encodeURIComponent(roomId)}/leave`, { method: 'POST', token, keepalive, signal });
     },
 
-    async leaveGame(gameId: string, token: string, keepalive = false): Promise<void> {
-        await fetchApi<void>(`${API_BASE}/game/${encodeURIComponent(gameId)}/leave`, { method: 'POST', token, keepalive });
+    async leaveGame(gameId: string, token: string, keepalive = false, signal?: AbortSignal): Promise<void> {
+        await fetchApi<void>(`${API_BASE}/game/${encodeURIComponent(gameId)}/leave`, { method: 'POST', token, keepalive, signal });
     },
 
-    async startGame(roomId: string, token: string): Promise<unknown> {
-        return fetchApi<unknown>(`${API_BASE}/room/${encodeURIComponent(roomId)}/start-game`, { method: 'POST', token });
+    async startGame(roomId: string, token: string, signal?: AbortSignal): Promise<unknown> {
+        return fetchApi<unknown>(`${API_BASE}/room/${encodeURIComponent(roomId)}/start-game`, { method: 'POST', token, signal });
     },
 
     async claimWin(gameId: string, token: string, signal?: AbortSignal): Promise<ApiResponse<GameEndResult>> {

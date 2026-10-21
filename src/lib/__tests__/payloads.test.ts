@@ -12,6 +12,7 @@ import {
     isRoomUpdatePayload,
     getErrorStatusCode,
     normalizeErrorMessage,
+    isAuthResponse,
 } from '../payloads';
 import {
     ERROR_INVALID_FORMAT,
@@ -287,6 +288,43 @@ describe('lib/payloads - Type Guards and Normalizers', () => {
             expect(isRoomUpdatePayload({ message: 'PLAYER_JOINED', data: { players: 'bad' } })).toBe(false);
             expect(isRoomUpdatePayload({ message: 'PLAYER_JOINED', data: { roomName: 123, players: [] } })).toBe(false);
             expect(isRoomUpdatePayload({ message: 'PLAYER_JOINED', data: { players: [{ name: 123 }] } })).toBe(false);
+            expect(isRoomUpdatePayload({ message: 'GAME_STARTED', data: null })).toBe(false);
+            expect(isRoomUpdatePayload({ message: 'GAME_STARTED', data: { gameId: 123 } })).toBe(false);
+            expect(isRoomUpdatePayload({ message: 'GAME_STARTED', data: { players: 'not-an-array' } })).toBe(false);
+        });
+
+        it('validates canonical GAME_STARTED payload with RoomDataResponse shape', () => {
+            expect(
+                isRoomUpdatePayload({
+                    message: 'GAME_STARTED',
+                    data: {
+                        roomId: 'room-1',
+                        roomName: 'High Stakes',
+                        players: [
+                            { name: 'Alice', isHost: true, joinedAt: '2026-01-01T00:00:00Z' },
+                            { name: 'Bob', isHost: false, joinedAt: '2026-01-01T00:01:00Z' },
+                        ],
+                        maxPlayers: 6,
+                        buyIn: 1000,
+                        smallBlind: 10,
+                        bigBlind: 20,
+                        canStartGame: false,
+                        gameStarted: true,
+                    },
+                })
+            ).toBe(true);
+        });
+
+        it('validates legacy GAME_STARTED payload with { gameId, message? } shape', () => {
+            expect(
+                isRoomUpdatePayload({
+                    message: 'GAME_STARTED',
+                    data: {
+                        gameId: 'room-1',
+                        message: 'Game started! Redirecting to game...',
+                    },
+                })
+            ).toBe(true);
         });
     });
 
@@ -342,6 +380,103 @@ describe('lib/payloads - Type Guards and Normalizers', () => {
 
         it('returns regular short error messages untruncated and trimmed', () => {
             expect(normalizeErrorMessage('  Player name already taken  ')).toBe('Player name already taken');
+        });
+
+        it('returns null for whitespace-only messages', () => {
+            expect(normalizeErrorMessage('   \t\n   ')).toBeNull();
+        });
+
+        it('normalizes HTML documents and HTML tags to technical copy without truncating to 80 chars', () => {
+            const html502 = '<!DOCTYPE html><html><head><title>502 Bad Gateway</title></head><body><center><h1>502 Bad Gateway</h1></center><hr><center>nginx/1.25.3</center></body></html>';
+            expect(normalizeErrorMessage(html502)).toBe(ERROR_TECHNICAL);
+
+            const html504 = '<html><body><h1>504 Gateway Time-out</h1></body></html>';
+            expect(normalizeErrorMessage(html504)).toBe(ERROR_TECHNICAL);
+
+            expect(normalizeErrorMessage('<div>An unexpected error occurred</div>')).toBe(ERROR_TECHNICAL);
+            expect(normalizeErrorMessage('<p>Server down</p>')).toBe(ERROR_TECHNICAL);
+            expect(normalizeErrorMessage('<tag>some technical error</tag>')).toBe(ERROR_TECHNICAL);
+            expect(normalizeErrorMessage('<h3>Whitelabel Error Page</h3>')).toBe(ERROR_TECHNICAL);
+        });
+
+        it('normalizes serialized JSON bodies and embedded JSON objects to format or technical copy', () => {
+            expect(normalizeErrorMessage('{"status": 500, "error": "Internal Server Error"}')).toBe(ERROR_INVALID_FORMAT);
+            expect(normalizeErrorMessage('[{"message": "Validation failed"}]')).toBe(ERROR_INVALID_FORMAT);
+            expect(normalizeErrorMessage('Server error: {"code": 500, "reason": "Failed"}')).toBe(ERROR_INVALID_FORMAT);
+            expect(normalizeErrorMessage('{"timestamp":"2026-10-21T12:00:00Z","status":502}')).toBe(ERROR_INVALID_FORMAT);
+        });
+
+        it('normalizes server exceptions and stack traces to system copy', () => {
+            expect(normalizeErrorMessage('NullPointerException: player session is missing')).toBe(ERROR_SYSTEM);
+            expect(normalizeErrorMessage('Exception: unexpected state transition')).toBe(ERROR_SYSTEM);
+            expect(normalizeErrorMessage('at com.pokergame.service.RoomService.joinRoom(RoomService.java:102)')).toBe(ERROR_SYSTEM);
+            expect(normalizeErrorMessage('Caused by: com.pokergame.exception.GameException: Table not found')).toBe(ERROR_SYSTEM);
+        });
+
+        it('retains rate-limit copy and plain domain failure messages', () => {
+            expect(normalizeErrorMessage('Too many requests. Please try again later.')).toBe('Too many requests. Please try again later.');
+            expect(normalizeErrorMessage('Room not found in registry')).toBe('Room not found in registry');
+            expect(normalizeErrorMessage('Room is full.')).toBe('Room is full.');
+        });
+    });
+
+    describe('isAuthResponse', () => {
+        it('returns true for a valid AuthResponse object with all non-blank string fields', () => {
+            const valid = {
+                token: 'mock.jwt.token',
+                roomId: 'room-123',
+                playerName: 'Alice',
+                message: 'Room created successfully',
+            };
+            expect(isAuthResponse(valid)).toBe(true);
+        });
+
+        it('returns false for null, undefined, primitives, and arrays', () => {
+            expect(isAuthResponse(null)).toBe(false);
+            expect(isAuthResponse(undefined)).toBe(false);
+            expect(isAuthResponse('string')).toBe(false);
+            expect(isAuthResponse(123)).toBe(false);
+            expect(isAuthResponse(true)).toBe(false);
+            expect(isAuthResponse([])).toBe(false);
+            expect(isAuthResponse([
+                { token: 't', roomId: 'r', playerName: 'p', message: 'm' },
+            ])).toBe(false);
+        });
+
+        it('returns false if any required field is missing or not a string', () => {
+            expect(isAuthResponse({ roomId: 'r', playerName: 'p', message: 'm' })).toBe(false);
+            expect(isAuthResponse({ token: 123, roomId: 'r', playerName: 'p', message: 'm' })).toBe(false);
+            expect(isAuthResponse({ token: 't', playerName: 'p', message: 'm' })).toBe(false);
+            expect(isAuthResponse({ token: 't', roomId: null, playerName: 'p', message: 'm' })).toBe(false);
+            expect(isAuthResponse({ token: 't', roomId: 'r', message: 'm' })).toBe(false);
+            expect(isAuthResponse({ token: 't', roomId: 'r', playerName: undefined, message: 'm' })).toBe(false);
+            expect(isAuthResponse({ token: 't', roomId: 'r', playerName: 'p' })).toBe(false);
+            expect(isAuthResponse({ token: 't', roomId: 'r', playerName: 'p', message: 42 })).toBe(false);
+        });
+
+        it('returns false if any field is empty or whitespace-only', () => {
+            expect(isAuthResponse({ token: '', roomId: 'r', playerName: 'p', message: 'm' })).toBe(false);
+            expect(isAuthResponse({ token: '   ', roomId: 'r', playerName: 'p', message: 'm' })).toBe(false);
+            expect(isAuthResponse({ token: 't', roomId: '', playerName: 'p', message: 'm' })).toBe(false);
+            expect(isAuthResponse({ token: 't', roomId: '  \t  ', playerName: 'p', message: 'm' })).toBe(false);
+            expect(isAuthResponse({ token: 't', roomId: 'r', playerName: '', message: 'm' })).toBe(false);
+            expect(isAuthResponse({ token: 't', roomId: 'r', playerName: '   ', message: 'm' })).toBe(false);
+            expect(isAuthResponse({ token: 't', roomId: 'r', playerName: 'p', message: '' })).toBe(false);
+            expect(isAuthResponse({ token: 't', roomId: 'r', playerName: 'p', message: ' \n ' })).toBe(false);
+        });
+
+        it('does not mutate or trim the original input object fields', () => {
+            const raw = {
+                token: '  token-with-spaces  ',
+                roomId: '  room-456  ',
+                playerName: '  Bob  ',
+                message: '  Welcome!  ',
+            };
+            expect(isAuthResponse(raw)).toBe(true);
+            expect(raw.token).toBe('  token-with-spaces  ');
+            expect(raw.roomId).toBe('  room-456  ');
+            expect(raw.playerName).toBe('  Bob  ');
+            expect(raw.message).toBe('  Welcome!  ');
         });
     });
 

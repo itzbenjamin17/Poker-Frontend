@@ -281,4 +281,69 @@ describe('Lobby Integration', () => {
 
     expect(onAuth).not.toHaveBeenCalled()
   })
+
+  it('normalizes HTML 502 Bad Gateway responses to friendly technical copy and releases the lock for retry', async () => {
+    const user = userEvent.setup()
+    let attempt = 0
+    server.use(
+      http.post('/api/room/join', () => {
+        attempt++
+        if (attempt === 1) {
+          return new HttpResponse(
+            '<!DOCTYPE html><html><head><title>502 Bad Gateway</title></head><body><h1>502 Bad Gateway</h1></body></html>',
+            { status: 502, headers: { 'Content-Type': 'text/html' } }
+          )
+        }
+        return HttpResponse.json({
+          message: 'Successfully joined room',
+          data: { token: 'mock-jwt-token', playerName: 'RetryUser', roomId: 'RETRY123' },
+        })
+      })
+    )
+    const onAuth = vi.fn()
+    render(<Lobby onAuth={onAuth} />)
+    const quickJoinRegion = screen.getByRole('region', { name: /quick join/i })
+    await user.type(within(quickJoinRegion).getByLabelText(/room name/i), 'RETRY123')
+    await user.type(within(quickJoinRegion).getByLabelText(/player alias/i), 'RetryUser')
+    await user.click(within(quickJoinRegion).getByRole('button', { name: /join game/i }))
+
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent('Technical difficulties.')
+    expect(alert.textContent).not.toContain('<!DOCTYPE')
+    expect(alert.textContent).not.toContain('<html>')
+
+    const joinButton = within(quickJoinRegion).getByRole('button', { name: /join game/i })
+    expect(joinButton).not.toBeDisabled()
+    await user.click(joinButton)
+
+    await waitFor(() => {
+      expect(onAuth).toHaveBeenCalledWith(expect.objectContaining({
+        playerName: 'RetryUser',
+        roomId: 'RETRY123',
+      }))
+    })
+  })
+
+  it('normalizes diagnostic stack traces and releases the lock for retry', async () => {
+    const user = userEvent.setup()
+    server.use(
+      http.post('/api/room/join', () => {
+        return new HttpResponse(
+          'java.lang.NullPointerException at com.pokergame.service.RoomService.join(RoomService.java:55)',
+          { status: 500, headers: { 'Content-Type': 'text/plain' } }
+        )
+      })
+    )
+    render(<Lobby onAuth={vi.fn()} />)
+    const quickJoinRegion = screen.getByRole('region', { name: /quick join/i })
+    await user.type(within(quickJoinRegion).getByLabelText(/room name/i), 'ROOMSTACK')
+    await user.type(within(quickJoinRegion).getByLabelText(/player alias/i), 'StackUser')
+    await user.click(within(quickJoinRegion).getByRole('button', { name: /join game/i }))
+
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent('A system error occurred. Please try again.')
+    expect(alert.textContent).not.toContain('NullPointerException')
+
+    expect(within(quickJoinRegion).getByRole('button', { name: /join game/i })).not.toBeDisabled()
+  })
 })

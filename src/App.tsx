@@ -5,8 +5,8 @@ import { LoadingView } from './components/LoadingView';
 import { SESSION_RESTORING } from './constants/strings';
 import { useAuthSession } from './hooks/useAuthSession';
 import { pokerApi } from './services/api';
-import { getErrorStatusCode } from './lib/payloads';
-import { savePersistedGameEnd } from './services/gameEndStorage';
+import { getErrorStatusCode, isAuthResponse } from './lib/payloads';
+import { savePersistedGameEnd, retireDifferentlyOwnedGameEnd } from './services/gameEndStorage';
 
 class GameViewLoadError extends Error {}
 
@@ -48,11 +48,11 @@ export default function App() {
             }
             const current = getCurrentAuth();
             if (!current || current.roomId !== originatingAuth.roomId) {
-                savePersistedGameEnd(originatingAuth.roomId, null);
+                savePersistedGameEnd(originatingAuth, null);
                 return false;
             }
             if (current.token === originatingAuth.token) {
-                savePersistedGameEnd(originatingAuth.roomId, null);
+                savePersistedGameEnd(originatingAuth, null);
                 clearAuth(originatingAuth.token);
                 return true;
             }
@@ -64,6 +64,9 @@ export default function App() {
     }, [auth, clearAuth, getCurrentAuth]);
 
     const handleSetAuth = useCallback((data: Parameters<typeof setAuth>[0]) => {
+        if (data && isAuthResponse(data)) {
+            retireDifferentlyOwnedGameEnd(data);
+        }
         setAuth(data);
     }, [setAuth]);
 
@@ -88,19 +91,32 @@ export default function App() {
                     <button type="button" className="ml-4 underline" onClick={dismissAuthExpired}>Dismiss</button>
                 </div>
             )}
-            <ErrorBoundary onLeave={requestLeave} leaveError={leaveError} onReset={recoverApp}>
-                {!auth ? (
+            {!auth ? (
+                <ErrorBoundary onLeave={requestLeave} leaveError={leaveError} onReset={recoverApp}>
                     <Lobby onAuth={handleSetAuth} />
-                ) : (
+                </ErrorBoundary>
+            ) : (
+                <ErrorBoundary
+                    key={`${auth.roomId}:${auth.playerName}:${auth.token}`}
+                    onLeave={requestLeave}
+                    leaveError={leaveError}
+                    onReset={recoverApp}
+                >
                     <Suspense fallback={<LoadingView status={SESSION_RESTORING} onLeave={requestLeave} errorMessage={leaveError} />}>
-                        <GameView auth={auth} onLeave={() => {
-                            if (getCurrentAuth()?.token !== auth.token) return;
-                            savePersistedGameEnd(auth.roomId, null);
-                            clearAuth(auth.token);
-                        }} onRequestLeave={requestLeave} leaveError={leaveError} />
+                        <GameView
+                            key={`${auth.roomId}:${auth.playerName}:${auth.token}`}
+                            auth={auth}
+                            onLeave={() => {
+                                if (getCurrentAuth()?.token !== auth.token) return;
+                                savePersistedGameEnd(auth, null);
+                                clearAuth(auth.token);
+                            }}
+                            onRequestLeave={requestLeave}
+                            leaveError={leaveError}
+                        />
                     </Suspense>
-                )}
-            </ErrorBoundary>
+                </ErrorBoundary>
+            )}
         </div>
     );
 }

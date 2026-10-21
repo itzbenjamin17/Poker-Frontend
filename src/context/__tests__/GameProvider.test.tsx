@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { GameProvider } from '../GameProvider';
 import { useGameContext } from '../GameContext';
 import type { IncomingGameStatePayload, RoomState, WsStatus } from '../../types';
+import { savePersistedGameEnd } from '../../services/gameEndStorage';
 import '@testing-library/jest-dom';
 
 function TestConsumer() {
@@ -203,14 +204,12 @@ describe('GameProvider and useGameContext', () => {
         const { GameReviewView } = await import('../../components/GameReviewView');
         const user = userEvent.setup();
 
-        sessionStorage.setItem(
-            `poker-game-end:${auth.roomId}`,
-            JSON.stringify({
-                winnerName: 'Player1',
-                isForfeit: false,
-                message: 'Player1 wins!',
-            })
-        );
+        savePersistedGameEnd(auth, {
+            gameId: auth.roomId,
+            winnerName: 'Player1',
+            isForfeit: false,
+            message: 'Player1 wins!',
+        });
 
         function ReviewConsumer() {
             const ctx = useGameContext();

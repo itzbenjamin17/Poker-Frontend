@@ -462,6 +462,13 @@ describe('useGameWebSocket', () => {
         expect(subscriptions.get('/game/ROOM123')?.size).toBe(1);
         expect(subscriptions.get('/user/queue/private')?.size).toBe(1);
 
+        // Test error injection
+        act(() => {
+            inMemoryTransport.simulateError('In-memory simulated error');
+        });
+
+        expect(onSocketError).toHaveBeenCalledWith('In-memory simulated error');
+
         // Test packet injection
         act(() => {
             inMemoryTransport.simulateMessage('/room/ROOM123', JSON.stringify({
@@ -470,13 +477,6 @@ describe('useGameWebSocket', () => {
         });
 
         expect(session.getSnapshot().roomState).toBeNull();
-
-        // Test error injection
-        act(() => {
-            inMemoryTransport.simulateError('In-memory simulated error');
-        });
-
-        expect(onSocketError).toHaveBeenCalledWith('In-memory simulated error');
     });
 
     it('retries onConnect recovery after transient getGameState or getPrivateState failures and applies both snapshots once responses succeed', async () => {

@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { pokerApi } from '../services/api';
 import { savePersistedGameEnd } from '../services/gameEndStorage';
 import { useGameContext } from '../context/GameContext';
@@ -33,6 +33,27 @@ export function useGameDispatcher() {
     
     const [pendingCommands, setPendingCommands] = useState<Set<string>>(new Set());
     const pendingRef = useRef<Set<string>>(new Set());
+    const abortControllersRef = useRef<Set<AbortController>>(new Set());
+    const isMountedRef = useRef(true);
+    const sessionRef = useRef(session);
+    const authRef = useRef(auth);
+
+    useEffect(() => {
+        sessionRef.current = session;
+        authRef.current = auth;
+    });
+
+    useEffect(() => {
+        isMountedRef.current = true;
+        const activeControllers = abortControllersRef.current;
+        return () => {
+            isMountedRef.current = false;
+            for (const controller of activeControllers) {
+                controller.abort();
+            }
+            activeControllers.clear();
+        };
+    }, [session, auth]);
 
     const setPending = useCallback((type: string, isPending: boolean) => {
         const next = new Set(pendingRef.current);
@@ -72,13 +93,36 @@ export function useGameDispatcher() {
 
         session?.clearError();
 
+        const originatingSession = session;
+        const originatingEpoch = session?.getAttachmentEpoch();
+        const originatingAuth = auth;
+
+        const isCurrent = () => {
+            if (!isMountedRef.current) return false;
+            if (sessionRef.current !== originatingSession) return false;
+            if (authRef.current.token !== originatingAuth.token || authRef.current.roomId !== originatingAuth.roomId) {
+                return false;
+            }
+            if (originatingSession) {
+                if (!originatingSession.isAttached()) return false;
+                if (originatingEpoch !== undefined && originatingSession.getAttachmentEpoch() !== originatingEpoch) {
+                    return false;
+                }
+            }
+            return true;
+        };
+
+        const controller = new AbortController();
+        abortControllersRef.current.add(controller);
+
         // REST Commands
         try {
             setPending(command.type, true);
             
             if (command.type === 'START_GAME') {
                 if (session?.isStarted()) return;
-                await pokerApi.startGame(auth.roomId, auth.token);
+                await pokerApi.startGame(auth.roomId, auth.token, controller.signal);
+                if (!isCurrent()) return;
                 session?.markGameStarted();
                 void session?.synchronizeSession({ resetBudget: true });
             } else if (command.type === 'CLAIM_WIN') {
@@ -89,6 +133,7 @@ export function useGameDispatcher() {
                 try {
                     if (requestLeave) {
                         const success = await requestLeave();
+                        if (!isCurrent()) return;
                         if (!success) {
                             session?.setPendingLeave(false);
                             return;
@@ -96,34 +141,39 @@ export function useGameDispatcher() {
                         clearShowdownTimers();
                         contextDispatch({ type: 'SET_PRIVATE', payload: null });
                         contextDispatch({ type: 'CLEAR_GAME_STATE' });
-                        savePersistedGameEnd(auth.roomId, null);
+                        savePersistedGameEnd(auth, null);
                         session?.disconnect();
                     } else {
                         try {
-                            await pokerApi.leaveRoom(auth.roomId, auth.token);
+                            await pokerApi.leaveRoom(auth.roomId, auth.token, false, controller.signal);
                         } catch (error) {
                             if (getErrorStatusCode(error) !== 404) throw error;
                         }
+                        if (!isCurrent()) return;
                         clearShowdownTimers();
-                        savePersistedGameEnd(auth.roomId, null);
+                        savePersistedGameEnd(auth, null);
                         contextDispatch({ type: 'SET_PRIVATE', payload: null });
                         session?.disconnect();
                         onLeave?.();
                     }
                 } catch (leaveErr) {
-                    session?.setPendingLeave(false);
+                    if (isCurrent()) {
+                        session?.setPendingLeave(false);
+                    }
                     throw leaveErr;
                 }
             } else if (command.type === 'LEAVE_REVIEW') {
+                if (!isCurrent()) return;
                 clearShowdownTimers();
                 session?.disconnect();
                 session?.setGameEndResult(null);
-                savePersistedGameEnd(auth.roomId, null);
+                savePersistedGameEnd(auth, null);
                 contextDispatch({ type: 'CLEAR_GAME_STATE' });
                 onLeave?.();
                 return;
             }
         } catch (err) {
+            if (!isCurrent()) return;
             if (command.type === 'CLAIM_WIN') {
                 contextDispatch({ type: 'SET_CLAIM_PENDING', payload: false });
                 session?.setClaimPending(false);
@@ -132,9 +182,12 @@ export function useGameDispatcher() {
             const msg = normalizeErrorMessage(err instanceof Error ? err.message : 'Operation failed') ?? 'Operation failed';
             contextDispatch({ type: 'SET_NOTIFICATION', payload: msg });
         } finally {
-            setPending(command.type, false);
+            abortControllersRef.current.delete(controller);
+            if (isCurrent()) {
+                setPending(command.type, false);
+            }
         }
-    }, [auth.roomId, auth.token, clearShowdownTimers, contextDispatch, gameState, onLeave, requestLeave, session, setPending]);
+    }, [auth, clearShowdownTimers, contextDispatch, gameState, onLeave, requestLeave, session, setPending]);
 
     const onSocketError = useCallback((message: string) => {
         session?.handleActionError(message);

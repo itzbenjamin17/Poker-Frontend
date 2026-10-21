@@ -3,18 +3,7 @@ import { logger } from '../security/logger';
 import { isJwtValid } from '../services/api';
 import { AUTH_KEY } from '../constants/strings';
 import type { AuthResponse } from '../types';
-
-/** Validate that a parsed auth object has all required fields. */
-function isValidAuth(obj: unknown): obj is AuthResponse {
-    if (!obj || typeof obj !== 'object') return false;
-    const a = obj as Record<string, unknown>;
-    return (
-        typeof a.token === 'string' && a.token.length > 0 &&
-        typeof a.roomId === 'string' && a.roomId.length > 0 &&
-        typeof a.playerName === 'string' && a.playerName.length > 0 &&
-        typeof a.message === 'string'
-    );
-}
+import { isAuthResponse } from '../lib/payloads';
 
 function safeGetStorageItem(key: string): string | null {
     try {
@@ -58,7 +47,7 @@ function loadAuthStateFromStorage(): AuthResponse | null {
     if (!saved) return null;
     try {
         const parsed = JSON.parse(saved);
-        if (!isValidAuth(parsed)) {
+        if (!isAuthResponse(parsed)) {
             logger.warn('Invalid auth shape in sessionStorage — clearing.');
             safeRemoveStorageItem(AUTH_KEY);
             return null;
@@ -82,6 +71,10 @@ export function useAuthSession() {
     const authRef = useRef(auth);
 
     const setAuth = useCallback((data: AuthResponse) => {
+        if (!isAuthResponse(data)) {
+            logger.warn('Invalid auth shape passed to setAuth — ignoring');
+            return;
+        }
         setAuthExpired(false);
         authRef.current = data;
         setAuthState(data);
@@ -95,7 +88,7 @@ export function useAuthSession() {
             if (saved) {
                 try {
                     const persisted: unknown = JSON.parse(saved);
-                    if (isValidAuth(persisted) && persisted.token !== expectedToken) return;
+                    if (isAuthResponse(persisted) && persisted.token !== expectedToken) return;
                 } catch {
                     // Malformed persisted data does not represent a valid replacement token.
                 }

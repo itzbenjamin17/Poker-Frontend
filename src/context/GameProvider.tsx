@@ -1,7 +1,9 @@
 import {
     useCallback,
     useEffect,
+    useLayoutEffect,
     useMemo,
+    useRef,
     useSyncExternalStore,
     type ReactNode,
 } from 'react';
@@ -28,7 +30,7 @@ export interface GameProviderProps {
     session?: GameSession;
     transport?: GameTransport;
     clock?: Clock;
-    children: ReactNode;
+    children?: ReactNode;
 }
 
 /**
@@ -49,18 +51,28 @@ export function GameProvider({
 
     const session = useMemo(() => {
         if (sessionProp) return sessionProp;
-        const persistedGameEnd = loadPersistedGameEnd(roomId);
+        const persistedGameEnd = loadPersistedGameEnd(auth);
         return new GameSession({
             auth: { roomId, playerName, token, message },
             transport: transportProp ?? new StompTransportAdapter(token),
             clock,
             initialGameEndResult: persistedGameEnd,
         });
-    }, [sessionProp, roomId, playerName, token, message, transportProp, clock]);
+    }, [sessionProp, auth, roomId, playerName, token, message, transportProp, clock]);
 
+    const onLeaveRef = useRef(onLeave);
     useEffect(() => {
+        onLeaveRef.current = onLeave;
         session.setOnLeave(onLeave);
     }, [session, onLeave]);
+
+    useLayoutEffect(() => {
+        session.attach();
+        session.setOnLeave(onLeaveRef.current);
+        return () => {
+            session.detach();
+        };
+    }, [session]);
 
     // React external store subscription
     const state = useSyncExternalStore(
@@ -70,8 +82,17 @@ export function GameProvider({
     );
 
     useEffect(() => {
-        savePersistedGameEnd(auth.roomId, state.gameEndResult);
-    }, [auth.roomId, state.gameEndResult]);
+        if (!session.isAttached()) return;
+        const sessionAuth = session.getAuth();
+        if (
+            sessionAuth.roomId !== auth.roomId ||
+            sessionAuth.playerName !== auth.playerName ||
+            sessionAuth.token !== auth.token
+        ) {
+            return;
+        }
+        savePersistedGameEnd(auth, state.gameEndResult);
+    }, [auth, session, state.gameEndResult]);
 
     const dispatch = useCallback((action: Action) => {
         switch (action.type) {
@@ -143,6 +164,7 @@ export function GameProvider({
         error: state.error,
         isRecovering: state.isRecovering,
         recoveryFailed: state.recoveryFailed,
+        isRedirecting: state.isRedirecting,
         auth,
         onLeave,
         requestLeave,

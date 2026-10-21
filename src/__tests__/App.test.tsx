@@ -33,17 +33,22 @@ vi.mock('../Lobby', () => ({
 }));
 
 vi.mock('../GameView', () => ({
-    default: ({ auth, onRequestLeave, onLeave, leaveError }: { auth: any; onRequestLeave: () => Promise<boolean>; onLeave: () => void; leaveError?: string | null }) => (
-        <div data-testid="game-view">
-            <span>Game View Component for {auth.playerName}</span>
-            {leaveError && <p role="alert">{leaveError}</p>}
-            <button type="button" onClick={() => { void onRequestLeave(); }}>
-                Mock Leave Game
-            </button>
-            <button type="button" onClick={() => { void onRequestLeave(); }}>Retry Leave</button>
-            <button type="button" onClick={onLeave}>Stale Local Leave</button>
-        </div>
-    ),
+    default: ({ auth, onRequestLeave, onLeave, leaveError }: { auth: any; onRequestLeave: () => Promise<boolean>; onLeave: () => void; leaveError?: string | null }) => {
+        if (auth?.token === 'crash-token') {
+            throw new Error('GameView crashed for User A');
+        }
+        return (
+            <div data-testid="game-view" data-auth-key={`${auth.roomId}:${auth.playerName}:${auth.token}`}>
+                <span>Game View Component for {auth.playerName}</span>
+                {leaveError && <p role="alert">{leaveError}</p>}
+                <button type="button" onClick={() => { void onRequestLeave(); }}>
+                    Mock Leave Game
+                </button>
+                <button type="button" onClick={() => { void onRequestLeave(); }}>Retry Leave</button>
+                <button type="button" onClick={onLeave}>Stale Local Leave</button>
+            </div>
+        );
+    },
 }));
 
 describe('App', () => {
@@ -310,5 +315,92 @@ describe('App', () => {
             consoleSpy.mockRestore();
             vi.doUnmock('../GameView');
         }
+    });
+
+    it('resets error boundary state when switching from a failed user session to another user', async () => {
+        const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+        try {
+            let currentAuth: any = {
+                roomId: 'room-1',
+                playerName: 'UserA',
+                token: 'crash-token',
+                message: 'Success',
+            };
+
+            vi.mocked(useAuthSession).mockImplementation(() => ({
+                auth: currentAuth,
+                setAuth: mockSetAuth,
+                clearAuth: mockClearAuth,
+                authExpired: false,
+                dismissAuthExpired: vi.fn(),
+                isCurrentToken: vi.fn((token: string) => currentAuth?.token === token),
+                getCurrentAuth: vi.fn(() => currentAuth),
+            }));
+
+            const { rerender } = render(<App />);
+
+            // User A throws an uncaught error inside GameView; ErrorBoundary catches it
+            expect(screen.getByText(/Something went wrong/i)).toBeInTheDocument();
+            expect(screen.queryByTestId('game-view')).not.toBeInTheDocument();
+
+            // Switch auth to User B
+            currentAuth = {
+                roomId: 'room-2',
+                playerName: 'UserB',
+                token: 'valid-token-b',
+                message: 'Success',
+            };
+
+            rerender(<App />);
+
+            // User B must NOT be trapped in User A's error screen; GameView for User B must render!
+            expect(await screen.findByTestId('game-view')).toBeInTheDocument();
+            expect(screen.getByText('Game View Component for UserB')).toBeInTheDocument();
+            expect(screen.queryByText(/Something went wrong/i)).not.toBeInTheDocument();
+        } finally {
+            consoleSpy.mockRestore();
+        }
+    });
+
+    it('remounts GameView subtree when auth identity changes but preserves it on same-identity rerender', async () => {
+        let currentAuth: any = {
+            roomId: 'room-1',
+            playerName: 'UserA',
+            token: 'token-a',
+            message: 'Success',
+        };
+
+        vi.mocked(useAuthSession).mockImplementation(() => ({
+            auth: currentAuth,
+            setAuth: mockSetAuth,
+            clearAuth: mockClearAuth,
+            authExpired: false,
+            dismissAuthExpired: vi.fn(),
+            isCurrentToken: vi.fn((token: string) => currentAuth?.token === token),
+            getCurrentAuth: vi.fn(() => currentAuth),
+        }));
+
+        const { rerender } = render(<App />);
+
+        const view1 = await screen.findByTestId('game-view');
+        expect(view1).toHaveAttribute('data-auth-key', 'room-1:UserA:token-a');
+
+        // Re-render with same auth identity: element instance / hook state is preserved
+        rerender(<App />);
+        const view2 = screen.getByTestId('game-view');
+        expect(view2).toBe(view1);
+
+        // Switch to different auth identity: GameView subtree remounts
+        currentAuth = {
+            roomId: 'room-2',
+            playerName: 'UserB',
+            token: 'token-b',
+            message: 'Success',
+        };
+        rerender(<App />);
+
+        const view3 = await screen.findByTestId('game-view');
+        expect(view3).not.toBe(view1);
+        expect(view3).toHaveAttribute('data-auth-key', 'room-2:UserB:token-b');
     });
 });

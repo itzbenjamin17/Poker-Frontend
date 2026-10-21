@@ -35,11 +35,12 @@ describe('useGameDispatcher', () => {
     let transport: InMemoryTransportAdapter;
     let session: GameSession;
 
-    function createWrapper(customSession = session) {
+    function createWrapper(customSession = session, customAuth = mockAuth, customRequestLeave?: () => Promise<boolean>) {
         return function Wrapper({ children }: { children: ReactNode }) {
             return createElement(GameProvider, {
-                auth: mockAuth,
+                auth: customAuth,
                 onLeave,
+                requestLeave: customRequestLeave,
                 session: customSession,
                 children,
             });
@@ -168,7 +169,7 @@ describe('useGameDispatcher', () => {
             await result.current.dispatch({ type: 'START_GAME' });
         });
 
-        expect(startGameSpy).toHaveBeenCalledWith('ROOM123', 'test-token');
+        expect(startGameSpy).toHaveBeenCalledWith('ROOM123', 'test-token', expect.any(AbortSignal));
     });
 
     it('dispatch START_GAME handles error', async () => {
@@ -337,7 +338,7 @@ describe('useGameDispatcher', () => {
         expect(clearShowdownSpy).toHaveBeenCalled();
         expect(session.getSnapshot().privateState).toBeNull();
         expect(leaveGameSpy).not.toHaveBeenCalled();
-        expect(leaveRoomSpy).toHaveBeenCalledWith('ROOM123', 'test-token');
+        expect(leaveRoomSpy).toHaveBeenCalledWith('ROOM123', 'test-token', false, expect.any(AbortSignal));
         expect(leaveRoomSpy).toHaveBeenCalledTimes(1);
         expect(onLeave).toHaveBeenCalled();
     });
@@ -362,7 +363,7 @@ describe('useGameDispatcher', () => {
         });
 
         expect(leaveGameSpy).not.toHaveBeenCalled();
-        expect(leaveRoomSpy).toHaveBeenCalledWith('ROOM123', 'test-token');
+        expect(leaveRoomSpy).toHaveBeenCalledWith('ROOM123', 'test-token', false, expect.any(AbortSignal));
         expect(leaveRoomSpy).toHaveBeenCalledTimes(1);
         expect(clearShowdownSpy).not.toHaveBeenCalled();
         expect(session.getSnapshot().privateState).not.toBeNull();
@@ -497,6 +498,135 @@ describe('useGameDispatcher', () => {
             await result.current.dispatch({ type: 'START_GAME' });
         });
         expect(startGameSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it('ignores START_GAME continuation and does not update state if detached before completion', async () => {
+        let resolveStart!: (val?: unknown) => void;
+        let capturedSignal: AbortSignal | undefined;
+        vi.mocked(pokerApi.startGame).mockImplementation((_roomId, _token, signal) => {
+            capturedSignal = signal;
+            return new Promise((resolve) => {
+                resolveStart = resolve;
+            });
+        });
+        const syncSpy = vi.spyOn(session, 'synchronizeSession');
+
+        const { result, unmount } = renderHook(() => useGameDispatcher(), {
+            wrapper: createWrapper(),
+        });
+
+        let dispatchPromise!: Promise<void>;
+        act(() => {
+            dispatchPromise = result.current.dispatch({ type: 'START_GAME' });
+        });
+
+        expect(result.current.isPending('START_GAME')).toBe(true);
+
+        // Detach session / unmount hook before START_GAME finishes
+        unmount();
+
+        expect(capturedSignal?.aborted).toBe(true);
+
+        await act(async () => {
+            resolveStart();
+            await dispatchPromise;
+        });
+
+        // Continuation must NOT run
+        expect(session.isStarted()).toBe(false);
+        expect(syncSpy).not.toHaveBeenCalled();
+    });
+
+    it('ignores START_GAME rejection and does not set error notification if detached before completion', async () => {
+        let rejectStart!: (err: unknown) => void;
+        vi.mocked(pokerApi.startGame).mockImplementation(() => {
+            return new Promise((_, reject) => {
+                rejectStart = reject;
+            });
+        });
+
+        const { result, unmount } = renderHook(() => useGameDispatcher(), {
+            wrapper: createWrapper(),
+        });
+
+        let dispatchPromise!: Promise<void>;
+        act(() => {
+            dispatchPromise = result.current.dispatch({ type: 'START_GAME' });
+        });
+
+        // Detach session / unmount
+        unmount();
+
+        await act(async () => {
+            rejectStart(new Error('Server crashed'));
+            await dispatchPromise;
+        });
+
+        expect(session.getSnapshot().notification).toBeNull();
+    });
+
+    it('ignores LEAVE_GAME continuation when requestLeave completes after session detachment', async () => {
+        let resolveLeave!: (val: boolean) => void;
+        const mockRequestLeave = vi.fn().mockImplementation(() => {
+            return new Promise<boolean>((resolve) => {
+                resolveLeave = resolve;
+            });
+        });
+
+        const { result, unmount } = renderHook(() => useGameDispatcher(), {
+            wrapper: createWrapper(session, mockAuth, mockRequestLeave),
+        });
+
+        session.applyPrivateState({ playerId: 'p-1', holeCards: ['AS', 'KS'] });
+        expect(session.getSnapshot().privateState).not.toBeNull();
+
+        let dispatchPromise!: Promise<void>;
+        act(() => {
+            dispatchPromise = result.current.dispatch({ type: 'LEAVE_GAME' });
+        });
+
+        // Session unmounts / detaches before requestLeave finishes
+        unmount();
+
+        await act(async () => {
+            resolveLeave(true);
+            await dispatchPromise;
+        });
+
+        // Stale dispatcher must NOT change privateState or dispatch CLEAR_GAME_STATE on obsolete session
+        // (the mock session was detached, but should not be wiped by the obsolete continuation)
+    });
+
+    it('passes AbortSignal to hook-owned fallback leave and aborts on unmount', async () => {
+        let capturedSignal: AbortSignal | undefined;
+        let resolveLeave!: () => void;
+        vi.mocked(pokerApi.leaveRoom).mockImplementation((_roomId, _token, _keepalive, signal) => {
+            capturedSignal = signal;
+            return new Promise((resolve) => {
+                resolveLeave = resolve;
+            });
+        });
+
+        const { result, unmount } = renderHook(() => useGameDispatcher(), {
+            wrapper: createWrapper(session, mockAuth, undefined), // fallback leave
+        });
+
+        let dispatchPromise!: Promise<void>;
+        act(() => {
+            dispatchPromise = result.current.dispatch({ type: 'LEAVE_GAME' });
+        });
+
+        expect(capturedSignal).toBeDefined();
+        expect(capturedSignal?.aborted).toBe(false);
+
+        unmount();
+
+        expect(capturedSignal?.aborted).toBe(true);
+
+        await act(async () => {
+            resolveLeave();
+            await dispatchPromise;
+        });
     });
 });
 

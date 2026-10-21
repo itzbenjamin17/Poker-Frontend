@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ERROR_MALFORMED_RESPONSE } from '../../constants/strings';
 import type { AuthResponse } from '../../types';
 import { logger } from '../../security/logger';
+import { isAuthResponse, normalizeErrorMessage } from '../../lib/payloads';
 
 /** Shared lock used by the create and join forms to prevent overlapping requests. */
 export type LobbyRequestLock = { current: AbortController | null };
@@ -58,7 +59,7 @@ export function useLobbyRequest({
         try {
             const response = await request(controller.signal);
             if (!mounted.current || controller.signal.aborted) return;
-            if (!response || typeof response !== 'object') {
+            if (!isAuthResponse(response)) {
                 throw new Error(ERROR_MALFORMED_RESPONSE);
             }
             onAuth(response);
@@ -66,7 +67,9 @@ export function useLobbyRequest({
         } catch (error) {
             if (mounted.current && !controller.signal.aborted) {
                 logger.error('Lobby request failed:', error);
-                onError(error instanceof Error ? error.message : fallback);
+                const rawMessage = error instanceof Error ? error.message : null;
+                const normalized = normalizeErrorMessage(rawMessage);
+                onError(normalized && normalized.trim().length > 0 ? normalized : fallback);
             }
         } finally {
             if (mounted.current) {

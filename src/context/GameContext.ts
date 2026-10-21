@@ -31,6 +31,7 @@ export interface GameContextState {
     error?: ActionError | null;
     isRecovering?: boolean;
     recoveryFailed?: boolean;
+    isRedirecting?: boolean;
 }
 
 export type Action =

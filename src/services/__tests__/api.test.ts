@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { http, HttpResponse } from 'msw';
 import { server } from '../../test/mocks/server';
 import { isJwtValid, getErrorMessage, pokerApi, HttpError, MalformedResponseError } from '../api';
+import { ERROR_MALFORMED_AUTH, ERROR_TECHNICAL, ERROR_SYSTEM, ERROR_INVALID_FORMAT } from '../../constants/strings';
 
 function toBase64Url(str: string): string {
     return btoa(str).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
@@ -229,10 +230,67 @@ describe('api service', () => {
                     return new HttpResponse('', { status: 500 });
                 })
             );
+            await expect(pokerApi.getRoomInfo('room-1', validToken)).rejects.toMatchObject({
+                status: 500,
+                message: 'Request failed',
+            });
+        });
+
+        it('normalizes HTML 502/503/504 error response pages to technical copy and preserves status', async () => {
+            const html502 = '<!DOCTYPE html><html><head><title>502 Bad Gateway</title></head><body><center><h1>502 Bad Gateway</h1></center></body></html>';
+            const res = new Response(html502, {
+                status: 502,
+                headers: { 'Content-Type': 'text/html' },
+            });
+            const msg = await getErrorMessage(res, 'Default fallback');
+            expect(msg).toBe(ERROR_TECHNICAL);
+
+            const validToken = createJwt({ exp: Math.floor(Date.now() / 1000) + 3600 });
+            server.use(
+                http.get('/api/room/:roomId', () => {
+                    return new HttpResponse(html502, {
+                        status: 502,
+                        headers: { 'Content-Type': 'text/html' },
+                    });
+                })
+            );
+            await expect(pokerApi.getRoomInfo('room-1', validToken)).rejects.toMatchObject({
+                status: 502,
+                message: ERROR_TECHNICAL,
+            });
+        });
+
+        it('normalizes server diagnostic stack trace text to system copy and preserves status', async () => {
+            const stackTrace = 'java.lang.NullPointerException at com.pokergame.service.RoomService.getRoom(RoomService.java:42)';
+            const res = new Response(stackTrace, {
+                status: 500,
+                headers: { 'Content-Type': 'text/plain' },
+            });
+            const msg = await getErrorMessage(res, 'Default fallback');
+            expect(msg).toBe(ERROR_SYSTEM);
+
+            const validToken = createJwt({ exp: Math.floor(Date.now() / 1000) + 3600 });
+            server.use(
+                http.get('/api/room/:roomId', () => {
+                    return new HttpResponse(stackTrace, {
+                        status: 500,
+                        headers: { 'Content-Type': 'text/plain' },
+                    });
+                })
+            );
             await expect(pokerApi.getRoomInfo('room-1', validToken)).rejects.toMatchObject({
                 status: 500,
-                message: 'Request failed',
+                message: ERROR_SYSTEM,
             });
+        });
+
+        it('normalizes JSON error response with embedded JSON object or array to format copy', async () => {
+            const res = new Response(JSON.stringify({ message: '{"error": "corrupt_payload", "status": 400}' }), {
+                status: 400,
+                headers: { 'Content-Type': 'application/json' },
+            });
+            const msg = await getErrorMessage(res, 'Default fallback');
+            expect(msg).toBe(ERROR_INVALID_FORMAT);
         });
     });
 
@@ -299,11 +357,41 @@ describe('api service', () => {
                 })
             );
 
+            await expect(pokerApi.joinRoom({
+                roomName: 'Room99',
+                playerName: 'Bob',
+            })).rejects.toMatchObject({
+                status: 500,
+            });
+        });
+
+        it.each([
+            ['missing message', { data: { token: 'tok', roomId: 'r1', playerName: 'Alice' } }],
+            ['empty message', { message: '', data: { token: 'tok', roomId: 'r1', playerName: 'Alice' } }],
+            ['whitespace message', { message: '   ', data: { token: 'tok', roomId: 'r1', playerName: 'Alice' } }],
+            ['missing token', { message: 'ok', data: { roomId: 'r1', playerName: 'Alice' } }],
+            ['empty token', { message: 'ok', data: { token: '', roomId: 'r1', playerName: 'Alice' } }],
+            ['whitespace token', { message: 'ok', data: { token: '   ', roomId: 'r1', playerName: 'Alice' } }],
+            ['missing roomId', { message: 'ok', data: { token: 'tok', playerName: 'Alice' } }],
+            ['empty roomId', { message: 'ok', data: { token: 'tok', roomId: '', playerName: 'Alice' } }],
+            ['whitespace roomId', { message: 'ok', data: { token: 'tok', roomId: '  ', playerName: 'Alice' } }],
+            ['missing playerName', { message: 'ok', data: { token: 'tok', roomId: 'r1' } }],
+            ['empty playerName', { message: 'ok', data: { token: 'tok', roomId: 'r1', playerName: '' } }],
+            ['whitespace playerName', { message: 'ok', data: { token: 'tok', roomId: 'r1', playerName: '   ' } }],
+            ['array data', { message: 'ok', data: ['tok', 'r1', 'Alice'] }],
+            ['array response', [{ message: 'ok', data: { token: 'tok', roomId: 'r1', playerName: 'Alice' } }]],
+        ])('throws status 500 HttpError with ERROR_MALFORMED_AUTH when auth response has %s', async (_desc, invalidPayload) => {
+            server.use(
+                http.post('/api/room/join', () => {
+                    return HttpResponse.json(invalidPayload, { status: 200 });
+                })
+            );
             await expect(pokerApi.joinRoom({
                 roomName: 'Room99',
                 playerName: 'Bob',
             })).rejects.toMatchObject({
                 status: 500,
+                message: ERROR_MALFORMED_AUTH,
             });
         });
     });

@@ -1404,6 +1404,104 @@ describe('GameSession Domain Store', () => {
             expect(session2.getSnapshot().isGameOver).toBe(false);
         });
 
+        it('canonical GAME_STARTED installs room data into snapshot, marks started, and synchronizes', async () => {
+            const { session, transport } = createAuthedSession();
+            session.connect();
+
+            const syncSpy = vi.spyOn(session, 'synchronizeSession');
+
+            transport.simulateMessage('/room/room-123', {
+                message: 'GAME_STARTED',
+                data: {
+                    roomId: 'room-123',
+                    roomName: 'Main Room',
+                    players: [
+                        { name: 'Hero', isHost: true, joinedAt: '2026-01-01T00:00:00Z' },
+                        { name: 'Player2', isHost: false, joinedAt: '2026-01-01T00:01:00Z' },
+                    ],
+                    maxPlayers: 6,
+                    buyIn: 1000,
+                    smallBlind: 10,
+                    bigBlind: 20,
+                    currentPlayers: 2,
+                    canStartGame: false,
+                    gameStarted: true,
+                },
+            });
+
+            expect(session.isStarted()).toBe(true);
+            const roomState = session.getSnapshot().roomState;
+            expect(roomState).toBeDefined();
+            expect(roomState?.gameStarted).toBe(true);
+            expect(roomState?.players).toHaveLength(2);
+            expect(roomState?.players?.[0].name).toBe('Hero');
+            expect(roomState?.players?.[1].name).toBe('Player2');
+            expect(roomState?.canStartGame).toBe(false);
+            expect(syncSpy).toHaveBeenCalledWith({ resetBudget: true });
+        });
+
+        it('canonical GAME_STARTED schedules redirect if hero is not in room players', async () => {
+            const { session, transport } = createAuthedSession();
+            session.connect();
+
+            transport.simulateMessage('/room/room-123', {
+                message: 'GAME_STARTED',
+                data: {
+                    roomId: 'room-123',
+                    roomName: 'Main Room',
+                    players: [
+                        { name: 'Other1', isHost: true },
+                        { name: 'Other2', isHost: false },
+                    ],
+                    gameStarted: true,
+                },
+            });
+
+            expect(session.getSnapshot().notification).toBe('Your seat is no longer active. Returning to lobby...');
+            expect(session.hasLifecyclePermission()).toBe(false);
+        });
+
+        it('canonical GAME_STARTED for wrong room changes nothing', async () => {
+            const { session, transport } = createAuthedSession();
+            session.connect();
+
+            const syncSpy = vi.spyOn(session, 'synchronizeSession');
+            const revisionBefore = (session as unknown as { roomRevision: number }).roomRevision;
+
+            transport.simulateMessage('/room/room-123', {
+                message: 'GAME_STARTED',
+                data: {
+                    roomId: 'wrong-room-999',
+                    players: [{ name: 'Hero', isHost: true }],
+                    gameStarted: true,
+                },
+            });
+
+            expect(session.isStarted()).toBe(false);
+            expect((session as unknown as { roomRevision: number }).roomRevision).toBe(revisionBefore);
+            expect(syncSpy).not.toHaveBeenCalled();
+        });
+
+        it('legacy GAME_STARTED for wrong gameId changes nothing', async () => {
+            const { session, transport } = createAuthedSession();
+            session.connect();
+
+            const syncSpy = vi.spyOn(session, 'synchronizeSession');
+            const revisionBefore = (session as unknown as { roomRevision: number }).roomRevision;
+
+            transport.simulateMessage('/room/room-123', {
+                message: 'GAME_STARTED',
+                data: {
+                    gameId: 'wrong-room-999',
+                    message: 'Game started',
+                },
+            });
+
+            expect(session.isStarted()).toBe(false);
+            expect((session as unknown as { roomRevision: number }).roomRevision).toBe(revisionBefore);
+            expect(syncSpy).not.toHaveBeenCalled();
+        });
+
         it('concurrent room updates preserve membership and started evidence', async () => {
             const { session, transport } = createAuthedSession();
             session.connect();

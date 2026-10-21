@@ -64,7 +64,7 @@ Per [ADR-0003](../adr/0003-in-process-game-session-and-transport-port.md), game 
 
 The API wrapper handles HTTP status errors, malformed expected responses, a request timeout, and caller cancellation. Gameplay state is decoded at runtime; TypeScript interfaces alone do not validate network data. JWT parsing in the client checks shape/expiry for session handling, while signature and authorization checks remain the backend's responsibility.
 
-Final-game snapshots use `poker-game-end:{roomId}`. Keep final-game review distinct from a single-hand showdown and its ready countdown. [game.ts](../../src/lib/game.ts) formats ranks/results and pot/card presentation; it is not the authoritative poker hand evaluator.
+Final-game snapshots use `poker-game-end:{roomId}` stored tab-locally in `sessionStorage` in a versioned envelope (`PersistedGameEndEnvelope`) bound to `{ roomId, playerName, token }`. As a one-time legacy-cache compatibility tradeoff, unversioned legacy `localStorage` entries are rejected and cleared on upgrade; an unversioned legacy result already removed from the server cannot be recovered offline. Keep final-game review distinct from a single-hand showdown and its ready countdown. [game.ts](../../src/lib/game.ts) formats ranks/results and pot/card presentation; it is not the authoritative poker hand evaluator.
 
 ## Table Layout And Interaction
 

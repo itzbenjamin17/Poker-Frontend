@@ -68,7 +68,9 @@ export type RoomUpdate =
     }
     | {
         message: 'GAME_STARTED';
-        data: { gameId: string; message?: string };
+        data:
+            | (Partial<RoomState> & { players: NonNullable<RoomState['players']> })
+            | { gameId: string; message?: string };
     };
 
 export interface RoomDataResponse {
@@ -224,5 +226,6 @@ export interface SessionSnapshot {
     error: ActionError | null;
     isRecovering?: boolean;
     recoveryFailed?: boolean;
+    isRedirecting?: boolean;
 }
 

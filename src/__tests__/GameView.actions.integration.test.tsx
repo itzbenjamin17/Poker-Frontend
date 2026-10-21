@@ -6,6 +6,7 @@ import { MockStompClient, activeSubscriptions } from '../test/mocks/stomp';
 import { http, HttpResponse } from 'msw';
 import { server } from '../test/mocks/server';
 import { createValidGameState, createValidRoomData, mockAuth } from '../test/fixtures';
+import { savePersistedGameEnd } from '../services/gameEndStorage';
 
 const auth = {
     ...mockAuth,
@@ -404,8 +405,8 @@ describe('GameView - Actions & Flows Integration', () => {
         const onLeaveSpy = vi.fn();
 
         // Simulate a previous session having already recorded a game end - this
-        // is what GameProvider persists to localStorage when GAME_END arrives.
-        localStorage.setItem('poker-game-end:ROOM123', JSON.stringify({
+        // is what GameProvider persists to sessionStorage when GAME_END arrives.
+        savePersistedGameEnd(auth, {
             gameId: 'ROOM123',
             winnerName: 'TestPlayer',
             winnerChips: 2000,
@@ -421,7 +422,7 @@ describe('GameView - Actions & Flows Integration', () => {
                 ],
                 communityCards: ['AH', 'KH', 'QD', 'JS', '2C'],
             }),
-        }));
+        });
 
         // The room/game no longer exist server-side (already cleaned up) - if
         // hydration were attempted it would 404 and redirect to the lobby.
