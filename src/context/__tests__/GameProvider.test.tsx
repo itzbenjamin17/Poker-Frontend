@@ -330,6 +330,7 @@ describe('GameProvider and useGameContext', () => {
             transport.simulateMessage(`/game/${auth.roomId}`, {
                 gameId: 'game-99',
                 phase: 'PRE_FLOP',
+                handNumber: 0,
                 pot: 30,
                 currentBet: 20,
                 communityCards: [],
@@ -341,7 +342,7 @@ describe('GameProvider and useGameContext', () => {
             transport.simulateMessage('/user/queue/private', {
                 playerId: 'p-1',
                 handNumber: 0,
-                holeCards: ['As', 'Ks'],
+                holeCards: ['AS', 'KS'],
             });
         });
 

@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { http, HttpResponse } from 'msw';
 import GameView from '../GameView';
 import { server } from '../test/mocks/server';
-import { createValidGameState, mockAuth } from '../test/fixtures';
+import { createValidGameState, createValidRoomData, mockAuth } from '../test/fixtures';
 import { MockStompClient, activeSubscriptions } from '../test/mocks/stomp';
 
 const auth = {
@@ -14,7 +14,7 @@ const auth = {
 
 function mockStartedTable() {
     server.use(
-        http.get('/api/room/ROOM123', () => HttpResponse.json({
+        http.get('/api/room/ROOM123', () => HttpResponse.json(createValidRoomData({
             roomId: 'ROOM123',
             roomName: 'Poker Table',
             players: [
@@ -22,7 +22,7 @@ function mockStartedTable() {
                 { name: 'Opponent', isHost: false },
             ],
             gameStarted: true,
-        })),
+        }))),
         http.get('/api/game/ROOM123/state', () => HttpResponse.json(createValidGameState({
             gameId: 'ROOM123',
             phase: 'RIVER',
@@ -38,7 +38,8 @@ function mockStartedTable() {
         }))),
         http.get('/api/game/ROOM123/private-state', () => HttpResponse.json({
             playerId: 'p-1',
-            holeCards: ['AS', 'KS'],
+                handNumber: 0,
+                holeCards: ['AS', 'KS'],
         })),
     );
 }

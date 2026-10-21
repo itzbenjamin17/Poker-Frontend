@@ -60,6 +60,7 @@ export function useGameWebSocket(options: UseGameWebSocketOptions = {}) {
 
         const startRecoveryWorkflow = ({ resetBudget }: { resetBudget: boolean }) => {
             if (isCancelled() || !session.hasLifecyclePermission()) return;
+            if (session.isClaimReviewRecovering()) return;
             if (inFlightRecovery) return;
             if (!resetBudget && session.hasPendingRecoveryTimer()) return;
             inFlightRecovery = session.synchronizeSession({ resetBudget }).finally(() => {
@@ -83,6 +84,10 @@ export function useGameWebSocket(options: UseGameWebSocketOptions = {}) {
 
         const unsubManualRetry = session.onManualRetry(() => {
             if (isCancelled() || !session.hasLifecyclePermission()) return;
+            if (session.isClaimReviewRecovering()) {
+                session.retryClaimReview();
+                return;
+            }
             if (!transport.isConnected?.()) {
                 triggerReconnect();
             }
@@ -117,7 +122,6 @@ export function useGameWebSocket(options: UseGameWebSocketOptions = {}) {
 
         return () => {
             disposed = true;
-            session.cancelRecovery();
             document.removeEventListener('visibilitychange', handleWakeup);
             window.removeEventListener('online', handleOnline);
             unsubConnect();

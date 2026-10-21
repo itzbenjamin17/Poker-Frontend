@@ -6,7 +6,7 @@ import { GameProvider } from '../../context/GameProvider';
 import { GameSession } from '../../domain/GameSession';
 import { InMemoryTransportAdapter } from '../../services/transport';
 import { pokerApi } from '../../services/api';
-import type { GameState } from '../../types';
+import type { GameEndResult, GameState } from '../../types';
 import { createValidGameState } from '../../test/fixtures';
 
 vi.mock('../../services/api', async (importOriginal) => {
@@ -187,7 +187,7 @@ describe('useGameDispatcher', () => {
     it('dispatch CLAIM_WIN success installs terminal result and clears claimPending', async () => {
         const installSpy = vi.spyOn(session, 'installTerminalResult');
         const terminalData = {
-            gameId: 'ROOM123',
+            gameId: 'GAME123',
             winnerName: 'TestPlayer',
             winnerChips: 1980,
             isForfeit: true,
@@ -205,7 +205,7 @@ describe('useGameDispatcher', () => {
             await result.current.dispatch({ type: 'CLAIM_WIN' });
         });
 
-        expect(claimWinSpy).toHaveBeenCalledWith('GAME123', 'test-token');
+        expect(claimWinSpy).toHaveBeenCalledWith('GAME123', 'test-token', expect.any(AbortSignal));
         expect(installSpy).toHaveBeenCalledWith(terminalData);
         expect(session.getSnapshot().claimPending).toBe(false);
         expect(session.getSnapshot().isGameOver).toBe(true);
@@ -216,7 +216,7 @@ describe('useGameDispatcher', () => {
         const networkError = new TypeError('Failed to fetch');
         vi.mocked(pokerApi.claimWin).mockRejectedValue(networkError);
         const reviewResult = {
-            gameId: 'ROOM123',
+            gameId: 'GAME123',
             winnerName: 'TestPlayer',
             winnerChips: 2000,
             isForfeit: true,
@@ -233,11 +233,53 @@ describe('useGameDispatcher', () => {
             await result.current.dispatch({ type: 'CLAIM_WIN' });
         });
 
-        expect(getReviewSpy).toHaveBeenCalledWith('GAME123', 'test-token');
+        expect(getReviewSpy).toHaveBeenCalledWith('GAME123', 'test-token', expect.any(AbortSignal));
         expect(installSpy).toHaveBeenCalledWith(reviewResult);
         expect(session.getSnapshot().claimPending).toBe(false);
         expect(session.getSnapshot().isGameOver).toBe(true);
         expect(session.getSnapshot().gameEndResult?.winnerName).toBe('TestPlayer');
+    });
+
+    it('recovers by review after a timed-out claim response', async () => {
+        vi.mocked(pokerApi.claimWin).mockRejectedValue(Object.assign(new Error('Request timed out'), { status: 408 }));
+        vi.mocked(pokerApi.getReview).mockResolvedValue({
+            gameId: 'GAME123', winnerName: 'TestPlayer', winnerChips: 2000,
+            isForfeit: true, message: 'Recovered review',
+        });
+        const { result } = renderHook(() => useGameDispatcher(), { wrapper: createWrapper() });
+
+        await act(async () => { await result.current.dispatch({ type: 'CLAIM_WIN' }); });
+
+        expect(pokerApi.getReview).toHaveBeenCalledWith('GAME123', 'test-token', expect.any(AbortSignal));
+        expect(session.getSnapshot().isGameOver).toBe(true);
+    });
+
+    it('keeps claim pending across public socket updates during deferred review recovery', async () => {
+        let resolveReview!: (value: GameEndResult) => void;
+        vi.mocked(pokerApi.claimWin).mockRejectedValue(new TypeError('Lost claim response'));
+        vi.mocked(pokerApi.getReview).mockReturnValue(new Promise((resolve) => { resolveReview = resolve; }));
+        const { result } = renderHook(() => useGameDispatcher(), { wrapper: createWrapper() });
+
+        let dispatchPromise!: Promise<void>;
+        act(() => { dispatchPromise = result.current.dispatch({ type: 'CLAIM_WIN' }); });
+        await vi.waitFor(() => expect(pokerApi.getReview).toHaveBeenCalledTimes(1));
+        expect(session.getSnapshot().claimPending).toBe(true);
+        transport.simulateMessage('/game/ROOM123', createValidGameState({
+            gameId: 'ROOM123', handNumber: 1, pot: 42,
+            players: [{ id: 'p-1', name: 'TestPlayer', chips: 980 }],
+        }));
+        expect(session.getSnapshot().gameState?.pot).toBe(42);
+        expect(session.getSnapshot().claimPending).toBe(true);
+
+        await act(async () => {
+            resolveReview({
+                gameId: 'GAME123', winnerName: 'TestPlayer', winnerChips: 2000,
+                isForfeit: true, message: 'Recovered review',
+            });
+            await dispatchPromise;
+        });
+        expect(session.getSnapshot().isGameOver).toBe(true);
+        expect(session.getSnapshot().claimPending).toBe(false);
     });
 
     it('dispatch CLAIM_WIN clears claimPending and exposes retry when review recovery is exhausted', async () => {
@@ -251,15 +293,17 @@ describe('useGameDispatcher', () => {
 
         await act(async () => {
             await result.current.dispatch({ type: 'CLAIM_WIN' });
+            await vi.advanceTimersByTimeAsync(20_000);
         });
 
         expect(session.getSnapshot().claimPending).toBe(false);
         expect(session.getSnapshot().isGameOver).toBe(false);
         expect(result.current.isPending('CLAIM_WIN')).toBe(false);
-        expect(session.getSnapshot().notification).toBe('Technical difficulties.');
+        expect(session.getSnapshot().recoveryFailed).toBe(true);
+        expect(pokerApi.getReview).toHaveBeenCalledTimes(4);
     });
 
-    it('dispatch CLAIM_WIN attempts review recovery when pokerApi.claimWin rejects with 403 and resets claimPending on failure', async () => {
+    it('does not retry review after a definite claim rejection', async () => {
         const error = Object.assign(new Error('Cannot claim win right now.'), { status: 403 });
         vi.mocked(pokerApi.claimWin).mockRejectedValue(error);
         const getReviewSpy = vi.mocked(pokerApi.getReview).mockRejectedValue(new Error('No review available'));
@@ -271,7 +315,7 @@ describe('useGameDispatcher', () => {
             await result.current.dispatch({ type: 'CLAIM_WIN' });
         });
 
-        expect(getReviewSpy).toHaveBeenCalledWith('GAME123', 'test-token');
+        expect(getReviewSpy).not.toHaveBeenCalled();
         expect(session.getSnapshot().claimPending).toBe(false);
         expect(session.getSnapshot().notification).toBe('Cannot claim win right now.');
     });
@@ -419,12 +463,14 @@ describe('useGameDispatcher', () => {
 
         await act(async () => {
             await result.current.dispatch({ type: 'CLAIM_WIN' });
+            await vi.advanceTimersByTimeAsync(20_000);
         });
 
         expect(session.getSnapshot().claimPending).toBe(false);
         expect(result.current.isPending('CLAIM_WIN')).toBe(false);
         expect(session.getSnapshot().error).toBeNull();
-        expect(session.getSnapshot().notification).toBe('Server recovering');
+        expect(session.getSnapshot().recoveryFailed).toBe(true);
+        expect(pokerApi.getReview).toHaveBeenCalledTimes(4);
         expect(onLeave).not.toHaveBeenCalled();
     });
 

@@ -121,6 +121,13 @@ describe('useGameWebSocket', () => {
     });
 
     it('handles incoming private state and action errors', async () => {
+        session.applyGameState(createValidGameState({
+            gameId: 'ROOM123',
+            handNumber: 0,
+            currentPlayerName: 'TestPlayer',
+            currentPlayerId: 'p-1',
+            players: [{ id: 'p-1', name: 'TestPlayer', chips: 1000, currentBet: 0, status: 'ACTIVE' }],
+        }));
         renderHook(() => useGameWebSocket({ onSocketError }), {
             wrapper: createWrapper(),
         });
@@ -648,6 +655,7 @@ describe('useGameWebSocket', () => {
             resolveGameState(createValidGameState({
                 gameId: 'ROOM123',
                 phase: 'PRE_FLOP',
+                handNumber: 0,
                 pot: 30,
                 currentBet: 20,
                 communityCards: [],
@@ -886,6 +894,13 @@ describe('useGameWebSocket', () => {
             gameStarted: true,
         });
 
+        session.applyGameState(createValidGameState({
+            gameId: 'ROOM123',
+            handNumber: 0,
+            currentPlayerName: 'TestPlayer',
+            currentPlayerId: 'p-1',
+            players: [{ id: 'p-1', name: 'TestPlayer', chips: 1000, currentBet: 0, status: 'ACTIVE' }],
+        }));
         let resolveRestGameState!: (val: unknown) => void;
         vi.mocked(pokerApi.getGameState).mockImplementationOnce(
             () => new Promise((resolve) => { resolveRestGameState = resolve; }) as never
@@ -908,6 +923,7 @@ describe('useGameWebSocket', () => {
                 JSON.stringify(createValidGameState({
                     gameId: 'ROOM123',
                     phase: 'FLOP',
+                    handNumber: 0,
                     pot: 120,
                     currentBet: 40,
                     communityCards: ['AH', 'KD', '2C'],
@@ -926,6 +942,7 @@ describe('useGameWebSocket', () => {
             resolveRestGameState(createValidGameState({
                 gameId: 'ROOM123',
                 phase: 'PRE_FLOP',
+                handNumber: 0,
                 pot: 30,
                 currentBet: 20,
                 communityCards: [],
@@ -945,8 +962,18 @@ describe('useGameWebSocket', () => {
     it('does not let a stale REST private snapshot overwrite newer WebSocket hole cards', async () => {
         const inMemoryTransport = new InMemoryTransportAdapter();
         session.setRoomState({ roomId: 'ROOM123', gameStarted: true });
-        let resolvePrivateState!: (value: { playerId: string; holeCards: string[] }) => void;
-        vi.mocked(pokerApi.getGameState).mockResolvedValue(createValidGameState({ gameId: 'ROOM123' }));
+        session.applyGameState(createValidGameState({
+            gameId: 'ROOM123',
+            handNumber: 0,
+            currentPlayerName: 'TestPlayer',
+            currentPlayerId: 'p-1',
+            players: [{ id: 'p-1', name: 'TestPlayer', chips: 1000, currentBet: 0, status: 'ACTIVE' }],
+        }));
+        let resolvePrivateState!: (value: { playerId: string; handNumber: number; holeCards: string[] }) => void;
+        vi.mocked(pokerApi.getGameState).mockResolvedValue(createValidGameState({
+            gameId: 'ROOM123', handNumber: 0,
+            players: [{ id: 'p-1', name: 'TestPlayer' }],
+        }));
         vi.mocked(pokerApi.getPrivateState).mockImplementationOnce(
             () => new Promise((resolve) => { resolvePrivateState = resolve; }) as never,
         );
@@ -968,10 +995,12 @@ describe('useGameWebSocket', () => {
         expect(session.getSnapshot().privateState).toEqual({ holeCards: ['AH', 'KH'] });
 
         await act(async () => {
-            resolvePrivateState({ playerId: 'p-1', holeCards: ['2C', '3C'] });
+            resolvePrivateState({ playerId: 'p-1', handNumber: 0, holeCards: ['2C', '3C'] });
             await Promise.resolve();
         });
 
+        expect(session.getSnapshot().recoveryFailed).toBe(false);
+        expect(session.hasPendingRecoveryTimer()).toBe(false);
         expect(session.getSnapshot().privateState).toEqual({ holeCards: ['AH', 'KH'] });
     });
 

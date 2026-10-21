@@ -1,305 +1,239 @@
-import { renderHook, act } from '@testing-library/react';
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { createElement, type ReactNode } from 'react';
+import { renderHook, act, cleanup } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { useSessionHydration } from '../useSessionHydration';
-import { useGameContext } from '../../context/GameContext';
+import { GameProvider } from '../../context/GameProvider';
+import { GameSession } from '../../domain/GameSession';
+import { TestClock } from '../../domain/clock';
+import { InMemoryTransportAdapter } from '../../services/transport';
 import { pokerApi } from '../../services/api';
 import { createMockJwt, createValidGameState, createValidRoomData } from '../../test/fixtures';
 import { SESSION_EXPIRED, SESSION_SEAT_GONE } from '../../constants/strings';
+import type { RoomDataResponse, SessionSnapshot } from '../../types';
 
-vi.mock('../../context/GameContext', () => ({
-    useGameContext: vi.fn(),
-}));
+const sessions: GameSession[] = [];
 
-describe('useSessionHydration', () => {
-    const mockAuth = {
-        token: createMockJwt(),
-        roomId: 'ROOM123',
-        playerName: 'TestPlayer',
-        message: 'Success',
+function setup(started = false) {
+    const auth = { token: createMockJwt(), roomId: 'ROOM123', playerName: 'TestPlayer', message: 'Success' };
+    const room = createValidRoomData({
+        roomId: auth.roomId, gameStarted: started,
+        players: [{ name: auth.playerName, isHost: true, joinedAt: '2026-05-22T00:00:00Z' }],
+    });
+    const publicState = createValidGameState({
+        gameId: auth.roomId, handNumber: 1, stateRevision: 1,
+        players: [{ id: 'hero-id', name: auth.playerName }],
+    });
+    const privateState = { playerId: 'hero-id', handNumber: 1, holeCards: ['AS', 'KS'] };
+    const review = {
+        gameId: auth.roomId, winnerName: auth.playerName, winnerChips: 1000,
+        isForfeit: false, message: 'Game Over',
     };
+    const api = {
+        ...pokerApi,
+        getRoomData: vi.fn<typeof pokerApi.getRoomData>().mockResolvedValue(room),
+        getPublicGameState: vi.fn<typeof pokerApi.getPublicGameState>().mockResolvedValue(publicState),
+        getPrivatePlayerState: vi.fn<typeof pokerApi.getPrivatePlayerState>().mockResolvedValue(privateState),
+        getReview: vi.fn<typeof pokerApi.getReview>().mockResolvedValue(review),
+    };
+    const clock = new TestClock();
     const onLeave = vi.fn();
-    const dispatch = vi.fn();
-    const applyIncomingGameState = vi.fn();
-    const applyIncomingPrivateState = vi.fn();
+    const session = new GameSession({ auth, transport: new InMemoryTransportAdapter(), clock, pokerApi: api, onLeave });
+    sessions.push(session);
+    function wrapper({ children }: { children: ReactNode }) {
+        return createElement(GameProvider, { auth, session, onLeave, children });
+    }
+    return { api, auth, clock, onLeave, session, wrapper, privateState, room };
+}
 
-    beforeEach(() => {
-        vi.clearAllMocks();
-        vi.useFakeTimers();
-
-        vi.mocked(useGameContext).mockReturnValue({
-            auth: mockAuth,
-            onLeave,
-            dispatch,
-            applyIncomingGameState,
-            applyIncomingPrivateState,
-            roomState: null,
-            gameState: null,
-            privateState: null,
-            showdown: null,
-            showdownResult: null,
-            notification: null,
-            loadingStatus: 'Connecting...',
-            myPlayerId: 'p-1',
-            claimPending: false,
-            wsStatus: 'connected',
-            isHydrated: true,
-            isGameOver: false,
-            gameEndResult: null,
-            clearShowdownTimers: vi.fn(),
-        });
+async function settle() {
+    await act(async () => {
+        for (let i = 0; i < 8; i++) await Promise.resolve();
     });
+}
 
-    afterEach(() => {
-        vi.restoreAllMocks();
-    });
-
-    it('hydrates room and transitions loading state successfully when game is not started', async () => {
-        const getRoomInfoSpy = vi.spyOn(pokerApi, 'getRoomInfo').mockResolvedValue({
-            ...createValidRoomData(),
-            roomId: 'ROOM123',
-            roomName: 'Table 1',
-            players: [{ name: 'TestPlayer', isHost: true, joinedAt: '2026-05-22T00:00:00Z' }],
-            canStartGame: true,
-            gameStarted: false,
-        });
-
-        renderHook(() => useSessionHydration());
-
+async function exhaustRetries(clock: TestClock) {
+    await settle();
+    for (let i = 0; i < 3; i++) {
         await act(async () => {
-            await Promise.resolve();
-            await Promise.resolve();
+            clock.tick(9000);
+            for (let j = 0; j < 8; j++) await Promise.resolve();
         });
+    }
+}
 
-        expect(getRoomInfoSpy).toHaveBeenCalledWith('ROOM123', mockAuth.token);
-        expect(dispatch).toHaveBeenCalledWith({
-            type: 'SET_ROOM',
-            payload: expect.objectContaining({
-                roomId: 'ROOM123',
-                roomName: 'Table 1',
-                gameStarted: false,
-            }),
-        });
-        expect(dispatch).toHaveBeenCalledWith({
-            type: 'SET_LOADING_STATUS',
-            payload: 'Connected.',
+afterEach(() => {
+    cleanup();
+    sessions.splice(0).forEach(session => session.dispose());
+    vi.restoreAllMocks();
+});
+
+describe('useSessionHydration through the session coordinator', () => {
+    it('hydrates a validated lobby without fetching game state', async () => {
+        const { api, auth, session, wrapper } = setup();
+        renderHook(() => useSessionHydration(), { wrapper });
+        await settle();
+
+        expect(api.getRoomData).toHaveBeenCalledWith(auth.roomId, auth.token, expect.any(AbortSignal));
+        expect(api.getPublicGameState).not.toHaveBeenCalled();
+        expect(session.getSnapshot()).toMatchObject({
+            isHydrated: true, loadingStatus: 'Connected.', roomState: { roomId: auth.roomId, gameStarted: false },
         });
     });
 
-    it('handles 403 / 404 hydration errors and redirects to lobby', async () => {
-        const getRoomInfoSpy = vi.spyOn(pokerApi, 'getRoomInfo').mockRejectedValue({
-            status: 403,
-            message: 'Session Expired',
+    it('publishes the started public/private pair and hydration state together', async () => {
+        const { api, session, wrapper } = setup(true);
+        const observed: SessionSnapshot[] = [];
+        const unsubscribe = session.subscribe(() => observed.push(session.getSnapshot()));
+        renderHook(() => useSessionHydration(), { wrapper });
+        await settle();
+        unsubscribe();
+
+        expect(api.getPublicGameState).toHaveBeenCalledOnce();
+        expect(api.getPrivatePlayerState).toHaveBeenCalledOnce();
+        const liveEmissions = observed.filter(snapshot => snapshot.gameState !== null);
+        expect(liveEmissions).toHaveLength(1);
+        expect(liveEmissions[0]).toMatchObject({
+            isHydrated: true, gameState: { handNumber: 1 }, privateState: { holeCards: ['AS', 'KS'] },
         });
-
-        renderHook(() => useSessionHydration());
-
-        await act(async () => {
-            await Promise.resolve();
-            await Promise.resolve();
-        });
-
-        expect(getRoomInfoSpy).toHaveBeenCalled();
-        expect(dispatch).toHaveBeenCalledWith({
-            type: 'SET_NOTIFICATION',
-            payload: expect.any(String),
-        });
-
-        act(() => {
-            vi.advanceTimersByTime(3000);
-        });
-
-        expect(onLeave).toHaveBeenCalledTimes(1);
     });
 
-    it('bounds retries to 1 initial plus 3 retries and exposes initialLoadFailed on exhaustion', async () => {
-        vi.spyOn(pokerApi, 'getRoomInfo').mockRejectedValue({ status: 503 });
+    it('bounds initial attempts to four and manual Retry resets the budget before WebSocket connection', async () => {
+        const { api, clock, session, wrapper, room } = setup();
+        api.getRoomData.mockRejectedValue({ status: 503 });
+        const { result } = renderHook(() => useSessionHydration(), { wrapper });
+        await exhaustRetries(clock);
 
-        const { result } = renderHook(() => useSessionHydration());
-
-        // Initial attempt 1 + 3 retries across backoff
-        for (let i = 0; i < 4; i++) {
-            await act(async () => {
-                await vi.advanceTimersByTimeAsync(9000);
-            });
-        }
-
-        expect(pokerApi.getRoomInfo).toHaveBeenCalledTimes(4);
+        expect(api.getRoomData).toHaveBeenCalledTimes(4);
         expect(result.current.initialLoadFailed).toBe(true);
-        expect(dispatch).not.toHaveBeenCalledWith({ type: 'SET_HYDRATED', payload: true });
-        expect(dispatch).not.toHaveBeenCalledWith({ type: 'SET_LOADING_STATUS', payload: 'Connected.' });
+        expect(session.getSnapshot()).toMatchObject({ isHydrated: false, recoveryFailed: true });
+        expect(session.getSnapshot().loadingStatus).not.toBe('Connected.');
 
-        // retryInitialLoad triggers a new attempt with reset budget
-        vi.mocked(pokerApi.getRoomInfo).mockResolvedValueOnce(createValidRoomData({
-            roomId: 'ROOM123',
-            gameStarted: false,
-            players: [{ name: 'TestPlayer', isHost: true, joinedAt: '2026-05-22T00:00:00Z' }],
-        }));
-
-        await act(async () => {
-            result.current.retryInitialLoad();
-            await Promise.resolve();
-        });
-
+        api.getRoomData.mockResolvedValue(room);
+        act(() => result.current.retryInitialLoad());
+        await settle();
+        expect(api.getRoomData).toHaveBeenCalledTimes(5);
         expect(result.current.initialLoadFailed).toBe(false);
-        expect(dispatch).toHaveBeenCalledWith({ type: 'SET_HYDRATED', payload: true });
+        expect(session.getSnapshot()).toMatchObject({ isHydrated: true, recoveryFailed: false });
     });
 
-    it('does not mark hydration complete when unmounted during the private-state fetch', async () => {
-        let resolvePrivateState!: (value: { playerId: string; holeCards: string[] }) => void;
-        const privateState = new Promise<{ playerId: string; holeCards: string[] }>((resolve) => {
-            resolvePrivateState = resolve;
-        });
-        vi.spyOn(pokerApi, 'getRoomInfo').mockResolvedValue(createValidRoomData({
-            roomId: 'ROOM123',
-            gameStarted: true,
-            players: [{ name: 'TestPlayer', isHost: true, joinedAt: '2026-05-22T00:00:00Z' }],
-        }));
-        vi.spyOn(pokerApi, 'getGameState').mockResolvedValue(createValidGameState({
-            gameId: 'ROOM123',
-            players: [],
-        }));
-        vi.spyOn(pokerApi, 'getPrivateState').mockReturnValue(privateState);
+    it.each([
+        { holeCards: ['AS', 'KS'], handNumber: 1 },
+        { playerId: 'hero-id', holeCards: ['AS', 'KS'] },
+        { playerId: 'hero-id', handNumber: 2, holeCards: ['AS', 'KS'] },
+        { playerId: 'someone-else', handNumber: 1, holeCards: ['AS', 'KS'] },
+        { playerId: 'hero-id', handNumber: 1, holeCards: ['AS'] },
+        { playerId: 'hero-id', handNumber: 1, holeCards: ['BAD', 'KS'] },
+    ])('never hydrates or commits either slice for invalid private data: %j', async privateData => {
+        const { api, clock, session, wrapper, onLeave } = setup(true);
+        api.getPrivatePlayerState.mockResolvedValue(privateData);
+        const { result } = renderHook(() => useSessionHydration(), { wrapper });
+        await exhaustRetries(clock);
 
-        const { unmount } = renderHook(() => useSessionHydration());
-        await act(async () => {
-            await Promise.resolve();
-            await Promise.resolve();
-            await Promise.resolve();
+        expect(api.getPrivatePlayerState).toHaveBeenCalledTimes(4);
+        expect(session.getSnapshot()).toMatchObject({
+            gameState: null, privateState: null, isHydrated: false, recoveryFailed: true,
         });
-        expect(pokerApi.getPrivateState).toHaveBeenCalled();
-        dispatch.mockClear();
+        expect(result.current.initialLoadFailed).toBe(true);
+        expect(onLeave).not.toHaveBeenCalled();
+    });
 
+    it('retries malformed Room membership instead of treating it as a lost seat', async () => {
+        const { api, clock, session, wrapper, onLeave, room } = setup();
+        api.getRoomData.mockResolvedValue({
+            ...room, players: [{ name: 'Someone Else', isHost: 'invalid' }],
+        } as unknown as RoomDataResponse);
+        renderHook(() => useSessionHydration(), { wrapper });
+        await exhaustRetries(clock);
+
+        expect(api.getRoomData).toHaveBeenCalledTimes(4);
+        expect(session.getSnapshot()).toMatchObject({ isHydrated: false, recoveryFailed: true });
+        expect(api.getReview).not.toHaveBeenCalled();
+        expect(onLeave).not.toHaveBeenCalled();
+    });
+
+    it('aborts an unmounted private fetch and ignores a response that disregards cancellation', async () => {
+        const { api, session, wrapper, privateState } = setup(true);
+        let resolvePrivate!: (value: unknown) => void;
+        api.getPrivatePlayerState.mockReturnValue(new Promise(resolve => { resolvePrivate = resolve; }));
+        const { unmount } = renderHook(() => useSessionHydration(), { wrapper });
+        await settle();
+        expect(api.getPrivatePlayerState).toHaveBeenCalledOnce();
+        const signal = api.getPrivatePlayerState.mock.calls[0][2];
+        expect(signal?.aborted).toBe(false);
         unmount();
-        resolvePrivateState({ playerId: 'p-1', holeCards: ['AS', 'KS'] });
-        await act(async () => {
-            await privateState;
-        });
-
-        expect(dispatch).not.toHaveBeenCalledWith({ type: 'SET_HYDRATED', payload: true });
+        expect(signal?.aborted).toBe(true);
+        const afterUnmount = session.getSnapshot();
+        resolvePrivate(privateState);
+        await settle();
+        expect(session.getSnapshot()).toBe(afterUnmount);
+        expect(session.getSnapshot().isHydrated).toBe(false);
     });
 
-    describe('review recovery on 403 / 404 failures', () => {
-        const terminalReview = {
-            gameId: 'ROOM123',
-            winnerName: 'TestPlayer',
-            winnerChips: 1000,
-            isForfeit: false,
-            message: 'Game Over',
-        };
+    it.each(['room', 'public', 'private'] as const)('installs terminal review after a %s 404', async source => {
+        const { api, session, wrapper, onLeave } = setup(source !== 'room');
+        if (source === 'room') api.getRoomData.mockRejectedValue({ status: 404 });
+        if (source === 'public') api.getPublicGameState.mockRejectedValue({ status: 404 });
+        if (source === 'private') api.getPrivatePlayerState.mockRejectedValue({ status: 404 });
+        renderHook(() => useSessionHydration(), { wrapper });
+        await settle();
 
-        it('installs terminal result when room 404 recovers via review 200', async () => {
-            vi.spyOn(pokerApi, 'getRoomInfo').mockRejectedValue({ status: 404 });
-            const getReviewSpy = vi.spyOn(pokerApi, 'getReview').mockResolvedValue(terminalReview);
-
-            renderHook(() => useSessionHydration());
-
-            await act(async () => {
-                await Promise.resolve();
-                await Promise.resolve();
-            });
-
-            expect(getReviewSpy).toHaveBeenCalledWith('ROOM123', mockAuth.token);
-            expect(dispatch).toHaveBeenCalledWith({
-                type: 'INSTALL_TERMINAL_RESULT',
-                payload: terminalReview,
-            });
-            expect(dispatch).toHaveBeenCalledWith({
-                type: 'SET_HYDRATED',
-                payload: true,
-            });
-            expect(onLeave).not.toHaveBeenCalled();
+        expect(api.getReview).toHaveBeenCalledOnce();
+        expect(session.getSnapshot()).toMatchObject({
+            isGameOver: true, isHydrated: true, gameEndResult: { winnerName: 'TestPlayer' },
         });
+        expect(onLeave).not.toHaveBeenCalled();
+    });
 
-        it('installs terminal result when game state 404 recovers via review 200', async () => {
-            vi.spyOn(pokerApi, 'getRoomInfo').mockResolvedValue(createValidRoomData({
-                roomId: 'ROOM123',
-                gameStarted: true,
-                players: [{ name: 'TestPlayer', isHost: true, joinedAt: '2026-05-22T00:00:00Z' }],
-            }));
-            vi.spyOn(pokerApi, 'getGameState').mockRejectedValue({ status: 404 });
-            const getReviewSpy = vi.spyOn(pokerApi, 'getReview').mockResolvedValue(terminalReview);
+    it.each([
+        [403, 404, SESSION_SEAT_GONE], [403, 409, SESSION_SEAT_GONE],
+        [404, 404, SESSION_EXPIRED], [404, 409, SESSION_EXPIRED],
+        [404, 403, SESSION_SEAT_GONE],
+    ] as const)('honors original %i when terminal review returns %i', async (original, reviewStatus, message) => {
+        const { api, clock, session, wrapper, onLeave } = setup();
+        api.getRoomData.mockRejectedValue({ status: original });
+        api.getReview.mockRejectedValue({ status: reviewStatus });
+        renderHook(() => useSessionHydration(), { wrapper });
+        await settle();
 
-            renderHook(() => useSessionHydration());
+        expect(session.getSnapshot().notification).toBe(message);
+        expect(session.getSnapshot().isHydrated).toBe(false);
+        expect(onLeave).not.toHaveBeenCalled();
+        act(() => clock.tick(3000));
+        expect(onLeave).toHaveBeenCalledOnce();
+        expect(api.getRoomData).toHaveBeenCalledOnce();
+    });
 
-            await act(async () => {
-                await Promise.resolve();
-                await Promise.resolve();
-            });
+    it.each(['transient', 'malformed'] as const)('bounds %s review recovery without discarding auth or redirecting', async outcome => {
+        const { api, auth, clock, session, wrapper, onLeave } = setup();
+        api.getRoomData.mockRejectedValue({ status: 404 });
+        if (outcome === 'transient') api.getReview.mockRejectedValue({ status: 500 });
+        else api.getReview.mockResolvedValue({ message: 'Missing terminal fields' } as never);
+        const { result } = renderHook(() => useSessionHydration(), { wrapper });
+        await exhaustRetries(clock);
 
-            expect(getReviewSpy).toHaveBeenCalledWith('ROOM123', mockAuth.token);
-            expect(dispatch).toHaveBeenCalledWith({
-                type: 'INSTALL_TERMINAL_RESULT',
-                payload: terminalReview,
-            });
-            expect(dispatch).toHaveBeenCalledWith({
-                type: 'SET_HYDRATED',
-                payload: true,
-            });
-            expect(onLeave).not.toHaveBeenCalled();
-        });
+        expect(api.getReview).toHaveBeenCalledTimes(4);
+        expect(result.current.initialLoadFailed).toBe(true);
+        expect(session.getSnapshot()).toMatchObject({ isHydrated: false, gameEndResult: null });
+        expect(api.getRoomData.mock.calls.every(call => call[1] === auth.token)).toBe(true);
+        expect(onLeave).not.toHaveBeenCalled();
+    });
 
-        it('honors original 404 failure with session expired redirect when review returns 404 or 409', async () => {
-            vi.spyOn(pokerApi, 'getRoomInfo').mockRejectedValue({ status: 404 });
-            vi.spyOn(pokerApi, 'getReview').mockRejectedValue({ status: 404 });
+    it('emits token-specific auth expiry once without scheduling another initial attempt', async () => {
+        const { api, auth, clock, session, wrapper } = setup();
+        const onExpiry = vi.fn();
+        window.addEventListener('auth-expired', onExpiry);
+        try {
+            api.getRoomData.mockRejectedValue({ status: 401 });
+            renderHook(() => useSessionHydration(), { wrapper });
+            await settle();
+            act(() => clock.tick(30_000));
 
-            renderHook(() => useSessionHydration());
-
-            await act(async () => {
-                await Promise.resolve();
-                await Promise.resolve();
-            });
-
-            expect(dispatch).toHaveBeenCalledWith({
-                type: 'SET_NOTIFICATION',
-                payload: SESSION_EXPIRED,
-            });
-
-            act(() => {
-                vi.advanceTimersByTime(3000);
-            });
-
-            expect(onLeave).toHaveBeenCalledTimes(1);
-        });
-
-        it('triggers seat-gone redirect when review returns 403', async () => {
-            vi.spyOn(pokerApi, 'getRoomInfo').mockRejectedValue({ status: 404 });
-            vi.spyOn(pokerApi, 'getReview').mockRejectedValue({ status: 403 });
-
-            renderHook(() => useSessionHydration());
-
-            await act(async () => {
-                await Promise.resolve();
-                await Promise.resolve();
-            });
-
-            expect(dispatch).toHaveBeenCalledWith({
-                type: 'SET_NOTIFICATION',
-                payload: SESSION_SEAT_GONE,
-            });
-
-            act(() => {
-                vi.advanceTimersByTime(3000);
-            });
-
-            expect(onLeave).toHaveBeenCalledTimes(1);
-        });
-
-        it('retries when review returns 500 / network error and fails load upon exhaustion', async () => {
-            vi.spyOn(pokerApi, 'getRoomInfo').mockRejectedValue({ status: 404 });
-            vi.spyOn(pokerApi, 'getReview').mockRejectedValue({ status: 500 });
-
-            const { result } = renderHook(() => useSessionHydration());
-
-            // 1 initial + 3 retries across backoff
-            for (let i = 0; i < 4; i++) {
-                await act(async () => {
-                    await vi.advanceTimersByTimeAsync(9000);
-                });
-            }
-
-            expect(pokerApi.getReview).toHaveBeenCalledTimes(4);
-            expect(result.current.initialLoadFailed).toBe(true);
-            expect(onLeave).not.toHaveBeenCalled();
-        });
+            expect(onExpiry).toHaveBeenCalledOnce();
+            expect((onExpiry.mock.calls[0][0] as CustomEvent).detail).toEqual({ token: auth.token });
+            expect(api.getRoomData).toHaveBeenCalledOnce();
+            expect(session.getSnapshot().isHydrated).toBe(false);
+        } finally {
+            window.removeEventListener('auth-expired', onExpiry);
+        }
     });
 });

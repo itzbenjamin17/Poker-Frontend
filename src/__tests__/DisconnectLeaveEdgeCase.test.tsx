@@ -34,6 +34,7 @@ describe('Disconnect & Leave Edge Cases', () => {
 
     const initialGameState: GameState = {
         gameId: 'ROOM123',
+        handNumber: 0,
         phase: 'TURN',
         pot: 100,
         currentBet: 0,
@@ -71,7 +72,7 @@ describe('Disconnect & Leave Edge Cases', () => {
             currentPlayers: 2,
         });
         vi.mocked(pokerApi.getGameState).mockResolvedValue(initialGameState);
-        vi.mocked(pokerApi.getPrivateState).mockResolvedValue({ playerId: 'p-2', holeCards: ['2c', '4h'] });
+        vi.mocked(pokerApi.getPrivateState).mockResolvedValue({ playerId: 'p-1', handNumber: 0, holeCards: ['2c', '4h'] });
     });
 
     afterEach(() => {
@@ -79,6 +80,7 @@ describe('Disconnect & Leave Edge Cases', () => {
     });
 
     it('defers a server GAME_END review during leave and keeps it when departure fails', async () => {
+        vi.mocked(pokerApi.getPrivateState).mockResolvedValue({ playerId: 'p-2', handNumber: 0, holeCards: ['2c', '4h'] });
         const transport = new InMemoryTransportAdapter();
         const clock = new TestClock(1000);
         const onLeave = vi.fn();
@@ -143,6 +145,7 @@ describe('Disconnect & Leave Edge Cases', () => {
     });
 
     it('clears a GAME_END review after a successful standalone fallback leave and provider effects', async () => {
+        vi.mocked(pokerApi.getPrivateState).mockResolvedValue({ playerId: 'p-2', handNumber: 0, holeCards: ['2c', '4h'] });
         const transport = new InMemoryTransportAdapter();
         const session = new GameSession({
             auth: { ...mockAuth, playerName: 'P2' },
@@ -243,7 +246,7 @@ describe('Disconnect & Leave Edge Cases', () => {
             });
 
             await act(async () => {
-                vi.advanceTimersByTime(3000);
+                clock.tick(3000);
             });
 
             expect(onLeave).toHaveBeenCalledTimes(1);

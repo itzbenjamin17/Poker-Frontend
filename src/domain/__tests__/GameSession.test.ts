@@ -153,7 +153,7 @@ describe('GameSession Domain Store', () => {
             expect(session.getSnapshot().gameState?.pot).toBe(50);
         });
 
-        it('syncs private state and sets hero player ID', () => {
+        it('keeps private state hidden until a matching public hand identifies the hero', () => {
             const { session, transport } = createSession();
             session.connect();
 
@@ -163,6 +163,14 @@ describe('GameSession Domain Store', () => {
                 holeCards: ['Ah', 'Kh'],
             });
 
+            expect(session.getSnapshot().privateState).toBeNull();
+            expect(session.getSnapshot().myPlayerId).toBeNull();
+
+            transport.simulateMessage('/game/room-123', createValidGameState({
+                gameId: 'room-123',
+                handNumber: 0,
+                players: [{ id: 'hero-p1', name: 'Hero', chips: 1000 }],
+            }));
             expect(session.getSnapshot().privateState?.holeCards).toEqual(['AH', 'KH']);
             expect(session.getSnapshot().myPlayerId).toBe('hero-p1');
         });
@@ -1156,6 +1164,39 @@ describe('GameSession Domain Store', () => {
             expect(session.hasPendingRecoveryTimer()).toBe(true);
         });
 
+        it('commits hand-2 REST private state after an old-hand socket update advances its revision', async () => {
+            const { session, transport } = createAuthedSession();
+            session.setRoomState({ roomId: 'room-123', gameStarted: true });
+            session.applyGameState(createValidGameState({
+                gameId: 'room-123', handNumber: 1,
+                players: [{ id: 'hero-p1', name: 'Hero', chips: 1000 }],
+            }));
+            session.applyPrivateState({ playerId: 'hero-p1', handNumber: 1, holeCards: ['2C', '3D'] });
+
+            let resolvePublic!: (value: unknown) => void;
+            vi.spyOn(pokerApi, 'getPublicGameState').mockImplementationOnce(
+                () => new Promise((resolve) => { resolvePublic = resolve; })
+            );
+            vi.spyOn(pokerApi, 'getPrivatePlayerState').mockResolvedValueOnce({
+                playerId: 'hero-p1', handNumber: 2, holeCards: ['AH', 'KH'],
+            });
+            const sync = session.synchronizeSession();
+            await Promise.resolve();
+            transport.simulateMessage('/user/queue/private', {
+                playerId: 'hero-p1', handNumber: 1, holeCards: ['2C', '3D'],
+            });
+            resolvePublic(createValidGameState({
+                gameId: 'room-123', handNumber: 2,
+                players: [{ id: 'hero-p1', name: 'Hero', chips: 900 }],
+            }));
+            await sync;
+
+            expect(session.getSnapshot().gameState?.handNumber).toBe(2);
+            expect(session.getSnapshot().privateState?.holeCards).toEqual(['AH', 'KH']);
+            expect(session.getSnapshot().isHydrated).toBe(true);
+            expect(session.hasPendingRecoveryTimer()).toBe(false);
+        });
+
         it('both STOMP delivery orders work: private-before-public and public-before-private', () => {
             const { session, transport } = createAuthedSession();
             session.connect();
@@ -1192,6 +1233,33 @@ describe('GameSession Domain Store', () => {
                 players: [{ id: 'hero-p1', name: 'Hero', chips: 1000 }],
             }));
             expect(session.getSnapshot().gameState?.handNumber).toBe(2);
+            expect(session.getSnapshot().privateState?.holeCards).toEqual(['AH', 'KH']);
+        });
+
+        it('keeps the newest future private hand buffered and rejects malformed or wrong-hero data', () => {
+            const { session, transport } = createAuthedSession();
+            session.connect();
+            transport.simulateMessage('/game/room-123', createValidGameState({
+                gameId: 'room-123', handNumber: 1,
+                players: [{ id: 'hero-p1', name: 'Hero', chips: 1000 }],
+            }));
+            transport.simulateMessage('/user/queue/private', { playerId: 'hero-p1', handNumber: 3, holeCards: ['AH', 'KH'] });
+            transport.simulateMessage('/user/queue/private', { playerId: 'hero-p1', handNumber: 2, holeCards: ['QH', 'QD'] });
+            transport.simulateMessage('/user/queue/private', { playerId: 'other', handNumber: 4, holeCards: ['AH', 'KH'] });
+            transport.simulateMessage('/user/queue/private', { playerId: 'hero-p1', handNumber: 4, holeCards: ['not-a-card', 'QD'] });
+            expect(session.getSnapshot().privateState).toBeNull();
+
+            transport.simulateMessage('/user/queue/private', { playerId: 'hero-p1', handNumber: 1, holeCards: ['QH', 'QD'] });
+            expect(session.getSnapshot().privateState?.holeCards).toEqual(['QH', 'QD']);
+            transport.simulateMessage('/game/room-123', createValidGameState({
+                gameId: 'room-123', handNumber: 2,
+                players: [{ id: 'hero-p1', name: 'Hero', chips: 1000 }],
+            }));
+            expect(session.getSnapshot().privateState).toBeNull();
+            transport.simulateMessage('/game/room-123', createValidGameState({
+                gameId: 'room-123', handNumber: 3,
+                players: [{ id: 'hero-p1', name: 'Hero', chips: 1000 }],
+            }));
             expect(session.getSnapshot().privateState?.holeCards).toEqual(['AH', 'KH']);
         });
 

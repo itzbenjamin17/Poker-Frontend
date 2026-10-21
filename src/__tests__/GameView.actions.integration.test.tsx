@@ -5,7 +5,7 @@ import GameView from '../GameView';
 import { MockStompClient, activeSubscriptions } from '../test/mocks/stomp';
 import { http, HttpResponse } from 'msw';
 import { server } from '../test/mocks/server';
-import { createValidGameState, mockAuth } from '../test/fixtures';
+import { createValidGameState, createValidRoomData, mockAuth } from '../test/fixtures';
 
 const auth = {
     ...mockAuth,
@@ -26,7 +26,7 @@ describe('GameView - Actions & Flows Integration', () => {
         const publishSpy = vi.spyOn(MockStompClient.prototype, 'publish');
 
         server.use(
-            http.get('/api/room/ROOM123', () => HttpResponse.json({
+            http.get('/api/room/ROOM123', () => HttpResponse.json(createValidRoomData({
                 roomId: 'ROOM123',
                 roomName: 'Poker Table',
                 players: [
@@ -34,7 +34,7 @@ describe('GameView - Actions & Flows Integration', () => {
                     { name: 'Opponent', isHost: false },
                 ],
                 gameStarted: true,
-            })),
+            }))),
             http.get('/api/game/ROOM123/state', () => HttpResponse.json(createValidGameState({
                 gameId: 'ROOM123',
                 phase: 'PRE_FLOP',
@@ -66,6 +66,8 @@ describe('GameView - Actions & Flows Integration', () => {
         // Simulate private state update via STOMP using await act(async () => ...)
         await act(async () => {
             MockStompClient.simulateMessage('/user/queue/private', {
+                playerId: 'p-1',
+                handNumber: 0,
                 holeCards: ['AS', 'KS'],
             });
         });
@@ -87,7 +89,7 @@ describe('GameView - Actions & Flows Integration', () => {
         const publishSpy = vi.spyOn(MockStompClient.prototype, 'publish');
 
         server.use(
-            http.get('/api/room/ROOM123', () => HttpResponse.json({
+            http.get('/api/room/ROOM123', () => HttpResponse.json(createValidRoomData({
                 roomId: 'ROOM123',
                 roomName: 'Poker Table',
                 players: [
@@ -95,7 +97,7 @@ describe('GameView - Actions & Flows Integration', () => {
                     { name: 'Opponent', isHost: false },
                 ],
                 gameStarted: true,
-            })),
+            }))),
             http.get('/api/game/ROOM123/state', () => HttpResponse.json(createValidGameState({
                 gameId: 'ROOM123',
                 phase: 'PRE_FLOP',
@@ -127,6 +129,8 @@ describe('GameView - Actions & Flows Integration', () => {
         // Simulate private state update via STOMP using await act(async () => ...)
         await act(async () => {
             MockStompClient.simulateMessage('/user/queue/private', {
+                playerId: 'p-1',
+                handNumber: 0,
                 holeCards: ['AS', 'KS'],
             });
         });
@@ -144,7 +148,7 @@ describe('GameView - Actions & Flows Integration', () => {
 
     it('handles the Showdown flow and displays the round summary', async () => {
         server.use(
-            http.get('/api/room/ROOM123', () => HttpResponse.json({
+            http.get('/api/room/ROOM123', () => HttpResponse.json(createValidRoomData({
                 roomId: 'ROOM123',
                 roomName: 'Poker Table',
                 players: [
@@ -152,7 +156,7 @@ describe('GameView - Actions & Flows Integration', () => {
                     { name: 'Opponent', isHost: false },
                 ],
                 gameStarted: true,
-            })),
+            }))),
             http.get('/api/game/ROOM123/state', () => HttpResponse.json(createValidGameState({
                 gameId: 'ROOM123',
                 phase: 'PRE_FLOP',
@@ -234,12 +238,12 @@ describe('GameView - Actions & Flows Integration', () => {
         const confirmSpy = vi.spyOn(window, 'confirm').mockImplementation(() => false);
 
         server.use(
-            http.get('/api/room/ROOM123', () => HttpResponse.json({
+            http.get('/api/room/ROOM123', () => HttpResponse.json(createValidRoomData({
                 roomId: 'ROOM123',
                 roomName: 'Poker Table',
                 players: [{ name: 'TestPlayer', isHost: true }],
                 gameStarted: true,
-            })),
+            }))),
             http.get('/api/game/ROOM123/state', () => HttpResponse.json(createValidGameState({
                 gameId: 'ROOM123',
                 phase: 'PRE_FLOP',
@@ -268,12 +272,12 @@ describe('GameView - Actions & Flows Integration', () => {
 
     it('displays Connection Lost overlay when WebSocket is disconnected', async () => {
         server.use(
-            http.get('/api/room/ROOM123', () => HttpResponse.json({
+            http.get('/api/room/ROOM123', () => HttpResponse.json(createValidRoomData({
                 roomId: 'ROOM123',
                 roomName: 'Poker Table',
                 players: [{ name: 'TestPlayer', isHost: true }],
                 gameStarted: true,
-            })),
+            }))),
             http.get('/api/game/ROOM123/state', () => HttpResponse.json(createValidGameState({
                 gameId: 'ROOM123',
                 phase: 'PRE_FLOP',
@@ -317,7 +321,7 @@ describe('GameView - Actions & Flows Integration', () => {
             http.get('/api/room/ROOM123', () => {
                 roomInfoCalls++;
                 if (roomInfoCalls === 1) {
-                    return HttpResponse.json({
+                    return HttpResponse.json(createValidRoomData({
                         roomId: 'ROOM123',
                         roomName: 'Poker Table',
                         players: [
@@ -325,7 +329,7 @@ describe('GameView - Actions & Flows Integration', () => {
                             { name: 'Opponent', isHost: false },
                         ],
                         gameStarted: true,
-                    });
+                    }));
                 }
                 return new HttpResponse(null, { status: 404 });
             }),
@@ -442,12 +446,12 @@ describe('GameView - Actions & Flows Integration', () => {
 
     it('displays error notification and Connection Lost overlay on STOMP error frame', async () => {
         server.use(
-            http.get('/api/room/ROOM123', () => HttpResponse.json({
+            http.get('/api/room/ROOM123', () => HttpResponse.json(createValidRoomData({
                 roomId: 'ROOM123',
                 roomName: 'Poker Table',
                 players: [{ name: 'TestPlayer', isHost: true }],
                 gameStarted: true,
-            })),
+            }))),
             http.get('/api/game/ROOM123/state', () => HttpResponse.json(createValidGameState({
                 gameId: 'ROOM123',
                 phase: 'PRE_FLOP',

@@ -82,33 +82,8 @@ export function useGameDispatcher() {
                 session?.markGameStarted();
                 void session?.synchronizeSession({ resetBudget: true });
             } else if (command.type === 'CLAIM_WIN') {
-                contextDispatch({ type: 'SET_CLAIM_PENDING', payload: true });
-                session?.setClaimPending(true);
-                try {
-                    const res = await pokerApi.claimWin(targetGameId, auth.token);
-                    session?.installTerminalResult(res.data);
-                } catch (claimErr) {
-                    let review = null;
-                    const maxRetries = 3;
-                    for (let attempt = 0; attempt < maxRetries; attempt++) {
-                        try {
-                            review = await pokerApi.getReview(targetGameId, auth.token);
-                            break;
-                        } catch (revErr) {
-                            const status = getErrorStatusCode(revErr);
-                            if (status === 409 || status === 403 || status === 404) {
-                                break;
-                            }
-                        }
-                    }
-                    if (review) {
-                        session?.installTerminalResult(review);
-                    } else {
-                        contextDispatch({ type: 'SET_CLAIM_PENDING', payload: false });
-                        session?.setClaimPending(false);
-                        throw claimErr;
-                    }
-                }
+                if (!session) throw new Error('Game session is unavailable');
+                await session.claimWin(targetGameId);
             } else if (command.type === 'LEAVE_GAME') {
                 session?.setPendingLeave(true);
                 try {

@@ -4,7 +4,7 @@ import GameView from '../GameView'
 import { MockStompClient, activeSubscriptions } from '../test/mocks/stomp'
 import { http, HttpResponse } from 'msw'
 import { server } from '../test/mocks/server'
-import { createValidGameState, mockAuth } from '../test/fixtures'
+import { createValidGameState, createValidRoomData, mockAuth } from '../test/fixtures'
 import userEvent from '@testing-library/user-event'
 
 const auth = {
@@ -24,7 +24,7 @@ describe('GameView - Game Table Integration', () => {
   it('transitions to table and shows action buttons on player turn', async () => {
     // Mock room info showing game started
     server.use(
-      http.get('/api/room/ROOM123', () => HttpResponse.json({
+      http.get('/api/room/ROOM123', () => HttpResponse.json(createValidRoomData({
         roomId: 'ROOM123',
         roomName: 'Poker Table',
         players: [
@@ -32,7 +32,7 @@ describe('GameView - Game Table Integration', () => {
           { name: 'Opponent', isHost: false }
         ],
         gameStarted: true
-      })),
+      }))),
       // Mock game state for pre-flop
       http.get('/api/game/ROOM123/state', () => HttpResponse.json(createValidGameState({
         gameId: 'ROOM123',
@@ -50,7 +50,8 @@ describe('GameView - Game Table Integration', () => {
       // Mock private state for hole cards
       http.get('/api/game/ROOM123/private-state', () => HttpResponse.json({
         playerId: 'p-1',
-        holeCards: ['AS', 'KS']
+                handNumber: 0,
+                holeCards: ['AS', 'KS']
       }))
     )
 
@@ -74,7 +75,9 @@ describe('GameView - Game Table Integration', () => {
     // Simulate private state update via STOMP (as the real app does) using await act(async () => ...)
     await act(async () => {
       MockStompClient.simulateMessage('/user/queue/private', {
-        holeCards: ['AS', 'KS']
+        playerId: 'p-1',
+                handNumber: 0,
+                holeCards: ['AS', 'KS']
       })
     })
 
@@ -127,7 +130,7 @@ describe('GameView - Game Table Integration', () => {
     Object.defineProperty(window, 'innerHeight', { configurable: true, value: 400 })
 
     server.use(
-      http.get('/api/room/ROOM123', () => HttpResponse.json({
+      http.get('/api/room/ROOM123', () => HttpResponse.json(createValidRoomData({
         roomId: 'ROOM123',
         roomName: 'Poker Table',
         players: [
@@ -135,7 +138,7 @@ describe('GameView - Game Table Integration', () => {
           { name: 'Opponent', isHost: false },
         ],
         gameStarted: true,
-      })),
+      }))),
       http.get('/api/game/ROOM123/state', () => HttpResponse.json(createValidGameState({
         gameId: 'ROOM123',
         phase: 'TURN',
@@ -152,7 +155,8 @@ describe('GameView - Game Table Integration', () => {
       }))),
       http.get('/api/game/ROOM123/private-state', () => HttpResponse.json({
         playerId: 'p-1',
-        holeCards: ['AS', 'KS'],
+                handNumber: 0,
+                holeCards: ['AS', 'KS'],
       })),
     )
 
@@ -174,7 +178,7 @@ describe('GameView - Game Table Integration', () => {
     const user = userEvent.setup()
 
     server.use(
-      http.get('/api/room/ROOM123', () => HttpResponse.json({
+      http.get('/api/room/ROOM123', () => HttpResponse.json(createValidRoomData({
         roomId: 'ROOM123',
         roomName: 'Poker Table',
         players: [
@@ -183,7 +187,7 @@ describe('GameView - Game Table Integration', () => {
           { name: 'Rival', isHost: false },
         ],
         gameStarted: true,
-      })),
+      }))),
       http.get('/api/game/ROOM123/state', () => HttpResponse.json(createValidGameState({
         gameId: 'ROOM123',
         phase: 'FLOP',
@@ -199,7 +203,8 @@ describe('GameView - Game Table Integration', () => {
       }))),
       http.get('/api/game/ROOM123/private-state', () => HttpResponse.json({
         playerId: 'p-1',
-        holeCards: ['AS', 'KS'],
+                handNumber: 0,
+                holeCards: ['AS', 'KS'],
       })),
     )
 
@@ -242,7 +247,7 @@ describe('GameView - Game Table Integration', () => {
 
   it('displays HOST_LEFT status when ROOM_CLOSED arrives during an active hand', async () => {
     server.use(
-      http.get('/api/room/ROOM123', () => HttpResponse.json({
+      http.get('/api/room/ROOM123', () => HttpResponse.json(createValidRoomData({
         roomId: 'ROOM123',
         roomName: 'Poker Table',
         players: [
@@ -250,7 +255,7 @@ describe('GameView - Game Table Integration', () => {
           { name: 'Opponent', isHost: true },
         ],
         gameStarted: true,
-      })),
+      }))),
       http.get('/api/game/ROOM123/state', () => HttpResponse.json(createValidGameState({
         gameId: 'ROOM123',
         phase: 'PRE_FLOP',
@@ -266,7 +271,8 @@ describe('GameView - Game Table Integration', () => {
       }))),
       http.get('/api/game/ROOM123/private-state', () => HttpResponse.json({
         playerId: 'p-1',
-        holeCards: ['AS', 'KS'],
+                handNumber: 0,
+                holeCards: ['AS', 'KS'],
       })),
     )
 
@@ -287,7 +293,7 @@ describe('GameView - Game Table Integration', () => {
 
   it('retains showdown winner announcement and revealed opponent hole cards in the rendered table across multiple ready-up updates', async () => {
     server.use(
-      http.get('/api/room/ROOM123', () => HttpResponse.json({
+      http.get('/api/room/ROOM123', () => HttpResponse.json(createValidRoomData({
         roomId: 'ROOM123',
         roomName: 'Poker Table',
         players: [
@@ -296,7 +302,7 @@ describe('GameView - Game Table Integration', () => {
           { name: 'Rival', isHost: false },
         ],
         gameStarted: true,
-      })),
+      }))),
       http.get('/api/game/ROOM123/state', () => HttpResponse.json(createValidGameState({
         gameId: 'ROOM123',
         handNumber: 5,
@@ -317,6 +323,7 @@ describe('GameView - Game Table Integration', () => {
       }))),
       http.get('/api/game/ROOM123/private-state', () => HttpResponse.json({
         playerId: 'p-1',
+        handNumber: 5,
         holeCards: ['2H', '7D'],
       })),
     )
@@ -378,7 +385,7 @@ describe('GameView - Game Table Integration', () => {
 
   it('does not tear down and recreate the 1s countdown interval on every WebSocket frame when hasDisconnectedPlayer stays true', async () => {
     server.use(
-      http.get('/api/room/ROOM123', () => HttpResponse.json({
+      http.get('/api/room/ROOM123', () => HttpResponse.json(createValidRoomData({
         roomId: 'ROOM123',
         roomName: 'Poker Table',
         players: [
@@ -387,7 +394,7 @@ describe('GameView - Game Table Integration', () => {
           { name: 'DisconnectedGuy', isHost: false },
         ],
         gameStarted: true,
-      })),
+      }))),
       http.get('/api/game/ROOM123/state', () => HttpResponse.json(createValidGameState({
         gameId: 'ROOM123',
         phase: 'PRE_FLOP',
@@ -404,7 +411,8 @@ describe('GameView - Game Table Integration', () => {
       }))),
       http.get('/api/game/ROOM123/private-state', () => HttpResponse.json({
         playerId: 'p-1',
-        holeCards: ['AS', 'KS'],
+                handNumber: 0,
+                holeCards: ['AS', 'KS'],
       })),
     )
 
@@ -443,7 +451,7 @@ describe('GameView - Game Table Integration', () => {
     const user = userEvent.setup()
 
     server.use(
-      http.get('/api/room/ROOM123', () => HttpResponse.json({
+      http.get('/api/room/ROOM123', () => HttpResponse.json(createValidRoomData({
         roomId: 'ROOM123',
         roomName: 'Poker Table',
         bigBlind: 20,
@@ -452,7 +460,7 @@ describe('GameView - Game Table Integration', () => {
           { name: 'Opponent', isHost: false },
         ],
         gameStarted: true,
-      })),
+      }))),
       http.get('/api/game/ROOM123/state', () => HttpResponse.json(createValidGameState({
         gameId: 'ROOM123',
         phase: 'PRE_FLOP',
@@ -469,7 +477,8 @@ describe('GameView - Game Table Integration', () => {
       }))),
       http.get('/api/game/ROOM123/private-state', () => HttpResponse.json({
         playerId: 'p-1',
-        holeCards: ['AS', 'KS'],
+                handNumber: 0,
+                holeCards: ['AS', 'KS'],
       })),
     )
 

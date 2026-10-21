@@ -4,7 +4,7 @@ import GameView from '../GameView'
 import { MockStompClient } from '../test/mocks/stomp'
 import { http, HttpResponse } from 'msw'
 import { server } from '../test/mocks/server'
-import { mockAuth } from '../test/fixtures'
+import { createValidRoomData, mockAuth } from '../test/fixtures'
 
 const auth = {
   ...mockAuth,
@@ -17,7 +17,7 @@ describe('GameView - Room Lobby Integration', () => {
     // Mock successful room info hydration
     server.use(
       http.get('/api/room/ROOM123', () => {
-        return HttpResponse.json({
+        return HttpResponse.json(createValidRoomData({
           roomId: 'ROOM123',
           roomName: 'High Stakes',
           players: [
@@ -29,7 +29,7 @@ describe('GameView - Room Lobby Integration', () => {
           buyIn: 5000,
           canStartGame: false,
           gameStarted: false
-        })
+        }))
       }),
       // Game state 404 (common when game hasn't started)
       http.get('/api/game/ROOM123/state', () => new HttpResponse(null, { status: 404 })),
@@ -81,11 +81,11 @@ describe('GameView - Room Lobby Integration', () => {
     try {
       // Initial hydration
       server.use(
-          http.get('/api/room/ROOM123', () => HttpResponse.json({
+          http.get('/api/room/ROOM123', () => HttpResponse.json(createValidRoomData({
             roomId: 'ROOM123',
             players: [{ name: 'HostPlayer', isHost: true }],
             gameStarted: false
-          })),
+          }))),
           http.get('/api/game/ROOM123/state', () => new HttpResponse(null, { status: 404 })),
           http.get('/api/game/ROOM123/private-state', () => new HttpResponse(null, { status: 404 }))
       )
