@@ -4,6 +4,9 @@ import {
     savePersistedGameEnd,
     clearPersistedGameEnd,
     retireDifferentlyOwnedGameEnd,
+    loadGameEndResult,
+    saveGameEndResult,
+    clearGameEndResult,
     type AuthIdentity,
     type PersistedGameEndEnvelope,
 } from '../gameEndStorage';
@@ -52,6 +55,7 @@ describe('gameEndStorage', () => {
             playerName: authA.playerName,
             token: authA.token,
             result: validResult,
+            storedAt: expect.any(Number),
         });
 
         const loaded = loadPersistedGameEnd(authA);
@@ -206,5 +210,81 @@ describe('gameEndStorage', () => {
         getItemSpy.mockRestore();
         setItemSpy.mockRestore();
         removeItemSpy.mockRestore();
+    });
+
+    describe('auth envelope binding and stale review rejection (F3-3)', () => {
+        it('saves and loads review state with matching token and playerName', () => {
+            saveGameEndResult('room-123', validResult, 'token-alice-secret', 'Alice');
+
+            const loaded = loadGameEndResult('room-123', 'token-alice-secret', 'Alice');
+            expect(loaded).toEqual(validResult);
+
+            const raw = sessionStorage.getItem('poker-game-end:room-123');
+            expect(raw).not.toBeNull();
+            const envelope = JSON.parse(raw!) as PersistedGameEndEnvelope;
+            expect(envelope.storedAt).toEqual(expect.any(Number));
+        });
+
+        it('rejects loading review state when token does not match (stale review rejection)', () => {
+            saveGameEndResult('room-123', validResult, 'token-alice-secret', 'Alice');
+
+            // Stale/reconnecting user with different token
+            const loaded = loadGameEndResult('room-123', 'token-alice-new-session', 'Alice');
+            expect(loaded).toBeNull();
+        });
+
+        it('rejects loading review state when playerName does not match (stale review rejection)', () => {
+            saveGameEndResult('room-123', validResult, 'token-alice-secret', 'Alice');
+
+            // Different user in same room
+            const loaded = loadGameEndResult('room-123', 'token-bob-secret', 'Bob');
+            expect(loaded).toBeNull();
+        });
+
+        it('rejects unadorned legacy review entries when auth credentials are provided', () => {
+            // Legacy unversioned entry without auth envelope
+            sessionStorage.setItem('poker-game-end:room-123', JSON.stringify(validResult));
+
+            // Caller provides auth identity
+            const loaded = loadGameEndResult('room-123', 'token-alice-secret', 'Alice');
+            expect(loaded).toBeNull();
+            // Stale unversioned entry is purged
+            expect(sessionStorage.getItem('poker-game-end:room-123')).toBeNull();
+        });
+
+        it('loads unadorned legacy review entries when no auth credentials are provided', () => {
+            sessionStorage.setItem('poker-game-end:room-123', JSON.stringify(validResult));
+
+            const loaded = loadGameEndResult('room-123');
+            expect(loaded).toEqual(validResult);
+        });
+
+        it('clears review state when identity matches', () => {
+            saveGameEndResult('room-123', validResult, 'token-alice-secret', 'Alice');
+            expect(loadGameEndResult('room-123', 'token-alice-secret', 'Alice')).toEqual(validResult);
+
+            clearGameEndResult('room-123', 'token-alice-secret', 'Alice');
+            expect(loadGameEndResult('room-123', 'token-alice-secret', 'Alice')).toBeNull();
+            expect(sessionStorage.getItem('poker-game-end:room-123')).toBeNull();
+        });
+
+        it('does not clear review state when called with mismatched identity', () => {
+            saveGameEndResult('room-123', validResult, 'token-bob-secret', 'Bob');
+
+            // Alice tries to clear Bob's review
+            clearGameEndResult('room-123', 'token-alice-secret', 'Alice');
+
+            // Bob's review is preserved
+            const loaded = loadGameEndResult('room-123', 'token-bob-secret', 'Bob');
+            expect(loaded).toEqual(validResult);
+        });
+
+        it('supports loadPersistedGameEnd string overload with roomId, token, playerName', () => {
+            savePersistedGameEnd('room-123', validResult, 'token-alice-secret', 'Alice');
+
+            expect(loadPersistedGameEnd('room-123', 'token-alice-secret', 'Alice')).toEqual(validResult);
+            expect(loadPersistedGameEnd('room-123', 'mismatched-token', 'Alice')).toBeNull();
+            expect(loadPersistedGameEnd('room-123', 'token-alice-secret', 'Bob')).toBeNull();
+        });
     });
 });
