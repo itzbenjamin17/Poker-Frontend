@@ -74,7 +74,7 @@ export async function loadSessionData(deps: SessionSyncDeps): Promise<SyncResult
                 }
                 const status = getErrorStatusCode(err);
                 if (status === 403 || status === 404) {
-                    return handleReviewFallback(api, auth, status, attemptController.signal);
+                    return handleReviewFallback(api, auth, status, signal);
                 }
                 attemptController.abort();
                 throw err;
@@ -121,48 +121,57 @@ export async function loadSessionData(deps: SessionSyncDeps): Promise<SyncResult
             ? api.getPrivateState(auth.roomId, auth.token, attemptController.signal)
             : Promise.reject(new Error('api.getPrivateState is not a function'));
 
-        const [publicRes, privateRes] = await Promise.allSettled([fetchPublic, fetchPrivate]);
+        // If either request rejects, immediately abort in-flight sibling to prevent hanging / deadlocks
+        let publicError: unknown = null;
+        let privateError: unknown = null;
+        fetchPublic.catch((err) => {
+            publicError = err;
+            attemptController.abort();
+        });
+        fetchPrivate.catch((err) => {
+            privateError = err;
+            attemptController.abort();
+        });
+
+        let publicRaw: unknown;
+        let privateRaw: unknown;
+        try {
+            [publicRaw, privateRaw] = await Promise.all([fetchPublic, fetchPrivate]);
+        } catch (err) {
+            if (signal.aborted) {
+                attemptController.abort();
+                throw err;
+            }
+
+            const status =
+                (getErrorStatusCode(err) === 403 || getErrorStatusCode(err) === 404)
+                    ? getErrorStatusCode(err)
+                    : (getErrorStatusCode(publicError) === 403 || getErrorStatusCode(publicError) === 404)
+                    ? getErrorStatusCode(publicError)
+                    : (getErrorStatusCode(privateError) === 403 || getErrorStatusCode(privateError) === 404)
+                    ? getErrorStatusCode(privateError)
+                    : (err as { status?: number })?.status ?? getErrorStatusCode(err);
+
+            if (status === 403 || status === 404) {
+                return handleReviewFallback(api, auth, status, signal);
+            }
+
+            attemptController.abort();
+            if (err instanceof MalformedResponseError) {
+                const snapshotSource = isHydrated() ? 'REST recovery game snapshot' : 'initial REST game snapshot';
+                reportRejectedGameSnapshot(snapshotSource, {
+                    path: '$',
+                    expected: 'object',
+                    receivedType: err.receivedType,
+                });
+            }
+            throw err;
+        }
 
         if (signal.aborted) {
             attemptController.abort();
             throw new DOMException('Aborted', 'AbortError');
         }
-
-        // When public state polling encounters HTTP 404 or 403, fallback to querying pokerApi.getReview
-        if (publicRes.status === 'rejected') {
-            const status = getErrorStatusCode(publicRes.reason) ?? (publicRes.reason as { status?: number })?.status;
-            if (status === 403 || status === 404) {
-                return handleReviewFallback(api, auth, status, attemptController.signal);
-            }
-        }
-
-        if (privateRes.status === 'rejected') {
-            const status = getErrorStatusCode(privateRes.reason) ?? (privateRes.reason as { status?: number })?.status;
-            if (status === 403 || status === 404) {
-                return handleReviewFallback(api, auth, status, attemptController.signal);
-            }
-        }
-
-        if (publicRes.status === 'rejected') {
-            attemptController.abort();
-            if (publicRes.reason instanceof MalformedResponseError) {
-                const snapshotSource = isHydrated() ? 'REST recovery game snapshot' : 'initial REST game snapshot';
-                reportRejectedGameSnapshot(snapshotSource, {
-                    path: '$',
-                    expected: 'object',
-                    receivedType: publicRes.reason.receivedType,
-                });
-            }
-            throw publicRes.reason;
-        }
-
-        if (privateRes.status === 'rejected') {
-            attemptController.abort();
-            throw privateRes.reason;
-        }
-
-        const publicRaw = publicRes.value;
-        const privateRaw = privateRes.value;
 
         // 4. Validate both responses and their hand/player identity
         const snapshotSource = isHydrated() ? 'REST recovery game snapshot' : 'initial REST game snapshot';

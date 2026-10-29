@@ -309,7 +309,7 @@ export const pokerApi = {
 
     async getReview(
         gameId: string,
-        tokenOrPlayerName?: string,
+        tokenOrSignal?: string | AbortSignal,
         playerNameOrSignal?: string | AbortSignal,
         signal?: AbortSignal
     ): Promise<GameEndResult> {
@@ -317,28 +317,24 @@ export const pokerApi = {
         let playerName: string | undefined;
         let effectiveSignal: AbortSignal | undefined;
 
-        if (playerNameOrSignal instanceof AbortSignal) {
-            effectiveSignal = playerNameOrSignal;
-            if (tokenOrPlayerName) {
-                if (tokenOrPlayerName === 'test-token' || tokenOrPlayerName.includes('.')) {
-                    token = tokenOrPlayerName;
-                } else {
-                    playerName = tokenOrPlayerName;
-                }
+        if (tokenOrSignal instanceof AbortSignal) {
+            effectiveSignal = tokenOrSignal;
+        } else if (typeof tokenOrSignal === 'string') {
+            token = tokenOrSignal;
+            if (playerNameOrSignal instanceof AbortSignal) {
+                effectiveSignal = playerNameOrSignal;
+            } else if (typeof playerNameOrSignal === 'string') {
+                playerName = playerNameOrSignal;
+                effectiveSignal = signal;
+            } else {
+                effectiveSignal = signal;
             }
-        } else if (typeof playerNameOrSignal === 'string') {
-            token = tokenOrPlayerName;
-            playerName = playerNameOrSignal;
-            effectiveSignal = signal;
         } else {
-            if (tokenOrPlayerName) {
-                if (tokenOrPlayerName === 'test-token' || tokenOrPlayerName.includes('.')) {
-                    token = tokenOrPlayerName;
-                } else {
-                    playerName = tokenOrPlayerName;
-                }
+            if (playerNameOrSignal instanceof AbortSignal) {
+                effectiveSignal = playerNameOrSignal;
+            } else {
+                effectiveSignal = signal;
             }
-            effectiveSignal = signal;
         }
 
         const query = playerName ? `?playerName=${encodeURIComponent(playerName)}` : '';
