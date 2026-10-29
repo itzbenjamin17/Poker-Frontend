@@ -349,7 +349,7 @@ describe('useGameWebSocket', () => {
         });
         await act(async () => { await vi.advanceTimersByTimeAsync(10); });
 
-        expect(pokerApi.getRoomInfo).toHaveBeenCalledWith('ROOM123', token);
+        expect(pokerApi.getRoomInfo).toHaveBeenCalledWith('ROOM123', token, expect.any(AbortSignal));
         expect(session.getSnapshot().roomState?.players).toHaveLength(2);
         expect(session.getSnapshot().roomState?.canStartGame).toBe(true);
     });
@@ -372,8 +372,8 @@ describe('useGameWebSocket', () => {
         });
         await act(async () => { await vi.advanceTimersByTimeAsync(10); });
 
-        expect(pokerApi.getGameState).toHaveBeenCalledWith('ROOM123', token);
-        expect(pokerApi.getPrivateState).toHaveBeenCalledWith('ROOM123', token);
+        expect(pokerApi.getGameState).toHaveBeenCalledWith('ROOM123', token, expect.any(AbortSignal));
+        expect(pokerApi.getPrivateState).toHaveBeenCalledWith('ROOM123', token, expect.any(AbortSignal));
     });
 
     it('handles STOMP error frame by updating ws status and calling onSocketError', async () => {
@@ -1002,6 +1002,169 @@ describe('useGameWebSocket', () => {
         expect(session.getSnapshot().recoveryFailed).toBe(false);
         expect(session.hasPendingRecoveryTimer()).toBe(false);
         expect(session.getSnapshot().privateState).toEqual({ holeCards: ['AH', 'KH'] });
+    });
+
+    it('discards delayed REST private responses from an older hand when newer hand cards arrive via WebSocket during recovery', async () => {
+        const inMemoryTransport = new InMemoryTransportAdapter();
+        session.setRoomState({ roomId: 'ROOM123', gameStarted: true });
+        session.applyGameState(createValidGameState({
+            gameId: 'ROOM123',
+            handNumber: 0,
+            currentPlayerName: 'TestPlayer',
+            currentPlayerId: 'p-1',
+            players: [{ id: 'p-1', name: 'TestPlayer', chips: 1000, currentBet: 0, status: 'ACTIVE' }],
+        }));
+
+        let resolveGameState!: (value: ReturnType<typeof createValidGameState>) => void;
+        let resolvePrivateState!: (value: { playerId: string; handNumber: number; holeCards: string[] }) => void;
+
+        vi.mocked(pokerApi.getGameState).mockImplementationOnce(
+            () => new Promise((resolve) => { resolveGameState = resolve; }) as never,
+        );
+        vi.mocked(pokerApi.getPrivateState).mockImplementationOnce(
+            () => new Promise((resolve) => { resolvePrivateState = resolve; }) as never,
+        );
+
+        renderHook(() => useGameWebSocket({ onSocketError, transport: inMemoryTransport }), {
+            wrapper: createWrapper(),
+        });
+        expect(pokerApi.getGameState).toHaveBeenCalledTimes(1);
+        expect(pokerApi.getPrivateState).toHaveBeenCalledTimes(1);
+
+        // While REST recovery is in flight, hand 1 begins and arrives via WebSocket
+        act(() => {
+            inMemoryTransport.simulateMessage('/game/ROOM123', createValidGameState({
+                gameId: 'ROOM123',
+                handNumber: 1,
+                stateRevision: 1,
+                phase: 'PRE_FLOP',
+                pot: 30,
+                currentBet: 20,
+                currentPlayerName: 'TestPlayer',
+                currentPlayerId: 'p-1',
+                players: [{ id: 'p-1', name: 'TestPlayer', chips: 980, currentBet: 20, status: 'ACTIVE', hasFolded: false }],
+            }));
+            inMemoryTransport.simulateMessage('/user/queue/private', {
+                playerId: 'p-1',
+                handNumber: 1,
+                holeCards: ['TS', 'JS'],
+            });
+        });
+
+        expect(session.getSnapshot().gameState?.handNumber).toBe(1);
+        expect(session.getSnapshot().privateState).toEqual({ holeCards: ['TS', 'JS'] });
+
+        // Now delayed REST recovery from hand 0 resolves
+        await act(async () => {
+            resolveGameState(createValidGameState({
+                gameId: 'ROOM123',
+                handNumber: 0,
+                stateRevision: 1,
+                players: [{ id: 'p-1', name: 'TestPlayer' }],
+            }));
+            resolvePrivateState({
+                playerId: 'p-1',
+                handNumber: 0,
+                holeCards: ['2C', '3C'],
+            });
+            await Promise.resolve();
+        });
+
+        // The delayed hand 0 cards MUST NOT overwrite hand 1's cards
+        expect(session.getSnapshot().gameState?.handNumber).toBe(1);
+        expect(session.getSnapshot().privateState).toEqual({ holeCards: ['TS', 'JS'] });
+        expect(session.getSnapshot().recoveryFailed).toBe(false);
+    });
+
+    it('protects private state during hand transition and rejects delayed REST response with mismatched hand sequence', async () => {
+        const inMemoryTransport = new InMemoryTransportAdapter();
+        session.setRoomState({ roomId: 'ROOM123', gameStarted: true });
+        session.applyGameState(createValidGameState({
+            gameId: 'ROOM123',
+            handNumber: 0,
+            currentPlayerName: 'TestPlayer',
+            currentPlayerId: 'p-1',
+            players: [{ id: 'p-1', name: 'TestPlayer', chips: 1000, currentBet: 0, status: 'ACTIVE' }],
+        }));
+        session.applyPrivateState({
+            playerId: 'p-1',
+            handNumber: 0,
+            holeCards: ['AH', 'KH'],
+        });
+
+        let resolveGameState!: (value: ReturnType<typeof createValidGameState>) => void;
+        let resolvePrivateState!: (value: { playerId: string; handNumber: number; holeCards: string[] }) => void;
+
+        vi.mocked(pokerApi.getGameState).mockImplementationOnce(
+            () => new Promise((resolve) => { resolveGameState = resolve; }) as never,
+        );
+        vi.mocked(pokerApi.getPrivateState).mockImplementationOnce(
+            () => new Promise((resolve) => { resolvePrivateState = resolve; }) as never,
+        );
+
+        renderHook(() => useGameWebSocket({ onSocketError, transport: inMemoryTransport }), {
+            wrapper: createWrapper(),
+        });
+
+        // Hand transitions to Hand 1 via WebSocket before private cards arrive
+        act(() => {
+            inMemoryTransport.simulateMessage('/game/ROOM123', createValidGameState({
+                gameId: 'ROOM123',
+                handNumber: 1,
+                stateRevision: 1,
+                phase: 'PRE_FLOP',
+                players: [{ id: 'p-1', name: 'TestPlayer', chips: 1000, currentBet: 0, status: 'ACTIVE' }],
+            }));
+        });
+
+        // Private state is reset on hand transition
+        expect(session.getSnapshot().gameState?.handNumber).toBe(1);
+        expect(session.getSnapshot().privateState).toBeNull();
+
+        // Delayed REST response for Hand 0 resolves
+        await act(async () => {
+            resolveGameState(createValidGameState({
+                gameId: 'ROOM123',
+                handNumber: 0,
+                stateRevision: 1,
+                players: [{ id: 'p-1', name: 'TestPlayer' }],
+            }));
+            resolvePrivateState({
+                playerId: 'p-1',
+                handNumber: 0,
+                holeCards: ['2C', '3C'],
+            });
+            await Promise.resolve();
+        });
+
+        // Stale Hand 0 private cards must NOT be applied to Hand 1
+        expect(session.getSnapshot().gameState?.handNumber).toBe(1);
+        expect(session.getSnapshot().privateState).toBeNull();
+        expect(session.hasPendingRecoveryTimer()).toBe(true);
+    });
+
+    it('applyPrivateState rejects stale private payloads with older handNumber', () => {
+        session.applyGameState(createValidGameState({
+            gameId: 'ROOM123',
+            handNumber: 2,
+            currentPlayerName: 'TestPlayer',
+            currentPlayerId: 'p-1',
+            players: [{ id: 'p-1', name: 'TestPlayer', chips: 1000, currentBet: 0, status: 'ACTIVE' }],
+        }));
+        session.applyPrivateState({
+            playerId: 'p-1',
+            handNumber: 2,
+            holeCards: ['KS', 'KC'],
+        });
+        expect(session.getSnapshot().privateState).toEqual({ holeCards: ['KS', 'KC'] });
+
+        // Stale hand 1 private cards are rejected
+        session.applyPrivateState({
+            playerId: 'p-1',
+            handNumber: 1,
+            holeCards: ['2C', '3C'],
+        });
+        expect(session.getSnapshot().privateState).toEqual({ holeCards: ['KS', 'KC'] });
     });
 
     it('does not let stale room recovery roll back an intervening PLAYER_JOINED frame', async () => {

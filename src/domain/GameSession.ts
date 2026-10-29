@@ -1069,9 +1069,29 @@ export class GameSession {
             }));
             return;
         }
+        if (
+            'handNumber' in payload &&
+            typeof payload.handNumber === 'number' &&
+            this.currentPrivateHandNumber !== null &&
+            typeof this.currentPrivateHandNumber === 'number' &&
+            payload.handNumber < this.currentPrivateHandNumber
+        ) {
+            return;
+        }
+        if (
+            'handNumber' in payload &&
+            typeof payload.handNumber === 'number' &&
+            this.snapshot.gameState?.handNumber !== undefined &&
+            typeof this.snapshot.gameState.handNumber === 'number' &&
+            payload.handNumber < this.snapshot.gameState.handNumber
+        ) {
+            return;
+        }
         const nextHoleCards = Array.isArray(payload.holeCards) ? payload.holeCards : [];
         if ('handNumber' in payload && typeof payload.handNumber === 'number') {
             this.currentPrivateHandNumber = payload.handNumber;
+        } else {
+            this.currentPrivateHandNumber = null;
         }
         this.currentPrivatePlayerId = 'playerId' in payload && typeof payload.playerId === 'string' ? payload.playerId : null;
         let myPlayerId = this.snapshot.myPlayerId;
@@ -1484,13 +1504,20 @@ export class GameSession {
 
                 const current = this.snapshot.gameState;
                 const hero = current?.players.find((p) => p.name === this.auth.playerName);
+                const currentHandSeq = typeof current?.handNumber === 'number' ? current.handNumber : 0;
+                const privateHandSeq = typeof this.currentPrivateHandNumber === 'number' ? this.currentPrivateHandNumber : (this.currentPrivateHandNumber === null ? null : 0);
+                const restHandSeq = typeof result.privateState?.handNumber === 'number' ? result.privateState.handNumber : 0;
+
                 const privateMatchesCurrent = Boolean(
                     current && hero?.id && this.snapshot.privateState &&
-                    this.currentPrivateHandNumber === current.handNumber &&
+                    privateHandSeq !== null &&
+                    privateHandSeq === currentHandSeq &&
                     this.currentPrivatePlayerId === hero.id
                 );
                 const restMatchesCurrent = Boolean(
-                    current && hero?.id && result.privateState.handNumber === current.handNumber &&
+                    current && hero?.id &&
+                    restHandSeq === currentHandSeq &&
+                    (privateHandSeq === null || restHandSeq >= privateHandSeq) &&
                     result.privateState.playerId === hero.id
                 );
 
@@ -1501,7 +1528,7 @@ export class GameSession {
 
                 const coherent = Boolean(
                     current && hero?.id && this.snapshot.privateState &&
-                    this.currentPrivateHandNumber === current.handNumber &&
+                    (typeof this.currentPrivateHandNumber === 'number' ? this.currentPrivateHandNumber : 0) === currentHandSeq &&
                     this.currentPrivatePlayerId === hero.id
                 );
                 if (coherent) {
