@@ -49,6 +49,7 @@ export const VALIDATION_ROOM_NAME_HTML =
     'Room name cannot contain HTML tags.';
 export const VALIDATION_PLAYER_ALIAS_HTML =
     'Player alias cannot contain HTML tags.';
+// ─── Password validation ──────────────────────────────────────────────────────
 export const VALIDATION_PASSWORD_CONTROL =
     'Password cannot contain control characters.';
 export const VALIDATION_PASSWORD_MAX =

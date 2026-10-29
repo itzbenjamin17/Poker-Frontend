@@ -45,6 +45,15 @@ function parseInteger(value: number | string): number {
     return Number.parseInt(trimmed, 10);
 }
 
+/**
+ * Validates a room password against length and control character constraints.
+ * Passwords are optional (undefined, null, or empty string return null).
+ * Passwords exceeding 50 characters or containing Unicode control characters
+ * ([\u0000-\u001F\u007F-\u009F]) are rejected with user-facing validation errors.
+ *
+ * @param password optional password to validate
+ * @returns error message if invalid, or null if valid
+ */
 export function validatePassword(password?: string): string | null {
     if (password === undefined || password === null || password === '') {
         return null;
@@ -58,6 +67,15 @@ export function validatePassword(password?: string): string | null {
     return null;
 }
 
+/**
+ * Normalizes an optional password input for API submission.
+ * Maps undefined, null, empty strings, and whitespace-only strings to undefined
+ * so public rooms do not receive empty string password payloads.
+ * Preserves intentional non-empty passwords as entered.
+ *
+ * @param password optional user input password
+ * @returns normalized password string, or undefined if absent/blank
+ */
 export function normalizePassword(password?: string): string | undefined {
     if (password === undefined || password === null) {
         return undefined;
@@ -170,5 +188,3 @@ export function parseJoinRoomSubmission(data: {
         ...(password !== undefined ? { password } : {}),
     };
 }
-
-

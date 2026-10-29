@@ -1,6 +1,11 @@
 // @vitest-environment node
 import { describe, test, expect } from 'vitest';
 import { validateCreate, validateJoin, validatePassword, normalizePassword, parseCreateRoomSubmission, parseJoinRoomSubmission, VALIDATION } from '../validation';
+import {
+    VALIDATION_PASSWORD_CONTROL,
+    VALIDATION_PASSWORD_MAX,
+    formatPasswordMaxError,
+} from '../../../constants/strings';
 
 describe('validateCreate', () => {
     const validConfig = {
@@ -94,6 +99,14 @@ describe('validateCreate', () => {
         expect(validateCreate({ ...validConfig, maxPlayers }))
             .toBe('Max players must be a whole number between 2 and 10.');
     });
+
+    test('validates optional password in validateCreate', () => {
+        expect(validateCreate({ ...validConfig, password: 'securePassword123' })).toBeNull();
+        expect(validateCreate({ ...validConfig, password: 'a'.repeat(51) }))
+            .toBe(formatPasswordMaxError(VALIDATION.password.max));
+        expect(validateCreate({ ...validConfig, password: 'bad\u0000pass' }))
+            .toBe(VALIDATION_PASSWORD_CONTROL);
+    });
 });
 
 describe('validateJoin', () => {
@@ -175,50 +188,66 @@ describe('validateJoin', () => {
 });
 
 describe('validatePassword', () => {
-    test('allows undefined, empty, or whitespace-only passwords', () => {
+    test('allows undefined, null, empty, or whitespace-only passwords', () => {
         expect(validatePassword(undefined)).toBeNull();
+        expect(validatePassword(null as unknown as string)).toBeNull();
         expect(validatePassword('')).toBeNull();
         expect(validatePassword('   ')).toBeNull();
     });
 
-    test('allows valid passwords up to 50 characters', () => {
-        expect(validatePassword('secret123')).toBeNull();
+    test('enforces exact boundary lengths up to 50 characters', () => {
+        expect(validatePassword('a')).toBeNull();
+        expect(validatePassword('a'.repeat(49))).toBeNull();
         expect(validatePassword('a'.repeat(50))).toBeNull();
-    });
-
-    test('rejects passwords exceeding 50 characters', () => {
-        expect(validatePassword('a'.repeat(51))).toBe('Password must be at most 50 characters.');
+        expect(validatePassword('a'.repeat(51))).toBe(formatPasswordMaxError(VALIDATION.password.max));
+        expect(validatePassword('a'.repeat(100))).toBe(formatPasswordMaxError(VALIDATION.password.max));
+        expect(formatPasswordMaxError(50)).toBe(VALIDATION_PASSWORD_MAX);
     });
 
     test.each([
-        '\u0000',
-        '\u001F',
-        '\u007F',
-        '\u0080',
-        '\u009F',
-    ])('rejects control character %j in passwords', (ctrl) => {
-        expect(validatePassword(`pass${ctrl}word`)).toBe('Password cannot contain control characters.');
+        ['\u0000', 'NUL (C0 start)', '\u0000secret'],
+        ['\u0009', 'TAB (C0 middle)', 'sec\u0009ret'],
+        ['\u000A', 'LF (C0 middle)', 'sec\u000Aret'],
+        ['\u000D', 'CR (C0 middle)', 'sec\u000Dret'],
+        ['\u001F', 'US (C0 boundary)', 'secret\u001F'],
+        ['\u007F', 'DEL (control)', 'secret\u007F'],
+        ['\u0080', 'PAD (C1 start)', '\u0080secret'],
+        ['\u0085', 'NEL (C1 next line)', 'sec\u0085ret'],
+        ['\u009F', 'APC (C1 boundary)', 'secret\u009F'],
+    ])('rejects control character %s (%s) anywhere in password', (_char, _desc, pass) => {
+        expect(validatePassword(pass)).toBe(VALIDATION_PASSWORD_CONTROL);
+    });
+
+    test('accepts rich international Unicode passwords and special symbols', () => {
+        expect(validatePassword('パスワード#123')).toBeNull();
+        expect(validatePassword('Пароль#456')).toBeNull();
+        expect(validatePassword('كلمة_السر_789')).toBeNull();
+        expect(validatePassword('Mötörhéad#99')).toBeNull();
+        expect(validatePassword('🔒Secret🔑Key🎲')).toBeNull();
+        expect(validatePassword('P@$$w0rd!^&*()_-+=[]{}|;:,.<>?/')).toBeNull();
     });
 
     test('applies no Unicode format character restriction or HTML tag sanitization to passwords', () => {
         expect(validatePassword('pass\u200Bword')).toBeNull();
         expect(validatePassword('<b>secret</b>')).toBeNull();
-        expect(validatePassword('パスワード')).toBeNull();
+        expect(validatePassword('<script>alert("xss")</script>')).toBeNull();
     });
 });
 
 describe('normalizePassword', () => {
-    test('normalizes undefined, empty, or whitespace-only passwords to undefined', () => {
+    test('normalizes undefined, null, empty, or whitespace-only passwords to undefined', () => {
         expect(normalizePassword(undefined)).toBeUndefined();
+        expect(normalizePassword(null as unknown as string)).toBeUndefined();
         expect(normalizePassword('')).toBeUndefined();
         expect(normalizePassword('   ')).toBeUndefined();
-        expect(normalizePassword('\t \n')).toBeUndefined();
+        expect(normalizePassword('\t \n \r')).toBeUndefined();
     });
 
     test('transmits non-empty password unchanged, including leading/trailing spaces', () => {
         expect(normalizePassword('secret')).toBe('secret');
         expect(normalizePassword('  secret123  ')).toBe('  secret123  ');
         expect(normalizePassword(' spaced pass ')).toBe(' spaced pass ');
+        expect(normalizePassword(' ' + 'a'.repeat(48) + ' ')).toBe(' ' + 'a'.repeat(48) + ' ');
     });
 });
 
