@@ -63,16 +63,27 @@ export function GameProvider({
     const onLeaveRef = useRef(onLeave);
     useEffect(() => {
         onLeaveRef.current = onLeave;
-        session.setOnLeave(onLeave);
+        if (session.isAttached()) {
+            session.setOnLeave(onLeave);
+        }
     }, [session, onLeave]);
 
+    const activeSessionRef = useRef<GameSession | null>(null);
+
     useLayoutEffect(() => {
+        if (activeSessionRef.current && activeSessionRef.current !== session) {
+            activeSessionRef.current.detach();
+        }
+        activeSessionRef.current = session;
         session.attach();
         session.setOnLeave(onLeaveRef.current);
         return () => {
             session.detach();
+            if (activeSessionRef.current === session) {
+                activeSessionRef.current = null;
+            }
         };
-    }, [session]);
+    }, [session, auth.roomId, auth.playerName, auth.token]);
 
     // React external store subscription
     const state = useSyncExternalStore(

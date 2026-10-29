@@ -161,6 +161,9 @@ export class GameSession {
     }
 
     public setOnLeave(onLeave: (() => void) | undefined): void {
+        if (!this.attached && onLeave !== undefined) {
+            return;
+        }
         this.onLeave = onLeave;
     }
 
@@ -233,6 +236,9 @@ export class GameSession {
         this.attached = false;
         this.attachmentEpoch += 1;
         this.onLeave = undefined;
+        this.connectListeners.clear();
+        this.manualRetryListeners.clear();
+        this.socketErrorListeners.clear();
         this.lifecyclePermission = false;
         if (this.activeAttemptController) {
             this.activeAttemptController.abort();
@@ -278,6 +284,7 @@ export class GameSession {
 
     public hasLifecyclePermission(): boolean {
         return (
+            this.attached &&
             this.lifecyclePermission &&
             !this.snapshot.isGameOver &&
             !this.isDisposed &&
@@ -374,6 +381,7 @@ export class GameSession {
     }
 
     private notifyListeners(): void {
+        if (!this.attached) return;
         for (const listener of this.listeners) listener();
     }
 
@@ -592,6 +600,7 @@ export class GameSession {
     }
 
     public handleActionError(message: string): void {
+        if (!this.attached || this.isDisposed || this.isRedirecting || this.snapshot.isGameOver) return;
         this.cancelActionLocks();
 
         if (/game not found|room not found|no longer part of this game/i.test(message)) {
@@ -814,7 +823,7 @@ export class GameSession {
     // ── Public State Mutation Methods ─────────────────────────────────────────────
 
     public applyGameState(payload: IncomingGameStatePayload, syncTime?: number): boolean {
-        if (this.snapshot.isGameOver) return false;
+        if (!this.attached || this.isDisposed || this.snapshot.isGameOver) return false;
 
         const incomingData: GameState = {
             ...payload,
@@ -1060,6 +1069,7 @@ export class GameSession {
     }
 
     public applyPrivateState(payload: IncomingPrivateStatePayload | { holeCards: string[] } | null): void {
+        if (!this.attached || this.isDisposed || this.snapshot.isGameOver) return;
         this.privateSyncRevision += 1;
         if (!payload) {
             this.currentPrivateHandNumber = null;
@@ -1119,6 +1129,7 @@ export class GameSession {
     }
 
     public setGameState(gameState: GameState | null): void {
+        if (!this.attached || this.isDisposed || this.snapshot.isGameOver) return;
         let myPlayerId: string | null = null;
         if (gameState) {
             myPlayerId = this.snapshot.myPlayerId;
@@ -1138,30 +1149,35 @@ export class GameSession {
     }
 
     public setShowdown(v: GameState | null): void {
+        if (!this.attached || this.isDisposed || this.snapshot.isGameOver) return;
         this.updateSnapshot(() => ({
             showdown: v,
         }));
     }
 
     public setShowdownResult(v: GameState | null): void {
+        if (!this.attached || this.isDisposed || this.snapshot.isGameOver) return;
         this.updateSnapshot(() => ({
             showdownResult: v,
         }));
     }
 
     public setRoomState(room: RoomState | null): void {
+        if (!this.attached || this.isDisposed) return;
         this.updateSnapshot(() => ({
             roomState: room,
         }));
     }
 
     public setLoadingStatus(status: string): void {
+        if (!this.attached || this.isDisposed) return;
         this.updateSnapshot(() => ({
             loadingStatus: status,
         }));
     }
 
     public setMyPlayerId(id: string | null): void {
+        if (!this.attached || this.isDisposed) return;
         let effectiveId = id;
         if (id && this.auth.playerName && this.snapshot.gameState?.players) {
             const hero = this.snapshot.gameState.players.find((p) => p.name === this.auth.playerName);
@@ -1175,18 +1191,21 @@ export class GameSession {
     }
 
     public setClaimPending(pending: boolean): void {
+        if (!this.attached || this.isDisposed) return;
         this.updateSnapshot(() => ({
             claimPending: pending,
         }));
     }
 
     public setWsStatus(status: WsStatus): void {
+        if (!this.attached || this.isDisposed) return;
         this.updateSnapshot(() => ({
             wsStatus: status,
         }));
     }
 
     public setHydrated(hydrated: boolean): void {
+        if (!this.attached || this.isDisposed || this.snapshot.isGameOver) return;
         this.updateSnapshot(() => ({
             isHydrated: hydrated,
         }));
@@ -1197,13 +1216,19 @@ export class GameSession {
         recoveryFailed?: boolean;
         loadingStatus?: string;
     }): void {
+        if (!this.attached || this.isDisposed) return;
         this.updateSnapshot(() => partial);
     }
 
     public scheduleRecoveryRetry(callback: () => void, delayMs: number): void {
         this.clearRecoveryTimer();
+        const targetEpoch = this.attachmentEpoch;
+        const targetRecoveryGen = this.recoveryGeneration;
         this.recoveryTimer = this.clock.setTimeout(() => {
             this.recoveryTimer = null;
+            if (!this.attached || this.isDisposed || this.attachmentEpoch !== targetEpoch || this.recoveryGeneration !== targetRecoveryGen) {
+                return;
+            }
             callback();
         }, delayMs);
     }
@@ -1676,6 +1701,7 @@ export class GameSession {
     }
 
     public setGameEndResult(result: GameEndResult | null): void {
+        if (!this.attached || this.isDisposed) return;
         if (result !== null) {
             this.cancelActionLocks();
             this.clearRedirectTimer();
@@ -1712,6 +1738,7 @@ export class GameSession {
     }
 
     public clearGameState(): void {
+        if (!this.attached || this.isDisposed) return;
         this.clearShowdownTimers();
         this.cancelActionLocks();
         this.cancelRecovery();
@@ -1729,6 +1756,7 @@ export class GameSession {
     }
 
     public clearError(): void {
+        if (!this.attached || this.isDisposed) return;
         this.updateSnapshot(() => ({
             error: null,
         }));
@@ -1831,7 +1859,9 @@ export class GameSession {
             this.clock.clearTimeout(existingTimer);
         }
 
+        const targetEpoch = this.attachmentEpoch;
         const timer = this.clock.setTimeout(() => {
+            if (!this.attached || this.isDisposed || this.attachmentEpoch !== targetEpoch) return;
             this.releaseActionLock(type);
         }, ACTION_LOCK_TIMEOUT_MS);
         this.actionTimeoutTimers.set(type, timer);
@@ -1864,6 +1894,7 @@ export class GameSession {
     // ── Notifications ─────────────────────────────────────────────────────────────
 
     public setNotification(msg: string | null, ms = 4000): void {
+        if (!this.attached || this.isDisposed) return;
         this.clearNotificationTimer();
         this.updateSnapshot(() => ({
             notification: msg,
@@ -1871,8 +1902,10 @@ export class GameSession {
         }));
 
         if (msg !== null && ms > 0) {
+            const targetEpoch = this.attachmentEpoch;
             this.notificationTimer = this.clock.setTimeout(() => {
                 this.notificationTimer = null;
+                if (!this.attached || this.isDisposed || this.attachmentEpoch !== targetEpoch) return;
                 this.updateSnapshot(() => ({
                     notification: null,
                 }));

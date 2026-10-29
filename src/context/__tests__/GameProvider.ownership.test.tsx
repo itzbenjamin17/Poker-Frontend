@@ -281,4 +281,84 @@ describe('GameProvider Ownership Lifecycle & StrictMode', () => {
 
         expect(sessionStorage.getItem(`poker-game-end:${authA.roomId}`)).toBeNull();
     });
+
+    it('changing auth in GameProvider automatically detaches previous session and prevents old session from evicting new session', () => {
+        const clock = new TestClock(1000);
+        const onLeaveA = vi.fn();
+        const onLeaveB = vi.fn();
+
+        let currentSessionInstance: GameSession | null = null;
+        function CaptureSession() {
+            const { session } = useGameContext();
+            currentSessionInstance = session;
+            return createElement('div', { 'data-testid': 'room' }, session.getAuth().roomId);
+        }
+
+        function DynamicProvider() {
+            const [currentAuth, setCurrentAuth] = useState(authA);
+            const [currentOnLeave, setCurrentOnLeave] = useState(() => onLeaveA);
+
+            return createElement(
+                'div',
+                null,
+                createElement(
+                    GameProvider,
+                    {
+                        auth: currentAuth,
+                        onLeave: currentOnLeave,
+                        clock,
+                    },
+                    createElement(CaptureSession)
+                ),
+                createElement(
+                    'button',
+                    {
+                        onClick: () => {
+                            setCurrentAuth(authB);
+                            setCurrentOnLeave(() => onLeaveB);
+                        },
+                    },
+                    'Switch Auth'
+                )
+            );
+        }
+
+        const { getByText } = render(createElement(DynamicProvider));
+
+        expect(screen.getByTestId('room').textContent).toBe('room-A');
+        const sessionA = currentSessionInstance!;
+        expect(sessionA).not.toBeNull();
+        expect(sessionA.isAttached()).toBe(true);
+
+        // Session A schedules a redirect (e.g. host left or seat expired)
+        act(() => {
+            sessionA.scheduleRedirect('Room closed by host');
+        });
+        expect(sessionA.isRedirectingActive()).toBe(true);
+
+        // Before 3,000ms elapses, the auth is switched to Auth B (cross-tab login or re-auth)
+        act(() => {
+            getByText('Switch Auth').click();
+        });
+
+        expect(screen.getByTestId('room').textContent).toBe('room-B');
+        const sessionB = currentSessionInstance!;
+        expect(sessionB).not.toBeNull();
+        expect(sessionB).not.toBe(sessionA);
+        expect(sessionA.isAttached()).toBe(false);
+        expect(sessionB.isAttached()).toBe(true);
+
+        // Advance clock past 3,000ms redirect timer of session A
+        act(() => {
+            clock.tick(5000);
+        });
+
+        // Neither onLeaveA nor onLeaveB was called
+        expect(onLeaveA).not.toHaveBeenCalled();
+        expect(onLeaveB).not.toHaveBeenCalled();
+
+        // Replacement session B remains attached and uncorrupted
+        expect(sessionB.isAttached()).toBe(true);
+        expect(sessionB.isRedirectingActive()).toBe(false);
+    });
 });

@@ -405,4 +405,84 @@ describe('GameSession Lifecycle Ownership & Attachment Epochs', () => {
         const attempt3 = session.getAttemptId();
         expect(attempt3).toBe(3);
     });
+
+    it('detached session completely ignores delayed messages, state mutations, and cannot re-arm onLeave', () => {
+        const { session, clock, onLeave } = createSession();
+        session.attach();
+
+        // Arm a redirect timer
+        session.scheduleRedirect('Redirect scheduled');
+
+        // Detach the session
+        session.detach();
+        expect(session.isAttached()).toBe(false);
+
+        // Attempt to assign a new onLeave callback while detached
+        const newOnLeave = vi.fn();
+        session.setOnLeave(newOnLeave);
+
+        // Attempt mutations while detached
+        const appliedGame = session.applyGameState(createValidGameState({
+            gameId: 'room-lifecycle',
+            handNumber: 5,
+            phase: 'TURN',
+        }));
+        expect(appliedGame).toBe(false);
+
+        session.applyPrivateState({
+            handNumber: 5,
+            playerId: 'Hero',
+            holeCards: ['AH', 'KH'],
+        });
+
+        session.setRoomState({
+            roomId: 'room-lifecycle',
+            roomName: 'Mutated Room',
+            players: [],
+            gameStarted: true,
+        });
+
+        session.setNotification('Stale notification', 1000);
+        session.handleActionError('game not found');
+
+        // Verify snapshot was not mutated
+        const snapshot = session.getSnapshot();
+        expect(snapshot.gameState).toBeNull();
+        expect(snapshot.privateState).toBeNull();
+        expect(snapshot.roomState?.roomName).toBe('');
+        expect(snapshot.notification).toBeNull();
+
+        // Advance past all timer delays
+        clock.tick(10000);
+
+        expect(onLeave).not.toHaveBeenCalled();
+        expect(newOnLeave).not.toHaveBeenCalled();
+    });
+
+    it('detached session clears socket, connect, and retry listeners and does not notify subscribers', () => {
+        const { session } = createSession();
+        session.attach();
+
+        const connectCb = vi.fn();
+        const retryCb = vi.fn();
+        const errorCb = vi.fn();
+        const subscriberCb = vi.fn();
+
+        session.onConnect(connectCb);
+        session.onManualRetry(retryCb);
+        session.onSocketError(errorCb);
+        session.subscribe(subscriberCb);
+
+        session.detach();
+        subscriberCb.mockClear();
+
+        // Attempting retryConnection on detached session does not call retry listener
+        session.retryConnection();
+        expect(retryCb).not.toHaveBeenCalled();
+
+        // Attempting notifications or error handling does not call listeners or subscribers
+        session.handleActionError('test error');
+        expect(errorCb).not.toHaveBeenCalled();
+        expect(subscriberCb).not.toHaveBeenCalled();
+    });
 });
