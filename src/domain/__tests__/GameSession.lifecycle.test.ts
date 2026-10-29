@@ -5,6 +5,7 @@ import { TestClock } from '../clock';
 import { InMemoryTransportAdapter } from '../../services/transport';
 import type { AuthResponse } from '../../types';
 import { pokerApi } from '../../services/api';
+import { createValidGameState } from '../../test/fixtures';
 
 describe('GameSession Lifecycle Ownership & Attachment Epochs', () => {
     const auth: AuthResponse = {
@@ -178,5 +179,230 @@ describe('GameSession Lifecycle Ownership & Attachment Epochs', () => {
         // Attempting to attach after dispose does not re-enable lifecycle permission
         session.attach();
         expect(session.hasLifecyclePermission()).toBe(false);
+    });
+
+    it('aborts in-flight attempt fetch via AbortSignal when a new recovery attempt is triggered', async () => {
+        const { clock } = createSession();
+        let firstSignal: AbortSignal | undefined;
+        let secondSignal: AbortSignal | undefined;
+        let callCount = 0;
+
+        const mockGetRoomData = vi.fn((_roomId: string, _token: string, signal?: AbortSignal) => {
+            callCount++;
+            if (callCount === 1) {
+                firstSignal = signal;
+                return new Promise<never>(() => {
+                    // stays pending until aborted
+                });
+            } else {
+                secondSignal = signal;
+                return Promise.resolve({
+                    roomId: 'room-lifecycle',
+                    roomName: 'Lobby',
+                    players: [{ name: 'Hero', isHost: false }],
+                    gameStarted: false,
+                });
+            }
+        });
+
+        const customApi = {
+            ...pokerApi,
+            getRoomData: mockGetRoomData,
+        };
+
+        const session = new GameSession({
+            auth,
+            transport: new InMemoryTransportAdapter(),
+            clock,
+            pokerApi: customApi as any,
+        });
+        session.attach();
+
+        // 1st attempt starts
+        void session.synchronizeSession();
+        expect(callCount).toBe(1);
+        expect(firstSignal).toBeDefined();
+        expect(firstSignal?.aborted).toBe(false);
+        const initialAttempt = session.getAttemptId();
+        expect(initialAttempt).toBe(1);
+
+        // 2nd attempt triggered while 1st is still in-flight
+        const syncPromise2 = session.synchronizeSession();
+        expect(callCount).toBe(2);
+        expect(firstSignal?.aborted).toBe(true);
+        expect(secondSignal?.aborted).toBe(false);
+        expect(session.getAttemptId()).toBe(2);
+
+        await syncPromise2;
+        expect(session.getSnapshot().roomState?.gameStarted).toBe(false);
+    });
+
+    it('aborts in-flight attempt fetch via AbortSignal when a new recovery attempt is scheduled after partial failure', async () => {
+        const { clock } = createSession();
+        let privateSignal: AbortSignal | undefined;
+        let privateAborted = false;
+
+        const mockGetPublicGameState = vi.fn(() => Promise.reject(new Error('500 Internal Server Error')));
+        const mockGetPrivatePlayerState = vi.fn((_roomId: string, _token: string, signal?: AbortSignal) => {
+            privateSignal = signal;
+            signal?.addEventListener('abort', () => {
+                privateAborted = true;
+            });
+            return new Promise<never>(() => {});
+        });
+
+        const customApi = {
+            ...pokerApi,
+            getPublicGameState: mockGetPublicGameState,
+            getPrivatePlayerState: mockGetPrivatePlayerState,
+        };
+
+        const session = new GameSession({
+            auth,
+            transport: new InMemoryTransportAdapter(),
+            clock,
+            initialRoomState: {
+                roomId: 'room-lifecycle',
+                roomName: 'Live Game',
+                players: [{ name: 'Hero', isHost: false }],
+                gameStarted: true,
+            },
+            pokerApi: customApi as any,
+        });
+        session.attach();
+
+        // Start synchronization on started game -> runs public & private concurrently
+        await session.synchronizeSession();
+
+        // Failure of public state triggers scheduleNextRecoveryRetry, which aborts the in-flight attempt
+        expect(privateSignal).toBeDefined();
+        expect(privateAborted).toBe(true);
+        expect(privateSignal?.aborted).toBe(true);
+        expect(session.hasPendingRecoveryTimer()).toBe(true);
+    });
+
+    it('ignores stale or superseded attempt completions and does not regress privateSyncRevision', async () => {
+        const { clock } = createSession();
+
+        let resolveAttempt1!: (value: any) => void;
+        let callCount = 0;
+
+        const mockGetPublic = vi.fn(() => {
+            callCount++;
+            if (callCount === 1) {
+                return new Promise((resolve) => {
+                    resolveAttempt1 = resolve;
+                });
+            }
+            return Promise.resolve(createValidGameState({
+                gameId: 'room-lifecycle',
+                handNumber: 2,
+                phase: 'FLOP',
+                pot: 200,
+                players: [{ id: 'hero-1', name: 'Hero', chips: 900 }],
+                communityCards: ['AH', 'KH', 'QH'],
+                stateRevision: 2,
+            }));
+        });
+
+        const mockGetPrivate = vi.fn(() => {
+            if (callCount === 1) {
+                return Promise.resolve({
+                    playerId: 'hero-1',
+                    handNumber: 1,
+                    holeCards: ['2C', '3D'], // Stale hand 1 cards from Attempt 1
+                });
+            }
+            return Promise.resolve({
+                playerId: 'hero-1',
+                handNumber: 2,
+                holeCards: ['AS', 'KS'], // Fresh hand 2 cards from Attempt 2
+            });
+        });
+
+        const customApi = {
+            ...pokerApi,
+            getPublicGameState: mockGetPublic,
+            getPrivatePlayerState: mockGetPrivate,
+        };
+
+        const session = new GameSession({
+            auth,
+            transport: new InMemoryTransportAdapter(),
+            clock,
+            initialRoomState: {
+                roomId: 'room-lifecycle',
+                roomName: 'Live Game',
+                players: [{ name: 'Hero', isHost: false }],
+                gameStarted: true,
+            },
+            pokerApi: customApi as any,
+        });
+        session.attach();
+
+        // Attempt 1 starts with hand 1
+        const attempt1Promise = session.synchronizeSession();
+        expect(session.getAttemptId()).toBe(1);
+
+        // Attempt 2 supersedes Attempt 1 and completes with Hand 2 cards
+        const attempt2Promise = session.synchronizeSession();
+        expect(session.getAttemptId()).toBe(2);
+        await attempt2Promise;
+
+        // Verify Attempt 2 applied fresh hand 2 cards and advanced revision
+        expect(session.getSnapshot().gameState?.handNumber).toBe(2);
+        expect(session.getSnapshot().privateState?.holeCards).toEqual(['AS', 'KS']);
+        const freshRevision = session.getPrivateSyncRevision();
+        expect(freshRevision).toBeGreaterThan(0);
+
+        // Now Attempt 1 resolves late with stale Hand 1 data
+        resolveAttempt1(createValidGameState({
+            gameId: 'room-lifecycle',
+            handNumber: 1,
+            phase: 'PRE_FLOP',
+            pot: 100,
+            players: [{ id: 'hero-1', name: 'Hero', chips: 1000 }],
+            stateRevision: 1,
+        }));
+        await attempt1Promise;
+
+        // Verify Attempt 1's stale completion was ignored and did not regress privateSyncRevision or cards
+        expect(session.getSnapshot().gameState?.handNumber).toBe(2);
+        expect(session.getSnapshot().privateState?.holeCards).toEqual(['AS', 'KS']);
+        expect(session.getPrivateSyncRevision()).toBe(freshRevision);
+    });
+
+    it('tracks monotonic attemptId across recovery, retry scheduling, and cancellation', async () => {
+        const mockApi = {
+            ...pokerApi,
+            getRoomData: vi.fn(() => Promise.resolve({
+                roomId: 'room-lifecycle',
+                roomName: 'Lobby',
+                players: [{ name: 'Hero', isHost: false }],
+                gameStarted: false,
+            })),
+        };
+        const session = new GameSession({
+            auth,
+            transport: new InMemoryTransportAdapter(),
+            clock: new TestClock(1000),
+            pokerApi: mockApi as any,
+        });
+        session.attach();
+
+        const initialAttempt = session.getAttemptId();
+        expect(initialAttempt).toBe(0);
+
+        void session.synchronizeSession();
+        const attempt1 = session.getAttemptId();
+        expect(attempt1).toBe(1);
+
+        session.cancelRecovery();
+        const attempt2 = session.getAttemptId();
+        expect(attempt2).toBe(2);
+
+        void session.synchronizeSession();
+        const attempt3 = session.getAttemptId();
+        expect(attempt3).toBe(3);
     });
 });

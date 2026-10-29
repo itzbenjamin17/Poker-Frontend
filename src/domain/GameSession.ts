@@ -584,7 +584,6 @@ export class GameSession {
                 this.currentPrivateHandNumber = handNumber;
                 this.currentPrivatePlayerId = playerId;
 
-                this.privateSyncRevision += 1;
                 this.applyPrivateState(decodedPrivate);
             }
         } catch {
@@ -1033,6 +1032,7 @@ export class GameSession {
                 nextPrivateState = null;
                 this.currentPrivateHandNumber = null;
                 this.currentPrivatePlayerId = null;
+                this.privateSyncRevision += 1;
                 if (this.bufferedPrivateState && typeof data.handNumber === 'number' && this.bufferedPrivateState.handNumber <= data.handNumber) {
                     this.bufferedPrivateState = null;
                 }
@@ -1060,6 +1060,7 @@ export class GameSession {
     }
 
     public applyPrivateState(payload: IncomingPrivateStatePayload | { holeCards: string[] } | null): void {
+        this.privateSyncRevision += 1;
         if (!payload) {
             this.currentPrivateHandNumber = null;
             this.currentPrivatePlayerId = null;
@@ -1208,6 +1209,7 @@ export class GameSession {
             this.activeAttemptController.abort();
             this.activeAttemptController = null;
         }
+        this.attemptId += 1;
         this.recoveryGeneration += 1;
         this.recoveryRetryAttempt = 0;
         this.clearRecoveryTimer();
@@ -1270,7 +1272,7 @@ export class GameSession {
                 if (!this.hasLifecyclePermission()) {
                     return;
                 }
-                this.commitSyncResult(result, attemptRoomRevision, attemptPrivateRevision, attemptStateSyncRevision);
+                this.commitSyncResult(result, attempt, attemptRoomRevision, attemptPrivateRevision, attemptStateSyncRevision);
             })
             .catch((err) => {
                 if (controller.signal.aborted || attempt !== this.attemptId) {
@@ -1433,10 +1435,15 @@ export class GameSession {
 
     private commitSyncResult(
         result: SyncResult,
+        attemptId: number,
         attemptRoomRevision: number,
         attemptPrivateRevision: number,
         attemptStateSyncRevision: number
     ): void {
+        if (attemptId !== this.attemptId) {
+            return;
+        }
+
         if (result.type === 'TERMINAL') {
             this.installTerminalResult(result.review);
             return;
@@ -1487,10 +1494,9 @@ export class GameSession {
                     result.privateState.playerId === hero.id
                 );
 
-                const newerCoherentPrivate = this.privateSyncRevision !== attemptPrivateRevision && privateMatchesCurrent;
+                const newerCoherentPrivate = this.privateSyncRevision > attemptPrivateRevision && privateMatchesCurrent;
                 if (!newerCoherentPrivate && restMatchesCurrent) {
                     this.applyPrivateState(result.privateState);
-                    this.privateSyncRevision += 1;
                 }
 
                 const coherent = Boolean(
@@ -1541,6 +1547,11 @@ export class GameSession {
         }
 
         logger.warn('State recovery attempt failed:', err);
+        if (this.activeAttemptController) {
+            this.activeAttemptController.abort();
+            this.activeAttemptController = null;
+        }
+        this.attemptId += 1;
         this.scheduleNextRecoveryRetry();
     }
 
@@ -1548,6 +1559,11 @@ export class GameSession {
         if (this.snapshot.isGameOver || this.isDisposed || !this.hasLifecyclePermission()) {
             return;
         }
+        if (this.activeAttemptController) {
+            this.activeAttemptController.abort();
+            this.activeAttemptController = null;
+        }
+        this.attemptId += 1;
         this.clearRecoveryTimer();
         if (this.recoveryRetryAttempt < MAX_RECOVERY_RETRIES) {
             this.recoveryRetryAttempt += 1;
