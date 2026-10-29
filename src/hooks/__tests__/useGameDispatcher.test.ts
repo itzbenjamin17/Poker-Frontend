@@ -213,6 +213,66 @@ describe('useGameDispatcher', () => {
         expect(session.getSnapshot().gameEndResult?.winnerName).toBe('TestPlayer');
     });
 
+    it('dispatch CLAIM_WIN directly transitions session to review state and invokes setGameEndResult without waiting for STOMP', async () => {
+        const terminalData = {
+            gameId: 'GAME123',
+            winnerName: 'TestPlayer',
+            winnerChips: 1980,
+            isForfeit: true,
+            message: 'Win claimed directly',
+        };
+        const claimWinSpy = vi.mocked(pokerApi.claimWin).mockResolvedValue({
+            message: 'Win claimed',
+            data: terminalData,
+        });
+        const setGameEndResultSpy = vi.spyOn(session, 'setGameEndResult');
+        const installSpy = vi.spyOn(session, 'installTerminalResult');
+
+        const { result } = renderHook(() => useGameDispatcher(), {
+            wrapper: createWrapper(),
+        });
+
+        await act(async () => {
+            await result.current.dispatch({ type: 'CLAIM_WIN' });
+        });
+
+        expect(claimWinSpy).toHaveBeenCalledWith('GAME123', 'test-token', expect.any(AbortSignal));
+        expect(installSpy).toHaveBeenCalledWith(terminalData);
+        expect(setGameEndResultSpy).toHaveBeenCalledWith(terminalData);
+        expect(pokerApi.getReview).not.toHaveBeenCalled();
+        expect(session.getSnapshot().claimPending).toBe(false);
+        expect(session.getSnapshot().isGameOver).toBe(true);
+        expect(session.getSnapshot().gameEndResult?.winnerName).toBe('TestPlayer');
+    });
+
+    it('recovers terminal game review from getReview when public state polling encounters 404', async () => {
+        session.markGameStarted();
+        const reviewResult = {
+            gameId: 'ROOM123',
+            winnerName: 'TestPlayer',
+            winnerChips: 2000,
+            isForfeit: true,
+            message: 'Recovered review from polling 404',
+        };
+        const getPublicSpy = vi.spyOn(pokerApi, 'getPublicGameState').mockRejectedValue({ status: 404 });
+        vi.spyOn(pokerApi, 'getPrivatePlayerState').mockRejectedValue({ status: 404 });
+        const getReviewSpy = vi.mocked(pokerApi.getReview).mockResolvedValue(reviewResult);
+
+        renderHook(() => useGameDispatcher(), {
+            wrapper: createWrapper(),
+        });
+
+        await act(async () => {
+            await session.synchronizeSession({ resetBudget: true });
+        });
+
+        expect(getPublicSpy).toHaveBeenCalled();
+        expect(getReviewSpy).toHaveBeenCalledWith('ROOM123', 'test-token', expect.any(AbortSignal));
+        expect(session.getSnapshot().isGameOver).toBe(true);
+        expect(session.getSnapshot().gameEndResult?.winnerName).toBe('TestPlayer');
+        expect(session.getSnapshot().gameEndResult?.message).toBe('Recovered review from polling 404');
+    });
+
     it('dispatch CLAIM_WIN triggers review recovery via pokerApi.getReview on network/timeout failure and installs terminal result', async () => {
         const networkError = new TypeError('Failed to fetch');
         vi.mocked(pokerApi.claimWin).mockRejectedValue(networkError);

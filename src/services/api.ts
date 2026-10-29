@@ -1,5 +1,6 @@
 import { Client, ReconnectionTimeMode } from '@stomp/stompjs';
 import type { ApiResponse, AuthResponse, GameEndResult, RoomDataResponse, TokenResponse } from '../types';
+export type GameEndResponse = GameEndResult;
 import { logger } from '../security/logger';
 import { ERROR_MALFORMED_AUTH, ERROR_MALFORMED_RESPONSE, ERROR_REQUEST_TIMEOUT } from '../constants/strings';
 import { decodeGameEndResult, isAuthResponse, normalizeErrorMessage } from '../lib/payloads';
@@ -306,11 +307,45 @@ export const pokerApi = {
         return pokerApi.getPrivateState(gameId, token, signal);
     },
 
-    async getReview(gameId: string, token: string, signal?: AbortSignal): Promise<GameEndResult> {
-        const raw = await fetchApi<unknown>(`${API_BASE}/game/${encodeURIComponent(gameId)}/review`, {
+    async getReview(
+        gameId: string,
+        tokenOrPlayerName?: string,
+        playerNameOrSignal?: string | AbortSignal,
+        signal?: AbortSignal
+    ): Promise<GameEndResult> {
+        let token: string | undefined;
+        let playerName: string | undefined;
+        let effectiveSignal: AbortSignal | undefined;
+
+        if (playerNameOrSignal instanceof AbortSignal) {
+            effectiveSignal = playerNameOrSignal;
+            if (tokenOrPlayerName) {
+                if (tokenOrPlayerName === 'test-token' || tokenOrPlayerName.includes('.')) {
+                    token = tokenOrPlayerName;
+                } else {
+                    playerName = tokenOrPlayerName;
+                }
+            }
+        } else if (typeof playerNameOrSignal === 'string') {
+            token = tokenOrPlayerName;
+            playerName = playerNameOrSignal;
+            effectiveSignal = signal;
+        } else {
+            if (tokenOrPlayerName) {
+                if (tokenOrPlayerName === 'test-token' || tokenOrPlayerName.includes('.')) {
+                    token = tokenOrPlayerName;
+                } else {
+                    playerName = tokenOrPlayerName;
+                }
+            }
+            effectiveSignal = signal;
+        }
+
+        const query = playerName ? `?playerName=${encodeURIComponent(playerName)}` : '';
+        const raw = await fetchApi<unknown>(`${API_BASE}/game/${encodeURIComponent(gameId)}/review${query}`, {
             method: 'GET',
             token,
-            signal,
+            signal: effectiveSignal,
             expectJson: true,
         });
         const decoded = decodeGameEndResult(raw, gameId);
@@ -332,11 +367,17 @@ export const pokerApi = {
         return fetchApi<unknown>(`${API_BASE}/room/${encodeURIComponent(roomId)}/start-game`, { method: 'POST', token, signal });
     },
 
-    async claimWin(gameId: string, token: string, signal?: AbortSignal): Promise<ApiResponse<GameEndResult>> {
+    async claimWin(
+        gameId: string,
+        tokenOrSignal?: string | AbortSignal,
+        signal?: AbortSignal
+    ): Promise<ApiResponse<GameEndResponse>> {
+        const token = typeof tokenOrSignal === 'string' ? tokenOrSignal : undefined;
+        const sig = tokenOrSignal instanceof AbortSignal ? tokenOrSignal : signal;
         const raw = await fetchApi<ApiResponse<unknown>>(`${API_BASE}/game/${encodeURIComponent(gameId)}/claim-win`, {
             method: 'POST',
             token,
-            signal,
+            signal: sig,
             expectJson: true,
         });
         if (!raw || typeof raw !== 'object' || typeof raw.message !== 'string' || !('data' in raw)) {

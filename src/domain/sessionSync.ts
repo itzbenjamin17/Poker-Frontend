@@ -110,40 +110,59 @@ export async function loadSessionData(deps: SessionSyncDeps): Promise<SyncResult
         }
 
         // 3. If started, fetch public and private state concurrently
-        let publicRaw: unknown;
-        let privateRaw: unknown;
-        try {
-            const fetchPublic = typeof api.getPublicGameState === 'function'
-                ? api.getPublicGameState(auth.roomId, auth.token, attemptController.signal)
-                : typeof api.getGameState === 'function'
-                ? api.getGameState(auth.roomId, auth.token, attemptController.signal)
-                : Promise.reject(new Error('api.getGameState is not a function'));
-            const fetchPrivate = typeof api.getPrivatePlayerState === 'function'
-                ? api.getPrivatePlayerState(auth.roomId, auth.token, attemptController.signal)
-                : typeof api.getPrivateState === 'function'
-                ? api.getPrivateState(auth.roomId, auth.token, attemptController.signal)
-                : Promise.reject(new Error('api.getPrivateState is not a function'));
-            [publicRaw, privateRaw] = await Promise.all([fetchPublic, fetchPrivate]);
-        } catch (err) {
-            if (signal.aborted) {
-                attemptController.abort();
-                throw err;
-            }
-            const status = getErrorStatusCode(err);
+        const fetchPublic = typeof api.getPublicGameState === 'function'
+            ? api.getPublicGameState(auth.roomId, auth.token, attemptController.signal)
+            : typeof api.getGameState === 'function'
+            ? api.getGameState(auth.roomId, auth.token, attemptController.signal)
+            : Promise.reject(new Error('api.getGameState is not a function'));
+        const fetchPrivate = typeof api.getPrivatePlayerState === 'function'
+            ? api.getPrivatePlayerState(auth.roomId, auth.token, attemptController.signal)
+            : typeof api.getPrivateState === 'function'
+            ? api.getPrivateState(auth.roomId, auth.token, attemptController.signal)
+            : Promise.reject(new Error('api.getPrivateState is not a function'));
+
+        const [publicRes, privateRes] = await Promise.allSettled([fetchPublic, fetchPrivate]);
+
+        if (signal.aborted) {
+            attemptController.abort();
+            throw new DOMException('Aborted', 'AbortError');
+        }
+
+        // When public state polling encounters HTTP 404 or 403, fallback to querying pokerApi.getReview
+        if (publicRes.status === 'rejected') {
+            const status = getErrorStatusCode(publicRes.reason) ?? (publicRes.reason as { status?: number })?.status;
             if (status === 403 || status === 404) {
                 return handleReviewFallback(api, auth, status, attemptController.signal);
             }
+        }
+
+        if (privateRes.status === 'rejected') {
+            const status = getErrorStatusCode(privateRes.reason) ?? (privateRes.reason as { status?: number })?.status;
+            if (status === 403 || status === 404) {
+                return handleReviewFallback(api, auth, status, attemptController.signal);
+            }
+        }
+
+        if (publicRes.status === 'rejected') {
             attemptController.abort();
-            if (err instanceof MalformedResponseError) {
+            if (publicRes.reason instanceof MalformedResponseError) {
                 const snapshotSource = isHydrated() ? 'REST recovery game snapshot' : 'initial REST game snapshot';
                 reportRejectedGameSnapshot(snapshotSource, {
                     path: '$',
                     expected: 'object',
-                    receivedType: err.receivedType,
+                    receivedType: publicRes.reason.receivedType,
                 });
             }
-            throw err;
+            throw publicRes.reason;
         }
+
+        if (privateRes.status === 'rejected') {
+            attemptController.abort();
+            throw privateRes.reason;
+        }
+
+        const publicRaw = publicRes.value;
+        const privateRaw = privateRes.value;
 
         // 4. Validate both responses and their hand/player identity
         const snapshotSource = isHydrated() ? 'REST recovery game snapshot' : 'initial REST game snapshot';

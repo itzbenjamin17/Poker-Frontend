@@ -1413,7 +1413,10 @@ export class GameSession {
             const result = decodeGameEndResult(response?.data, targetGameId);
             if (!result) throw new Error('Malformed claim response');
             if (generation !== this.claimRecoveryGeneration || controller.signal.aborted) return;
-            if (!this.isDisposed && this.hasLifecyclePermission()) this.installTerminalResult(result);
+            if (!this.isDisposed && this.hasLifecyclePermission()) {
+                this.installTerminalResult(result);
+                this.setGameEndResult(result);
+            }
         } catch (err) {
             if (generation !== this.claimRecoveryGeneration || controller.signal.aborted) return;
             if (this.snapshot.isGameOver || this.isDisposed || !this.hasLifecyclePermission()) return;
@@ -1654,15 +1657,8 @@ export class GameSession {
         };
 
         this.cancelRecovery();
+        this.setGameEndResult(terminalResult);
         this.updateSnapshot(() => ({
-            isGameOver: true,
-            isRedirecting: false,
-            gameEndResult: terminalResult,
-            gameState: nextGameState,
-            showdown: null,
-            showdownResult: null,
-            notification: null,
-            claimPending: false,
             isHydrated: true,
             loadingStatus: STATUS_CONNECTED,
             isRecovering: false,
@@ -1710,6 +1706,8 @@ export class GameSession {
             showdown: null,
             showdownResult: null,
             notification: null,
+            isRecovering: result !== null ? false : this.snapshot.isRecovering,
+            recoveryFailed: result !== null ? false : this.snapshot.recoveryFailed,
         }));
     }
 

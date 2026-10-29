@@ -205,4 +205,57 @@ describe('claim review recovery ownership', () => {
         expect(api.getReview).toHaveBeenCalledOnce();
         expect(session.hasPendingRecoveryTimer()).toBe(false);
     });
+
+    it('directly transitions session to review state on successful claim-win response without STOMP frame', async () => {
+        const { api, auth, session, result } = setup();
+        const setGameEndResultSpy = vi.spyOn(session, 'setGameEndResult');
+        const installTerminalResultSpy = vi.spyOn(session, 'installTerminalResult');
+
+        api.claimWin.mockResolvedValueOnce({
+            message: 'Win claimed successfully',
+            data: result,
+        });
+
+        await session.claimWin(auth.roomId);
+
+        expect(api.claimWin).toHaveBeenCalledWith(auth.roomId, auth.token, expect.any(AbortSignal));
+        expect(installTerminalResultSpy).toHaveBeenCalledWith(result);
+        expect(setGameEndResultSpy).toHaveBeenCalledWith(result);
+        expect(api.getReview).not.toHaveBeenCalled();
+
+        const snapshot = session.getSnapshot();
+        expect(snapshot.isGameOver).toBe(true);
+        expect(snapshot.claimPending).toBe(false);
+        expect(snapshot.isRecovering).toBe(false);
+        expect(snapshot.gameEndResult).toMatchObject({
+            gameId: auth.roomId,
+            winnerName: auth.playerName,
+            isForfeit: true,
+            message: 'Hero wins!',
+        });
+    });
+
+    it('recovers terminal game review from getReview when public state polling encounters HTTP 404', async () => {
+        const { api, auth, session, result } = setup();
+        const setGameEndResultSpy = vi.spyOn(session, 'setGameEndResult');
+
+        api.getPublicGameState.mockRejectedValueOnce({ status: 404 });
+        api.getPrivatePlayerState.mockRejectedValueOnce({ status: 404 });
+        api.getReview.mockResolvedValueOnce(result);
+
+        await session.synchronizeSession({ resetBudget: true });
+
+        expect(api.getPublicGameState).toHaveBeenCalled();
+        expect(api.getReview).toHaveBeenCalledWith(auth.roomId, auth.token, expect.any(AbortSignal));
+        expect(setGameEndResultSpy).toHaveBeenCalled();
+
+        const snapshot = session.getSnapshot();
+        expect(snapshot.isGameOver).toBe(true);
+        expect(snapshot.gameEndResult).toMatchObject({
+            gameId: auth.roomId,
+            winnerName: auth.playerName,
+            message: 'Hero wins!',
+        });
+        expect(session.hasPendingRecoveryTimer()).toBe(false);
+    });
 });
