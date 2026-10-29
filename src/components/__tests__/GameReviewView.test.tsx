@@ -261,4 +261,93 @@ describe('GameReviewView', () => {
         await user.click(leaveBtn);
         expect(mockOnLeave).toHaveBeenCalledTimes(1);
     });
+
+    it('enforces an exclusive WINNER badge for champion and suppresses multiple lingering isWinner flags', () => {
+        const legacyMultiWinnerState: GameState = {
+            ...mockGameState,
+            players: [
+                { id: 'p-1', name: 'Alice', chips: 1000, status: 'ACTIVE', currentBet: 0, hasFolded: false, isReadyForNextHand: false, isWinner: true },
+                { id: 'p-2', name: 'Bob', chips: 2000, status: 'ACTIVE', currentBet: 0, hasFolded: false, isReadyForNextHand: false, isWinner: true },
+                { id: 'p-3', name: 'CharlieChampion', chips: 8000, status: 'ACTIVE', currentBet: 0, hasFolded: false, isReadyForNextHand: false, isWinner: false },
+                { id: 'p-4', name: 'David', chips: 500, status: 'ACTIVE', currentBet: 0, hasFolded: false, isReadyForNextHand: false, isWinner: true },
+            ],
+        };
+
+        const { container } = render(
+            <GameReviewView
+                gameEndResult={{
+                    gameId: 'ROOM1',
+                    winnerName: 'CharlieChampion',
+                    winnerChips: 8000,
+                    isForfeit: false,
+                    message: 'CharlieChampion is the tournament champion',
+                }}
+                gameState={legacyMultiWinnerState}
+                onLeave={mockOnLeave}
+            />
+        );
+
+        // Verify only 1 badge is rendered
+        const badges = screen.getAllByText('WINNER');
+        expect(badges).toHaveLength(1);
+        expect(badges[0].closest('div')).toHaveTextContent('CharlieChampion');
+
+        // Verify standings are champion first, then descending chips
+        const names = Array.from(container.querySelectorAll('.truncate')).map((el) => el.textContent);
+        expect(names).toEqual(['CharlieChampion', 'Bob', 'Alice', 'David']);
+    });
+
+    it('falls back to Boolean(player.isWinner) when winnerName is absent', () => {
+        const stateWithoutWinnerName: GameState = {
+            ...mockGameState,
+            players: [
+                { id: 'p-1', name: 'PlayerOne', chips: 5000, status: 'ACTIVE', currentBet: 0, hasFolded: false, isReadyForNextHand: false, isWinner: true },
+                { id: 'p-2', name: 'PlayerTwo', chips: 3000, status: 'ACTIVE', currentBet: 0, hasFolded: false, isReadyForNextHand: false, isWinner: false },
+            ],
+        };
+
+        render(
+            <GameReviewView
+                gameEndResult={{
+                    gameId: 'ROOM1',
+                    isForfeit: false,
+                    message: 'Game Concluded',
+                }}
+                gameState={stateWithoutWinnerName}
+                onLeave={mockOnLeave}
+            />
+        );
+
+        const badges = screen.getAllByText('WINNER');
+        expect(badges).toHaveLength(1);
+        expect(badges[0].closest('div')).toHaveTextContent('PlayerOne');
+    });
+
+    it('places champion first even if another player has a larger chip stack due to forfeit', () => {
+        const forfeitState: GameState = {
+            ...mockGameState,
+            players: [
+                { id: 'p-1', name: 'RunnerUpLargeStack', chips: 7000, status: 'ACTIVE', currentBet: 0, hasFolded: false, isReadyForNextHand: false },
+                { id: 'p-2', name: 'ForfeitChampion', chips: 3000, status: 'ACTIVE', currentBet: 0, hasFolded: false, isReadyForNextHand: false },
+                { id: 'p-3', name: 'ThirdPlace', chips: 1000, status: 'ACTIVE', currentBet: 0, hasFolded: false, isReadyForNextHand: false },
+            ],
+        };
+
+        const { container } = render(
+            <GameReviewView
+                gameEndResult={{
+                    gameId: 'ROOM1',
+                    winnerName: 'ForfeitChampion',
+                    winnerChips: 3000,
+                    isForfeit: true,
+                    message: 'RunnerUp forfeited the match',
+                }}
+                gameState={forfeitState}
+                onLeave={mockOnLeave}
+            />
+        );
+
+        const names = Array.from(container.querySelectorAll('.truncate')).map((el) => el.textContent);
+        expect(names).toEqual(['ForfeitChampion', 'RunnerUpLargeStack', 'ThirdPlace']);
+    });
 });

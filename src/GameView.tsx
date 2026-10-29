@@ -79,7 +79,7 @@ function GameViewInner() {
         return (
             <GameReviewView
                 gameEndResult={gameEndResult}
-                gameState={gameState}
+                gameState={gameEndResult.finalState ?? gameState}
                 leaveError={leaveError ?? notification}
                 onRetryLeave={handleLeaveRequest}
                 onLeave={() => dispatcher.dispatch({ type: 'LEAVE_REVIEW' })}

@@ -33,8 +33,11 @@ export function GameReviewView({ gameEndResult, gameState, onLeave, leaveError, 
         .map((player, index) => ({ player, index }))
         .sort((a, b) => {
             if (winnerName) {
-                if (a.player.name === winnerName) return -1;
-                if (b.player.name === winnerName) return 1;
+                const isAWinner = a.player.name === winnerName;
+                const isBWinner = b.player.name === winnerName;
+                if (isAWinner !== isBWinner) {
+                    return isAWinner ? -1 : 1;
+                }
             }
             if (b.player.chips !== a.player.chips) {
                 return b.player.chips - a.player.chips;
