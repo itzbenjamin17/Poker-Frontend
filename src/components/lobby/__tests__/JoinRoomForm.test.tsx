@@ -4,7 +4,14 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { http, HttpResponse } from 'msw';
 import { JoinRoomForm } from '../JoinRoomForm';
 import { server } from '../../../test/mocks/server';
-import { BTN_JOIN, BTN_JOINING } from '../../../constants/strings';
+import { pokerApi } from '../../../services/api';
+import {
+    BTN_JOIN,
+    BTN_JOINING,
+    VALIDATION_PASSWORD_CONTROL,
+    formatPasswordMaxError,
+} from '../../../constants/strings';
+import { VALIDATION } from '../validation';
 import '@testing-library/jest-dom';
 
 describe('JoinRoomForm', () => {
@@ -124,5 +131,214 @@ describe('JoinRoomForm', () => {
 
         const submitButton = screen.getByRole('button', { name: new RegExp(BTN_JOINING, 'i') });
         expect(submitButton).toBeDisabled();
+    });
+
+    it('renders optional password input and accepts user typing', async () => {
+        const user = userEvent.setup();
+        render(
+            <JoinRoomForm
+                onAuth={mockOnAuth}
+                onError={mockOnError}
+                loading={false}
+                setLoading={mockSetLoading}
+            />
+        );
+
+        const passwordInput = screen.getByLabelText(/password \(optional\)/i);
+        expect(passwordInput).toBeInTheDocument();
+        expect(passwordInput).toHaveAttribute('type', 'password');
+        expect(passwordInput).toHaveAttribute('placeholder', 'Enter Room Password (Optional)');
+        expect(passwordInput).toHaveAttribute('maxLength', String(VALIDATION.password.max));
+
+        await user.type(passwordInput, 'JoinSecret456');
+        expect(passwordInput).toHaveValue('JoinSecret456');
+    });
+
+    it('submitting with password forwards normalized password string to pokerApi and wire request', async () => {
+        const user = userEvent.setup();
+        const joinRoomSpy = vi.spyOn(pokerApi, 'joinRoom');
+        let capturedWireBody: Record<string, unknown> | null = null;
+        server.use(
+            http.post('/api/room/join', async ({ request }) => {
+                capturedWireBody = (await request.json()) as Record<string, unknown>;
+                return HttpResponse.json({
+                    message: 'Successfully joined room',
+                    data: {
+                        token: 'mock-token',
+                        roomId: 'JoinPasswordRoom',
+                        playerName: 'Guest1',
+                    },
+                });
+            })
+        );
+
+        render(
+            <JoinRoomForm
+                onAuth={mockOnAuth}
+                onError={mockOnError}
+                loading={false}
+                setLoading={mockSetLoading}
+            />
+        );
+
+        fireEvent.change(screen.getByLabelText(/room name/i), { target: { value: 'JoinPasswordRoom' } });
+        fireEvent.change(screen.getByLabelText(/player alias/i), { target: { value: 'Guest1' } });
+        fireEvent.change(screen.getByLabelText(/password \(optional\)/i), { target: { value: 'Pass#789' } });
+
+        const submitButton = screen.getByRole('button', { name: new RegExp(BTN_JOIN, 'i') });
+        await user.click(submitButton);
+
+        await waitFor(() => {
+            expect(joinRoomSpy).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    roomName: 'JoinPasswordRoom',
+                    playerName: 'Guest1',
+                    password: 'Pass#789',
+                }),
+                expect.any(AbortSignal)
+            );
+            expect(mockOnAuth).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    roomId: 'JoinPasswordRoom',
+                    playerName: 'Guest1',
+                })
+            );
+            expect(capturedWireBody).not.toBeNull();
+            expect(capturedWireBody?.password).toBe('Pass#789');
+        });
+    });
+
+    it('submitting without password forwards undefined to pokerApi', async () => {
+        const user = userEvent.setup();
+        const joinRoomSpy = vi.spyOn(pokerApi, 'joinRoom');
+        let capturedWireBody: Record<string, unknown> | null = null;
+        server.use(
+            http.post('/api/room/join', async ({ request }) => {
+                capturedWireBody = (await request.json()) as Record<string, unknown>;
+                return HttpResponse.json({
+                    message: 'Successfully joined room',
+                    data: {
+                        token: 'mock-token',
+                        roomId: 'PublicJoinRoom',
+                        playerName: 'Guest2',
+                    },
+                });
+            })
+        );
+
+        render(
+            <JoinRoomForm
+                onAuth={mockOnAuth}
+                onError={mockOnError}
+                loading={false}
+                setLoading={mockSetLoading}
+            />
+        );
+
+        fireEvent.change(screen.getByLabelText(/room name/i), { target: { value: 'PublicJoinRoom' } });
+        fireEvent.change(screen.getByLabelText(/player alias/i), { target: { value: 'Guest2' } });
+
+        const submitButton = screen.getByRole('button', { name: new RegExp(BTN_JOIN, 'i') });
+        await user.click(submitButton);
+
+        await waitFor(() => {
+            expect(joinRoomSpy).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    roomName: 'PublicJoinRoom',
+                    playerName: 'Guest2',
+                }),
+                expect.any(AbortSignal)
+            );
+            const callArgs = joinRoomSpy.mock.calls[0][0];
+            expect(callArgs.password).toBeUndefined();
+            expect(capturedWireBody?.password).toBeUndefined();
+            expect(mockOnAuth).toHaveBeenCalled();
+        });
+    });
+
+    it('submitting with whitespace-only password normalizes to undefined and forwards undefined', async () => {
+        const user = userEvent.setup();
+        const joinRoomSpy = vi.spyOn(pokerApi, 'joinRoom');
+
+        render(
+            <JoinRoomForm
+                onAuth={mockOnAuth}
+                onError={mockOnError}
+                loading={false}
+                setLoading={mockSetLoading}
+            />
+        );
+
+        fireEvent.change(screen.getByLabelText(/room name/i), { target: { value: 'WhitespaceJoin' } });
+        fireEvent.change(screen.getByLabelText(/player alias/i), { target: { value: 'Guest3' } });
+        fireEvent.change(screen.getByLabelText(/password \(optional\)/i), { target: { value: '    ' } });
+
+        const submitButton = screen.getByRole('button', { name: new RegExp(BTN_JOIN, 'i') });
+        await user.click(submitButton);
+
+        await waitFor(() => {
+            expect(joinRoomSpy).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    roomName: 'WhitespaceJoin',
+                    playerName: 'Guest3',
+                }),
+                expect.any(AbortSignal)
+            );
+            const callArgs = joinRoomSpy.mock.calls[0][0];
+            expect(callArgs.password).toBeUndefined();
+            expect(mockOnAuth).toHaveBeenCalled();
+        });
+    });
+
+    it('invalid password exceeding 50 chars displays validation error and blocks submission', async () => {
+        const user = userEvent.setup();
+        const joinRoomSpy = vi.spyOn(pokerApi, 'joinRoom');
+
+        render(
+            <JoinRoomForm
+                onAuth={mockOnAuth}
+                onError={mockOnError}
+                loading={false}
+                setLoading={mockSetLoading}
+            />
+        );
+
+        fireEvent.change(screen.getByLabelText(/room name/i), { target: { value: 'ValidRoom' } });
+        fireEvent.change(screen.getByLabelText(/player alias/i), { target: { value: 'Guest' } });
+        fireEvent.change(screen.getByLabelText(/password \(optional\)/i), { target: { value: 'b'.repeat(51) } });
+
+        const submitButton = screen.getByRole('button', { name: new RegExp(BTN_JOIN, 'i') });
+        await user.click(submitButton);
+
+        expect(mockOnError).toHaveBeenCalledWith(formatPasswordMaxError(VALIDATION.password.max));
+        expect(joinRoomSpy).not.toHaveBeenCalled();
+        expect(mockOnAuth).not.toHaveBeenCalled();
+        expect(mockSetLoading).not.toHaveBeenCalled();
+    });
+
+    it('invalid password with control characters displays validation error and blocks submission', async () => {
+        const user = userEvent.setup();
+        const joinRoomSpy = vi.spyOn(pokerApi, 'joinRoom');
+
+        render(
+            <JoinRoomForm
+                onAuth={mockOnAuth}
+                onError={mockOnError}
+                loading={false}
+                setLoading={mockSetLoading}
+            />
+        );
+
+        fireEvent.change(screen.getByLabelText(/room name/i), { target: { value: 'ValidRoom' } });
+        fireEvent.change(screen.getByLabelText(/player alias/i), { target: { value: 'Guest' } });
+        fireEvent.change(screen.getByLabelText(/password \(optional\)/i), { target: { value: 'ctrl\u001Fpass' } });
+
+        const submitButton = screen.getByRole('button', { name: new RegExp(BTN_JOIN, 'i') });
+        await user.click(submitButton);
+
+        expect(mockOnError).toHaveBeenCalledWith(VALIDATION_PASSWORD_CONTROL);
+        expect(joinRoomSpy).not.toHaveBeenCalled();
+        expect(mockOnAuth).not.toHaveBeenCalled();
+        expect(mockSetLoading).not.toHaveBeenCalled();
     });
 });
