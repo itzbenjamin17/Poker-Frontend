@@ -82,8 +82,8 @@ export function useAuthSession() {
     }, []);
 
     const clearAuth = useCallback((expectedToken?: string) => {
-        if (expectedToken && authRef.current?.token !== expectedToken) return;
-        if (expectedToken) {
+        if (expectedToken !== undefined && authRef.current?.token !== expectedToken) return;
+        if (expectedToken !== undefined) {
             const saved = safeGetStorageItem(AUTH_KEY);
             if (saved) {
                 try {

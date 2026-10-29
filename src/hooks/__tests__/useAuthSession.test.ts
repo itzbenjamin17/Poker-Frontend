@@ -417,4 +417,75 @@ describe('useAuthSession', () => {
         const tab2 = renderHook(() => useAuthSessionTab2());
         expect(tab2.result.current.auth).toBeNull();
     });
+
+    describe('F1-1 scoped clearAuth behavior', () => {
+        it('clears auth unconditionally when clearAuth() is called with no arguments', async () => {
+            const validAuth = {
+                token: createJwt({ exp: Math.floor(Date.now() / 1000) + 3600, id: 'token-no-arg' }),
+                roomId: 'room-no-arg',
+                playerName: 'Player1',
+                message: 'Ok',
+            };
+            const { useAuthSession } = await import('../useAuthSession');
+            const { result } = renderHook(() => useAuthSession());
+
+            act(() => result.current.setAuth(validAuth));
+            expect(result.current.auth).toEqual(validAuth);
+
+            act(() => {
+                result.current.clearAuth();
+            });
+
+            expect(result.current.auth).toBeNull();
+            expect(result.current.getCurrentAuth()).toBeNull();
+            expect(sessionStorage.getItem('poker-auth')).toBeNull();
+        });
+
+        it('clears auth when clearAuth(matching-token) matches active auth token', async () => {
+            const token = createJwt({ exp: Math.floor(Date.now() / 1000) + 3600, id: 'matching-token' });
+            const validAuth = {
+                token,
+                roomId: 'room-matching',
+                playerName: 'Player2',
+                message: 'Ok',
+            };
+            const { useAuthSession } = await import('../useAuthSession');
+            const { result } = renderHook(() => useAuthSession());
+
+            act(() => result.current.setAuth(validAuth));
+            expect(result.current.auth).toEqual(validAuth);
+
+            act(() => {
+                result.current.clearAuth(token);
+            });
+
+            expect(result.current.auth).toBeNull();
+            expect(result.current.getCurrentAuth()).toBeNull();
+            expect(sessionStorage.getItem('poker-auth')).toBeNull();
+        });
+
+        it('does NOT clear auth when clearAuth(stale-token) does not match active auth token', async () => {
+            const activeToken = createJwt({ exp: Math.floor(Date.now() / 1000) + 3600, id: 'active-token' });
+            const staleToken = createJwt({ exp: Math.floor(Date.now() / 1000) + 3600, id: 'stale-token' });
+            const validAuth = {
+                token: activeToken,
+                roomId: 'room-active',
+                playerName: 'Player3',
+                message: 'Ok',
+            };
+            const { useAuthSession } = await import('../useAuthSession');
+            const { result } = renderHook(() => useAuthSession());
+
+            act(() => result.current.setAuth(validAuth));
+            expect(result.current.auth).toEqual(validAuth);
+
+            act(() => {
+                result.current.clearAuth(staleToken);
+            });
+
+            expect(result.current.auth).toEqual(validAuth);
+            expect(result.current.getCurrentAuth()).toEqual(validAuth);
+            expect(JSON.parse(sessionStorage.getItem('poker-auth')!)).toEqual(validAuth);
+        });
+    });
 });
