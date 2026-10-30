@@ -286,5 +286,16 @@ describe('gameEndStorage', () => {
             expect(loadPersistedGameEnd('room-123', 'mismatched-token', 'Alice')).toBeNull();
             expect(loadPersistedGameEnd('room-123', 'token-alice-secret', 'Bob')).toBeNull();
         });
+
+        it('does not write a corrupt envelope when token or playerName are omitted or blank', () => {
+            saveGameEndResult('room-123', validResult);
+            expect(sessionStorage.getItem('poker-game-end:room-123')).toBeNull();
+
+            saveGameEndResult('room-123', validResult, '', 'Alice');
+            expect(sessionStorage.getItem('poker-game-end:room-123')).toBeNull();
+
+            saveGameEndResult('room-123', validResult, 'token-alice-secret', '   ');
+            expect(sessionStorage.getItem('poker-game-end:room-123')).toBeNull();
+        });
     });
 });

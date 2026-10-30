@@ -18,6 +18,10 @@ export interface PersistedGameEndEnvelope {
     storedAt?: number;
 }
 
+function getStorageKey(roomId: string): string {
+    return GAME_END_STORAGE_PREFIX + roomId;
+}
+
 function isValidEnvelope(value: unknown): value is PersistedGameEndEnvelope {
     if (!value || typeof value !== 'object' || Array.isArray(value)) {
         return false;
@@ -47,6 +51,156 @@ function purgeLegacyLocalStorage(key: string): void {
     }
 }
 
+function removeSessionEntry(key: string): void {
+    try {
+        sessionStorage.removeItem(key);
+    } catch {
+        // Storage access denied
+    }
+}
+
+function readRawSessionEntry(key: string): { ok: true; raw: string | null } | { ok: false } {
+    try {
+        return { ok: true, raw: sessionStorage.getItem(key) };
+    } catch {
+        // Storage access denied (SecurityError)
+        return { ok: false };
+    }
+}
+
+function decodeAndValidateRoomResult(
+    rawResult: unknown,
+    roomId: string,
+    key: string
+): GameEndResult | null {
+    const decodedResult = decodeGameEndResult(rawResult, roomId);
+    if (!decodedResult || decodedResult.gameId !== roomId) {
+        removeSessionEntry(key);
+        return null;
+    }
+    return decodedResult;
+}
+
+function doesEnvelopeMatchCaller(
+    envelope: PersistedGameEndEnvelope,
+    roomId: string,
+    token?: string,
+    playerName?: string,
+    requireFullAuth = false
+): boolean {
+    if (envelope.roomId !== roomId) {
+        return false;
+    }
+    if (requireFullAuth) {
+        return envelope.token === token && envelope.playerName === playerName;
+    }
+    const tokenMatches = !token || envelope.token === token;
+    const playerMatches = !playerName || envelope.playerName === playerName;
+    return Boolean(token || playerName) && tokenMatches && playerMatches;
+}
+
+function readPersistedGameEndInternal(
+    roomId: string,
+    token?: string,
+    playerName?: string,
+    requireFullAuth = false
+): GameEndResult | null {
+    const key = getStorageKey(roomId);
+    purgeLegacyLocalStorage(key);
+
+    const entry = readRawSessionEntry(key);
+    if (!entry.ok || entry.raw === null) {
+        return null;
+    }
+
+    let parsed: unknown;
+    try {
+        parsed = JSON.parse(entry.raw);
+    } catch {
+        removeSessionEntry(key);
+        return null;
+    }
+
+    if (isValidEnvelope(parsed)) {
+        if (requireFullAuth) {
+            if (!doesEnvelopeMatchCaller(parsed, roomId, token, playerName, true)) {
+                return null;
+            }
+        } else {
+            if (parsed.roomId !== roomId) {
+                return null;
+            }
+            if (token && parsed.token !== token) {
+                return null;
+            }
+            if (playerName && parsed.playerName !== playerName) {
+                return null;
+            }
+        }
+        return decodeAndValidateRoomResult(parsed.result, roomId, key);
+    }
+
+    if (requireFullAuth || token || playerName) {
+        removeSessionEntry(key);
+        return null;
+    }
+
+    // Fallback: unversioned legacy payload when no identity constraints were requested
+    return decodeAndValidateRoomResult(parsed, roomId, key);
+}
+
+function writePersistedGameEndInternal(
+    roomId: string,
+    result: GameEndResult | null,
+    token?: string,
+    playerName?: string,
+    storedAt?: number,
+    requireFullAuth = false
+): void {
+    const key = getStorageKey(roomId);
+    const entry = readRawSessionEntry(key);
+    if (!entry.ok) {
+        return;
+    }
+
+    try {
+        if (entry.raw !== null) {
+            try {
+                const parsed = JSON.parse(entry.raw);
+                if (
+                    isValidEnvelope(parsed) &&
+                    !doesEnvelopeMatchCaller(parsed, roomId, token, playerName, requireFullAuth)
+                ) {
+                    // Do not overwrite or delete an envelope owned by another session/player
+                    return;
+                }
+            } catch {
+                // Malformed JSON - can be overwritten or cleaned below
+            }
+        }
+
+        if (result) {
+            if (!roomId.trim() || !token?.trim() || !playerName?.trim()) {
+                return;
+            }
+            const envelope: PersistedGameEndEnvelope = {
+                version: 1,
+                roomId,
+                playerName,
+                token,
+                result,
+                storedAt: typeof storedAt === 'number' ? storedAt : Date.now(),
+            };
+            sessionStorage.setItem(key, JSON.stringify(envelope));
+        } else {
+            sessionStorage.removeItem(key);
+            purgeLegacyLocalStorage(key);
+        }
+    } catch {
+        // Ignore storage errors (private browsing, quota exceeded, etc.)
+    }
+}
+
 /**
  * Reads a previously frozen final-game snapshot from sessionStorage so a page
  * refresh during the post-game review can restore the review screen instead
@@ -70,70 +224,12 @@ export function loadPersistedGameEnd(
     if (typeof authOrRoomId === 'string') {
         return loadGameEndResult(authOrRoomId, currentToken, currentUsername);
     }
-    const auth = authOrRoomId;
-    const key = GAME_END_STORAGE_PREFIX + auth.roomId;
-
-    // Reject and purge any legacy unversioned localStorage entry without importing
-    purgeLegacyLocalStorage(key);
-
-    let rawSession: string | null = null;
-    try {
-        rawSession = sessionStorage.getItem(key);
-    } catch {
-        // Storage access denied (SecurityError)
-        return null;
-    }
-
-    if (rawSession === null) {
-        return null;
-    }
-
-    let parsed: unknown;
-    try {
-        parsed = JSON.parse(rawSession);
-    } catch {
-        // Corrupted JSON - purge invalid entry
-        try {
-            sessionStorage.removeItem(key);
-        } catch {
-            // Storage access denied
-        }
-        return null;
-    }
-
-    if (!isValidEnvelope(parsed)) {
-        // Unversioned raw result or malformed envelope - reject and purge
-        try {
-            sessionStorage.removeItem(key);
-        } catch {
-            // Storage access denied
-        }
-        return null;
-    }
-
-    // Verify all three identity fields match
-    if (
-        parsed.roomId !== auth.roomId ||
-        parsed.playerName !== auth.playerName ||
-        parsed.token !== auth.token
-    ) {
-        // Belongs to another player/session in this room; preserve User B's envelope
-        return null;
-    }
-
-    // Validate inner result and confirm room identity
-    const decodedResult = decodeGameEndResult(parsed.result, auth.roomId);
-    if (!decodedResult || decodedResult.gameId !== auth.roomId) {
-        // Result is corrupted or points to a different room - purge
-        try {
-            sessionStorage.removeItem(key);
-        } catch {
-            // Storage access denied
-        }
-        return null;
-    }
-
-    return decodedResult;
+    return readPersistedGameEndInternal(
+        authOrRoomId.roomId,
+        authOrRoomId.token,
+        authOrRoomId.playerName,
+        true
+    );
 }
 
 /**
@@ -147,81 +243,12 @@ export function loadGameEndResult(
     currentToken?: string,
     currentUsername?: string
 ): GameEndResult | null {
-    if (currentToken && currentUsername) {
-        return loadPersistedGameEnd({
-            roomId,
-            token: currentToken,
-            playerName: currentUsername,
-        });
-    }
-
-    const key = GAME_END_STORAGE_PREFIX + roomId;
-    purgeLegacyLocalStorage(key);
-
-    let rawSession: string | null = null;
-    try {
-        rawSession = sessionStorage.getItem(key);
-    } catch {
-        return null;
-    }
-
-    if (rawSession === null) {
-        return null;
-    }
-
-    let parsed: unknown;
-    try {
-        parsed = JSON.parse(rawSession);
-    } catch {
-        try {
-            sessionStorage.removeItem(key);
-        } catch {
-            // Storage access denied
-        }
-        return null;
-    }
-
-    if (isValidEnvelope(parsed)) {
-        if (currentToken && parsed.token !== currentToken) {
-            return null;
-        }
-        if (currentUsername && parsed.playerName !== currentUsername) {
-            return null;
-        }
-        const decodedResult = decodeGameEndResult(parsed.result, roomId);
-        if (!decodedResult || decodedResult.gameId !== roomId) {
-            try {
-                sessionStorage.removeItem(key);
-            } catch {
-                // Storage access denied
-            }
-            return null;
-        }
-        return decodedResult;
-    }
-
-    // If identity credentials were provided but the stored entry has no ownership envelope,
-    // reject the unauthenticated entry to prevent stale review traps.
-    if (currentToken || currentUsername) {
-        try {
-            sessionStorage.removeItem(key);
-        } catch {
-            // Storage access denied
-        }
-        return null;
-    }
-
-    // Fallback: unversioned legacy payload when no identity constraints were requested
-    const decodedResult = decodeGameEndResult(parsed, roomId);
-    if (!decodedResult || decodedResult.gameId !== roomId) {
-        try {
-            sessionStorage.removeItem(key);
-        } catch {
-            // Storage access denied
-        }
-        return null;
-    }
-    return decodedResult;
+    return readPersistedGameEndInternal(
+        roomId,
+        currentToken,
+        currentUsername,
+        Boolean(currentToken && currentUsername)
+    );
 }
 
 /**
@@ -257,54 +284,15 @@ export function savePersistedGameEnd(
         return;
     }
 
-    const auth = authOrRoomId;
     const time = typeof tokenOrStoredAt === 'number' ? tokenOrStoredAt : storedAt;
-    const key = GAME_END_STORAGE_PREFIX + auth.roomId;
-
-    try {
-        let rawSession: string | null = null;
-        try {
-            rawSession = sessionStorage.getItem(key);
-        } catch {
-            // Storage access denied
-            return;
-        }
-
-        if (rawSession !== null) {
-            try {
-                const parsed = JSON.parse(rawSession);
-                if (isValidEnvelope(parsed)) {
-                    const isOwner =
-                        parsed.roomId === auth.roomId &&
-                        parsed.playerName === auth.playerName &&
-                        parsed.token === auth.token;
-                    if (!isOwner) {
-                        // Different owner in same room - do NOT overwrite or delete
-                        return;
-                    }
-                }
-            } catch {
-                // Malformed JSON - can be overwritten or cleaned below
-            }
-        }
-
-        if (result) {
-            const envelope: PersistedGameEndEnvelope = {
-                version: 1,
-                roomId: auth.roomId,
-                playerName: auth.playerName,
-                token: auth.token,
-                result,
-                storedAt: typeof time === 'number' ? time : Date.now(),
-            };
-            sessionStorage.setItem(key, JSON.stringify(envelope));
-        } else {
-            sessionStorage.removeItem(key);
-            purgeLegacyLocalStorage(key);
-        }
-    } catch {
-        // Ignore storage errors (private browsing, quota exceeded, etc.)
-    }
+    writePersistedGameEndInternal(
+        authOrRoomId.roomId,
+        result,
+        authOrRoomId.token,
+        authOrRoomId.playerName,
+        time,
+        true
+    );
 }
 
 /**
@@ -318,53 +306,14 @@ export function saveGameEndResult(
     playerName?: string,
     storedAt?: number
 ): void {
-    if (token && playerName) {
-        savePersistedGameEnd({ roomId, token, playerName }, result, storedAt);
-        return;
-    }
-
-    const key = GAME_END_STORAGE_PREFIX + roomId;
-    try {
-        let rawSession: string | null = null;
-        try {
-            rawSession = sessionStorage.getItem(key);
-        } catch {
-            return;
-        }
-
-        if (rawSession !== null) {
-            try {
-                const parsed = JSON.parse(rawSession);
-                if (isValidEnvelope(parsed)) {
-                    const tokenMatches = !token || parsed.token === token;
-                    const playerMatches = !playerName || parsed.playerName === playerName;
-                    if (!tokenMatches || !playerMatches || (!token && !playerName)) {
-                        // Do not overwrite or delete an owned envelope without matching identity
-                        return;
-                    }
-                }
-            } catch {
-                // Malformed JSON can be overwritten or cleaned
-            }
-        }
-
-        if (result) {
-            const envelope: PersistedGameEndEnvelope = {
-                version: 1,
-                roomId,
-                playerName: playerName ?? '',
-                token: token ?? '',
-                result,
-                storedAt: typeof storedAt === 'number' ? storedAt : Date.now(),
-            };
-            sessionStorage.setItem(key, JSON.stringify(envelope));
-        } else {
-            sessionStorage.removeItem(key);
-            purgeLegacyLocalStorage(key);
-        }
-    } catch {
-        // Storage access denied
-    }
+    writePersistedGameEndInternal(
+        roomId,
+        result,
+        token,
+        playerName,
+        storedAt,
+        Boolean(token && playerName)
+    );
 }
 
 /**
@@ -405,29 +354,24 @@ export function clearGameEndResult(
  * constructing a new session.
  */
 export function retireDifferentlyOwnedGameEnd(auth: AuthIdentity): void {
-    const key = GAME_END_STORAGE_PREFIX + auth.roomId;
+    const key = getStorageKey(auth.roomId);
     purgeLegacyLocalStorage(key);
 
+    const entry = readRawSessionEntry(key);
+    if (!entry.ok || entry.raw === null) {
+        return;
+    }
+
     try {
-        const rawSession = sessionStorage.getItem(key);
-        if (rawSession !== null) {
-            try {
-                const parsed = JSON.parse(rawSession);
-                if (isValidEnvelope(parsed)) {
-                    const isOwner =
-                        parsed.roomId === auth.roomId &&
-                        parsed.playerName === auth.playerName &&
-                        parsed.token === auth.token;
-                    if (isOwner) {
-                        return;
-                    }
-                }
-            } catch {
-                // Malformed JSON
-            }
-            sessionStorage.removeItem(key);
+        const parsed = JSON.parse(entry.raw);
+        if (
+            isValidEnvelope(parsed) &&
+            doesEnvelopeMatchCaller(parsed, auth.roomId, auth.token, auth.playerName, true)
+        ) {
+            return;
         }
     } catch {
-        // Ignore storage errors
+        // Malformed JSON
     }
+    removeSessionEntry(key);
 }
