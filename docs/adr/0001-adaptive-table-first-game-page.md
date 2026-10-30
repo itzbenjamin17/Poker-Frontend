@@ -7,8 +7,8 @@ The game page will treat the live table as the primary experience and adapt supp
 ## Experience model
 
 - The live table is the primary surface. Supporting panels must yield space to it rather than compete with it.
-- Portrait is unsupported by product policy. The design targets the existing minimum-size and landscape constraints; those constraints must be verified before implementation without broadening the supported viewport contract.
-- The table uses three responsive tiers already present in the product vocabulary: compact landscape, standard, and wide. The compact tier changes density and disclosure, not the core game model.
+- Portrait is unsupported by product policy. Eligible viewports support compact landscape down to a minimum height floor of 320px (`MIN_MOBILE_HEIGHT = 320`), below which orientation prompts guide the user without locking out mobile devices.
+- The table uses three responsive tiers already present in the product vocabulary: compact landscape, standard, and wide. The compact tier dynamically scales table geometry and density without altering the core game model.
 - The table retains its oval identity through a soft rail and vignette. The rail becomes lighter as the eligible viewport becomes more constrained so it does not clip or dictate the playing area.
 
 ## Table hierarchy
@@ -50,6 +50,7 @@ It should not contain a complete betting timeline, unrelated analytics, or a sec
 
 - Emerald/mint means active or positive state: current turn, ready, winner, confirmation.
 - Gold means money and stakes: pot, payout, blinds, chip values. It is not a universal winner highlight.
+- Pot and phase indicators use high-contrast dark pill badges satisfying WCAG AAA standards (>= 4.5:1 contrast against felt).
 - Amber means waiting or attention. Red is reserved for leaving or genuinely destructive actions.
 - Important states are never conveyed by color alone; they also use text, iconography, shape, or placement.
 - Winner feedback is static and calm: a mint check/badge and restrained outline. Active-turn feedback may use a small timer/ring but must not pulse the entire player pod.

@@ -2,7 +2,7 @@
 
 ## Authentication
 - **JWT (JSON Web Tokens):** All non-public REST and WebSocket communication is secured via stateless JWT authentication.
-- **Persistent Sessions:** Tokens are stored in the browser's `localStorage` to allow for session restoration upon page reload or accidental disconnection.
+- **Persistent Sessions:** Tokens are stored in browser `sessionStorage` (with one-time migration from legacy `localStorage`) to isolate credentials per tab, allowing independent multi-tabling without credential collisions or unintended cross-tab logouts upon page reload.
 - **Secure Configuration:** The system requires a strong `JWT_SECRET` environment variable in production. It will fail to start if the secret is missing or too short.
 
 ## Rate Limiting and Throttling

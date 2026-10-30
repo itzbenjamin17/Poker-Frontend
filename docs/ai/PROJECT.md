@@ -56,7 +56,7 @@ The production [Nginx configuration](../../nginx.conf) serves the built client a
 Per [ADR-0003](../adr/0003-in-process-game-session-and-transport-port.md), game session state lives outside React. `GameProvider` accepts injected `GameSession`, `GameTransport`, and `Clock` dependencies for tests. Views receive explicit game data and action callbacks from the container.
 
 1. Create/join REST responses wrap `TokenResponse` in `ApiResponse`. The API client normalizes these to `AuthResponse` containing token, room ID, player name, and message.
-2. `useAuthSession` restores validated auth from `poker-auth` localStorage, synchronizes browser-tab storage changes, and processes token-specific `auth-expired` events.
+2. `useAuthSession` restores validated auth from `poker-auth` `sessionStorage` (with one-time legacy `localStorage` migration), isolating each browser tab so multiple players can multi-table or test simultaneously, and processes token-specific `auth-expired` events.
 3. Initial REST hydration checks room membership, loads public/private game state when a game is active, and redirects when the room or seat is gone. A persisted final-game result allows review after server cleanup without live hydration.
 4. Once hydrated, the WebSocket hook connects the session. The session subscribes to `/room/{roomId}`, `/game/{roomId}`, and `/user/queue/private`.
 5. The WebSocket hook performs REST resync on connection, tab wake-up, online events, and manual retry. The session deduplicates recovery, bounds retries, and uses generation/revision guards to avoid applying obsolete recovery results over newer state.
