@@ -38,7 +38,7 @@ Started 2026-10-18 (Europe/London). Review current full source; no fixes or GitH
 Checks are recorded chronologically below. Full frontend checks passed; standard E2E incomplete; backend Spring checks deferred pending B10.
 
 ## Next action
-Tier 3 implementation and verification complete across Poker and frontend-poker! Proceeding to Tier 4 implementation (B6-2, B1-5, F3-2, F3-3, F1-1).
+Tier 4 implementation and verification complete across Poker and frontend-poker! Proceeding to Tier 5 implementation (F7-2, F7-3, B7-9, B7-10, B7-11).
 
 ### Initial verification
 - Node v24.2.0, npm 11.17.0, Java 25.0.4.1 available (CI frontend uses Node 22).
@@ -222,3 +222,40 @@ Completed 2026-10-29. All 5 Tier 3 findings (`F4-1`, `F5-3`, `B8-9 / F5-4`, `B8-
 - **Forensic Gatekeeper Audit:**
   - Forensic audit verdict: **CLEAN** (zero hardcoded test outputs or mock fixtures in production code, no facades, authentic logic, full test pass).
 
+## Tier 4 Implementation & Verification Completion
+
+Completed 2026-10-30. All 5 Tier 4 findings (`B6-2`, `B1-5`, `F3-2`, `F3-3`, `F1-1`) implemented and verified across `Poker` and `frontend-poker` via 10 fine-grained vertical slice commits:
+
+### Discrete Vertical Slice Commits
+
+- **`Poker` (Backend):**
+  - `280b741`: `fix(B6-2/S1): synchronize playerExistsInGame to prevent ConcurrentModificationException`
+    - Synchronizes `playerExistsInGame` under the `game` monitor to prevent `ConcurrentModificationException` during concurrent player lookup and list mutation.
+  - `df6ca51`: `fix(B1-5/S1): enforce maxPlayers capacity invariant in Room.addPlayer`
+    - Enforces the `maxPlayers` capacity invariant atomically inside `Room.addPlayer` under the `room` monitor, throwing `IllegalStateException` on capacity breach.
+  - `59e0ce8`: `fix(B6-2/S2): synchronize snapshot mapper player extraction and secure disconnect listener`
+    - Synchronizes snapshot mapper player extraction under the `game` monitor during WAL serialization and guards disconnect listener player lookups.
+  - `9c14bf5`: `fix(B1-5/S2): map room capacity violations to BadRequestException and synchronize joinRoom`
+    - Maps room capacity violations to `BadRequestException` (`ROOM_FULL`) in `RoomController` and ensures full synchronization across `RoomService.joinRoom`.
+
+- **`frontend-poker` (Frontend):**
+  - `9f4a914`: `fix(F1-1/S1): scope clearAuth to matching token in useAuthSession`
+    - Scopes `clearAuth(expectedToken)` to matching token in `useAuthSession` so stale or superseded leave operations cannot wipe out active authentication.
+  - `062d4ed`: `fix(F3-3/S1): bind review storage envelope with auth ownership`
+    - Binds review storage envelope with explicit token and username auth ownership, validating ownership before loading cached review data.
+  - `741a1b8`: `fix(F3-2/S1): isolate GameSession lifecycle across auth replacement epochs`
+    - Isolates `GameSession` lifecycle across auth replacement epochs in `GameProvider`, ensuring clean disconnection and disposal of superseded sessions.
+  - `274e4ce`: `fix(F1-1/S2): propagate originating token through leave pipeline`
+    - Propagates originating auth token through dispatcher and component leave pipeline down to `clearAuth(token)` to prevent accidental cross-session wipeouts.
+  - `d381a6c`: `fix(F3-2/S2): key authenticated GameView subtree by auth identity`
+    - Keys authenticated `GameView` subtree by auth identity (`token` / `sessionId`) to ensure React fully unmounts and remounts clean component state upon auth change.
+  - `c5810cf`: `fix(F3-3/S2): bind game review storage and loading to active auth credentials`
+    - Binds game review storage and hydration loading strictly to active auth credentials, eliminating stale review traps and cross-tab session contamination.
+
+### Quality Gate Sign-Off
+
+- **Reviewer 1:** `APPROVE` (All 838 backend tests, 116 frontend tests green, 0 lint errors)
+- **Reviewer 2:** `APPROVE` (Strict Room -> Game monitor ordering, 12-thread join races, and CME tests green)
+- **Challenger 1:** `APPROVE` (60-thread join storms and 1500-op mutator vs reader snapshot CME stress passed)
+- **Challenger 2:** `APPROVE` (Interleaved late leaves and cross-tab review envelope races verified clean)
+- **Forensic Auditor:** `CLEAN` (Zero hardcoded test outputs or facades, 209 backend tests, 147 frontend tests green, build clean)
