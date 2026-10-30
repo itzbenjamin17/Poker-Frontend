@@ -102,7 +102,7 @@ export function TablePots({
             {/* Phase Label */}
             <span 
                 data-testid="pot-phase"
-                className="text-emerald-primary/60 font-bold uppercase tracking-[0.2em] animate-in fade-in duration-500"
+                className="bg-black/60 border border-white/10 text-white font-bold uppercase tracking-[0.2em] px-2.5 py-0.5 rounded-full backdrop-blur-sm shadow-sm inline-flex items-center justify-center animate-in fade-in duration-500"
                 style={{ fontSize: `${fontPx(8, textScale)}px` }}
             >
                 {phase.replace(/_/g, ' ')}
@@ -123,7 +123,7 @@ export function TablePots({
                             key="main-pot"
                             data-testid="table-pot"
                             aria-label={hasMultiplePots ? LABEL_MAIN_POT : 'Total Pot'} 
-                            className="bg-black/40 rounded-full border border-white/5 backdrop-blur-md flex items-center"
+                            className="bg-black/60 rounded-full border border-white/10 backdrop-blur-md flex items-center"
                             style={{
                                 padding: `${scale * basePaddingY}px ${scale * basePaddingX}px`,
                                 gap: `${scale * baseGap}px`
@@ -135,7 +135,7 @@ export function TablePots({
                                 style={{ width: `${scale * baseIconSize}px`, height: `${scale * baseIconSize}px` }}
                             />
                             {hasMultiplePots && (
-                                <span className="text-white/70 font-bold uppercase tracking-widest" style={{ fontSize: `${fontPx(baseSmallFontSize, textScale)}px` }}>
+                                <span className="text-white/90 font-bold uppercase tracking-widest" style={{ fontSize: `${fontPx(baseSmallFontSize, textScale)}px` }}>
                                     {LABEL_MAIN_POT}
                                 </span>
                             )}
@@ -193,13 +193,13 @@ export function TablePots({
                         {sidePots.map((amount, index) => (
                             <div 
                                 key={`side-pot-${index}`} 
-                                className="bg-black/35 rounded-full border border-gold-secondary/30 backdrop-blur-md flex items-center animate-in fade-in zoom-in-95 duration-200"
+                                className="bg-black/60 rounded-full border border-gold-secondary/30 backdrop-blur-md flex items-center animate-in fade-in zoom-in-95 duration-200"
                                 style={{
                                     padding: `${scale * 5}px ${scale * 11}px`,
                                     gap: `${scale * 6}px`
                                 }}
                             >
-                                <span className="text-white/70 font-bold uppercase tracking-widest" style={{ fontSize: `${fontPx(7, textScale)}px` }}>
+                                <span className="text-white/90 font-bold uppercase tracking-widest" style={{ fontSize: `${fontPx(7, textScale)}px` }}>
                                     {LABEL_SIDE_POT_PREFIX} {index + 1}
                                 </span>
                                 <span className="font-bold text-gold-secondary" style={{ fontSize: `${fontPx(11, textScale)}px` }}>
@@ -211,13 +211,13 @@ export function TablePots({
                         {/* Uncalled Amount */}
                         {uncalledAmount > 0 && (
                             <div 
-                                className="bg-black/35 rounded-full border border-gold-secondary/30 backdrop-blur-md flex items-center animate-in fade-in zoom-in-95 duration-200"
+                                className="bg-black/60 rounded-full border border-gold-secondary/30 backdrop-blur-md flex items-center animate-in fade-in zoom-in-95 duration-200"
                                 style={{
                                     padding: `${scale * 5}px ${scale * 11}px`,
                                     gap: `${scale * 6}px`
                                 }}
                             >
-                                <span className="text-white/70 font-bold uppercase tracking-widest" style={{ fontSize: `${fontPx(7, textScale)}px` }}>
+                                <span className="text-white/90 font-bold uppercase tracking-widest" style={{ fontSize: `${fontPx(7, textScale)}px` }}>
                                     {LABEL_UNCALLED}
                                 </span>
                                 <span className="font-bold text-gold-secondary" style={{ fontSize: `${fontPx(11, textScale)}px` }}>
