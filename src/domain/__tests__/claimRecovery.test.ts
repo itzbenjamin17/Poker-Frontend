@@ -99,7 +99,7 @@ describe('claim review recovery ownership', () => {
         api.getReview.mockReturnValue(pending.promise);
         const claiming = session.claimWin(auth.roomId);
         await flush();
-        const signal = api.getReview.mock.calls[0][2];
+        const signal = api.getReview.mock.calls[0][2] as AbortSignal | undefined;
 
         transport.simulateMessage('/game/claim-room', {
             type: 'GAME_END', gameId: auth.roomId, winner: auth.playerName,
@@ -121,7 +121,7 @@ describe('claim review recovery ownership', () => {
         api.getReview.mockReturnValue(pending.promise);
         const claiming = session.claimWin(auth.roomId);
         await flush();
-        const signal = api.getReview.mock.calls[0][2];
+        const signal = api.getReview.mock.calls[0][2] as AbortSignal | undefined;
         session.dispose();
         expect(signal?.aborted).toBe(true);
         const disposed = session.getSnapshot();
@@ -138,7 +138,7 @@ describe('claim review recovery ownership', () => {
         api.getReview.mockReturnValueOnce(pending.promise);
         const claiming = session.claimWin(auth.roomId);
         await flush();
-        const signal = api.getReview.mock.calls[0][2];
+        const signal = api.getReview.mock.calls[0][2] as AbortSignal | undefined;
         session.setPendingLeave(true);
         expect(signal?.aborted).toBe(true);
         pending.resolve(result);

@@ -513,6 +513,7 @@ export function normalizeErrorMessage(raw: unknown): string | null {
     ) {
         return ERROR_SYSTEM;
     }
+    // eslint-disable-next-line no-control-regex
     const clean = msg.replace(/[\x00-\x1F\x7F-\x9F]/g, '').trim();
     if (clean.length === 0) return null;
     const MAX_LENGTH = 80;

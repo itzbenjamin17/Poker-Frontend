@@ -290,8 +290,8 @@ describe('GameProvider Ownership Lifecycle & StrictMode', () => {
         let currentSessionInstance: GameSession | null = null;
         function CaptureSession() {
             const { session } = useGameContext();
-            currentSessionInstance = session;
-            return createElement('div', { 'data-testid': 'room' }, session.getAuth().roomId);
+            currentSessionInstance = session ?? null;
+            return createElement('div', { 'data-testid': 'room' }, session?.getAuth().roomId ?? '');
         }
 
         function DynamicProvider() {

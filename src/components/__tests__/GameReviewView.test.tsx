@@ -310,6 +310,7 @@ describe('GameReviewView', () => {
             <GameReviewView
                 gameEndResult={{
                     gameId: 'ROOM1',
+                    winnerName: null,
                     isForfeit: false,
                     message: 'Game Concluded',
                 }}

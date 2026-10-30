@@ -3,14 +3,19 @@ import userEvent from '@testing-library/user-event';
 import { describe, it, expect } from 'vitest';
 import { BoardCluster } from '../BoardCluster';
 import { LABEL_MAIN_POT, LABEL_SIDE_POT_PREFIX, LABEL_UNCALLED } from '../../constants/strings';
-import type { GameState } from '../../types';
+import type { GamePhase, GameState } from '../../types';
+import type { TableScale } from '../../lib/tableGeometry';
 import '@testing-library/jest-dom';
 
 describe('BoardCluster', () => {
-    const mockScale = {
+    const mockScale: TableScale = {
         overall: 1,
-        spacing: 1,
+        avatar: 1,
+        heroCard: 1,
+        opponentCard: 1,
         text: 1,
+        badge: 1,
+        spacing: 1,
     };
 
     const baseGameState: GameState = {
@@ -73,7 +78,7 @@ describe('BoardCluster', () => {
     });
 
     it('enforces accessible contrast styling across all poker betting phases in board cluster', () => {
-        const phases = ['PRE_FLOP', 'FLOP', 'TURN', 'RIVER', 'SHOWDOWN'];
+        const phases: GamePhase[] = ['PRE_FLOP', 'FLOP', 'TURN', 'RIVER', 'SHOWDOWN'];
 
         for (const phase of phases) {
             const { unmount } = render(
