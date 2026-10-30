@@ -15,8 +15,8 @@ import { RoomHeader } from './components/RoomHeader';
 
 type GameViewProps = {
     auth: AuthResponse;
-    onLeave?: () => void;
-    onRequestLeave?: () => Promise<boolean>;
+    onLeave?: (originatingToken?: string) => void;
+    onRequestLeave?: (originatingToken?: string) => Promise<boolean>;
     leaveError?: string | null;
     session?: GameSession;
 };
@@ -192,7 +192,14 @@ function GameViewInner() {
 
 export function GameView({ auth, onLeave, onRequestLeave, leaveError, session }: GameViewProps) {
     return (
-        <GameProvider auth={auth} onLeave={onLeave} requestLeave={onRequestLeave} leaveError={leaveError} session={session}>
+        <GameProvider
+            key={`${auth.roomId}:${auth.playerName}:${auth.token}`}
+            auth={auth}
+            onLeave={onLeave}
+            requestLeave={onRequestLeave}
+            leaveError={leaveError}
+            session={session}
+        >
             <GameViewInner />
         </GameProvider>
     );

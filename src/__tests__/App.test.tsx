@@ -41,6 +41,7 @@ vi.mock('../GameView', () => ({
             <div data-testid="game-view" data-auth-key={`${auth.roomId}:${auth.playerName}:${auth.token}`}>
                 <span>Game View Component for {auth.playerName}</span>
                 {leaveError && <p role="alert">{leaveError}</p>}
+                <input data-testid="local-bet-input" defaultValue="100" />
                 <button type="button" onClick={() => { void onRequestLeave(); }}>
                     Mock Leave Game
                 </button>
@@ -362,7 +363,7 @@ describe('App', () => {
         }
     });
 
-    it('remounts GameView subtree when auth identity changes but preserves it on same-identity rerender', async () => {
+    it('remounts GameView subtree and resets local state when auth identity changes but preserves it on same-identity rerender', async () => {
         let currentAuth: any = {
             roomId: 'room-1',
             playerName: 'UserA',
@@ -385,12 +386,20 @@ describe('App', () => {
         const view1 = await screen.findByTestId('game-view');
         expect(view1).toHaveAttribute('data-auth-key', 'room-1:UserA:token-a');
 
-        // Re-render with same auth identity: element instance / hook state is preserved
+        // Mutate local state in GameView
+        const input = screen.getByTestId('local-bet-input');
+        expect(input).toHaveValue('100');
+        await userEvent.clear(input);
+        await userEvent.type(input, '500');
+        expect(input).toHaveValue('500');
+
+        // Re-render with same auth identity: element instance and local state are preserved
         rerender(<App />);
         const view2 = screen.getByTestId('game-view');
         expect(view2).toBe(view1);
+        expect(screen.getByTestId('local-bet-input')).toHaveValue('500');
 
-        // Switch to different auth identity: GameView subtree remounts
+        // Switch to different auth identity: GameView subtree remounts and local state resets
         currentAuth = {
             roomId: 'room-2',
             playerName: 'UserB',
@@ -402,5 +411,108 @@ describe('App', () => {
         const view3 = await screen.findByTestId('game-view');
         expect(view3).not.toBe(view1);
         expect(view3).toHaveAttribute('data-auth-key', 'room-2:UserB:token-b');
+        expect(screen.getByTestId('local-bet-input')).toHaveValue('100');
+    });
+
+    it('remounts GameView subtree and resets local state when same-room same-player auth token is replaced', async () => {
+        let currentAuth: any = {
+            roomId: 'room-1',
+            playerName: 'UserA',
+            token: 'token-a1',
+            message: 'Success',
+        };
+
+        vi.mocked(useAuthSession).mockImplementation(() => ({
+            auth: currentAuth,
+            setAuth: mockSetAuth,
+            clearAuth: mockClearAuth,
+            authExpired: false,
+            dismissAuthExpired: vi.fn(),
+            isCurrentToken: vi.fn((token: string) => currentAuth?.token === token),
+            getCurrentAuth: vi.fn(() => currentAuth),
+        }));
+
+        const { rerender } = render(<App />);
+
+        const view1 = await screen.findByTestId('game-view');
+        expect(view1).toHaveAttribute('data-auth-key', 'room-1:UserA:token-a1');
+
+        const input = screen.getByTestId('local-bet-input');
+        expect(input).toHaveValue('100');
+        await userEvent.clear(input);
+        await userEvent.type(input, '750');
+        expect(input).toHaveValue('750');
+
+        // Re-render with identical auth credentials but a fresh object reference
+        currentAuth = {
+            roomId: 'room-1',
+            playerName: 'UserA',
+            token: 'token-a1',
+            message: 'Success',
+        };
+        rerender(<App />);
+
+        const viewSame = screen.getByTestId('game-view');
+        expect(viewSame).toBe(view1);
+        expect(screen.getByTestId('local-bet-input')).toHaveValue('750');
+
+        // Cross-tab replacement / eviction: same room & player, but new token
+        currentAuth = {
+            roomId: 'room-1',
+            playerName: 'UserA',
+            token: 'token-a2',
+            message: 'Success',
+        };
+        rerender(<App />);
+
+        const viewReplaced = await screen.findByTestId('game-view');
+        expect(viewReplaced).not.toBe(view1);
+        expect(viewReplaced).toHaveAttribute('data-auth-key', 'room-1:UserA:token-a2');
+        expect(screen.getByTestId('local-bet-input')).toHaveValue('100');
+    });
+
+    it('resets error boundary state when same user re-authenticates in same room with fresh token after crash', async () => {
+        const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+        try {
+            let currentAuth: any = {
+                roomId: 'room-1',
+                playerName: 'UserA',
+                token: 'crash-token',
+                message: 'Success',
+            };
+
+            vi.mocked(useAuthSession).mockImplementation(() => ({
+                auth: currentAuth,
+                setAuth: mockSetAuth,
+                clearAuth: mockClearAuth,
+                authExpired: false,
+                dismissAuthExpired: vi.fn(),
+                isCurrentToken: vi.fn((token: string) => currentAuth?.token === token),
+                getCurrentAuth: vi.fn(() => currentAuth),
+            }));
+
+            const { rerender } = render(<App />);
+
+            // User A throws an uncaught error inside GameView; ErrorBoundary catches it
+            expect(screen.getByText(/Something went wrong/i)).toBeInTheDocument();
+            expect(screen.queryByTestId('game-view')).not.toBeInTheDocument();
+
+            // Re-authenticate User A in same room with fresh non-crashing token
+            currentAuth = {
+                roomId: 'room-1',
+                playerName: 'UserA',
+                token: 'fresh-token',
+                message: 'Success',
+            };
+
+            rerender(<App />);
+
+            // Fresh token changes authKey, so ErrorBoundary is reset and GameView renders cleanly
+            expect(await screen.findByTestId('game-view')).toBeInTheDocument();
+            expect(screen.getByText('Game View Component for UserA')).toBeInTheDocument();
+            expect(screen.queryByText(/Something went wrong/i)).not.toBeInTheDocument();
+        } finally {
+            consoleSpy.mockRestore();
+        }
     });
 });

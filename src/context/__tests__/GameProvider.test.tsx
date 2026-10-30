@@ -383,5 +383,96 @@ describe('GameProvider and useGameContext', () => {
         expect(transport.getPublishedMessages('/app/game-99/ready')).toHaveLength(1);
         expect(transport.getPublishedMessages('/app/game-99/unready')).toHaveLength(1);
     });
+
+    it('remounts GameProvider and resets context state when keyed by auth identity across auth replacement', async () => {
+        const user = userEvent.setup();
+        const authA = {
+            roomId: 'room-1',
+            playerName: 'Player1',
+            token: 'token-1',
+            message: 'Success',
+        };
+        const authB = {
+            roomId: 'room-2',
+            playerName: 'Player2',
+            token: 'token-2',
+            message: 'Success',
+        };
+
+        function DynamicKeyedProvider({ currentAuth }: { currentAuth: typeof authA }) {
+            return (
+                <GameProvider
+                    key={`${currentAuth.roomId}:${currentAuth.playerName}:${currentAuth.token}`}
+                    auth={currentAuth}
+                >
+                    <TestConsumer />
+                </GameProvider>
+            );
+        }
+
+        const { rerender } = render(<DynamicKeyedProvider currentAuth={authA} />);
+
+        // Set room and game state in Session A
+        await user.click(screen.getByRole('button', { name: 'Set Room' }));
+        await user.click(screen.getByRole('button', { name: 'Apply Game' }));
+        expect(screen.getByTestId('room-name')).toHaveTextContent('High Roller Suite');
+        expect(screen.getByTestId('game-phase')).toHaveTextContent('FLOP');
+
+        // Re-render with identical auth credentials: state is preserved
+        rerender(<DynamicKeyedProvider currentAuth={authA} />);
+        expect(screen.getByTestId('room-name')).toHaveTextContent('High Roller Suite');
+        expect(screen.getByTestId('game-phase')).toHaveTextContent('FLOP');
+
+        // Switch to Auth B: GameProvider remounts, resetting all context and session state
+        rerender(<DynamicKeyedProvider currentAuth={authB} />);
+        expect(screen.getByTestId('room-name')).toHaveTextContent('none');
+        expect(screen.getByTestId('game-phase')).toHaveTextContent('none');
+        expect(screen.getByTestId('pot-amount')).toHaveTextContent('0');
+    });
+
+    it('preserves GameSession reference when GameProvider is re-rendered with identical auth identity values', () => {
+        const sessions: unknown[] = [];
+        function CaptureSession() {
+            sessions.push(useGameContext().session);
+            return null;
+        }
+
+        const initialAuth = {
+            roomId: 'room-1',
+            playerName: 'Player1',
+            token: 'token-1',
+            message: 'Success',
+        };
+
+        const { rerender } = render(
+            <GameProvider
+                key={`${initialAuth.roomId}:${initialAuth.playerName}:${initialAuth.token}`}
+                auth={initialAuth}
+            >
+                <CaptureSession />
+            </GameProvider>
+        );
+
+        const session1 = sessions.at(-1);
+
+        // Re-render with new object reference with identical key
+        const sameAuthNewRef = {
+            roomId: 'room-1',
+            playerName: 'Player1',
+            token: 'token-1',
+            message: 'Success',
+        };
+
+        rerender(
+            <GameProvider
+                key={`${sameAuthNewRef.roomId}:${sameAuthNewRef.playerName}:${sameAuthNewRef.token}`}
+                auth={initialAuth}
+            >
+                <CaptureSession />
+            </GameProvider>
+        );
+
+        expect(sessions.at(-1)).toBe(session1);
+    });
 });
 

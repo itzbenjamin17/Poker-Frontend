@@ -27,6 +27,7 @@ export default function App() {
     const [leaveErrorState, setLeaveErrorState] = useState<{ token: string; message: string } | null>(null);
     const leaveFlights = useRef(new Map<string, Promise<boolean>>());
     const leaveError = auth && leaveErrorState?.token === auth.token ? leaveErrorState.message : null;
+    const authKey = auth ? `${auth.roomId}:${auth.playerName}:${auth.token}` : null;
     const requestLeave = useCallback(async (originatingToken?: string): Promise<boolean> => {
         const tokenToLeave = (typeof originatingToken === 'string' && originatingToken) ? originatingToken : auth?.token;
         if (!tokenToLeave) return true;
@@ -117,14 +118,14 @@ export default function App() {
                 </ErrorBoundary>
             ) : (
                 <ErrorBoundary
-                    key={`${auth.roomId}:${auth.playerName}:${auth.token}`}
+                    key={authKey!}
                     onLeave={requestLeave}
                     leaveError={leaveError}
                     onReset={recoverApp}
                 >
                     <Suspense fallback={<LoadingView status={SESSION_RESTORING} onLeave={requestLeave} errorMessage={leaveError} />}>
                         <GameView
-                            key={`${auth.roomId}:${auth.playerName}:${auth.token}`}
+                            key={authKey!}
                             auth={auth}
                             onLeave={handleLeave}
                             onRequestLeave={requestLeave}
