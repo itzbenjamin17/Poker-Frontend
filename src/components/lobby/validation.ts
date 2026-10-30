@@ -9,6 +9,7 @@ import {
     VALIDATION_ROOM_NAME_HTML,
     VALIDATION_PLAYER_ALIAS_HTML,
     VALIDATION_PASSWORD_CONTROL,
+    VALIDATION_PASSWORD_BYTES,
     VALIDATION_BIG_BLIND_MIN_RATIO,
     VALIDATION_BUY_IN_MIN_BIG_BLIND,
     formatRoomNameMaxError,
@@ -22,7 +23,7 @@ import {
 export const VALIDATION = {
     roomName: { min: 1, max: 50 },
     playerName: { min: 1, max: 30 },
-    password: { max: 50 },
+    password: { max: 50, maxBytes: 72 },
     maxPlayers: { min: 2, max: 10 },
     smallBlind: { min: 1, max: 10_000 },
     bigBlind: { min: 2, max: 20_000 },
@@ -48,7 +49,7 @@ function parseInteger(value: number | string): number {
 /**
  * Validates a room password against length and control character constraints.
  * Passwords are optional (undefined, null, or empty string return null).
- * Passwords exceeding 50 characters or containing Unicode control characters
+ * Passwords exceeding 50 characters, 72 UTF-8 bytes, or containing Unicode control characters
  * ([\u0000-\u001F\u007F-\u009F]) are rejected with user-facing validation errors.
  *
  * @param password optional password to validate
@@ -60,6 +61,9 @@ export function validatePassword(password?: string): string | null {
     }
     if (password.length > VALIDATION.password.max) {
         return formatPasswordMaxError(VALIDATION.password.max);
+    }
+    if (new TextEncoder().encode(password).byteLength > VALIDATION.password.maxBytes) {
+        return VALIDATION_PASSWORD_BYTES;
     }
     if (PASSWORD_CONTROL_REGEX.test(password)) {
         return VALIDATION_PASSWORD_CONTROL;

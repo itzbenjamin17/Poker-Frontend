@@ -8,6 +8,8 @@ import {
     BTN_CREATE_GAME,
     BTN_CREATING,
     ERROR_CREATE_FALLBACK,
+    LABEL_PASSWORD_OPTIONAL,
+    PLACEHOLDER_PASSWORD_OPTIONAL,
 } from '../../constants/strings';
 import { VALIDATION, validateCreate, parseCreateRoomSubmission } from './validation';
 import { useLobbyRequest } from './useLobbyRequest';
@@ -91,9 +93,9 @@ export function CreateRoomForm({ onAuth, onError, isSubmitting, loading = false,
                     </div>
                     <div className="col-span-full">
                         <Input
-                            label="Password (Optional)"
+                            label={LABEL_PASSWORD_OPTIONAL}
                             type="password"
-                            placeholder="Enter Room Password (Optional)"
+                            placeholder={PLACEHOLDER_PASSWORD_OPTIONAL}
                             value={createData.password}
                             onChange={e => setCreateData({ ...createData, password: e.target.value })}
                             maxLength={VALIDATION.password.max}

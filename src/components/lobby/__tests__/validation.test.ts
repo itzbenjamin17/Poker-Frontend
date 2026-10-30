@@ -7,6 +7,24 @@ import {
     formatPasswordMaxError,
 } from '../../../constants/strings';
 
+describe('password UTF-8 limits', () => {
+    test('rejects a 75-byte password before create or join submission', () => {
+        const data = { roomName: 'Room', playerName: 'Player', password: '漢'.repeat(25) };
+        expect(validateJoin(data)).toBe('Password must be at most 72 UTF-8 bytes.');
+        expect(validateCreate({ ...data, maxPlayers: 6, smallBlind: 5, bigBlind: 10, buyIn: 100 }))
+            .toBe('Password must be at most 72 UTF-8 bytes.');
+    });
+
+    test('accepts the 72-byte boundary and preserves its surrounding spaces', () => {
+        const password = ` ${'漢'.repeat(23)}ab`;
+        expect(validatePassword(password)).toBeNull();
+        expect(parseJoinRoomSubmission({ roomName: 'Room', playerName: 'Player', password }).password)
+            .toBe(password);
+        expect(validatePassword(`${password} `)).toBe('Password must be at most 72 UTF-8 bytes.');
+        expect(validatePassword('a'.repeat(50))).toBeNull();
+    });
+});
+
 describe('validateCreate', () => {
     const validConfig = {
         roomName: 'High Rollers Club',

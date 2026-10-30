@@ -52,6 +52,9 @@ export const VALIDATION_PLAYER_ALIAS_HTML =
 // ─── Password validation ──────────────────────────────────────────────────────
 export const VALIDATION_PASSWORD_CONTROL =
     'Password cannot contain control characters.';
+export const VALIDATION_PASSWORD_BYTES = 'Password must be at most 72 UTF-8 bytes.';
+export const LABEL_PASSWORD_OPTIONAL = 'Password (Optional)';
+export const PLACEHOLDER_PASSWORD_OPTIONAL = 'Enter Room Password (Optional)';
 export const VALIDATION_PASSWORD_MAX =
     'Password must be at most 50 characters.';
 export const formatPasswordMaxError = (max: number) => `Password must be at most ${max} characters.`;

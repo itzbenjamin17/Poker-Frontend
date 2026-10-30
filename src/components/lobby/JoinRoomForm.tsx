@@ -8,6 +8,8 @@ import {
     BTN_JOIN,
     BTN_JOINING,
     ERROR_JOIN_FALLBACK,
+    LABEL_PASSWORD_OPTIONAL,
+    PLACEHOLDER_PASSWORD_OPTIONAL,
 } from '../../constants/strings';
 import { VALIDATION, validateJoin, parseJoinRoomSubmission } from './validation';
 import { useLobbyRequest } from './useLobbyRequest';
@@ -82,9 +84,9 @@ export function JoinRoomForm({ onAuth, onError, isSubmitting, loading = false, d
                         disabled={isDisabled}
                     />
                     <Input
-                        label="Password (Optional)"
+                        label={LABEL_PASSWORD_OPTIONAL}
                         type="password"
-                        placeholder="Enter Room Password (Optional)"
+                        placeholder={PLACEHOLDER_PASSWORD_OPTIONAL}
                         value={joinData.password}
                         onChange={e => setJoinData({ ...joinData, password: e.target.value })}
                         maxLength={VALIDATION.password.max}
