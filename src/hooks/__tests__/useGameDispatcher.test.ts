@@ -688,5 +688,82 @@ describe('useGameDispatcher', () => {
             await dispatchPromise;
         });
     });
+
+    it('dispatch LEAVE_GAME passes originating token to onLeave callback', async () => {
+        vi.mocked(pokerApi.leaveRoom).mockResolvedValue();
+        const { result } = renderHook(() => useGameDispatcher(), {
+            wrapper: createWrapper(),
+        });
+
+        await act(async () => {
+            await result.current.dispatch({ type: 'LEAVE_GAME' });
+        });
+
+        expect(pokerApi.leaveRoom).toHaveBeenCalledWith('ROOM123', 'test-token', false, expect.any(AbortSignal));
+        expect(onLeave).toHaveBeenCalledWith('test-token');
+    });
+
+    it('dispatch LEAVE_GAME passes originating token to requestLeave callback', async () => {
+        const mockRequestLeave = vi.fn().mockResolvedValue(true);
+        const { result } = renderHook(() => useGameDispatcher(), {
+            wrapper: createWrapper(session, mockAuth, mockRequestLeave),
+        });
+
+        await act(async () => {
+            await result.current.dispatch({ type: 'LEAVE_GAME' });
+        });
+
+        expect(mockRequestLeave).toHaveBeenCalledWith('test-token');
+    });
+
+    it('dispatch LEAVE_REVIEW passes originating token to onLeave callback', async () => {
+        const { result } = renderHook(() => useGameDispatcher(), {
+            wrapper: createWrapper(),
+        });
+
+        await act(async () => {
+            await result.current.dispatch({ type: 'LEAVE_REVIEW' });
+        });
+
+        expect(onLeave).toHaveBeenCalledWith('test-token');
+    });
+
+    it('does not invoke onLeave or clear state when auth token changes before fallback leaveRoom completes', async () => {
+        let resolveLeave!: () => void;
+        vi.mocked(pokerApi.leaveRoom).mockImplementation(() => new Promise((resolve) => {
+            resolveLeave = resolve;
+        }));
+
+        let currentAuth = mockAuth;
+        const { result, rerender } = renderHook(() => useGameDispatcher(), {
+            wrapper: ({ children }: { children: ReactNode }) => (
+                createElement(GameProvider, {
+                    auth: currentAuth,
+                    onLeave,
+                    session,
+                    children,
+                })
+            ),
+        });
+
+        let dispatchPromise!: Promise<void>;
+        act(() => {
+            dispatchPromise = result.current.dispatch({ type: 'LEAVE_GAME' });
+        });
+
+        // While leave is in flight, auth switches to token-b
+        currentAuth = { ...mockAuth, token: 'token-b' };
+        rerender();
+
+        await act(async () => {
+            resolveLeave();
+            await dispatchPromise;
+        });
+
+        // Because token changed from test-token to token-b, isCurrent() returned false,
+        // so stale onLeave was NOT called
+        expect(onLeave).not.toHaveBeenCalled();
+    });
 });
+
 

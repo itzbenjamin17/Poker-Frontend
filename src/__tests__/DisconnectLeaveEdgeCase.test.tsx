@@ -288,4 +288,117 @@ describe('Disconnect & Leave Edge Cases', () => {
         expect(tableMain.className).not.toMatch(/\bisolate\b/);
         expect(alertBanner.className).not.toMatch(/\btop-6\b/);
     });
+
+    it('propagates originating token to onLeave and does not wipe out active replacement auth token', async () => {
+        let activeAuthToken = 'token-A';
+        const clearAuth = vi.fn((expectedToken?: string) => {
+            if (expectedToken !== undefined && activeAuthToken !== expectedToken) return;
+            activeAuthToken = '';
+        });
+        const onLeave = vi.fn((originatingToken?: string) => {
+            const tokenToClear = originatingToken ?? 'token-A';
+            clearAuth(tokenToClear);
+        });
+
+        const transport = new InMemoryTransportAdapter();
+        const session = new GameSession({
+            auth: { ...mockAuth, token: 'token-A' },
+            transport,
+            clock: new TestClock(1000),
+            initialRoomState: {
+                roomId: 'ROOM123',
+                roomName: 'Test',
+                players: [{ name: 'P1', isHost: true }],
+                gameStarted: true,
+            },
+            initialGameState,
+        });
+
+        let resolveLeave!: () => void;
+        vi.mocked(pokerApi.leaveRoom).mockImplementation(() => new Promise((resolve) => {
+            resolveLeave = resolve;
+        }));
+        vi.spyOn(window, 'confirm').mockReturnValue(true);
+
+        render(<GameView auth={{ ...mockAuth, token: 'token-A' }} onLeave={onLeave} session={session} />);
+
+        const leaveButton = await screen.findByRole('button', { name: /leave table/i });
+        await act(async () => {
+            leaveButton.click();
+        });
+
+        expect(pokerApi.leaveRoom).toHaveBeenCalledWith('ROOM123', 'token-A', false, expect.any(AbortSignal));
+
+        // Replacement session installed while leaveRoom was in flight
+        activeAuthToken = 'token-B';
+
+        await act(async () => {
+            resolveLeave();
+            await Promise.resolve();
+        });
+
+        expect(onLeave).toHaveBeenCalledWith('token-A');
+        expect(clearAuth).toHaveBeenCalledWith('token-A');
+        // Token B must NOT be wiped out
+        expect(activeAuthToken).toBe('token-B');
+    });
+
+    it('propagates originating token to onRequestLeave and preserves active replacement auth token', async () => {
+        let activeAuthToken = 'token-A';
+        const clearAuth = vi.fn((expectedToken?: string) => {
+            if (expectedToken !== undefined && activeAuthToken !== expectedToken) return;
+            activeAuthToken = '';
+        });
+
+        let resolveLeave!: () => void;
+        vi.mocked(pokerApi.leaveRoom).mockImplementation(() => new Promise((resolve) => {
+            resolveLeave = resolve;
+        }));
+
+        const requestLeave = vi.fn(async (originatingToken?: string) => {
+            await pokerApi.leaveRoom('ROOM123', originatingToken ?? 'token-A');
+            // Check active session matches originating token before clearing
+            if (activeAuthToken === (originatingToken ?? 'token-A')) {
+                clearAuth(originatingToken);
+                return true;
+            }
+            return false;
+        });
+
+        const transport = new InMemoryTransportAdapter();
+        const session = new GameSession({
+            auth: { ...mockAuth, token: 'token-A' },
+            transport,
+            clock: new TestClock(1000),
+            initialRoomState: {
+                roomId: 'ROOM123',
+                roomName: 'Test',
+                players: [{ name: 'P1', isHost: true }],
+                gameStarted: true,
+            },
+            initialGameState,
+        });
+
+        vi.spyOn(window, 'confirm').mockReturnValue(true);
+
+        render(<GameView auth={{ ...mockAuth, token: 'token-A' }} onRequestLeave={requestLeave} session={session} />);
+
+        const leaveButton = await screen.findByRole('button', { name: /leave table/i });
+        await act(async () => {
+            leaveButton.click();
+        });
+
+        expect(requestLeave).toHaveBeenCalledWith('token-A');
+
+        // Replacement session takes over
+        activeAuthToken = 'token-B';
+
+        await act(async () => {
+            resolveLeave();
+            await Promise.resolve();
+        });
+
+        expect(clearAuth).not.toHaveBeenCalledWith('token-B');
+        expect(activeAuthToken).toBe('token-B');
+    });
 });

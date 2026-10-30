@@ -27,11 +27,16 @@ export default function App() {
     const [leaveErrorState, setLeaveErrorState] = useState<{ token: string; message: string } | null>(null);
     const leaveFlights = useRef(new Map<string, Promise<boolean>>());
     const leaveError = auth && leaveErrorState?.token === auth.token ? leaveErrorState.message : null;
-    const requestLeave = useCallback(async (): Promise<boolean> => {
-        if (!auth) return true;
-        const existing = leaveFlights.current.get(auth.token);
+    const requestLeave = useCallback(async (originatingToken?: string): Promise<boolean> => {
+        const tokenToLeave = (typeof originatingToken === 'string' && originatingToken) ? originatingToken : auth?.token;
+        if (!tokenToLeave) return true;
+        const current = getCurrentAuth();
+        const originatingAuth = (current && current.token === tokenToLeave)
+            ? current
+            : (auth && auth.token === tokenToLeave ? auth : null);
+        if (!originatingAuth) return false;
+        const existing = leaveFlights.current.get(originatingAuth.token);
         if (existing) return existing;
-        const originatingAuth = auth;
         setLeaveErrorState(null);
         const request = (async () => {
             try {
@@ -46,12 +51,12 @@ export default function App() {
                     return false;
                 }
             }
-            const current = getCurrentAuth();
-            if (!current || current.roomId !== originatingAuth.roomId) {
+            const currentAfter = getCurrentAuth();
+            if (!currentAfter || currentAfter.roomId !== originatingAuth.roomId) {
                 savePersistedGameEnd(originatingAuth, null);
                 return false;
             }
-            if (current.token === originatingAuth.token) {
+            if (currentAfter.token === originatingAuth.token) {
                 savePersistedGameEnd(originatingAuth, null);
                 clearAuth(originatingAuth.token);
                 return true;
@@ -61,6 +66,21 @@ export default function App() {
         leaveFlights.current.set(originatingAuth.token, request);
         try { return await request; }
         finally { if (leaveFlights.current.get(originatingAuth.token) === request) leaveFlights.current.delete(originatingAuth.token); }
+    }, [auth, clearAuth, getCurrentAuth]);
+
+    const handleLeave = useCallback((originatingToken?: string) => {
+        const tokenToClear = (typeof originatingToken === 'string' && originatingToken) ? originatingToken : auth?.token;
+        if (!tokenToClear) return;
+        if (getCurrentAuth()?.token !== tokenToClear) return;
+        if (auth && auth.token === tokenToClear) {
+            savePersistedGameEnd(auth, null);
+        } else {
+            const current = getCurrentAuth();
+            if (current && current.token === tokenToClear) {
+                savePersistedGameEnd(current, null);
+            }
+        }
+        clearAuth(tokenToClear);
     }, [auth, clearAuth, getCurrentAuth]);
 
     const handleSetAuth = useCallback((data: Parameters<typeof setAuth>[0]) => {
@@ -106,11 +126,7 @@ export default function App() {
                         <GameView
                             key={`${auth.roomId}:${auth.playerName}:${auth.token}`}
                             auth={auth}
-                            onLeave={() => {
-                                if (getCurrentAuth()?.token !== auth.token) return;
-                                savePersistedGameEnd(auth, null);
-                                clearAuth(auth.token);
-                            }}
+                            onLeave={handleLeave}
                             onRequestLeave={requestLeave}
                             leaveError={leaveError}
                         />

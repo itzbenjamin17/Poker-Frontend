@@ -132,7 +132,7 @@ export function useGameDispatcher() {
                 session?.setPendingLeave(true);
                 try {
                     if (requestLeave) {
-                        const success = await requestLeave();
+                        const success = await (requestLeave as (token?: string) => Promise<boolean>)(originatingAuth.token);
                         if (!isCurrent()) return;
                         if (!success) {
                             session?.setPendingLeave(false);
@@ -141,20 +141,20 @@ export function useGameDispatcher() {
                         clearShowdownTimers();
                         contextDispatch({ type: 'SET_PRIVATE', payload: null });
                         contextDispatch({ type: 'CLEAR_GAME_STATE' });
-                        savePersistedGameEnd(auth, null);
+                        savePersistedGameEnd(originatingAuth, null);
                         session?.disconnect();
                     } else {
                         try {
-                            await pokerApi.leaveRoom(auth.roomId, auth.token, false, controller.signal);
+                            await pokerApi.leaveRoom(originatingAuth.roomId, originatingAuth.token, false, controller.signal);
                         } catch (error) {
                             if (getErrorStatusCode(error) !== 404) throw error;
                         }
                         if (!isCurrent()) return;
                         clearShowdownTimers();
-                        savePersistedGameEnd(auth, null);
+                        savePersistedGameEnd(originatingAuth, null);
                         contextDispatch({ type: 'SET_PRIVATE', payload: null });
                         session?.disconnect();
-                        onLeave?.();
+                        (onLeave as ((token?: string) => void) | undefined)?.(originatingAuth.token);
                     }
                 } catch (leaveErr) {
                     if (isCurrent()) {
@@ -167,9 +167,9 @@ export function useGameDispatcher() {
                 clearShowdownTimers();
                 session?.disconnect();
                 session?.setGameEndResult(null);
-                savePersistedGameEnd(auth, null);
+                savePersistedGameEnd(originatingAuth, null);
                 contextDispatch({ type: 'CLEAR_GAME_STATE' });
-                onLeave?.();
+                (onLeave as ((token?: string) => void) | undefined)?.(originatingAuth.token);
                 return;
             }
         } catch (err) {
