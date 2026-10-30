@@ -8,7 +8,7 @@ A poker room supports anywhere from 2 to 10 players seated around an oval poker 
 
 ## Decision
 
-1. **Parametric Ellipse Formula**: Calculate opponent positions in `src/utils/tableGeometry.ts` using parametric equations along an ellipse with fixed aspect ratio (`TABLE_ASPECT = 2.15`).
+1. **Parametric Ellipse Formula**: Calculate opponent positions in `src/lib/tableGeometry.ts` using parametric equations along an ellipse with fixed aspect ratio (`TABLE_ASPECT = 2.15`).
 2. **Hero-Relative Anchoring**: Place the local player at a fixed bottom-center hero seat `(50%, 86%)` and distribute active opponents clockwise along the remaining elliptical perimeter.
 3. **Dynamic Density Scaling**: Derive seat scale and bounding footprints dynamically based on player count and container width, ensuring zero overlap even with 10 players seated.
 

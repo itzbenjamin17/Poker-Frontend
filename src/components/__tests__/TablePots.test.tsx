@@ -174,6 +174,9 @@ describe('TablePots', () => {
         const uncalledChip = uncalledLabel.closest('div');
         expect(uncalledChip).toHaveClass('bg-black/60');
         expect(uncalledChip).toHaveClass('rounded-full');
+        expect(screen.getByTestId('pot-phase')).toHaveClass('motion-reduce:animate-none');
+        expect(sidePotChip).toHaveClass('motion-reduce:animate-none');
+        expect(uncalledChip).toHaveClass('motion-reduce:animate-none');
     });
 });
 

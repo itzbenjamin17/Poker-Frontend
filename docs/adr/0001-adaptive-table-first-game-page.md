@@ -50,7 +50,7 @@ It should not contain a complete betting timeline, unrelated analytics, or a sec
 
 - Emerald/mint means active or positive state: current turn, ready, winner, confirmation.
 - Gold means money and stakes: pot, payout, blinds, chip values. It is not a universal winner highlight.
-- Pot and phase indicators use high-contrast dark pill badges satisfying WCAG AAA standards (>= 4.5:1 contrast against felt).
+- Pot and phase indicators use high-contrast dark pill badges satisfying WCAG AA (>= 4.5:1) normal text contrast against felt.
 - Amber means waiting or attention. Red is reserved for leaving or genuinely destructive actions.
 - Important states are never conveyed by color alone; they also use text, iconography, shape, or placement.
 - Winner feedback is static and calm: a mint check/badge and restrained outline. Active-turn feedback may use a small timer/ring but must not pulse the entire player pod.

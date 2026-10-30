@@ -102,7 +102,7 @@ export function TablePots({
             {/* Phase Label */}
             <span 
                 data-testid="pot-phase"
-                className="bg-black/60 border border-white/10 text-white font-bold uppercase tracking-[0.2em] px-2.5 py-0.5 rounded-full backdrop-blur-sm shadow-sm inline-flex items-center justify-center animate-in fade-in duration-500"
+                className="bg-black/60 border border-white/10 text-white font-bold uppercase tracking-[0.2em] px-2.5 py-0.5 rounded-full backdrop-blur-sm shadow-sm inline-flex items-center justify-center animate-in fade-in duration-500 motion-reduce:animate-none"
                 style={{ fontSize: `${fontPx(8, textScale)}px` }}
             >
                 {phase.replace(/_/g, ' ')}
@@ -193,7 +193,7 @@ export function TablePots({
                         {sidePots.map((amount, index) => (
                             <div 
                                 key={`side-pot-${index}`} 
-                                className="bg-black/60 rounded-full border border-gold-secondary/30 backdrop-blur-md flex items-center animate-in fade-in zoom-in-95 duration-200"
+                                className="bg-black/60 rounded-full border border-gold-secondary/30 backdrop-blur-md flex items-center animate-in fade-in zoom-in-95 duration-200 motion-reduce:animate-none"
                                 style={{
                                     padding: `${scale * 5}px ${scale * 11}px`,
                                     gap: `${scale * 6}px`
@@ -211,7 +211,7 @@ export function TablePots({
                         {/* Uncalled Amount */}
                         {uncalledAmount > 0 && (
                             <div 
-                                className="bg-black/60 rounded-full border border-gold-secondary/30 backdrop-blur-md flex items-center animate-in fade-in zoom-in-95 duration-200"
+                                className="bg-black/60 rounded-full border border-gold-secondary/30 backdrop-blur-md flex items-center animate-in fade-in zoom-in-95 duration-200 motion-reduce:animate-none"
                                 style={{
                                     padding: `${scale * 5}px ${scale * 11}px`,
                                     gap: `${scale * 6}px`
