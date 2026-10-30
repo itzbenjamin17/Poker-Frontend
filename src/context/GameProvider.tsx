@@ -24,8 +24,8 @@ import type { Clock } from '../domain/clock';
 
 export interface GameProviderProps {
     auth: AuthResponse;
-    onLeave?: () => void;
-    requestLeave?: () => Promise<boolean>;
+    onLeave?: (originatingToken?: string) => void;
+    requestLeave?: (originatingToken?: string) => Promise<boolean>;
     leaveError?: string | null;
     session?: GameSession;
     transport?: GameTransport;

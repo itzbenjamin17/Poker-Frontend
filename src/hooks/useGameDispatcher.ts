@@ -132,7 +132,7 @@ export function useGameDispatcher() {
                 session?.setPendingLeave(true);
                 try {
                     if (requestLeave) {
-                        const success = await (requestLeave as (token?: string) => Promise<boolean>)(originatingAuth.token);
+                        const success = await requestLeave(originatingAuth.token);
                         if (!isCurrent()) return;
                         if (!success) {
                             session?.setPendingLeave(false);
@@ -154,7 +154,7 @@ export function useGameDispatcher() {
                         savePersistedGameEnd(originatingAuth, null);
                         contextDispatch({ type: 'SET_PRIVATE', payload: null });
                         session?.disconnect();
-                        (onLeave as ((token?: string) => void) | undefined)?.(originatingAuth.token);
+                        onLeave?.(originatingAuth.token);
                     }
                 } catch (leaveErr) {
                     if (isCurrent()) {
@@ -169,7 +169,7 @@ export function useGameDispatcher() {
                 session?.setGameEndResult(null);
                 savePersistedGameEnd(originatingAuth, null);
                 contextDispatch({ type: 'CLEAR_GAME_STATE' });
-                (onLeave as ((token?: string) => void) | undefined)?.(originatingAuth.token);
+                onLeave?.(originatingAuth.token);
                 return;
             }
         } catch (err) {

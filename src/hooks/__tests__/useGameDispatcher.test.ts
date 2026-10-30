@@ -35,7 +35,7 @@ describe('useGameDispatcher', () => {
     let transport: InMemoryTransportAdapter;
     let session: GameSession;
 
-    function createWrapper(customSession = session, customAuth = mockAuth, customRequestLeave?: () => Promise<boolean>) {
+    function createWrapper(customSession = session, customAuth = mockAuth, customRequestLeave?: (originatingToken?: string) => Promise<boolean>) {
         return function Wrapper({ children }: { children: ReactNode }) {
             return createElement(GameProvider, {
                 auth: customAuth,
@@ -238,7 +238,8 @@ describe('useGameDispatcher', () => {
 
         expect(claimWinSpy).toHaveBeenCalledWith('GAME123', 'test-token', expect.any(AbortSignal));
         expect(installSpy).toHaveBeenCalledWith(terminalData);
-        expect(setGameEndResultSpy).toHaveBeenCalledWith(terminalData);
+        expect(setGameEndResultSpy).toHaveBeenCalledTimes(1);
+        expect(setGameEndResultSpy).toHaveBeenCalledWith(expect.objectContaining(terminalData));
         expect(pokerApi.getReview).not.toHaveBeenCalled();
         expect(session.getSnapshot().claimPending).toBe(false);
         expect(session.getSnapshot().isGameOver).toBe(true);

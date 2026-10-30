@@ -48,8 +48,8 @@ export type Action =
 
 export interface GameContextValue extends GameContextState {
     auth: AuthResponse;
-    onLeave?: () => void;
-    requestLeave?: () => Promise<boolean>;
+    onLeave?: (originatingToken?: string) => void;
+    requestLeave?: (originatingToken?: string) => Promise<boolean>;
     leaveError?: string | null;
     session?: GameSession;
     transport?: GameTransport;
