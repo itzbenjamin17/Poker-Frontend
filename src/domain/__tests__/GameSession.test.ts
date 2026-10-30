@@ -209,6 +209,7 @@ describe('GameSession Domain Store', () => {
             // Advancing clock past 3000ms executes redirect
             clock.tick(3000);
             expect(onLeave).toHaveBeenCalledTimes(1);
+            expect(onLeave).toHaveBeenCalledWith('token-hero');
         });
 
         it('ignores malformed room update payloads without corrupting roomState', () => {

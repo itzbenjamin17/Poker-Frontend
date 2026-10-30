@@ -220,7 +220,8 @@ describe('claim review recovery ownership', () => {
 
         expect(api.claimWin).toHaveBeenCalledWith(auth.roomId, auth.token, expect.any(AbortSignal));
         expect(installTerminalResultSpy).toHaveBeenCalledWith(result);
-        expect(setGameEndResultSpy).toHaveBeenCalledWith(result);
+        expect(setGameEndResultSpy).toHaveBeenCalledTimes(1);
+        expect(setGameEndResultSpy).toHaveBeenCalledWith(expect.objectContaining(result));
         expect(api.getReview).not.toHaveBeenCalled();
 
         const snapshot = session.getSnapshot();
@@ -233,6 +234,47 @@ describe('claim review recovery ownership', () => {
             isForfeit: true,
             message: 'Hero wins!',
         });
+    });
+
+    it('preserves fallback-enriched winnerChips and finalState from installTerminalResult on claimWin', async () => {
+        const { api, auth, session } = setup();
+        session.applyGameState(createValidGameState({
+            gameId: auth.roomId,
+            handNumber: 2,
+            stateRevision: 3,
+            phase: 'SHOWDOWN',
+            pot: 400,
+            pots: [400],
+            players: [{ id: 'hero-id', name: auth.playerName, chips: 1400 }],
+        }));
+
+        api.claimWin.mockResolvedValueOnce({
+            message: 'Win claimed successfully',
+            data: {
+                gameId: auth.roomId,
+                winnerName: auth.playerName,
+                winnerChips: 0,
+                isForfeit: true,
+                message: 'Hero wins by forfeit!',
+                finalState: createValidGameState({
+                    gameId: auth.roomId,
+                    handNumber: 2,
+                    stateRevision: 4,
+                    phase: 'SHOWDOWN',
+                    pot: 0,
+                    pots: [],
+                    players: [{ id: 'hero-id', name: auth.playerName, chips: 1400 }],
+                }),
+            },
+        });
+
+        await session.claimWin(auth.roomId);
+
+        const snapshot = session.getSnapshot();
+        expect(snapshot.isGameOver).toBe(true);
+        expect(snapshot.gameEndResult?.winnerChips).toBe(1400);
+        expect(snapshot.gameEndResult?.finalState?.pot).toBe(400);
+        expect(snapshot.gameEndResult?.finalState?.pots).toEqual([400]);
     });
 
     it('recovers terminal game review from getReview when public state polling encounters HTTP 404', async () => {

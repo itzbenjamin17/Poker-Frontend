@@ -54,21 +54,10 @@ export async function getErrorMessage(res: Response, fallback: string): Promise<
         const contentType = (res.headers.get('content-type') ?? '').toLowerCase();
         if (contentType.includes('application/json') || contentType.includes('application/problem+json')) {
             const data = await res.json();
-            if (typeof data?.message === 'string' && data.message.trim()) {
-                const normalized = normalizeErrorMessage(data.message);
-                if (normalized && normalized.trim().length > 0) return normalized;
-            }
-            if (typeof data?.error === 'string' && data.error.trim()) {
-                const normalized = normalizeErrorMessage(data.error);
-                if (normalized && normalized.trim().length > 0) return normalized;
-            }
-        } else {
-            const text = await res.text();
-            if (text.trim()) {
-                const normalized = normalizeErrorMessage(text);
-                if (normalized && normalized.trim().length > 0) return normalized;
-            }
+            return normalizeErrorMessage(data?.message) ?? normalizeErrorMessage(data?.error) ?? fallback;
         }
+        const text = await res.text();
+        return normalizeErrorMessage(text) ?? fallback;
     } catch {
         // Keep fallback when payload parsing fails.
     }
@@ -221,6 +210,22 @@ async function fetchApi<T>(url: string, options: RequestInit & { token?: string;
     }
 }
 
+function resolveAuthAndSignal(
+    tokenOrSignal?: string | AbortSignal,
+    playerNameOrSignal?: string | AbortSignal,
+    signal?: AbortSignal
+): { token?: string; playerName?: string; signal?: AbortSignal } {
+    if (tokenOrSignal instanceof AbortSignal) {
+        return { signal: tokenOrSignal };
+    }
+    const token = typeof tokenOrSignal === 'string' ? tokenOrSignal : undefined;
+    if (playerNameOrSignal instanceof AbortSignal) {
+        return { token, signal: playerNameOrSignal };
+    }
+    const playerName = typeof playerNameOrSignal === 'string' ? playerNameOrSignal : undefined;
+    return { token, playerName, signal };
+}
+
 export const pokerApi = {
     async createRoom(payload: {
         roomName: string;
@@ -274,9 +279,8 @@ export const pokerApi = {
     },
 
     async getRoomData(roomId: string, tokenOrSignal?: string | AbortSignal, signal?: AbortSignal): Promise<RoomDataResponse> {
-        const token = typeof tokenOrSignal === 'string' ? tokenOrSignal : undefined;
-        const sig = tokenOrSignal instanceof AbortSignal ? tokenOrSignal : signal;
-        return pokerApi.getRoomInfo(roomId, token, sig);
+        const resolved = resolveAuthAndSignal(tokenOrSignal, signal);
+        return pokerApi.getRoomInfo(roomId, resolved.token, resolved.signal);
     },
 
     async getGameState(gameId: string, token?: string, signal?: AbortSignal): Promise<unknown> {
@@ -289,9 +293,8 @@ export const pokerApi = {
     },
 
     async getPublicGameState(gameId: string, tokenOrSignal?: string | AbortSignal, signal?: AbortSignal): Promise<unknown> {
-        const token = typeof tokenOrSignal === 'string' ? tokenOrSignal : undefined;
-        const sig = tokenOrSignal instanceof AbortSignal ? tokenOrSignal : signal;
-        return pokerApi.getGameState(gameId, token, sig);
+        const resolved = resolveAuthAndSignal(tokenOrSignal, signal);
+        return pokerApi.getGameState(gameId, resolved.token, resolved.signal);
     },
 
     async getPrivateState(gameId: string, token: string, signal?: AbortSignal): Promise<unknown> {
@@ -313,35 +316,12 @@ export const pokerApi = {
         playerNameOrSignal?: string | AbortSignal,
         signal?: AbortSignal
     ): Promise<GameEndResult> {
-        let token: string | undefined;
-        let playerName: string | undefined;
-        let effectiveSignal: AbortSignal | undefined;
-
-        if (tokenOrSignal instanceof AbortSignal) {
-            effectiveSignal = tokenOrSignal;
-        } else if (typeof tokenOrSignal === 'string') {
-            token = tokenOrSignal;
-            if (playerNameOrSignal instanceof AbortSignal) {
-                effectiveSignal = playerNameOrSignal;
-            } else if (typeof playerNameOrSignal === 'string') {
-                playerName = playerNameOrSignal;
-                effectiveSignal = signal;
-            } else {
-                effectiveSignal = signal;
-            }
-        } else {
-            if (playerNameOrSignal instanceof AbortSignal) {
-                effectiveSignal = playerNameOrSignal;
-            } else {
-                effectiveSignal = signal;
-            }
-        }
-
-        const query = playerName ? `?playerName=${encodeURIComponent(playerName)}` : '';
+        const resolved = resolveAuthAndSignal(tokenOrSignal, playerNameOrSignal, signal);
+        const query = resolved.playerName ? `?playerName=${encodeURIComponent(resolved.playerName)}` : '';
         const raw = await fetchApi<unknown>(`${API_BASE}/game/${encodeURIComponent(gameId)}/review${query}`, {
             method: 'GET',
-            token,
-            signal: effectiveSignal,
+            token: resolved.token,
+            signal: resolved.signal,
             expectJson: true,
         });
         const decoded = decodeGameEndResult(raw, gameId);
@@ -368,12 +348,11 @@ export const pokerApi = {
         tokenOrSignal?: string | AbortSignal,
         signal?: AbortSignal
     ): Promise<ApiResponse<GameEndResponse>> {
-        const token = typeof tokenOrSignal === 'string' ? tokenOrSignal : undefined;
-        const sig = tokenOrSignal instanceof AbortSignal ? tokenOrSignal : signal;
+        const resolved = resolveAuthAndSignal(tokenOrSignal, signal);
         const raw = await fetchApi<ApiResponse<unknown>>(`${API_BASE}/game/${encodeURIComponent(gameId)}/claim-win`, {
             method: 'POST',
-            token,
-            signal: sig,
+            token: resolved.token,
+            signal: resolved.signal,
             expectJson: true,
         });
         if (!raw || typeof raw !== 'object' || typeof raw.message !== 'string' || !('data' in raw)) {

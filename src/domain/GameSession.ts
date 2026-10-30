@@ -57,7 +57,7 @@ export interface GameSessionOptions {
     initialRoomState?: RoomState | null;
     initialGameState?: GameState | null;
     initialGameEndResult?: GameEndResult | null;
-    onLeave?: () => void;
+    onLeave?: (originatingToken?: string) => void;
     pokerApi?: typeof pokerApi;
 }
 
@@ -65,7 +65,7 @@ export class GameSession {
     private readonly auth: AuthResponse;
     private transport: GameTransport;
     private readonly clock: Clock;
-    private onLeave?: () => void;
+    private onLeave?: (originatingToken?: string) => void;
     private readonly api: typeof pokerApi;
 
     private listeners = new Set<() => void>();
@@ -160,7 +160,7 @@ export class GameSession {
         });
     }
 
-    public setOnLeave(onLeave: (() => void) | undefined): void {
+    public setOnLeave(onLeave: ((originatingToken?: string) => void) | undefined): void {
         if (!this.attached && onLeave !== undefined) {
             return;
         }
@@ -648,7 +648,7 @@ export class GameSession {
         this.redirectTimer = this.clock.setTimeout(() => {
             this.redirectTimer = null;
             if (this.attached && this.attachmentEpoch === targetEpoch && !this.snapshot.isGameOver) {
-                this.onLeave?.();
+                this.onLeave?.(this.auth.token);
             }
         }, ROOM_CLOSED_REDIRECT_MS);
 
@@ -1440,7 +1440,6 @@ export class GameSession {
             if (generation !== this.claimRecoveryGeneration || controller.signal.aborted) return;
             if (!this.isDisposed && this.hasLifecyclePermission()) {
                 this.installTerminalResult(result);
-                this.setGameEndResult(result);
             }
         } catch (err) {
             if (generation !== this.claimRecoveryGeneration || controller.signal.aborted) return;
@@ -1673,7 +1672,9 @@ export class GameSession {
             ? stateForWinner?.players.find((p) => p.name === winnerName)?.chips
             : undefined;
         const winnerChips =
-            typeof result.winnerChips === 'number' ? result.winnerChips : fallbackWinnerChips;
+            typeof result.winnerChips === 'number' && result.winnerChips > 0
+                ? result.winnerChips
+                : (fallbackWinnerChips ?? result.winnerChips);
 
         const terminalResult: GameEndResult = {
             ...result,
