@@ -38,7 +38,7 @@ Started 2026-10-18 (Europe/London). Review current full source; no fixes or GitH
 Checks are recorded chronologically below. Full frontend checks passed; standard E2E incomplete; backend Spring checks deferred pending B10.
 
 ## Next action
-Tier 4 implementation and verification complete across Poker and frontend-poker! Proceeding to Tier 5 implementation (F7-2, F7-3, B7-9, B7-10, B7-11).
+Tier 5 implementation and verification complete across Poker and frontend-poker! Proceeding to Tier 6 implementation (B9-1, B10-2, B10-8, B10-1/F8-4, F2-1).
 
 ### Initial verification
 - Node v24.2.0, npm 11.17.0, Java 25.0.4.1 available (CI frontend uses Node 22).
@@ -259,3 +259,42 @@ Completed 2026-10-30. All 5 Tier 4 findings (`B6-2`, `B1-5`, `F3-2`, `F3-3`, `F1
 - **Challenger 1:** `APPROVE` (60-thread join storms and 1500-op mutator vs reader snapshot CME stress passed)
 - **Challenger 2:** `APPROVE` (Interleaved late leaves and cross-tab review envelope races verified clean)
 - **Forensic Auditor:** `CLEAN` (Zero hardcoded test outputs or facades, 209 backend tests, 147 frontend tests green, build clean)
+
+## Tier 5 Implementation & Verification Completion
+
+Completed 2026-10-30. All 5 Tier 5 findings (`F7-2`, `F7-3`, `B7-9`, `B7-10`, `B7-11`) implemented and verified across `Poker` and `frontend-poker` via 10 discrete vertical slice commits:
+
+### Discrete Vertical Slice Commits
+
+- **`Poker` (Backend):**
+  - `10871c8` / `f23f340` (`B7-9/S1`): `fix(B7-9/S1): validate SEND frame destination prefix and room authorization`
+    - Restores and enforces WebSocket SEND frame destination validation and room authorization in `WebSocketAuthInterceptor`, ensuring destination prefix conforms to `/app/` and authenticated caller is bound to target room.
+  - `91f7ee8` (`B7-9/S2`): `fix(B7-9/S2): enforce caller room authorization across all STOMP SEND destinations`
+    - Enforces caller room authorization across all STOMP SEND destinations (`/app/chat/{roomId}`, `/app/game/{roomId}/*`, etc.), rejecting cross-room spoofing attempts with security exceptions.
+  - `9b9cb44` (`B7-10/S1`): `fix(B7-10/S1): incorporate membership nonce into PlayerPrincipal and JwtService`
+    - Incorporates monotonic membership nonce into `PlayerPrincipal` and `JwtService`, binding session identity claims to prevent stateless JWT impersonation on collision.
+  - `fc7c185` (`B7-10/S2`): `fix(B7-10/S2): reject stale session JWT tokens on controller endpoints`
+    - Rejects stale session JWT tokens with HTTP 401 across REST controller endpoints (`GameController`, `RoomController`) when membership nonce mismatches active room state.
+  - `7d96bf1` (`B7-11/S1`): `fix(B7-11/S1): integrate PasswordEncoder and hash Room passwords`
+    - Integrates Spring Security `PasswordEncoder` (BCrypt) to hash room passwords in `Room`, preventing cleartext password memory exposure.
+  - `f6343fd` (`B7-11/S2`): `fix(B7-11/S2): hash passwords in RoomService and serialize passwordHash in snapshots`
+    - Uses `PasswordEncoder` in `RoomService` for password verification/creation and serializes `passwordHash` rather than plaintext in WAL aggregate snapshots.
+
+- **`frontend-poker` (Frontend):**
+  - `1d7dd0c` (`F7-2/S1`): `fix(F7-2/S1): lower mobile landscape height gate floor to 320px`
+    - Lowers mobile landscape height gate threshold from 375px down to 320px in `PokerRoomLayout`, eliminating lockout on compact mobile landscape viewports.
+  - `aa942ca` (`F7-2/S2`): `fix(F7-2/S2): adjust table geometry scale floor for 320px landscape`
+    - Adjusts table geometry scale floor and padding calculations in `tableGeometry.ts` to guarantee layout containment and prevent element clipping at 320px landscape height.
+  - `6b0ff98` (`F7-3/S1`): `fix(F7-3/S1): enforce accessible >=4.5:1 contrast on pot phase badges`
+    - Updates pot phase text and badge styling in `TablePots.tsx` to achieve compliant contrast ratios (>= 4.5:1) meeting WCAG AA requirements.
+  - `23f3d7b` (`F7-3/S2`): `fix(F7-3/S2): align board cluster pot container contrast`
+    - Aligns board cluster pot container styling and background blending in `BoardCluster.tsx` to maintain contrast compliance across all felt backgrounds.
+
+### Quality Gate Sign-Off
+
+- **Reviewer 1 (`reviewer_tier5_1`):** `APPROVE` (908 backend, 1059 frontend tests passed)
+- **Reviewer 2 (`reviewer_tier5_2`):** `APPROVE` (security invariants, 320px geometry, WCAG AA contrast)
+- **Challenger 1 (`challenger_tier5_1`):** `APPROVE` (empirical STOMP spoofing, stale token 401s, BCrypt zero cleartext memory)
+- **Challenger 2 (`challenger_tier5_2`):** `APPROVE` (215 stress tests on 320px bounds, 31 radial felt gradient contrast calculations 6.18:1 to 19.81:1)
+- **Forensic Auditor (`auditor_tier5`):** `CLEAN` (authentic implementations, zero hardcoded test outputs or facades)
+
