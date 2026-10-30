@@ -34,6 +34,9 @@ import {
     safeMarginPx,
     seatAngleSpan,
     statusMaxWidthPx,
+    SCALE_FLOOR,
+    getBoardClusterHalfHeight,
+    seatHandRankFits,
     winnerDecoration,
 } from '../tableGeometry';
 import type { AvatarSize, FootprintPart, HeroFootprintInput, SeatFootprintInput } from '../tableGeometry';
@@ -506,13 +509,13 @@ describe('getHeroFootprint', () => {
 // Seat placement and the footprint-driven ellipse fit
 // ---------------------------------------------------------------------------------------------
 
-/** Felt (padding box) sizes measured in the browser at the 8 layout viewports. */
+/** Felt (padding box) sizes measured in the browser at the 8 layout viewports (667x320 mobile landscape floor). */
 const VIEWPORT_TABLES: [string, number, number][] = [
     ['844x390', 613, 285],
     ['1024x768', 977, 454],
     ['1366x768', 1171, 545],
     ['1920x1080', 1806, 840],
-    ['667x375', 525, 244],
+    ['667x320', 443, 206],
     ['1024x600', 982, 457],
     ['1920x600', 1029, 478],
     ['600x800', 552, 257],
@@ -563,7 +566,7 @@ describe('placeOpponentSeat and seatAngleSpan', () => {
 });
 
 describe('fitSeatEllipse', () => {
-    it('keeps every opponent footprint at least safeMarginPx inside the felt, for 3-10 players on the 8 viewports and a seeded grid', () => {
+    it('keeps every opponent footprint at least safeMarginPx inside the felt, for 3-10 players on the viewports (including 320px landscape) and a seeded grid', () => {
         let checked = 0;
         for (const { label, table } of fitCases()) {
             const tier = getTableTier(table.width);
@@ -693,6 +696,121 @@ describe('fitSeatEllipse', () => {
                 const scale = getTableScale(table, players);
                 expect(minHeroMargin(table, scale, tier), `height ${height}, ${players} players`)
                     .toBeGreaterThanOrEqual(safeMarginPx(scale.overall) - 1e-6);
+            }
+        }
+    });
+});
+
+describe('320px mobile landscape table geometry (F7-2)', () => {
+    // Stage height at 320px viewport with 32px header (short:h-8) and 64px dock (h-16): 320 - 32 - 64 = 224px.
+    const STAGE_667x320 = { width: 667, height: 224 };
+    const TABLE_667x320 = getTableDimensions(STAGE_667x320.width, STAGE_667x320.height);
+
+    it('calculates appropriate dimensions, tier, and scale floor for 320px landscape', () => {
+        // Table dimensions maintain TABLE_ASPECT and fit inside stage with 4% inset (clamped 8..32px)
+        expect(TABLE_667x320.height).toBeCloseTo(206.08, 1);
+        expect(TABLE_667x320.width).toBeCloseTo(206.08 * TABLE_ASPECT, 1);
+        expect(TABLE_667x320.width / TABLE_667x320.height).toBeCloseTo(TABLE_ASPECT, 5);
+
+        // Content density tier is compact (width < 720)
+        const tier = getTableTier(TABLE_667x320.width);
+        expect(tier).toBe('compact');
+
+        // Scale is clamped within [SCALE_FLOOR, SCALE_CEILING] and stays strictly above SCALE_FLOOR (0.3)
+        const scale = getTableScale(TABLE_667x320, 6);
+        expect(scale.overall).toBeCloseTo(TABLE_667x320.height / 430, 4);
+        expect(scale.overall).toBeGreaterThanOrEqual(SCALE_FLOOR);
+        expect(scale.overall).toBeGreaterThan(0.45);
+        expect(scale.overall).toBeLessThan(0.5);
+
+        // Safe margin is non-zero (at least 2px)
+        expect(safeMarginPx(scale.overall)).toBeGreaterThanOrEqual(2);
+    });
+
+    it('ensures all opponent seats and cards remain contained within safeMarginPx inside felt for 3-10 players', () => {
+        const tier = getTableTier(TABLE_667x320.width);
+        for (let players = 3; players <= 10; players++) {
+            const scale = getTableScale(TABLE_667x320, players);
+            const opponents = players - 1;
+            const { ellipse, shrink } = fitSeatEllipseDetailed(TABLE_667x320, scale, tier, opponents);
+
+            // Ellipse is centered and horizontal radius respects compact tier ceiling
+            expect(ellipse.cx).toBe(50);
+            expect(ellipse.rx).toBeGreaterThan(8);
+            expect(ellipse.rx).toBeLessThanOrEqual(42);
+            expect(ellipse.ry).toBeGreaterThan(8);
+            expect(ellipse.ry).toBeLessThan(ellipse.cy);
+            expect(shrink).toBeGreaterThanOrEqual(0.8 * 0.985);
+
+            // Minimum seat margin satisfies safeMarginPx
+            const margin = minSeatMargin(TABLE_667x320, scale, tier, opponents, ellipse);
+            expect(margin, `${players} players`).toBeGreaterThanOrEqual(safeMarginPx(scale.overall) - 1e-6);
+
+            // Placed seats remain strictly within sanity boundaries [2, 98] x [2, 80]
+            for (let k = 0; k < opponents; k++) {
+                const { left, top } = placeOpponentSeat(k, opponents, ellipse);
+                expect(left, `${players}p seat ${k} left`).toBeGreaterThanOrEqual(2);
+                expect(left, `${players}p seat ${k} left`).toBeLessThanOrEqual(98);
+                expect(top, `${players}p seat ${k} top`).toBeGreaterThanOrEqual(2);
+                expect(top, `${players}p seat ${k} top`).toBeLessThanOrEqual(80);
+            }
+
+            // Opponent cards stay above MIN_CARD_WIDTH_PX and use compact card face
+            expect(scale.opponentCard * CARD_BASE_WIDTH).toBeGreaterThanOrEqual(MIN_CARD_WIDTH_PX);
+            expect(isCompactCardScale(scale.opponentCard)).toBe(true);
+        }
+    });
+
+    it('ensures hero footprint and hole cards clear felt boundary at 320px landscape', () => {
+        const tier = getTableTier(TABLE_667x320.width);
+        for (const players of [3, 6, 10]) {
+            const scale = getTableScale(TABLE_667x320, players);
+            const margin = minHeroMargin(TABLE_667x320, scale, tier);
+            expect(margin, `${players} players`).toBeGreaterThanOrEqual(safeMarginPx(scale.overall) - 1e-6);
+        }
+    });
+
+    it('maintains vertical clearance between central board cluster and seats with no clipping at 320px landscape', () => {
+        const tier = getTableTier(TABLE_667x320.width);
+        const scale = getTableScale(TABLE_667x320, 6);
+
+        // Board cluster half height is bounded
+        const boardHalfHeight = getBoardClusterHalfHeight(scale);
+        expect(boardHalfHeight).toBeGreaterThan(20);
+        expect(boardHalfHeight).toBeLessThan(45);
+
+        const tableCenterY = 0.5 * TABLE_667x320.height;
+        const boardBottom = tableCenterY + boardHalfHeight;
+
+        // Top seats occupy upper half and Hero is pinned at 86%
+        const heroY = 0.86 * TABLE_667x320.height;
+        expect(heroY - boardBottom).toBeGreaterThan(35); // Clearance to hero
+
+        // Hand rank labels gracefully hide on felt at this scale (< OPPONENT_RANK_MIN_SCALE) to prevent board collision
+        expect(scale.overall < OPPONENT_RANK_MIN_SCALE).toBe(true);
+        // Top-center seats do not collide with community card area
+        const topCenterSeat = { top: 13, left: 50, cardPlacement: 'below' as const };
+        expect(seatHandRankFits(topCenterSeat, TABLE_667x320, scale, tier)).toBe(false); // correctly identifies restricted clearance
+    });
+
+    it('maintains table geometry invariants across various mobile phone landscape widths at 320px height', () => {
+        // Common phone landscape widths with 320px viewport height: 667 (iPhone SE), 740, 800, 844 (iPhone 12/13/14)
+        const widths = [667, 740, 800, 844, 915];
+        for (const w of widths) {
+            const dims = getTableDimensions(w, 224);
+            // Since stage aspect ratio w/224 is > 2.15, stage is always height-limited
+            expect(dims.height).toBeCloseTo(206.08, 1);
+            expect(dims.width).toBeCloseTo(206.08 * TABLE_ASPECT, 1);
+            const tier = getTableTier(dims.width);
+            expect(tier).toBe('compact');
+
+            for (const players of [3, 6, 10]) {
+                const sc = getTableScale(dims, players);
+                const ell = fitSeatEllipse(dims, sc, tier, players - 1);
+                const oppMargin = minSeatMargin(dims, sc, tier, players - 1, ell);
+                expect(oppMargin, `w=${w}, p=${players}`).toBeGreaterThanOrEqual(safeMarginPx(sc.overall) - 1e-6);
+                const heroMargin = minHeroMargin(dims, sc, tier);
+                expect(heroMargin, `w=${w}, p=${players}`).toBeGreaterThanOrEqual(safeMarginPx(sc.overall) - 1e-6);
             }
         }
     });

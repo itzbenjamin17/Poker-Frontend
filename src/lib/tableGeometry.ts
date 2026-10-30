@@ -934,7 +934,8 @@ export function fitSeatEllipseDetailed(
     const topPx = margin + decoration + radius;
     const sidePx = margin + Math.max(decoration, 8 * scale.avatar) + radius;
     const ry = clamp(cy - (100 * topPx) / table.height, 10, cy - 4);
-    const rx = clamp(50 - (100 * sidePx) / table.width, 10, FIT_RX_MAX);
+    const rxMax = tier === 'compact' ? 42 : FIT_RX_MAX;
+    const rx = clamp(50 - (100 * sidePx) / table.width, 10, rxMax);
 
     // Exact guard: shrink both radii uniformly until every opponent's footprint clears the safe margin.
     let shrink = 1;
