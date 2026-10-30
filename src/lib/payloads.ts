@@ -132,7 +132,7 @@ const player = shape({
 
 const gameState = shape({
     gameId: optional(text), maxPlayers: capacity, pot: nonnegative,
-    pots: nullable(list(nonnegative, 10)), uncalledAmount: nullable(nonnegative),
+    pots: optional(nullable(list(nonnegative, 10))), uncalledAmount: optional(nullable(nonnegative)),
     phase: member(['PRE_FLOP', 'FLOP', 'TURN', 'RIVER', 'SHOWDOWN']),
     currentBet: nonnegative, communityCards: list(card, 5), players: list(player, 10),
     currentPlayerName: text, currentPlayerId: text,
@@ -140,12 +140,12 @@ const gameState = shape({
     minimumRaiseAmount: optional(nullable(nonnegative)), winners: optional(list(text, 10)),
     winningsPerPlayer: optional(nullable(nonnegative)), handSettled: optional(nullable(boolean)),
     carryOverAmount: optional(nullable(nonnegative)), isAutoAdvancing: optional(boolean),
-    autoAdvanceMessage: optional(text), isReadyCountdownActive: nullable(boolean),
-    readyCountdownDeadlineEpochMs: nullable(nonnegative),
+    autoAdvanceMessage: optional(text), isReadyCountdownActive: optional(nullable(boolean)),
+    readyCountdownDeadlineEpochMs: optional(nullable(nonnegative)),
     handNumber: optional(nonnegative), stateRevision: optional(nullable(nonnegative)),
     serverTimeEpochMs: optional(nonnegative),
     readyGateState: optional(member(['CLOSED', 'COUNTING_DOWN', 'WAITING_FOR_PLAYERS'])),
-    claimWinAvailable: nullable(boolean), claimWinPlayerName: nullable(text),
+    claimWinAvailable: optional(nullable(boolean)), claimWinPlayerName: optional(nullable(text)),
 });
 
 function omitNulls(value: Record<string, unknown>, keys: readonly string[]): Record<string, unknown> {
@@ -206,10 +206,10 @@ export function decodePublicGameState(value: unknown, source?: GameSnapshotSourc
 export function isRoomDataPayload(value: unknown): value is RoomDataResponse {
     if (!isObject(value)) return false;
     return fields(value, {
-        roomId: text, roomName: text, maxPlayers: capacity,
-        buyIn: nonnegative, smallBlind: nonnegative, bigBlind: nonnegative,
-        createdAt: text, hostName: text, currentPlayers: nonnegative,
-        canStartGame: boolean, gameStarted: boolean,
+        roomId: text, roomName: text, maxPlayers: optional(capacity),
+        buyIn: optional(nonnegative), smallBlind: optional(nonnegative), bigBlind: optional(nonnegative),
+        createdAt: optional(text), hostName: optional(text), currentPlayers: optional(nonnegative),
+        canStartGame: optional(boolean), gameStarted: optional(boolean),
         players: list(roomPlayer, 10),
     });
 }
