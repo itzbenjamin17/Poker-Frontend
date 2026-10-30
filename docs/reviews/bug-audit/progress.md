@@ -38,7 +38,7 @@ Started 2026-10-18 (Europe/London). Review current full source; no fixes or GitH
 Checks are recorded chronologically below. Full frontend checks passed; standard E2E incomplete; backend Spring checks deferred pending B10.
 
 ## Next action
-Tier 5 implementation and verification complete across Poker and frontend-poker! Proceeding to Tier 6 implementation (B9-1, B10-2, B10-8, B10-1/F8-4, F2-1).
+Tier 6 implementation and verification complete across Poker and frontend-poker! Proceeding to Milestone 5: Full automated regression test suites (JUnit, Vitest, Playwright), final manual browser testing checklist (Tiers 1–6), and concise audit issue summary (Tiers 1–6).
 
 ### Initial verification
 - Node v24.2.0, npm 11.17.0, Java 25.0.4.1 available (CI frontend uses Node 22).
@@ -298,3 +298,46 @@ Completed 2026-10-30. All 5 Tier 5 findings (`F7-2`, `F7-3`, `B7-9`, `B7-10`, `B
 - **Challenger 2 (`challenger_tier5_2`):** `APPROVE` (215 stress tests on 320px bounds, 31 radial felt gradient contrast calculations 6.18:1 to 19.81:1)
 - **Forensic Auditor (`auditor_tier5`):** `CLEAN` (authentic implementations, zero hardcoded test outputs or facades)
 
+
+## Tier 6 Implementation & Verification Completion
+
+Completed 2026-10-30. All 5 Tier 6 findings (`B9-1`, `B10-2`, `B10-8`, `B10-1/F8-4`, `F2-1`) implemented, remediated, and verified across `Poker` and `frontend-poker` via 10 discrete vertical slice commits plus 2 remediation commits:
+
+### Discrete Vertical Slice Commits
+
+- **`Poker` (Backend):**
+  - `ba5510f` (`B9-1/S1`): `fix(B9-1/S1): roll back or evict in-memory aggregate on durable mutation failure`
+    - Preserves pre-mutation state snapshots in `RecoveredAggregate` and rolls back or evicts in-memory aggregates in `DurableMutationAspect` when durable mutations throw exceptions.
+  - `0e9fabf` (`B9-1/S2`): `fix(B9-1/S2): coordinate aggregate rollback and eviction across RoomService and GameLifecycleService`
+    - Coordinates aggregate rollback and eviction across `RoomService` and `GameLifecycleService`, preventing stale state divergence between memory and disk on mutation failure.
+  - `2b3933c` (`B10-2/S1`): `fix(B10-2/S1): truncate torn trailing frames to valid offset in EncryptedWalStore.readWal`
+    - Detects torn trailing frames at EOF in `EncryptedWalStore.readWal`, logs a warning, and truncates the corrupted trailing bytes to the last valid frame offset.
+  - `1d2ffed` (`B10-2/S2`): `fix(B10-2/S2): harden torn frame truncation on partial headers and compaction recovery`
+    - Hardens torn frame truncation against incomplete frame header fragments (1–7 bytes) at EOF and handles torn frames cleanly during WAL compaction recovery.
+  - `ad59410` (`B10-8/S1`): `fix(B10-8/S1): add quarantine capability for corrupted room WAL files in EncryptedWalStore`
+    - Adds `quarantine(roomId, reason)` to `EncryptedWalStore`, atomically isolating unrecoverable WAL files to `.wal.corrupted` and purging them from active in-memory failed state.
+  - `6d6ad3a` (`B10-8/S2`): `fix(B10-8/S2): quarantine corrupted room aggregates during startup recovery`
+    - Wraps per-room recovery in `PersistenceRecovery` with error isolation, quarantining corrupted rooms on startup so uncorrupted rooms continue to restore cleanly.
+  - `1ba6ad9` (`B10-1/S1`): `fix(B10-1/S1): enforce persistence disabled override in e2e profile`
+    - Enforces persistence disabled override (`poker.persistence.enabled=false`) under the Spring Boot `e2e` profile in `application-e2e.properties` and validates precedence via `ConfigContractTest`.
+  - `c11db1f` (`B10-8/remediate`): `fix(B10-8/remediate): quarantine corrupted WALs in recoverAll and snapshot identity mismatch`
+    - Catches unhandled runtime exceptions in `EncryptedWalStore.recoverAll()` to quarantine corrupted WAL files and isolates snapshot room identity mismatches in `PersistenceRecovery` via quarantine without aborting recovery.
+
+- **`frontend-poker` (Frontend):**
+  - `e47cef5` (`F8-4/S1`): `fix(F8-4/S1): pass persistence disabled CLI arg in Playwright webServer`
+    - Configures Playwright `webServer` command in `playwright.config.ts` with `--poker.persistence.enabled=false` and `--spring.profiles.active=e2e`, isolating test runs from production persistence.
+  - `673075e` (`F2-1/S1`): `fix(F2-1/S1): route non-JSON HTTP responses through normalizeErrorMessage`
+    - Routes non-JSON HTTP error responses (502, 503, 504 HTML error gateways) in `api.ts` through `normalizeErrorMessage` instead of rethrowing raw response text.
+  - `c4f5b4b` (`F2-1/S2`): `fix(F2-1/S2): sanitize and bound error messages in normalizeErrorMessage`
+    - Sanitizes, strips HTML tags, escapes control characters, bounds length (256 chars), and provides safe fallback messages in `payloads.ts` for all non-JSON error payloads.
+  - `5598602` (`F2-1/remediate`): `fix(F2-1/remediate): fix test TypeScript compilation and payload regex lint directive`
+    - Resolves test mock typings across `BoardCluster.test.tsx`, `GameReviewView.test.tsx`, `GameProvider.ownership.test.tsx`, and `claimRecovery.test.ts`, cleans up untracked temporary test debris, and suppresses ESLint control character regex rule.
+
+### Quality Gate Sign-Off
+
+- **Lead Reviewer (`reviewer_tier6_1`):** Remediation requested for `recoverAll()`, snapshot mismatch quarantine, and TS compilation; re-verified by `reviewer_tier6_recheck`.
+- **Invariants Reviewer (`reviewer_tier6_2`):** `APPROVE` (Concurrency and persistence invariants pass, 86 persistence tests green).
+- **Backend Concurrency Challenger (`challenger_tier6_1`):** `APPROVE` (7/7 adversarial persistence tests pass, 85/85 persistence tests pass, 940/940 full backend suite tests pass).
+- **Frontend Scoping Challenger (`challenger_tier6_2`):** `APPROVE` (129 empirical adversarial tests passed covering HTML injection, stack traces, bounding, and character escaping).
+- **Forensic Auditor (`auditor_tier6`):** `CLEAN` (Binary integrity veto passed: 0 hardcoded test results, 0 facades, authentic rollback and quarantine state).
+- **Recheck Reviewer (`reviewer_tier6_recheck`):** `APPROVE` (86 backend persistence tests green, `npm.cmd run build` exits 0, `npm.cmd run lint` clean, 170 targeted frontend tests green).
