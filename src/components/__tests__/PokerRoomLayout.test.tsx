@@ -5,6 +5,7 @@ import {
     PokerRoomLayout,
     RoomStage,
     RoomDock,
+    MIN_MOBILE_HEIGHT,
 } from '../PokerRoomLayout';
 import { RoomHeader } from '../RoomHeader';
 import '@testing-library/jest-dom';
@@ -116,7 +117,11 @@ describe('PokerRoomLayout', () => {
         expect(screen.getByText('Table Content')).toBeInTheDocument();
     });
 
-    it('gates sub-667x375 mobile landscape viewports (e.g. 650x300) and allows 667x375+', () => {
+    it('exports MIN_MOBILE_HEIGHT as 320', () => {
+        expect(MIN_MOBILE_HEIGHT).toBe(320);
+    });
+
+    it('gates sub-667x320 mobile landscape viewports (e.g. 650x300 or 667x319) and allows 667x320+', () => {
         window.innerWidth = 650;
         window.innerHeight = 300;
 
@@ -132,12 +137,53 @@ describe('PokerRoomLayout', () => {
 
         act(() => {
             window.innerWidth = 667;
-            window.innerHeight = 375;
+            window.innerHeight = 320;
             window.dispatchEvent(new Event('resize'));
         });
 
         expect(screen.queryByTestId('rotate-prompt')).not.toBeInTheDocument();
         expect(screen.getByText('Table Content')).toBeInTheDocument();
+    });
+
+    it('does NOT display RotatePrompt for mobile landscape viewports between 320px and 375px in height (F7-2)', () => {
+        // Standard mobile devices with browser chrome (e.g. 320px, 340px, 360px) must not be locked out
+        const testHeights = [320, 340, 360, 375];
+
+        for (const height of testHeights) {
+            window.innerWidth = 667;
+            window.innerHeight = height;
+
+            const { unmount } = render(
+                <PokerRoomLayout
+                    header={<RoomHeader brandTitle="POKER" wsStatus="connected" onLeave={vi.fn()} />}
+                    stage={<RoomStage><div>Table Content {height}</div></RoomStage>}
+                />
+            );
+
+            expect(screen.queryByTestId('rotate-prompt')).not.toBeInTheDocument();
+            expect(screen.getByText(`Table Content ${height}`)).toBeInTheDocument();
+            unmount();
+        }
+    });
+
+    it('displays RotatePrompt for landscape viewports below 320px in height (F7-2)', () => {
+        const subFloorHeights = [319, 300, 240];
+
+        for (const height of subFloorHeights) {
+            window.innerWidth = 667;
+            window.innerHeight = height;
+
+            const { unmount } = render(
+                <PokerRoomLayout
+                    header={<RoomHeader brandTitle="POKER" wsStatus="connected" onLeave={vi.fn()} />}
+                    stage={<RoomStage><div>Table Content {height}</div></RoomStage>}
+                />
+            );
+
+            expect(screen.getByTestId('rotate-prompt')).toBeInTheDocument();
+            expect(screen.queryByText(`Table Content ${height}`)).not.toBeInTheDocument();
+            unmount();
+        }
     });
 
     it('renders reconnect overlay when wsStatus is disconnected while keeping header leave action interactive', async () => {
@@ -201,7 +247,7 @@ describe('PokerRoomLayout', () => {
         });
         expect(screen.getByTestId('rotate-prompt')).toBeInTheDocument();
 
-        // Widening to 667x601 meets landscape minimum (667x375) and becomes playable
+        // Widening to 667x601 meets landscape minimum (667x320) and becomes playable
         act(() => {
             window.innerWidth = 667;
             window.innerHeight = 601;

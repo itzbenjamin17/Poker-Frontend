@@ -50,7 +50,7 @@ export const MIN_PORTRAIT_WIDTH = 600;
 export const MIN_PORTRAIT_HEIGHT = 800;
 export const MIN_DESKTOP_HEIGHT = 600; // Increased pragmatically
 export const MIN_MOBILE_WIDTH = 667; // Increased pragmatically (iPhone SE landscape floor)
-export const MIN_MOBILE_HEIGHT = 375; // Increased pragmatically (iPhone SE landscape floor)
+export const MIN_MOBILE_HEIGHT = 320; // Lowered from 375 to 320 to accommodate mobile landscape viewports with browser chrome (F7-2)
 
 // eslint-disable-next-line react-refresh/only-export-components
 export function useOrientationGating() {
