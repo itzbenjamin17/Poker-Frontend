@@ -51,8 +51,8 @@ export async function getErrorMessage(res: Response, fallback: string): Promise<
         return 'Too many requests. Please try again later.';
     }
     try {
-        const contentType = res.headers.get('content-type') ?? '';
-        if (contentType.includes('application/json')) {
+        const contentType = (res.headers.get('content-type') ?? '').toLowerCase();
+        if (contentType.includes('application/json') || contentType.includes('application/problem+json')) {
             const data = await res.json();
             if (typeof data?.message === 'string' && data.message.trim()) {
                 const normalized = normalizeErrorMessage(data.message);
@@ -191,7 +191,7 @@ async function fetchApi<T>(url: string, options: RequestInit & { token?: string;
             if (expectJson) throw new MalformedResponseError('empty response');
             return null as T;
         }
-        const contentType = response.headers.get('content-type') ?? '';
+        const contentType = (response.headers.get('content-type') ?? '').toLowerCase();
         if (contentType.includes('application/json')) {
             let data: unknown;
             try {

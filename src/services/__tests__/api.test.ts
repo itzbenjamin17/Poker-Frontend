@@ -230,16 +230,19 @@ describe('api service', () => {
                     return new HttpResponse('', { status: 500 });
                 })
             );
-            await expect(pokerApi.getRoomInfo('room-1', validToken)).rejects.toMatchObject({
-                status: 500,
-                message: 'Request failed',
-            });
+            await expect(pokerApi.getRoomInfo('room-1', validToken)).rejects.toMatchObject({
+                status: 500,
+                message: 'Request failed',
+            });
         });
 
-        it('normalizes HTML 502/503/504 error response pages to technical copy and preserves status', async () => {
-            const html502 = '<!DOCTYPE html><html><head><title>502 Bad Gateway</title></head><body><center><h1>502 Bad Gateway</h1></center></body></html>';
-            const res = new Response(html502, {
-                status: 502,
+        it.each([
+            [502, '<!DOCTYPE html><html><head><title>502 Bad Gateway</title></head><body><center><h1>502 Bad Gateway</h1></center></body></html>'],
+            [503, '<html><body><h1>503 Service Temporarily Unavailable</h1></body></html>'],
+            [504, '<!DOCTYPE html><html><head><title>504 Gateway Time-out</title></head><body><h1>504 Gateway Time-out</h1></body></html>'],
+        ])('normalizes HTML %i error response page to technical copy and preserves status', async (status, htmlBody) => {
+            const res = new Response(htmlBody, {
+                status,
                 headers: { 'Content-Type': 'text/html' },
             });
             const msg = await getErrorMessage(res, 'Default fallback');
@@ -248,19 +251,36 @@ describe('api service', () => {
             const validToken = createJwt({ exp: Math.floor(Date.now() / 1000) + 3600 });
             server.use(
                 http.get('/api/room/:roomId', () => {
-                    return new HttpResponse(html502, {
-                        status: 502,
+                    return new HttpResponse(htmlBody, {
+                        status,
                         headers: { 'Content-Type': 'text/html' },
                     });
                 })
             );
             await expect(pokerApi.getRoomInfo('room-1', validToken)).rejects.toMatchObject({
-                status: 502,
+                status,
                 message: ERROR_TECHNICAL,
             });
         });
 
-        it('normalizes server diagnostic stack trace text to system copy and preserves status', async () => {
+        it('normalizes non-JSON plaintext error strings containing HTML tags to technical copy', async () => {
+            const inlineHtml = '<p>Service Temporarily Down</p>';
+            const res = new Response(inlineHtml, {
+                status: 503,
+                headers: { 'Content-Type': 'text/plain' },
+            });
+            const msg = await getErrorMessage(res, 'Default fallback');
+            expect(msg).toBe(ERROR_TECHNICAL);
+
+            const divHtml = '<div>Error: Database connection lost</div>';
+            const resDiv = new Response(divHtml, {
+                status: 500,
+                headers: { 'Content-Type': 'text/plain' },
+            });
+            expect(await getErrorMessage(resDiv, 'Default fallback')).toBe(ERROR_TECHNICAL);
+        });
+
+        it('normalizes non-JSON plaintext error strings with server exceptions without leakage', async () => {
             const stackTrace = 'java.lang.NullPointerException at com.pokergame.service.RoomService.getRoom(RoomService.java:42)';
             const res = new Response(stackTrace, {
                 status: 500,
@@ -268,6 +288,20 @@ describe('api service', () => {
             });
             const msg = await getErrorMessage(res, 'Default fallback');
             expect(msg).toBe(ERROR_SYSTEM);
+
+            const springEx = 'org.springframework.web.bind.MethodArgumentNotValidException: validation failed';
+            const resSpring = new Response(springEx, {
+                status: 500,
+                headers: { 'Content-Type': 'text/plain' },
+            });
+            expect(await getErrorMessage(resSpring, 'Default fallback')).toBe(ERROR_SYSTEM);
+
+            const causedBy = 'Caused by: com.pokergame.exception.GameException: Table not found';
+            const resCaused = new Response(causedBy, {
+                status: 500,
+                headers: { 'Content-Type': 'text/plain' },
+            });
+            expect(await getErrorMessage(resCaused, 'Default fallback')).toBe(ERROR_SYSTEM);
 
             const validToken = createJwt({ exp: Math.floor(Date.now() / 1000) + 3600 });
             server.use(
@@ -282,6 +316,80 @@ describe('api service', () => {
                 status: 500,
                 message: ERROR_SYSTEM,
             });
+        });
+
+        it('returns sanitized clean non-JSON error text and bounds length', async () => {
+            const cleanText = 'Room is full.';
+            const res = new Response(cleanText, {
+                status: 400,
+                headers: { 'Content-Type': 'text/plain' },
+            });
+            expect(await getErrorMessage(res, 'Default fallback')).toBe('Room is full.');
+
+            const longText = 'A very long error message that exceeds eighty characters: The game you are trying to join has already terminated.';
+            const resLong = new Response(longText, {
+                status: 400,
+                headers: { 'Content-Type': 'text/plain' },
+            });
+            const normalizedLong = await getErrorMessage(resLong, 'Default fallback');
+            expect(normalizedLong.length).toBeLessThanOrEqual(80);
+            expect(normalizedLong.endsWith('...')).toBe(true);
+        });
+
+        it('falls back cleanly when non-JSON body is whitespace or empty', async () => {
+            const resEmpty = new Response('', {
+                status: 500,
+                headers: { 'Content-Type': 'text/plain' },
+            });
+            expect(await getErrorMessage(resEmpty, 'Default fallback')).toBe('Default fallback');
+
+            const resWhitespace = new Response('   \n\t  ', {
+                status: 500,
+                headers: { 'Content-Type': 'text/plain' },
+            });
+            expect(await getErrorMessage(resWhitespace, 'Default fallback')).toBe('Default fallback');
+        });
+
+        it('handles case-insensitive Content-Type and application/problem+json', async () => {
+            const resUpper = new Response(JSON.stringify({ message: 'Uppercase content type' }), {
+                status: 400,
+                headers: { 'Content-Type': 'APPLICATION/JSON' },
+            });
+            expect(await getErrorMessage(resUpper, 'Default fallback')).toBe('Uppercase content type');
+
+            const resProblem = new Response(JSON.stringify({ error: 'Problem details error' }), {
+                status: 400,
+                headers: { 'Content-Type': 'application/problem+json' },
+            });
+            expect(await getErrorMessage(resProblem, 'Default fallback')).toBe('Problem details error');
+        });
+
+        it('normalizes HTML or stack traces inside valid JSON error responses', async () => {
+            const resHtmlInJson = new Response(JSON.stringify({ message: '<html>500 Server Error</html>' }), {
+                status: 500,
+                headers: { 'Content-Type': 'application/json' },
+            });
+            expect(await getErrorMessage(resHtmlInJson, 'Default fallback')).toBe(ERROR_TECHNICAL);
+
+            const resStackInJson = new Response(JSON.stringify({ error: 'java.lang.IllegalStateException: invalid phase' }), {
+                status: 500,
+                headers: { 'Content-Type': 'application/json' },
+            });
+            expect(await getErrorMessage(resStackInJson, 'Default fallback')).toBe(ERROR_SYSTEM);
+        });
+
+        it('falls back to default fallback when JSON contains empty or blank error fields', async () => {
+            const resBlankJson = new Response(JSON.stringify({ message: '   ', error: '' }), {
+                status: 400,
+                headers: { 'Content-Type': 'application/json' },
+            });
+            expect(await getErrorMessage(resBlankJson, 'Default fallback')).toBe('Default fallback');
+
+            const resEmptyObj = new Response(JSON.stringify({}), {
+                status: 400,
+                headers: { 'Content-Type': 'application/json' },
+            });
+            expect(await getErrorMessage(resEmptyObj, 'Default fallback')).toBe('Default fallback');
         });
 
         it('normalizes JSON error response with embedded JSON object or array to format copy', async () => {
@@ -357,12 +465,12 @@ describe('api service', () => {
                 })
             );
 
-            await expect(pokerApi.joinRoom({
-                roomName: 'Room99',
-                playerName: 'Bob',
-            })).rejects.toMatchObject({
-                status: 500,
-            });
+            await expect(pokerApi.joinRoom({
+                roomName: 'Room99',
+                playerName: 'Bob',
+            })).rejects.toMatchObject({
+                status: 500,
+            });
         });
 
         it.each([
