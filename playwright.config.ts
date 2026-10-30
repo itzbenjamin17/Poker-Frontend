@@ -32,7 +32,7 @@ export default defineConfig({
       stderr: 'pipe',
     },
     {
-      command: `${process.platform === 'win32' ? 'mvnw.cmd' : './mvnw'} spring-boot:run -Dspring-boot.run.profiles=e2e -Dspring-boot.run.arguments=--poker.rate-limiting.enabled=false`,
+      command: `${process.platform === 'win32' ? 'mvnw.cmd' : './mvnw'} spring-boot:run -Dspring-boot.run.profiles=e2e -Dspring-boot.run.arguments="--poker.rate-limiting.enabled=false --poker.persistence.enabled=false"`,
       cwd: backendDir,
       url: 'http://localhost:8080/actuator/health',
       reuseExistingServer: !process.env.CI,
