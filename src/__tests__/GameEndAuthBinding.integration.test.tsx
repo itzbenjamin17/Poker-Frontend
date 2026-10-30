@@ -1,7 +1,9 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, act, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { http, HttpResponse } from 'msw';
 import GameView from '../GameView';
+import App from '../App';
 import { server } from '../test/mocks/server';
 import { MockStompClient, activeSubscriptions } from '../test/mocks/stomp';
 import { createValidGameState, createValidRoomData, createMockJwt, mockAuth } from '../test/fixtures';
@@ -250,5 +252,118 @@ describe('GameEnd Auth Binding & Offline Review Integration', () => {
 
         setItemSpy.mockRestore();
         getItemSpy.mockRestore();
+    });
+
+    it('automatically binds and persists terminal review to active auth upon terminal STOMP event during active gameplay', async () => {
+        // Render Alice in an active table
+        render(<GameView auth={authA} />);
+        expect(await screen.findByLabelText('Total Pot')).toBeInTheDocument();
+        expect(loadPersistedGameEnd(authA)).toBeNull();
+
+        // Server sends GAME_END broadcast for Alice
+        act(() => {
+            MockStompClient.simulateMessage('/game/ROOM-100', {
+                type: 'GAME_END',
+                ...terminalResultA,
+            });
+        });
+
+        // Game transitions to review view
+        expect(await screen.findByRole('heading', { name: /game over/i })).toBeInTheDocument();
+
+        // Terminal result is now persisted in storage bound to authA
+        const persisted = loadPersistedGameEnd(authA);
+        expect(persisted).not.toBeNull();
+        expect(persisted?.gameId).toBe('ROOM-100');
+        expect(persisted?.winnerName).toBe('Alice');
+
+        // Verify the raw envelope in sessionStorage has version 1 and auth fields
+        const rawEnvelope = JSON.parse(sessionStorage.getItem('poker-game-end:ROOM-100')!);
+        expect(rawEnvelope.version).toBe(1);
+        expect(rawEnvelope.roomId).toBe(authA.roomId);
+        expect(rawEnvelope.playerName).toBe(authA.playerName);
+        expect(rawEnvelope.token).toBe(authA.token);
+
+        // Bob in same room cannot load Alice's envelope
+        expect(loadPersistedGameEnd(authB)).toBeNull();
+    });
+
+    it("return from review clears only that identity's cached result and propagates token to onLeave", async () => {
+        const user = userEvent.setup();
+        const onLeaveSpy = vi.fn();
+
+        savePersistedGameEnd(authA, terminalResultA);
+
+        const authBOther: AuthResponse = {
+            ...authB,
+            roomId: 'ROOM-200',
+        };
+        const terminalResultBOther: GameEndResult = {
+            gameId: 'ROOM-200',
+            winnerName: 'Bob',
+            winnerChips: 3500,
+            isForfeit: false,
+            message: 'Bob won in room 200!',
+        };
+        savePersistedGameEnd(authBOther, terminalResultBOther);
+
+        server.use(
+            http.get('/api/room/ROOM-100', () => new HttpResponse(null, { status: 404 })),
+            http.get('/api/game/ROOM-100/state', () => new HttpResponse(null, { status: 404 })),
+            http.get('/api/game/ROOM-100/review', () => new HttpResponse(null, { status: 404 }))
+        );
+
+        render(<GameView auth={authA} onLeave={onLeaveSpy} />);
+        expect(await screen.findByRole('heading', { name: /game over/i })).toBeInTheDocument();
+
+        // Alice clicks Leave
+        const leaveButton = screen.getByRole('button', { name: /leave/i });
+        await user.click(leaveButton);
+
+        // A's cached result is cleared
+        expect(loadPersistedGameEnd(authA)).toBeNull();
+        expect(sessionStorage.getItem('poker-game-end:ROOM-100')).toBeNull();
+        expect(onLeaveSpy).toHaveBeenCalledWith(authA.token);
+
+        // B's cached result is completely intact
+        expect(loadPersistedGameEnd(authBOther)).toEqual(terminalResultBOther);
+    });
+
+    it('return from review in App root clears only active identity cached result and auth, returning to lobby', async () => {
+        const user = userEvent.setup();
+
+        sessionStorage.setItem('poker-auth', JSON.stringify(authA));
+        savePersistedGameEnd(authA, terminalResultA);
+
+        const authBOther: AuthResponse = { ...authB, roomId: 'ROOM-200' };
+        savePersistedGameEnd(authBOther, {
+            gameId: 'ROOM-200',
+            winnerName: 'Bob',
+            winnerChips: 3500,
+            isForfeit: false,
+            message: 'Bob won!',
+        });
+
+        server.use(
+            http.get('/api/room/ROOM-100', () => new HttpResponse(null, { status: 404 })),
+            http.get('/api/game/ROOM-100/state', () => new HttpResponse(null, { status: 404 })),
+            http.get('/api/game/ROOM-100/review', () => new HttpResponse(null, { status: 404 }))
+        );
+
+        render(<App />);
+
+        expect(await screen.findByRole('heading', { name: /game over/i })).toBeInTheDocument();
+        expect(screen.getByText(/Alice won the game!/i)).toBeInTheDocument();
+
+        const leaveButton = screen.getByRole('button', { name: /leave/i });
+        await user.click(leaveButton);
+
+        await waitFor(() => {
+            expect(loadPersistedGameEnd(authA)).toBeNull();
+            expect(sessionStorage.getItem('poker-auth')).toBeNull();
+        });
+
+        // B's cached review in ROOM-200 remains intact
+        expect(loadPersistedGameEnd(authBOther)?.winnerName).toBe('Bob');
     });
 });

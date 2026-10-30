@@ -72,14 +72,13 @@ export default function App() {
     const handleLeave = useCallback((originatingToken?: string) => {
         const tokenToClear = (typeof originatingToken === 'string' && originatingToken) ? originatingToken : auth?.token;
         if (!tokenToClear) return;
-        if (getCurrentAuth()?.token !== tokenToClear) return;
-        if (auth && auth.token === tokenToClear) {
-            savePersistedGameEnd(auth, null);
-        } else {
-            const current = getCurrentAuth();
-            if (current && current.token === tokenToClear) {
-                savePersistedGameEnd(current, null);
-            }
+        const current = getCurrentAuth();
+        if (current && current.token !== tokenToClear) return;
+        const targetAuth = (current && current.token === tokenToClear)
+            ? current
+            : (auth && auth.token === tokenToClear ? auth : null);
+        if (targetAuth) {
+            savePersistedGameEnd(targetAuth, null);
         }
         clearAuth(tokenToClear);
     }, [auth, clearAuth, getCurrentAuth]);

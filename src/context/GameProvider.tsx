@@ -92,6 +92,7 @@ export function GameProvider({
         session.getSnapshot
     );
 
+    // Persist terminal review snapshot bound to active auth credentials (roomId, playerName, token)
     useEffect(() => {
         if (!session.isAttached()) return;
         const sessionAuth = session.getAuth();
