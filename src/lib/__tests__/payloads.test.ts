@@ -343,9 +343,15 @@ describe('lib/payloads - Type Guards and Normalizers', () => {
     });
 
     describe('normalizeErrorMessage', () => {
-        it('returns null for falsy messages', () => {
+        it('returns null for falsy, empty, whitespace-only, non-string, or stripped-to-empty messages', () => {
             expect(normalizeErrorMessage(null)).toBeNull();
+            expect(normalizeErrorMessage(undefined)).toBeNull();
             expect(normalizeErrorMessage('')).toBeNull();
+            expect(normalizeErrorMessage('   \t\n\r   ')).toBeNull();
+            expect(normalizeErrorMessage(12345)).toBeNull();
+            expect(normalizeErrorMessage({})).toBeNull();
+            expect(normalizeErrorMessage([])).toBeNull();
+            expect(normalizeErrorMessage('\x00\x01\x1f\x7f')).toBeNull();
         });
 
         it('normalizes deserialization and JSON parsing errors', () => {
@@ -371,32 +377,53 @@ describe('lib/payloads - Type Guards and Normalizers', () => {
             expect(normalizeErrorMessage('java.lang.NullPointerException at com.pokergame')).toBe(ERROR_SYSTEM);
         });
 
-        it('truncates messages exceeding 80 characters', () => {
+        it('cleanly truncates plaintext messages exceeding 80 characters with ... suffix', () => {
             const longMessage = 'A'.repeat(90);
             const result = normalizeErrorMessage(longMessage);
             expect(result).toHaveLength(80);
             expect(result?.endsWith('...')).toBe(true);
+
+            const msg85 = 'A'.repeat(85);
+            expect(normalizeErrorMessage(msg85)).toBe('A'.repeat(77) + '...');
+            expect(normalizeErrorMessage(msg85)).toHaveLength(80);
+
+            const msg80 = 'B'.repeat(80);
+            expect(normalizeErrorMessage(msg80)).toBe('B'.repeat(80));
+            expect(normalizeErrorMessage(msg80)).toHaveLength(80);
+
+            const msg81 = 'C'.repeat(81);
+            expect(normalizeErrorMessage(msg81)).toBe('C'.repeat(77) + '...');
+            expect(normalizeErrorMessage(msg81)).toHaveLength(80);
         });
 
-        it('returns regular short error messages untruncated and trimmed', () => {
-            expect(normalizeErrorMessage('  Player name already taken  ')).toBe('Player name already taken');
-        });
-
-        it('returns null for whitespace-only messages', () => {
-            expect(normalizeErrorMessage('   \t\n   ')).toBeNull();
-        });
-
-        it('normalizes HTML documents and HTML tags to technical copy without truncating to 80 chars', () => {
+        it('normalizes HTML documents, error pages, tags, and fragments to technical copy', () => {
             const html502 = '<!DOCTYPE html><html><head><title>502 Bad Gateway</title></head><body><center><h1>502 Bad Gateway</h1></center><hr><center>nginx/1.25.3</center></body></html>';
             expect(normalizeErrorMessage(html502)).toBe(ERROR_TECHNICAL);
+
+            const html503 = '<!DOCTYPE html><html><head><title>503 Service Unavailable</title></head><body><center><h1>503 Service Unavailable</h1></center></body></html>';
+            expect(normalizeErrorMessage(html503)).toBe(ERROR_TECHNICAL);
 
             const html504 = '<html><body><h1>504 Gateway Time-out</h1></body></html>';
             expect(normalizeErrorMessage(html504)).toBe(ERROR_TECHNICAL);
 
+            // Plaintext proxy status lines
+            expect(normalizeErrorMessage('502 Bad Gateway')).toBe(ERROR_TECHNICAL);
+            expect(normalizeErrorMessage('503 Service Unavailable')).toBe(ERROR_TECHNICAL);
+            expect(normalizeErrorMessage('504 Gateway Time-out')).toBe(ERROR_TECHNICAL);
+            expect(normalizeErrorMessage('HTTP 502 Bad Gateway')).toBe(ERROR_TECHNICAL);
+
+            // Embedded HTML tags and fragments
             expect(normalizeErrorMessage('<div>An unexpected error occurred</div>')).toBe(ERROR_TECHNICAL);
             expect(normalizeErrorMessage('<p>Server down</p>')).toBe(ERROR_TECHNICAL);
             expect(normalizeErrorMessage('<tag>some technical error</tag>')).toBe(ERROR_TECHNICAL);
             expect(normalizeErrorMessage('<h3>Whitelabel Error Page</h3>')).toBe(ERROR_TECHNICAL);
+            expect(normalizeErrorMessage('<center>nginx</center>')).toBe(ERROR_TECHNICAL);
+            expect(normalizeErrorMessage('<span class="err">Action rejected</span>')).toBe(ERROR_TECHNICAL);
+            expect(normalizeErrorMessage('Failed: <span>Action forbidden</span>')).toBe(ERROR_TECHNICAL);
+            expect(normalizeErrorMessage('<style>.err { color: red; }</style>')).toBe(ERROR_TECHNICAL);
+            expect(normalizeErrorMessage('<script>alert("xss")</script>')).toBe(ERROR_TECHNICAL);
+            expect(normalizeErrorMessage('<!-- backend timeout -->')).toBe(ERROR_TECHNICAL);
+            expect(normalizeErrorMessage('<title>502 Bad Gateway</title>')).toBe(ERROR_TECHNICAL);
         });
 
         it('normalizes serialized JSON bodies and embedded JSON objects to format or technical copy', () => {
@@ -406,17 +433,52 @@ describe('lib/payloads - Type Guards and Normalizers', () => {
             expect(normalizeErrorMessage('{"timestamp":"2026-10-21T12:00:00Z","status":502}')).toBe(ERROR_INVALID_FORMAT);
         });
 
-        it('normalizes server exceptions and stack traces to system copy', () => {
+        it('normalizes multi-line Java/Spring stack traces and server exception strings to system copy', () => {
             expect(normalizeErrorMessage('NullPointerException: player session is missing')).toBe(ERROR_SYSTEM);
+            expect(normalizeErrorMessage('java.lang.NullPointerException: Cannot invoke "String.length()"')).toBe(ERROR_SYSTEM);
+            expect(normalizeErrorMessage('IllegalStateException: Room is not open for joining')).toBe(ERROR_SYSTEM);
+            expect(normalizeErrorMessage('java.lang.IllegalStateException: Game not in betting round')).toBe(ERROR_SYSTEM);
             expect(normalizeErrorMessage('Exception: unexpected state transition')).toBe(ERROR_SYSTEM);
+            expect(normalizeErrorMessage('GameException: Table not found in active registry')).toBe(ERROR_SYSTEM);
+            expect(normalizeErrorMessage('IllegalArgumentException: Invalid seat index')).toBe(ERROR_SYSTEM);
             expect(normalizeErrorMessage('at com.pokergame.service.RoomService.joinRoom(RoomService.java:102)')).toBe(ERROR_SYSTEM);
+            expect(normalizeErrorMessage('\tat com.pokergame.service.RoomService.joinRoom(RoomService.java:102)')).toBe(ERROR_SYSTEM);
             expect(normalizeErrorMessage('Caused by: com.pokergame.exception.GameException: Table not found')).toBe(ERROR_SYSTEM);
+
+            const multiLineTrace = [
+                'java.lang.IllegalStateException: Seat already taken',
+                '\tat com.pokergame.model.Room.sitPlayer(Room.java:154)',
+                '\tat com.pokergame.service.RoomService.joinRoom(RoomService.java:102)',
+                '\tat com.pokergame.controller.RoomController.joinRoom(RoomController.java:45)',
+                'Caused by: java.lang.IllegalArgumentException: duplicate seat index',
+                '\t... 32 common frames omitted',
+            ].join('\n');
+            expect(normalizeErrorMessage(multiLineTrace)).toBe(ERROR_SYSTEM);
+
+            const springTrace = [
+                'org.springframework.web.bind.MethodArgumentNotValidException: Validation failed',
+                '\tat org.springframework.web.servlet.mvc.method.annotation.RequestResponseBodyMethodProcessor.resolveArgument(RequestResponseBodyMethodProcessor.java:144)',
+                '\tat org.springframework.web.method.support.HandlerMethodArgumentResolverComposite.resolveArgument(HandlerMethodArgumentResolverComposite.java:122)',
+            ].join('\n');
+            expect(normalizeErrorMessage(springTrace)).toBe(ERROR_SYSTEM);
         });
 
-        it('retains rate-limit copy and plain domain failure messages', () => {
-            expect(normalizeErrorMessage('Too many requests. Please try again later.')).toBe('Too many requests. Please try again later.');
+        it('strips non-printable and control characters from plaintext messages', () => {
+            expect(normalizeErrorMessage('Room not found\x00\x07\x1b')).toBe('Room not found');
+            expect(normalizeErrorMessage('Game\x08 has \x00already started')).toBe('Game has already started');
+            expect(normalizeErrorMessage('  Player \x1fleft \x7fthe table  ')).toBe('Player left the table');
+        });
+
+        it('preserves clean, user-facing error strings intact and trimmed', () => {
+            expect(normalizeErrorMessage('Room not found')).toBe('Room not found');
+            expect(normalizeErrorMessage('Game has already started')).toBe('Game has already started');
+            expect(normalizeErrorMessage('  Player name already taken  ')).toBe('Player name already taken');
             expect(normalizeErrorMessage('Room not found in registry')).toBe('Room not found in registry');
             expect(normalizeErrorMessage('Room is full.')).toBe('Room is full.');
+            expect(normalizeErrorMessage('Too many requests. Please try again later.')).toBe('Too many requests. Please try again later.');
+            expect(normalizeErrorMessage('Minimum raise is 500 chips')).toBe('Minimum raise is 500 chips');
+            expect(normalizeErrorMessage('Buy-in must be at least 500')).toBe('Buy-in must be at least 500');
+            expect(normalizeErrorMessage('Insufficient chips to call 1500')).toBe('Insufficient chips to call 1500');
         });
     });
 

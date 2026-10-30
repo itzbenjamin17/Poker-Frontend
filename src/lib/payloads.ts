@@ -466,14 +466,16 @@ export function getErrorStatusCode(error: unknown): number | undefined {
     return typeof error.status === 'number' ? error.status : undefined;
 }
 
-export function normalizeErrorMessage(message: string | null): string | null {
-    if (!message) return null;
-    const msg = message.trim();
+export function normalizeErrorMessage(raw: unknown): string | null {
+    if (typeof raw !== 'string') return null;
+    const msg = raw.trim();
     if (msg.length === 0) return null;
 
     if (
         /<!DOCTYPE/i.test(msg) ||
-        /<(?:\/?[a-z][a-z0-9_-]*\b|!doctype)[^>]*>/i.test(msg)
+        /<!--/i.test(msg) ||
+        /<(?:\/?[a-z][a-z0-9_-]*\b|!doctype)[^>]*>/i.test(msg) ||
+        /<\/?(?:html|head|body|title|center|h[1-6]|div|span|p|style|script|meta|link|hr|br|table|tbody|thead|tr|td|th|pre|form|input|button|a)\b/i.test(msg)
     ) {
         return ERROR_TECHNICAL;
     }
@@ -489,19 +491,30 @@ export function normalizeErrorMessage(message: string | null): string | null {
     if (msg.includes('Cannot deserialize') || msg.includes('JSON parse error') || msg.includes('HttpMessageNotReadable')) {
         return ERROR_INVALID_FORMAT;
     }
-    if (/internal server error/i.test(msg) || /\b(?:status(?:\s+code)?|http|error)\s*:?\s*500\b/i.test(msg)) {
+    if (
+        /internal server error/i.test(msg) ||
+        /\b(?:status(?:\s+code)?|http|error)\s*:?\s*(?:500|502|503|504)\b/i.test(msg) ||
+        /\b(?:502\s+bad\s+gateway|503\s+service\s+unavailable|504\s+gateway\s+time-?out)\b/i.test(msg) ||
+        /\b(?:bad\s+gateway|gateway\s+time-?out)\b/i.test(msg)
+    ) {
         return ERROR_TECHNICAL;
     }
     if (
         msg.includes('java.lang') ||
         msg.includes('org.springframework') ||
+        msg.includes('com.pokergame') ||
         msg.includes('NullPointerException') ||
-        /\b[A-Za-z0-9_]*Exception\b/i.test(msg) ||
+        msg.includes('IllegalStateException') ||
+        /\b[A-Za-z0-9_$]*Exception\b/i.test(msg) ||
         /\bat\s+[a-zA-Z0-9_$]+(?:\.[a-zA-Z0-9_$]+)+/.test(msg) ||
-        /\bCaused by:\s*/i.test(msg)
+        /\tat\s+/i.test(msg) ||
+        /\bCaused by:\s*/i.test(msg) ||
+        /\.\.\.\s+\d+\s+(?:more|common frames omitted)/i.test(msg)
     ) {
         return ERROR_SYSTEM;
     }
+    const clean = msg.replace(/[\x00-\x1F\x7F-\x9F]/g, '').trim();
+    if (clean.length === 0) return null;
     const MAX_LENGTH = 80;
-    return msg.length > MAX_LENGTH ? msg.substring(0, MAX_LENGTH - 3) + '...' : msg;
+    return clean.length > MAX_LENGTH ? clean.substring(0, MAX_LENGTH - 3) + '...' : clean;
 }
