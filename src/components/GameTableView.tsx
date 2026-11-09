@@ -8,10 +8,9 @@ import { ReconnectOverlay, RoomStage, RoomDock, useOrientationGating } from './P
 import { LiveTableStage } from './LiveTableStage';
 import { GameContext } from '../context/GameContext';
 
-import type { ActionError, AuthResponse, GameState, Player, PokerAction, RoomState, WsStatus } from '../types';
+import type { ActionError, AuthResponse, GameState, PokerAction, RoomState, WsStatus } from '../types';
 import {
     BTN_LEAVE_TABLE, BTN_CLAIM_WIN, BTN_CLAIMING,
-    WAITING_RECONNECT_PREFIX, WAITING_RECONNECT_SUFFIX,
 } from '../constants/strings';
 
 export interface GameTableViewProps {
@@ -139,27 +138,6 @@ export function GameTableView({
         [players]
     );
 
-    const currentPlayerId = gameState?.currentPlayerId;
-    const currentPlayerName = gameState?.currentPlayerName;
-
-    const reconnectingOpponent = useMemo(() => {
-        if (!players.length) return null;
-        const isQualifying = (p: Player) =>
-            p.status === 'DISCONNECTED' &&
-            p.id !== resolvedHeroId &&
-            (!effectivePlayerName || p.name !== effectivePlayerName) &&
-            !p.hasFolded;
-
-        const currentTurnActor = players.find(
-            (p) => p.id === currentPlayerId || (Boolean(currentPlayerName) && p.name === currentPlayerName)
-        );
-        if (currentTurnActor && isQualifying(currentTurnActor)) {
-            return currentTurnActor;
-        }
-
-        return players.find(isQualifying) ?? null;
-    }, [players, currentPlayerId, currentPlayerName, resolvedHeroId, effectivePlayerName]);
-
     if (!gameState || !roomState) return null;
 
     const me = resolvedHero ?? (resolvedHeroId ? players.find((p) => p.id === resolvedHeroId) : undefined);
@@ -167,7 +145,15 @@ export function GameTableView({
     const isMyTurn = Boolean(resolvedHeroId && gameState.currentPlayerId === resolvedHeroId);
     const isSelfDisconnected = me?.status === 'DISCONNECTED';
     const isReadyCountdownActive = Boolean(gameState.isReadyCountdownActive && gameState.readyGateState !== 'WAITING_FOR_PLAYERS');
-    const currentTurnPlayer = gameState.players.find((p) => p.id === gameState.currentPlayerId);
+    const currentTurnPlayer = players.find((p) => p.id === gameState.currentPlayerId)
+        ?? players.find((p) => p.name === gameState.currentPlayerName);
+    const reconnectingPlayerName =
+        currentTurnPlayer?.status === 'DISCONNECTED' &&
+        !currentTurnPlayer.hasFolded &&
+        currentTurnPlayer.id !== resolvedHeroId &&
+        currentTurnPlayer.name !== effectivePlayerName
+            ? currentTurnPlayer.name
+            : undefined;
 
     const canClaimWin = Boolean(
         gameState.claimWinAvailable &&
@@ -227,20 +213,6 @@ export function GameTableView({
 
             {/* Table Area */}
             <RoomStage>
-                {/* Remote Reconnect Banner overlay inside RoomStage */}
-                {reconnectingOpponent && (
-                    <div
-                        data-testid="remote-reconnect-banner"
-                        className="absolute top-2 left-1/2 -translate-x-1/2 z-30 pointer-events-none px-4 w-full max-w-xl"
-                    >
-                        <div className="mx-auto bg-amber-500/20 border border-amber-300/40 rounded-xl px-4 py-2.5 text-center backdrop-blur-md shadow-lg">
-                            <p className="text-amber-200 font-headline font-bold uppercase tracking-wider text-xs md:text-sm">
-                                {WAITING_RECONNECT_PREFIX}{reconnectingOpponent.name}{WAITING_RECONNECT_SUFFIX}
-                            </p>
-                        </div>
-                    </div>
-                )}
-
                 <LiveTableStage
                     nowMs={nowMs}
                     gameState={gameState}
@@ -301,6 +273,7 @@ export function GameTableView({
                         isReadyCountdownActive={isReadyCountdownActive && readyCountdownSecondsRemaining > 0}
                         readyGateState={gameState.readyGateState}
                         currentTurnPlayerName={currentTurnPlayer?.name}
+                        reconnectingPlayerName={reconnectingPlayerName}
                         isMobileLandscape={isMobileLandscape}
                         isCompactTable={isCompactTable}
                         raiseAmount={raiseAmount}

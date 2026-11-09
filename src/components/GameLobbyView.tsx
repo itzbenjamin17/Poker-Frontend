@@ -104,7 +104,7 @@ export function GameLobbyView({
 
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                     {/* Player list */}
-                    <ul className="lg:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4 list-none m-0 p-0">
+                    <ul className="lg:col-span-2 grid grid-cols-1 md:grid-cols-2 self-start gap-4 list-none m-0 p-0">
                         {roomState.players?.map((p, i) => (
                             <li key={i}>
                                 <Card className="p-6">

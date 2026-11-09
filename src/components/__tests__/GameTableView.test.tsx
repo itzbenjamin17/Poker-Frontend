@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { GameTableView } from '../GameTableView';
 import { WAITING_RECONNECT_PREFIX, WAITING_RECONNECT_SUFFIX } from '../../constants/strings';
@@ -94,7 +94,7 @@ describe('GameTableView', () => {
             expect(screen.queryByRole('alert')).not.toBeInTheDocument();
         });
 
-        it('renders the waiting for reconnect banner when an active turn player is disconnected', () => {
+        it('shows reconnect status in the dock until the current actor reconnects', () => {
             const disconnectedOpponent: Player = {
                 ...opponentPlayer,
                 status: 'DISCONNECTED',
@@ -102,10 +102,11 @@ describe('GameTableView', () => {
             const stateWithDisconnectedTurn: GameState = {
                 ...mockGameState,
                 currentPlayerId: 'p-2',
+                currentPlayerName: 'Villain',
                 players: [defaultPlayer, disconnectedOpponent],
             };
 
-            render(
+            const { rerender } = render(
                 <GameTableView
                     {...defaultProps}
                     gameState={stateWithDisconnectedTurn}
@@ -113,10 +114,21 @@ describe('GameTableView', () => {
                 />
             );
 
-            expect(screen.getByText(`${WAITING_RECONNECT_PREFIX}Villain${WAITING_RECONNECT_SUFFIX}`)).toBeInTheDocument();
+            const dock = within(screen.getByTestId('room-dock'));
+            expect(dock.getByRole('status')).toHaveTextContent(`${WAITING_RECONNECT_PREFIX}Villain${WAITING_RECONNECT_SUFFIX}`);
+
+            rerender(
+                <GameTableView
+                    {...defaultProps}
+                    gameState={{ ...stateWithDisconnectedTurn, players: [defaultPlayer, opponentPlayer] }}
+                    isCompactTable={false}
+                />
+            );
+
+            expect(dock.getByRole('status')).toHaveTextContent('Waiting for Villain to act');
         });
 
-        it('renders the disconnected opponent name (not Hero) in the reconnect banner when Hero is the active turn player', () => {
+        it('keeps the local action controls available when an opponent disconnects', () => {
             const disconnectedOpponent: Player = {
                 ...opponentPlayer,
                 status: 'DISCONNECTED',
@@ -136,8 +148,9 @@ describe('GameTableView', () => {
                 />
             );
 
-            expect(screen.getByText(`${WAITING_RECONNECT_PREFIX}Villain${WAITING_RECONNECT_SUFFIX}`)).toBeInTheDocument();
-            expect(screen.queryByText(`${WAITING_RECONNECT_PREFIX}Hero${WAITING_RECONNECT_SUFFIX}`)).not.toBeInTheDocument();
+            const dock = within(screen.getByTestId('room-dock'));
+            expect(dock.getByRole('button', { name: /fold/i })).toBeEnabled();
+            expect(dock.queryByText(/to reconnect/i)).not.toBeInTheDocument();
         });
     });
 

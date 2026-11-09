@@ -6,6 +6,7 @@ import { Button } from './UI';
 import {
     BTN_FOLD, BTN_CHECK, BTN_CALL_PREFIX, BTN_ALL_IN_PREFIX,
     BTN_BET, BTN_RAISE, ARIA_RAISE_AMOUNT,
+    WAITING_RECONNECT_PREFIX, WAITING_RECONNECT_SUFFIX,
     READY_PROMPT, BTN_READY, LABEL_PLAYERS_READY_SUFFIX,
     RAISE_VALIDATION_WHOLE_NUMBER, RAISE_VALIDATION_POSITIVE, RAISE_VALIDATION_MAX,
     formatBetMinError, formatRaiseMinError, formatAvailableChipsError,
@@ -27,6 +28,7 @@ interface ActionPanelProps {
     isReadyCountdownActive: boolean;
     readyGateState?: ReadyGateState;
     currentTurnPlayerName?: string;
+    reconnectingPlayerName?: string;
     isMobileLandscape: boolean;
     isCompactTable: boolean;
     raiseAmount?: string;
@@ -56,6 +58,7 @@ export function ActionPanel({
     isReadyCountdownActive,
     readyGateState,
     currentTurnPlayerName,
+    reconnectingPlayerName,
     isMobileLandscape,
     isCompactTable,
     raiseAmount: controlledRaiseAmount,
@@ -211,6 +214,9 @@ export function ActionPanel({
     const showControls = isMyTurn && !isSelfDisconnected && !isEffectivelyReadyCountdownActive
         && !isAutoAdvancing && !isShowdown && legalActions.size > 0;
     const waitingName = currentTurnPlayerName || gameState.currentPlayerName || 'another player';
+    const turnStatus = reconnectingPlayerName
+        ? `${WAITING_RECONNECT_PREFIX}${reconnectingPlayerName}${WAITING_RECONNECT_SUFFIX}`
+        : `Waiting for ${waitingName} to act`;
     const canCheck = legalActions.has('CHECK');
     const canCall = legalActions.has('CALL');
     const canAllIn = legalActions.has('ALL_IN');
@@ -515,7 +521,7 @@ export function ActionPanel({
                                 ? readyGateState === 'WAITING_FOR_PLAYERS'
                                     ? 'Hand complete — waiting for players'
                                     : 'Hand complete — reviewing board'
-                                : `Waiting for ${waitingName} to act`}
+                                : turnStatus}
                         </p>
                     </motion.div>
                 )}

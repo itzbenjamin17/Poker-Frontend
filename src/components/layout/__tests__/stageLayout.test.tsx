@@ -120,9 +120,10 @@ describe('Stage Layout & Viewports', () => {
         expect(claimContainer.className).toContain('bottom-[8px]');
     });
 
-    it('renders remote reconnect banner as an absolute overlay inside RoomStage without modifying stage or dock styles', () => {
-        // Disconnected opponent Charlie
+    it('shows remote reconnect status in RoomDock without modifying stage or dock styles', () => {
         const gameStateWithDc = createGameState({
+            currentPlayerId: 'p-charlie',
+            currentPlayerName: 'Charlie',
             players: [
                 { id: 'p-alice', name: 'Alice', chips: 1000, currentBet: 20, status: 'ACTIVE', hasFolded: false },
                 { id: 'p-bob', name: 'Bob', chips: 1000, currentBet: 10, status: 'ACTIVE', hasFolded: false },
@@ -151,7 +152,7 @@ describe('Stage Layout & Viewports', () => {
         const stageClassBefore = stageBefore.className;
         const dockClassBefore = dockBefore.className;
 
-        expect(screen.queryByTestId('remote-reconnect-banner')).not.toBeInTheDocument();
+        expect(screen.queryByText(/waiting for .* to reconnect/i)).not.toBeInTheDocument();
 
         // Rerender with Charlie disconnected
         rerender(
@@ -172,20 +173,18 @@ describe('Stage Layout & Viewports', () => {
 
         const stageAfter = screen.getByTestId('room-stage');
         const dockAfter = screen.getByTestId('room-dock');
-        const banner = screen.getByTestId('remote-reconnect-banner');
+        const status = screen.getByText(/waiting for charlie to reconnect/i);
 
-        expect(banner).toBeInTheDocument();
-        expect(stageAfter).toContainElement(banner);
-        expect(dockAfter).not.toContainElement(banner);
-        expect(banner.className).toContain('absolute');
+        expect(stageAfter).not.toContainElement(status);
+        expect(dockAfter).toContainElement(status);
 
         // Stage and dock flex flow / dimensions class names remain strictly unchanged
         expect(stageAfter.className).toBe(stageClassBefore);
         expect(dockAfter.className).toBe(dockClassBefore);
     });
 
-    it('reconnect banner excludes hero, excludes folded players, and prefers disconnected current actor', () => {
-        // Scenario A: Hero Alice is disconnected -> hero should be excluded, no banner
+    it('reconnect status excludes the hero and folded players and identifies the current actor', () => {
+        // Scenario A: Hero Alice is disconnected -> hero should be excluded from the opponent reconnect status
         const gameStateHeroDc = createGameState({
             players: [
                 { id: 'p-alice', name: 'Alice', chips: 1000, currentBet: 20, status: 'DISCONNECTED', hasFolded: false },
@@ -208,10 +207,12 @@ describe('Stage Layout & Viewports', () => {
                 onLeaveGame={vi.fn()}
             />
         );
-        expect(screen.queryByTestId('remote-reconnect-banner')).not.toBeInTheDocument();
+        expect(screen.queryByText(/waiting for .* to reconnect/i)).not.toBeInTheDocument();
 
-        // Scenario B: Opponent Bob is disconnected but folded -> excluded, no banner
+        // Scenario B: Opponent Bob is disconnected but folded -> excluded from the opponent reconnect status
         const gameStateBobFoldedDc = createGameState({
+            currentPlayerId: 'p-bob',
+            currentPlayerName: 'Bob',
             players: [
                 { id: 'p-alice', name: 'Alice', chips: 1000, currentBet: 20, status: 'ACTIVE', hasFolded: false },
                 { id: 'p-bob', name: 'Bob', chips: 1000, currentBet: 10, status: 'DISCONNECTED', hasFolded: true },
@@ -233,7 +234,7 @@ describe('Stage Layout & Viewports', () => {
                 onLeaveGame={vi.fn()}
             />
         );
-        expect(screen.queryByTestId('remote-reconnect-banner')).not.toBeInTheDocument();
+        expect(screen.queryByText(/waiting for .* to reconnect/i)).not.toBeInTheDocument();
 
         // Scenario C: Both Bob and Charlie disconnected. Bob is current actor -> prefers Bob
         const gameStateTwoDc = createGameState({
@@ -261,7 +262,7 @@ describe('Stage Layout & Viewports', () => {
                 onLeaveGame={vi.fn()}
             />
         );
-        expect(screen.getByTestId('remote-reconnect-banner')).toHaveTextContent(/Bob/i);
+        expect(screen.getByTestId('room-dock')).toHaveTextContent(/waiting for bob to reconnect/i);
     });
 
     it('renders exactly one Leave control: shell header when present, standalone when header is absent', () => {
@@ -339,6 +340,8 @@ describe('Stage Layout & Viewports', () => {
             setViewport(width, height);
             const onLeave = vi.fn();
             const gameState = createGameState({
+                currentPlayerId: 'p-bob',
+                currentPlayerName: 'Bob',
                 claimWinAvailable: true,
                 claimWinPlayerName: 'Alice',
                 players: [
@@ -384,10 +387,10 @@ describe('Stage Layout & Viewports', () => {
             expect(stage).toContainElement(claim);
             expect(dock).not.toContainElement(claim);
 
-            // 2. Reconnect banner is an absolute overlay inside stage
-            const banner = container.querySelector<HTMLElement>('[data-testid="remote-reconnect-banner"]');
-            expect(stage).toContainElement(banner);
-            expect(banner?.className).toContain('absolute');
+            // 2. Reconnect status stays in the dock
+            const status = screen.getByText(/waiting for bob to reconnect/i);
+            expect(dock).toContainElement(status);
+            expect(stage).not.toContainElement(status);
 
             // 3. Exactly one Leave control
             const leaveButtons = screen.getAllByRole('button', { name: /leave/i });
