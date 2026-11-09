@@ -34,11 +34,11 @@ test.describe('Layout Screenshots 3 to 10 players', () => {
             const roomId = `ROOM_${numPlayers}P`;
 
             await page.addInitScript(({ authToken, id }) => {
-                window.localStorage.setItem('poker-auth', JSON.stringify({
+                window.sessionStorage.setItem('poker-auth', JSON.stringify({
                     token: authToken,
                     roomId: id,
                     playerName: 'Host',
-                    message: 'Success',
+                    message: 'Success', playerId: 'p-1',
                 }));
             }, { authToken: token, id: roomId });
 
@@ -83,7 +83,7 @@ test.describe('Layout Screenshots 3 to 10 players', () => {
 
             // 1. Regular State Mock (FLOP)
             const mockFlopState = {
-                gameId: roomId,
+                gameId: roomId, handNumber: 1,
                 maxPlayers: numPlayers,
                 phase: 'FLOP',
                 pot: 80,
@@ -104,7 +104,7 @@ test.describe('Layout Screenshots 3 to 10 players', () => {
 
             await page.route(`**/api/game/${roomId}/private-state`, (route) => route.fulfill({
                 contentType: 'application/json',
-                body: JSON.stringify({ playerId: 'p-1', holeCards: ['AS', 'KS'] }),
+                body: JSON.stringify({ playerId: 'p-1', handNumber: 1, holeCards: ['AS', 'KS'] }),
             }));
 
             await page.goto(`http://localhost:5173/room/${roomId}`);
