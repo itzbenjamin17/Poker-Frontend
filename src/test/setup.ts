@@ -1,6 +1,12 @@
 import '@testing-library/jest-dom'
+import type { TestingLibraryMatchers } from '@testing-library/jest-dom/matchers'
 import { beforeAll, afterEach, afterAll } from 'vitest'
 import { activeSubscriptions } from './mocks/stomp'
+
+declare module 'vitest' {
+  // eslint-disable-next-line @typescript-eslint/no-empty-object-type
+  interface Matchers<R extends void | Promise<void> = void | Promise<void>, T = unknown> extends TestingLibraryMatchers<T, R> {}
+}
 
 import.meta.env.VITE_API_BASE_URL = '/api';
 import.meta.env.VITE_WS_URL = 'ws://localhost:8080/ws';
@@ -39,4 +45,3 @@ if (typeof window !== 'undefined') {
     activeSubscriptions.clear()
   })
 }
-
