@@ -1,4 +1,4 @@
-# 0009: Versioned Offline Envelope Storage for Post-Game Review
+# 0007: Versioned Offline Envelope Storage for Post-Game Review
 
 We decided to persist final game outcomes in browser `sessionStorage` inside a versioned envelope bound to `{ roomId, playerName, token }` so players can review results and showdowns even after the backend tears down the completed room aggregate.
 

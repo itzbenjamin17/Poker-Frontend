@@ -1,4 +1,4 @@
-# 0005: Monotonic Attempt Revision and Abort Guard for REST Recovery
+# 0004: Monotonic Attempt Revision and Abort Guard for REST Recovery
 
 We decided to guard REST session synchronization and recovery requests with monotonic attempt and domain revision counters (`attemptId`, `privateSyncRevision`, `stateSyncRevision`, `roomRevision`) and `AbortController` cancellation in `GameSession.ts` and `sessionSync.ts`.
 

@@ -1,4 +1,4 @@
-# 0008: Parametric Elliptical Seating Geometry and Dynamic Fitting
+# 0006: Parametric Elliptical Seating Geometry and Dynamic Fitting
 
 We decided to calculate player seat coordinates using continuous trigonometric equations along a parametric ellipse rather than static CSS grid or absolute coordinate templates.
 

@@ -53,7 +53,7 @@ The production [Nginx configuration](../../nginx.conf) serves the built client a
 
 ## Session And Transport Architecture
 
-Per [ADR-0003](../adr/0003-in-process-game-session-and-transport-port.md), game session state lives outside React. `GameProvider` accepts injected `GameSession`, `GameTransport`, and `Clock` dependencies for tests. Views receive explicit game data and action callbacks from the container.
+Per [ADR-0002](../adr/0002-in-process-game-session-and-transport-port.md), game session state lives outside React. `GameProvider` accepts injected `GameSession`, `GameTransport`, and `Clock` dependencies for tests. Views receive explicit game data and action callbacks from the container.
 
 1. Create/join REST responses wrap `TokenResponse` in `ApiResponse`. The API client normalizes these to `AuthResponse` containing token, room ID, player name, and message.
 2. `useAuthSession` restores validated auth from tab-local `poker-auth` `sessionStorage` (migrating/clearing legacy `localStorage` once), isolating each browser tab so multiple players can multi-table or test simultaneously, and processes token-specific `auth-expired` events.

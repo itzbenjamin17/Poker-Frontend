@@ -20,16 +20,12 @@ Single-context repo:
 ├── docs/ai/PROJECT.md
 ├── docs/adr/
 │   ├── 0001-adaptive-table-first-game-page.md
-│   ├── 0002-auth-keyed-gameview-and-session-isolation.md
-│   ├── 0003-in-process-game-session-and-transport-port.md
-│   ├── 0004-tab-scoped-authentication-via-session-storage.md
-│   ├── 0005-monotonic-attempt-revision-and-abort-guard.md
-│   ├── 0006-centralized-error-normalization-and-html-guard.md
-│   ├── 0007-routerless-state-driven-view-selection.md
-│   ├── 0008-parametric-elliptical-seating-geometry.md
-│   ├── 0009-versioned-offline-envelope-storage-for-post-game-review.md
-│   ├── 0010-client-side-diagnostic-redaction-and-console-gating.md
-│   └── 0011-runtime-payload-decoding-and-validation-boundary.md
+│   ├── 0002-in-process-game-session-and-transport-port.md
+│   ├── 0003-tab-scoped-authentication-via-session-storage.md
+│   ├── 0004-monotonic-attempt-revision-and-abort-guard.md
+│   ├── 0005-routerless-state-driven-view-selection.md
+│   ├── 0006-parametric-elliptical-seating-geometry.md
+│   └── 0007-versioned-offline-envelope-storage-for-post-game-review.md
 └── src/
 ```
 
@@ -43,4 +39,4 @@ If the concept you need isn't in the glossary yet, that's a signal — either yo
 
 If your output contradicts an existing ADR, surface it explicitly rather than silently overriding:
 
-> _Contradicts ADR-0004 (tab-scoped authentication via session storage) — but worth reopening because…_
+> _Contradicts ADR-0003 (tab-scoped authentication via session storage) — but worth reopening because…_

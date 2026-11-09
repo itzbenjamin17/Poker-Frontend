@@ -1,4 +1,4 @@
-# 0004: Tab-Scoped Authentication via sessionStorage
+# 0003: Tab-Scoped Authentication via sessionStorage
 
 We decided to persist active player authentication and room tokens in browser `sessionStorage` rather than `localStorage`.
 

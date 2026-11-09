@@ -1,4 +1,4 @@
-# 0007: Routerless State-Driven View Selection
+# 0005: Routerless State-Driven View Selection
 
 We decided to avoid client-side routing libraries (such as React Router) and instead render views as a deterministic state machine driven by authenticated session state.
 

@@ -1,4 +1,4 @@
-# 0003: In-Process GameSession Store and GameTransport Port
+# 0002: In-Process GameSession Store and GameTransport Port
 
 We decided to encapsulate poker game state, hand progression, and timer lifecycles inside an in-process TypeScript `GameSession` store connected to React via `useSyncExternalStore`, while decoupling real-time communication behind a `GameTransport` port.
 

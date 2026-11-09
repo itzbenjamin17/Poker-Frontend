@@ -1,13 +1,13 @@
-# Adaptive table-first game page
+# 0001: Adaptive Table-First Game Page
 
 **Status:** accepted for planning
 
-The game page will treat the live table as the primary experience and adapt supporting information around it rather than using a freely arranged dashboard. Eligible viewports are landscape-only and must preserve a compact-landscape hero seat, a central board cluster, a soft table rail, a persistent action/ready dock, and a round-result sequence that progresses from a collapsed summary to a snap-point detail sheet. This replaces arbitrary modal resizing because it preserves player control while keeping touch targets, hierarchy, and layout boundaries predictable on smaller screens.
+The game page will treat the live table as the primary experience and adapt supporting information around it rather than using a freely arranged dashboard. Eligible viewports (portrait >= 600×800, compact landscape < 1024px wide at >= 667×320, and desktop >= 1024×600) must preserve a bottom-center hero seat, a central board cluster, a soft table rail, a persistent action/ready dock, and a round-result sequence that progresses from a collapsed summary to a snap-point detail sheet. This replaces arbitrary modal resizing because it preserves player control while keeping touch targets, hierarchy, and layout boundaries predictable on smaller screens.
 
 ## Experience model
 
 - The live table is the primary surface. Supporting panels must yield space to it rather than compete with it.
-- Portrait is unsupported by product policy. Eligible viewports support compact landscape down to a minimum height floor of 320px (`MIN_MOBILE_HEIGHT = 320`), below which orientation prompts guide the user without locking out mobile devices.
+- Eligible viewports enforce minimum playable gates (portrait `600×800`, compact landscape `667×320`, desktop `1024×600`), below which orientation/viewport prompts (`RotatePrompt`) guide the user without rendering a cramped or overlapping table.
 - The table uses three responsive tiers already present in the product vocabulary: compact landscape, standard, and wide. The compact tier dynamically scales table geometry and density without altering the core game model.
 - The table retains its oval identity through a soft rail and vignette. The rail becomes lighter as the eligible viewport becomes more constrained so it does not clip or dictate the playing area.
 
@@ -59,7 +59,7 @@ It should not contain a complete betting timeline, unrelated analytics, or a sec
 
 ## Non-goals
 
-- No portrait game layout.
+- No cramped viewports below the minimum eligibility gates (`600×800` portrait, `667×320` compact landscape, `1024×600` desktop).
 - No freely draggable or arbitrarily resizable result window.
 - No simultaneous large result and ready dashboards.
 - No shrunken desktop table that makes cards and player labels unreadable.
