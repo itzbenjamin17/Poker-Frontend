@@ -1,30 +1,20 @@
-import { test, expect, type Page, type BrowserContext } from './fixtures';
+import { test, expect, type Page } from './fixtures';
 
 test.describe('Comprehensive Poker Scenarios', () => {
-    let contexts: BrowserContext[] = [];
-
-    test.afterEach(async () => {
-        for (const context of contexts) {
-            await context.close().catch(() => {});
-        }
-        contexts = [];
-    });
-
-    test('Scenario 1: Golden Path - 3 Player Pre-flop Round to Flop', async ({ browser, createRoom, joinRoom }) => {
+    test('Scenario 1: Golden Path - 3 Player Pre-flop Round to Flop', async ({ page, context, createRoom, joinRoom }) => {
         const roomName = `GoldenPath-${Date.now()}`;
         const players = ['Alice', 'Bob', 'Charlie'];
         const pages: Page[] = [];
 
         // Setup 3 players sequentially
-        for (const name of players) {
-            const context = await browser.newContext();
-            contexts.push(context);
-            const page = await context.newPage();
-            pages.push(page);
+        for (let i = 0; i < players.length; i++) {
+            const playerPage = i === 0 ? page : await context.newPage();
+            pages.push(playerPage);
+            const name = players[i];
             if (name === 'Alice') {
-                await createRoom(page, roomName, name);
+                await createRoom(playerPage, roomName, name);
             } else {
-                await joinRoom(page, roomName, name);
+                await joinRoom(playerPage, roomName, name);
             }
         }
 
@@ -60,15 +50,10 @@ test.describe('Comprehensive Poker Scenarios', () => {
         await expect(pages[0].getByText('FLOP')).toBeVisible();
     });
 
-    test('Scenario 2: Uncontested Win', async ({ browser, createRoom, joinRoom }) => {
+    test('Scenario 2: Uncontested Win', async ({ page, context, createRoom, joinRoom }) => {
         const roomName = `Uncontested-${Date.now()}`;
-        const hostContext = await browser.newContext();
-        contexts.push(hostContext);
-        const guestContext = await browser.newContext();
-        contexts.push(guestContext);
-
-        const hostPage = await hostContext.newPage();
-        const guestPage = await guestContext.newPage();
+        const hostPage = page;
+        const guestPage = await context.newPage();
 
         await createRoom(hostPage, roomName, 'Host');
         await joinRoom(guestPage, roomName, 'Guest');
@@ -84,15 +69,10 @@ test.describe('Comprehensive Poker Scenarios', () => {
         await expect(hostPage.getByText(/won|round result/i).first()).toBeVisible({ timeout: 20000 });
     });
 
-    test('Scenario 3: All-In Showdown', async ({ browser, createRoom, joinRoom }) => {
+    test('Scenario 3: All-In Showdown', async ({ page, context, createRoom, joinRoom }) => {
         const roomName = `AllIn-${Date.now()}`;
-        const hostContext = await browser.newContext();
-        contexts.push(hostContext);
-        const guestContext = await browser.newContext();
-        contexts.push(guestContext);
-
-        const hostPage = await hostContext.newPage();
-        const guestPage = await guestContext.newPage();
+        const hostPage = page;
+        const guestPage = await context.newPage();
 
         // Create table with custom buy-in of 40 (Small buy-in relative to 10/20 blinds)
         await createRoom(hostPage, roomName, 'P1', { buyIn: '40' });
@@ -135,15 +115,11 @@ test.describe('Comprehensive Poker Scenarios', () => {
         // Showdown modal is displayed since both players are all-in.
         await expect(hostPage.getByText(/round result|won/i).first()).toBeVisible({ timeout: 20000 });
     });
-    test('Scenario 4: Full Hand to River (Checking it down)', async ({ browser, createRoom, joinRoom }) => {
-        const roomName = `FullHand-${Date.now()}`;
-        const hostContext = await browser.newContext();
-        contexts.push(hostContext);
-        const guestContext = await browser.newContext();
-        contexts.push(guestContext);
 
-        const hostPage = await hostContext.newPage();
-        const guestPage = await guestContext.newPage();
+    test('Scenario 4: Full Hand to River (Checking it down)', async ({ page, context, createRoom, joinRoom }) => {
+        const roomName = `FullHand-${Date.now()}`;
+        const hostPage = page;
+        const guestPage = await context.newPage();
 
         await createRoom(hostPage, roomName, 'Host');
         await joinRoom(guestPage, roomName, 'Guest');
@@ -189,6 +165,67 @@ test.describe('Comprehensive Poker Scenarios', () => {
 
         // Showdown
         await expect(hostPage.getByText(/round result|won/i).first()).toBeVisible({ timeout: 20000 });
+    });
+
+    test('Scenario 5: Multi-Hand Progression, Rotated Blinds, and Forfeit Game Review Persistence', async ({ page, context, createRoom, joinRoom }) => {
+        const roomName = `MultiHand-${Date.now()}`;
+        const hostPage = page;
+        const guestPage = await context.newPage();
+
+        await createRoom(hostPage, roomName, 'Host', { buyIn: '100', smallBlind: '10', bigBlind: '20' });
+        await joinRoom(guestPage, roomName, 'Guest');
+
+        await hostPage.getByRole('button', { name: /start game/i }).click();
+
+        // Hand 1: In heads-up Hand 1, Guest (index 1, Dealer/SB) acts first pre-flop. Guest folds.
+        const foldBtn = guestPage.getByRole('button', { name: /fold/i });
+        await expect(foldBtn).toBeVisible();
+        await foldBtn.click();
+
+        // Verify Hand 1 round result appears
+        await expect(hostPage.getByText(/won|round result/i).first()).toBeVisible({ timeout: 20000 });
+
+        // Ready Gate -> Hand 2: Host and Guest confirm READY to advance into Hand 2.
+        const hostReadyBtn = hostPage.getByRole('button', { name: /^ready$/i });
+        await expect(hostReadyBtn).toBeVisible({ timeout: 15000 });
+        await hostReadyBtn.click();
+        await expect(hostPage.getByRole('button', { name: /unready/i })).toBeVisible();
+
+        const guestReadyBtn = guestPage.getByRole('button', { name: /^ready$/i });
+        await expect(guestReadyBtn).toBeVisible();
+        await guestReadyBtn.click();
+
+        // Verify that in Hand 2 the dealer/blinds rotated so Host is now Dealer/SB and acts first pre-flop:
+        await expect(hostPage.getByRole('button', { name: /^call/i })).toBeVisible({ timeout: 15000 });
+        await expect(guestPage.getByRole('region', { name: /action dock/i })).toContainText(/waiting for host to act/i);
+
+        // Mid-Game Forfeit -> Final Game Review: Guest leaves table
+        guestPage.on('dialog', async (dialog) => {
+            await dialog.accept();
+        });
+        await guestPage.getByRole('button', { name: /leave table/i }).click();
+
+        // Verify guestPage returns to the main lobby
+        await expect(guestPage.getByRole('button', { name: /create game/i })).toBeVisible();
+
+        // Verify hostPage transitions to GameReviewView
+        const reviewRegion = hostPage.getByRole('region', { name: /game review/i });
+        await expect(reviewRegion).toBeVisible({ timeout: 15000 });
+        await expect(reviewRegion).toContainText(/game over/i);
+        await expect(reviewRegion).toContainText(/host wins!/i);
+        await expect(reviewRegion).toContainText(/won by forfeit/i);
+
+        // Review Refresh Persistence: Reload hostPage while on the review screen, and verify reviewRegion
+        // is restored from the tab-local sessionStorage envelope
+        await hostPage.reload();
+        await expect(reviewRegion).toBeVisible({ timeout: 15000 });
+        await expect(reviewRegion).toContainText(/game over/i);
+        await expect(reviewRegion).toContainText(/host wins!/i);
+        await expect(reviewRegion).toContainText(/won by forfeit/i);
+
+        // Click LEAVE on the review screen and verify hostPage returns to the main lobby
+        await reviewRegion.getByRole('button', { name: /^leave$/i }).click();
+        await expect(hostPage.getByRole('button', { name: /create game/i })).toBeVisible();
     });
 });
 

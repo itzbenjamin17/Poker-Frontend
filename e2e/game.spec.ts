@@ -1,28 +1,14 @@
-import { test, expect, type BrowserContext } from './fixtures';
+import { test, expect } from './fixtures';
 
 test.describe('Game Table Flow', () => {
-  let contexts: BrowserContext[] = [];
-
-  test.afterEach(async () => {
-    for (const context of contexts) {
-      await context.close().catch(() => {});
-    }
-    contexts = [];
-  });
-
-  test('Two players can complete a simple betting round', async ({ browser, createRoom, joinRoom }) => {
+  test('Two players can complete a simple betting round', async ({ page, context, createRoom, joinRoom }) => {
     const roomName = `Game-E2E-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
     const hostName = 'Host';
     const guestName = 'Guest';
 
     // 1. Setup Lobby
-    const hostContext = await browser.newContext();
-    contexts.push(hostContext);
-    const guestContext = await browser.newContext();
-    contexts.push(guestContext);
-    
-    const hostPage = await hostContext.newPage();
-    const guestPage = await guestContext.newPage();
+    const hostPage = page;
+    const guestPage = await context.newPage();
 
     await createRoom(hostPage, roomName, hostName);
     await joinRoom(guestPage, roomName, guestName);

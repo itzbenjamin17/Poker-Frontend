@@ -1,4 +1,4 @@
-import { test, expect, type BrowserContext, type Page } from './fixtures';
+import { test, expect, type Page } from './fixtures';
 import { setupStompWebSocketMock } from './support/stompWsMock';
 
 const eligibleViewports = [
@@ -187,22 +187,11 @@ async function resizeAndSettle(page: Page, viewport: { width: number; height: nu
 }
 
 test.describe('Adaptive table-first foundation', () => {
-  let contexts: BrowserContext[] = [];
-
-  test.afterEach(async () => {
-    for (const context of contexts) {
-      await context.close().catch(() => {});
-    }
-    contexts = [];
-  });
-
   test('keeps the board cluster and hero seat usable across eligible viewport tiers', async ({
-    browser,
+    page,
   }) => {
-    const hostContext = await browser.newContext({ viewport: { width: 1100, height: 700 } });
-    contexts.push(hostContext);
-
-    const hostPage = await hostContext.newPage();
+    const hostPage = page;
+    await hostPage.setViewportSize({ width: 1100, height: 700 });
     const token = `test.${Buffer.from(JSON.stringify({ exp: Math.floor(Date.now() / 1000) + 3600 })).toString('base64url')}.test`;
     await hostPage.addInitScript(({ authToken }) => {
       window.sessionStorage.setItem('poker-auth', JSON.stringify({
@@ -301,12 +290,10 @@ test.describe('Adaptive table-first foundation', () => {
   });
 
   test('keeps the waiting action dock visible without covering the table', async ({
-    browser,
+    page,
   }) => {
-    const hostContext = await browser.newContext({ viewport: { width: 1100, height: 700 } });
-    contexts.push(hostContext);
-
-    const hostPage = await hostContext.newPage();
+    const hostPage = page;
+    await hostPage.setViewportSize({ width: 1100, height: 700 });
     const token = `test.${Buffer.from(JSON.stringify({ exp: Math.floor(Date.now() / 1000) + 3600 })).toString('base64url')}.test`;
     await hostPage.addInitScript(({ authToken }) => {
       window.sessionStorage.setItem('poker-auth', JSON.stringify({
@@ -381,12 +368,10 @@ test.describe('Adaptive table-first foundation', () => {
   });
 
   test('keeps the collapsed round summary from covering the board cluster or hero seat', async ({
-    browser,
+    page,
   }) => {
-    const hostContext = await browser.newContext({ viewport: { width: 1100, height: 700 } });
-    contexts.push(hostContext);
-
-    const hostPage = await hostContext.newPage();
+    const hostPage = page;
+    await hostPage.setViewportSize({ width: 1100, height: 700 });
     const token = `test.${Buffer.from(JSON.stringify({ exp: Math.floor(Date.now() / 1000) + 3600 })).toString('base64url')}.test`;
     await hostPage.addInitScript(({ authToken }) => {
       window.sessionStorage.setItem('poker-auth', JSON.stringify({

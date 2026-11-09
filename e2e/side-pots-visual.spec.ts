@@ -1,24 +1,12 @@
-import { test, expect, type BrowserContext } from './fixtures';
+import { test, expect } from './fixtures';
 import { setupStompWebSocketMock } from './support/stompWsMock';
 
 test.describe('Item 35: Visual rendering of side pots in multi-way all-in', () => {
-  let contexts: BrowserContext[] = [];
-
-  test.afterEach(async () => {
-    for (const context of contexts) {
-      await context.close().catch(() => {});
-    }
-    contexts = [];
-  });
-
   test('visually renders main pot and side pots on table in 3-way unequal stack all-in scenario', async ({
-    browser,
+    page,
   }) => {
     // Desktop viewport where pot breakdown is always visible
-    const context = await browser.newContext({ viewport: { width: 1280, height: 800 } });
-    contexts.push(context);
-
-    const page = await context.newPage();
+    await page.setViewportSize({ width: 1280, height: 800 });
     const token = `test.${Buffer.from(JSON.stringify({ exp: Math.floor(Date.now() / 1000) + 3600 })).toString('base64url')}.test`;
 
     const roomId = 'SIDE_POT_ROOM';

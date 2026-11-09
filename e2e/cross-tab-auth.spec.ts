@@ -1,17 +1,9 @@
-import { test, expect, type BrowserContext } from './fixtures';
+import { test, expect } from './fixtures';
 
 test.describe('Tab-local authentication', () => {
-  let contexts: BrowserContext[] = [];
-
-  test.afterEach(async () => {
-    for (const context of contexts) {
-      await context.close().catch(() => {});
-    }
-    contexts = [];
-  });
-
   test('a second tab does not adopt tab A auth or follow tab A leave', async ({
-    browser,
+    page,
+    context,
     createRoom,
     joinRoom,
   }) => {
@@ -19,14 +11,9 @@ test.describe('Tab-local authentication', () => {
     const hostName = 'HostAlice';
     const guestName = 'GuestBob';
 
-    // 1. Setup host and guest in separate contexts to allow game start
-    const hostContext = await browser.newContext();
-    contexts.push(hostContext);
-    const guestContext = await browser.newContext();
-    contexts.push(guestContext);
-
-    const tabA = await hostContext.newPage();
-    const guestPage = await guestContext.newPage();
+    // 1. Setup host (tabA), guest (guestPage), and observer (tabB) in the same BrowserContext
+    const tabA = page;
+    const guestPage = await context.newPage();
 
     // Host creates room
     await createRoom(tabA, roomName, hostName);
@@ -34,20 +21,21 @@ test.describe('Tab-local authentication', () => {
 
     // Guest joins room
     await joinRoom(guestPage, roomName, guestName);
-    await expect(tabA.getByText(guestName )).toBeVisible();
+    await expect(tabA.getByText(guestName)).toBeVisible();
 
-    // 2. Open Tab B in the SAME hostContext (simulating second browser tab for HostAlice)
-    const tabB = await hostContext.newPage();
+    // 2. Open Tab B in the SAME BrowserContext (simulating unauthenticated tab)
+    const tabB = await context.newPage();
     await tabB.goto('/');
 
     // Tab B starts with an independent, unauthenticated session.
     await expect(tabB.getByRole('button', { name: /create game/i })).toBeVisible();
 
-    // 3. Start game so host is at the active game table
+    // 3. Start game so host and guest are at active game table
     await tabA.getByRole('button', { name: /start game/i }).click();
 
-    // Tab A enters the game while Tab B stays in its own lobby.
+    // Tab A and guestPage enter the game while Tab B stays in its own unauthenticated lobby.
     await expect(tabA.getByRole('button', { name: /leave table/i })).toBeVisible();
+    await expect(guestPage.getByRole('button', { name: /leave table/i })).toBeVisible();
     await expect(tabB.getByRole('button', { name: /create game/i })).toBeVisible();
 
     // 4. Tab A clicks "Leave Table"
@@ -61,6 +49,11 @@ test.describe('Tab-local authentication', () => {
 
     // Tab B remains in its independent lobby throughout.
     await expect(tabB.getByRole('button', { name: /create game/i })).toBeVisible();
+
+    // Guest transitions to game review screen with explicit winner and forfeit outcome
+    const reviewRegion = guestPage.getByRole('region', { name: /game review/i });
+    await expect(reviewRegion).toBeVisible({ timeout: 15000 });
+    await expect(reviewRegion).toContainText(/GuestBob wins!/i);
+    await expect(reviewRegion).toContainText(/won by forfeit/i);
   });
 });
-
