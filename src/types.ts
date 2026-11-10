@@ -61,7 +61,7 @@ export interface GameState {
 
 /** Shape broadcast by the backend: ApiResponse<RoomDataResponse> */
 export type RoomUpdate =
-    | { message: 'ROOM_CLOSED'; data?: { roomId?: string } | null }
+    | { message: 'ROOM_CLOSED'; data?: { roomId?: string; reason?: string } | null }
     | {
         message: 'ROOM_CREATED' | 'PLAYER_JOINED' | 'PLAYER_LEFT';
         data: Partial<RoomState> & { players: NonNullable<RoomState['players']> };
@@ -90,6 +90,8 @@ export interface RoomDataResponse {
     currentPlayers: number;
     canStartGame: boolean;
     gameStarted: boolean;
+    inactivityDeadlineEpochMs?: number | null;
+    serverTimeEpochMs?: number | null;
 }
 
 /** Derived lobby state used internally by GameView / GameContext */
@@ -103,6 +105,8 @@ export interface RoomState {
     bigBlind?: number;
     canStartGame?: boolean;
     gameStarted?: boolean;
+    inactivityDeadlineEpochMs?: number | null;
+    serverTimeEpochMs?: number | null;
 }
 
 /** Generic API response wrapper matching Spring Boot's ApiResponse<T> envelope. */
@@ -227,5 +231,6 @@ export interface SessionSnapshot {
     isRecovering?: boolean;
     recoveryFailed?: boolean;
     isRedirecting?: boolean;
+    isLobbyInactivityWarningActive?: boolean;
 }
 

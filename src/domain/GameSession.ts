@@ -22,6 +22,7 @@ import {
 } from '../lib/payloads';
 import {
     HOST_LEFT,
+    LOBBY_INACTIVE_CLOSED,
     ERROR_INITIAL_TABLE_LOAD,
     SESSION_EXPIRED,
     SESSION_SEAT_GONE,
@@ -96,6 +97,7 @@ export class GameSession {
     private actionTimeoutTimers = new Map<string, TimerHandle>();
     private notificationTimer: TimerHandle | null = null;
     private redirectTimer: TimerHandle | null = null;
+    private lobbyInactivityWarningTimer: TimerHandle | null = null;
     private recoveryTimer: TimerHandle | null = null;
     private recoveryRetryAttempt = 0;
     private recoveryGeneration = 0;
@@ -157,7 +159,12 @@ export class GameSession {
             isRecovering: false,
             recoveryFailed: false,
             isRedirecting: false,
+            isLobbyInactivityWarningActive: false,
         });
+
+        if (initialRoom && !initialRoom.gameStarted && typeof initialRoom.inactivityDeadlineEpochMs === 'number') {
+            this.updateLobbyInactivity(initialRoom);
+        }
     }
 
     public setOnLeave(onLeave: ((originatingToken?: string) => void) | undefined): void {
@@ -249,6 +256,7 @@ export class GameSession {
         this.clearShowdownTimers();
         this.clearNotificationTimer();
         this.clearRedirectTimer();
+        this.clearLobbyInactivityTimer();
         this.isRedirecting = false;
         this.cancelRecovery();
         this.cleanupSubscriptions();
@@ -257,6 +265,7 @@ export class GameSession {
             claimPending: false,
             notification: null,
             isRedirecting: false,
+            isLobbyInactivityWarningActive: false,
         }));
         this.transport.disconnect();
     }
@@ -271,10 +280,14 @@ export class GameSession {
 
     public markGameStarted(): void {
         this.gameStarted = true;
+        this.clearLobbyInactivityTimer();
         if (this.snapshot.roomState && !this.snapshot.roomState.gameStarted) {
             this.updateSnapshot((prev) => ({
-                roomState: prev.roomState ? { ...prev.roomState, gameStarted: true } : null,
+                roomState: prev.roomState ? { ...prev.roomState, gameStarted: true, inactivityDeadlineEpochMs: undefined } : null,
+                isLobbyInactivityWarningActive: false,
             }));
+        } else if (this.snapshot.isLobbyInactivityWarningActive) {
+            this.updateSnapshot(() => ({ isLobbyInactivityWarningActive: false }));
         }
     }
 
@@ -465,6 +478,7 @@ export class GameSession {
         this.clearShowdownTimers();
         this.clearNotificationTimer();
         this.clearRedirectTimer();
+        this.clearLobbyInactivityTimer();
         this.cancelRecovery();
         this.cleanupSubscriptions();
 
@@ -645,6 +659,7 @@ export class GameSession {
         const targetEpoch = this.attachmentEpoch;
 
         this.clearRedirectTimer();
+        this.clearLobbyInactivityTimer();
         this.redirectTimer = this.clock.setTimeout(() => {
             this.redirectTimer = null;
             if (this.attached && this.attachmentEpoch === targetEpoch && !this.snapshot.isGameOver) {
@@ -660,6 +675,7 @@ export class GameSession {
             notification: redirectDisplay,
             notificationSequence: ++this.notificationSequence,
             isRedirecting: true,
+            isLobbyInactivityWarningActive: false,
             wsStatus: 'disconnected',
             claimPending: false,
         }));
@@ -676,7 +692,10 @@ export class GameSession {
             const update: RoomUpdate = parsed;
 
             if (update.message === 'ROOM_CLOSED') {
-                this.scheduleRedirect(HOST_LEFT, { clearRoom: true });
+                this.clearLobbyInactivityTimer();
+                const isInactive = Boolean(update.data && 'reason' in update.data && update.data.reason === 'INACTIVITY');
+                const redirectMsg = isInactive ? LOBBY_INACTIVE_CLOSED : HOST_LEFT;
+                this.scheduleRedirect(redirectMsg, { clearRoom: true });
                 return;
             }
 
@@ -756,8 +775,17 @@ export class GameSession {
                         bigBlind: update.data.bigBlind ?? prev.roomState?.bigBlind,
                         canStartGame: update.data.canStartGame ?? prev.roomState?.canStartGame,
                         gameStarted,
+                        inactivityDeadlineEpochMs:
+                            update.data.inactivityDeadlineEpochMs !== undefined
+                                ? update.data.inactivityDeadlineEpochMs
+                                : prev.roomState?.inactivityDeadlineEpochMs,
+                        serverTimeEpochMs:
+                            update.data.serverTimeEpochMs !== undefined
+                                ? update.data.serverTimeEpochMs
+                                : prev.roomState?.serverTimeEpochMs,
                     },
                 }));
+                this.updateLobbyInactivity(this.snapshot.roomState);
             }
         } catch (err) {
             logger.warn('Ignoring malformed room update payload:', body, err);
@@ -1167,6 +1195,7 @@ export class GameSession {
         this.updateSnapshot(() => ({
             roomState: room,
         }));
+        this.updateLobbyInactivity(room);
     }
 
     public setLoadingStatus(status: string): void {
@@ -1501,6 +1530,7 @@ export class GameSession {
                 this.updateSnapshot(() => ({
                     roomState: result.room,
                 }));
+                this.updateLobbyInactivity(result.room);
             }
             if (result.room.gameStarted) {
                 this.markGameStarted();
@@ -1523,6 +1553,7 @@ export class GameSession {
                 if (result.room && this.roomRevision === attemptRoomRevision) {
                     this.updateSnapshot(() => ({ roomState: result.room ?? null }));
                 }
+                this.clearLobbyInactivityTimer();
                 const isUnorderedLegacy =
                     result.publicState.handNumber == null || result.publicState.stateRevision == null;
                 if (!isUnorderedLegacy || this.stateSyncRevision === attemptStateSyncRevision) {
@@ -1932,5 +1963,45 @@ export class GameSession {
             this.clock.clearTimeout(this.redirectTimer);
             this.redirectTimer = null;
         }
+    }
+
+    private clearLobbyInactivityTimer(): void {
+        if (this.lobbyInactivityWarningTimer !== null) {
+            this.clock.clearTimeout(this.lobbyInactivityWarningTimer);
+            this.lobbyInactivityWarningTimer = null;
+        }
+    }
+
+    private updateLobbyInactivity(room: RoomState | null): void {
+        this.clearLobbyInactivityTimer();
+
+        if (!room || room.gameStarted || typeof room.inactivityDeadlineEpochMs !== 'number') {
+            if (this.snapshot.isLobbyInactivityWarningActive) {
+                this.updateSnapshot(() => ({ isLobbyInactivityWarningActive: false }));
+            }
+            return;
+        }
+
+        if (typeof room.serverTimeEpochMs === 'number') {
+            this.serverClockOffsetMs = room.serverTimeEpochMs - this.clock.now();
+        }
+
+        const remainingMs = room.inactivityDeadlineEpochMs - this.displayNow();
+        if (remainingMs <= 120_000) {
+            if (!this.snapshot.isLobbyInactivityWarningActive) {
+                this.updateSnapshot(() => ({ isLobbyInactivityWarningActive: true }));
+            }
+            return;
+        }
+
+        if (this.snapshot.isLobbyInactivityWarningActive) {
+            this.updateSnapshot(() => ({ isLobbyInactivityWarningActive: false }));
+        }
+
+        const delayUntilWarningMs = remainingMs - 120_000;
+        this.lobbyInactivityWarningTimer = this.clock.setTimeout(() => {
+            this.lobbyInactivityWarningTimer = null;
+            this.updateSnapshot(() => ({ isLobbyInactivityWarningActive: true }));
+        }, Math.max(0, delayUntilWarningMs));
     }
 }

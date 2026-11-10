@@ -2,13 +2,15 @@ import { useEffect, useRef, useState } from 'react';
 import { cn } from '../lib/cn';
 import { Card } from './UI';
 import { Button } from './UI';
-import { Info, Play, Copy, Check, Crown } from 'lucide-react';
+import { Info, Play, Copy, Check, Crown, AlertTriangle } from 'lucide-react';
 import { NotificationBanner } from './NotificationBanner';
 import {
     GAME_LOBBY_LABEL,
     BTN_START_GAME, BTN_STARTING_GAME, LABEL_WAITING_HOST,
     LABEL_BLINDS, LABEL_MIN_BUYIN,
     LABEL_TABLE_RULES, LABEL_HOST, ERROR_COPY_ROOM_CODE,
+    LABEL_INACTIVITY_LIMIT, VALUE_INACTIVITY_LIMIT, LOBBY_TIMING_RULE_DESC,
+    LOBBY_INACTIVITY_WARNING_TITLE, LOBBY_INACTIVITY_WARNING_MESSAGE,
 } from '../constants/strings';
 import type { RoomState } from '../types';
 
@@ -20,6 +22,7 @@ export interface GameLobbyViewProps {
     onStartGame: () => void;
     onLeaveGame?: () => void;
     isStartingGame?: boolean;
+    isLobbyInactivityWarningActive?: boolean;
 }
 
 export function GameLobbyView({
@@ -29,6 +32,7 @@ export function GameLobbyView({
     notification = null,
     onStartGame,
     isStartingGame = false,
+    isLobbyInactivityWarningActive = false,
 }: GameLobbyViewProps) {
     const [copied, setCopied] = useState(false);
     const [copyFailed, setCopyFailed] = useState(false);
@@ -102,6 +106,20 @@ export function GameLobbyView({
                     </h1>
                 </div>
 
+                {isLobbyInactivityWarningActive && (
+                    <div
+                        role="status"
+                        aria-live="polite"
+                        className="mb-8 p-4 rounded-xl border border-amber-500/30 bg-amber-500/10 text-amber-200 flex items-center gap-3 text-sm"
+                    >
+                        <AlertTriangle aria-hidden="true" className="w-5 h-5 shrink-0 text-amber-400" />
+                        <div className="flex-1">
+                            <p className="font-semibold">{LOBBY_INACTIVITY_WARNING_TITLE}</p>
+                            <p className="text-zinc-300 text-xs mt-0.5">{LOBBY_INACTIVITY_WARNING_MESSAGE}</p>
+                        </div>
+                    </div>
+                )}
+
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                     {/* Player list */}
                     <ul className="lg:col-span-2 grid grid-cols-1 md:grid-cols-2 self-start gap-4 list-none m-0 p-0">
@@ -153,6 +171,13 @@ export function GameLobbyView({
                                 <div className="flex justify-between">
                                     <span className="text-zinc-500 uppercase text-[10px] font-bold">{LABEL_MIN_BUYIN}</span>
                                     <span className="text-emerald-primary font-bold">{buyInLabel}</span>
+                                </div>
+                                <div className="border-t border-white/5 pt-3">
+                                    <div className="flex justify-between">
+                                        <span className="text-zinc-500 uppercase text-[10px] font-bold">{LABEL_INACTIVITY_LIMIT}</span>
+                                        <span className="text-emerald-primary font-bold">{VALUE_INACTIVITY_LIMIT}</span>
+                                    </div>
+                                    <p className="text-zinc-500 text-xs mt-1">{LOBBY_TIMING_RULE_DESC}</p>
                                 </div>
                             </div>
                         </Card>

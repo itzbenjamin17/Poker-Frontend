@@ -96,6 +96,11 @@ export const LABEL_WAITING_PLAYERS = 'Waiting for more...';
 export const LABEL_BLINDS = 'Blinds';
 export const LABEL_MIN_BUYIN = 'Min Buy-in';
 export const LABEL_TABLE_RULES = 'Table Rules';
+export const LABEL_INACTIVITY_LIMIT = 'LOBBY TIMING';
+export const VALUE_INACTIVITY_LIMIT = '30 min limit';
+export const LOBBY_TIMING_RULE_DESC = 'Lobbies close after 30 minutes without player activity.';
+export const LOBBY_INACTIVITY_WARNING_TITLE = 'Lobby Inactivity Warning';
+export const LOBBY_INACTIVITY_WARNING_MESSAGE = 'This lobby will close soon due to inactivity. Normal participation keeps it open.';
 export const LABEL_HOST = 'HOST';
 
 // ─── Game Table ───────────────────────────────────────────────────────────────
@@ -144,6 +149,7 @@ export const SHOWDOWN_BOARD_PLAYS_TOOLTIP = 'Hole cards do not play; best hand i
 
 // ─── Notifications ────────────────────────────────────────────────────────────
 export const HOST_LEFT = 'Host left the lobby. Returning to main lobby...';
+export const LOBBY_INACTIVE_CLOSED = 'Lobby closed due to inactivity. Returning to main lobby...';
 export const GAME_FINISHED_FALLBACK = 'Game finished. Returning to lobby...';
 export const FAILED_LEAVE = 'Failed to leave game safely.';
 export const FAILED_START = 'Only the host can start the game.';

@@ -43,6 +43,7 @@ function GameViewInner() {
         recoveryFailed,
         retryConnection,
         session,
+        isLobbyInactivityWarningActive,
     } = useGameContext();
 
     const [nowMs, setNowMs] = useState(() => session?.displayNow() ?? Date.now());
@@ -117,6 +118,7 @@ function GameViewInner() {
                             onStartGame={() => dispatcher.dispatch({ type: 'START_GAME' })}
                             isStartingGame={dispatcher.isPending('START_GAME')}
                             onLeaveGame={handleLeaveRequest}
+                            isLobbyInactivityWarningActive={isLobbyInactivityWarningActive}
                         />
                     </RoomStage>
                 </PokerRoomLayout>
