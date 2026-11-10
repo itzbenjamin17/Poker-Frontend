@@ -8,6 +8,7 @@ import {
     GAME_LOBBY_LABEL,
     BTN_START_GAME, BTN_STARTING_GAME, LABEL_WAITING_HOST,
     LABEL_BLINDS, LABEL_MIN_BUYIN,
+    LABEL_TURN_TIME, LABEL_TURN_TIME_VALUE, LABEL_TURN_TIME_EXPLANATION,
     LABEL_TABLE_RULES, LABEL_HOST, ERROR_COPY_ROOM_CODE,
 } from '../constants/strings';
 import type { RoomState } from '../types';
@@ -154,6 +155,13 @@ export function GameLobbyView({
                                     <span className="text-zinc-500 uppercase text-[10px] font-bold">{LABEL_MIN_BUYIN}</span>
                                     <span className="text-emerald-primary font-bold">{buyInLabel}</span>
                                 </div>
+                                <div className="flex justify-between">
+                                    <span className="text-zinc-500 uppercase text-[10px] font-bold">{LABEL_TURN_TIME}</span>
+                                    <span className="text-emerald-primary font-bold">{LABEL_TURN_TIME_VALUE}</span>
+                                </div>
+                                <p className="text-[11px] text-zinc-400">
+                                    {LABEL_TURN_TIME_EXPLANATION}
+                                </p>
                             </div>
                         </Card>
 

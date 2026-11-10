@@ -569,4 +569,47 @@ describe('ActionPanel', () => {
         await user.click(submitBtn);
         expect(onAction).toHaveBeenCalledWith('RAISE', 30);
     });
+
+    it('does not show turn warning when more than 10 seconds remain', () => {
+        renderActionPanel({ turnSecondsRemaining: 25 });
+        expect(screen.queryByTestId('turn-warning')).not.toBeInTheDocument();
+        const dock = screen.getByRole('region', { name: 'Action dock' });
+        expect(dock.className).not.toContain('border-amber-400');
+    });
+
+    it('shows accessible turn warning and dock emphasis at 10 seconds or less', () => {
+        const { rerender } = renderActionPanel({ turnSecondsRemaining: 10 });
+
+        const warning = screen.getByTestId('turn-warning');
+        expect(warning).toBeInTheDocument();
+        expect(warning).toHaveTextContent(/10s left/i);
+
+        const alert = screen.getByRole('alert');
+        expect(alert).toHaveAttribute('aria-live', 'polite');
+        expect(alert).toHaveTextContent(/10 seconds or less remaining/i);
+
+        const dock = screen.getByRole('region', { name: 'Action dock' });
+        expect(dock.className).toContain('border-amber-400');
+
+        // Verify at 5s remaining
+        rerender(
+            <ActionPanel
+                gameState={mockGameState}
+                me={mockMe}
+                isMyTurn={true}
+                isSelfDisconnected={false}
+                isReadyCountdownActive={false}
+                currentTurnPlayerName="TestPlayer"
+                isMobileLandscape={false}
+                isCompactTable={false}
+                raiseAmount=""
+                raiseError={null}
+                actionError={null}
+                onAction={vi.fn()}
+                isActionPending={false}
+                turnSecondsRemaining={5}
+            />,
+        );
+        expect(screen.getByTestId('turn-warning')).toHaveTextContent(/5s left/i);
+    });
 });

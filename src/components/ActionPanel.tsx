@@ -48,6 +48,7 @@ interface ActionPanelProps {
     onUnready?: () => void;
     bigBlind?: number;
     onLeaveGame?: () => void;
+    turnSecondsRemaining?: number;
 }
 
 export function ActionPanel({
@@ -78,6 +79,7 @@ export function ActionPanel({
     onUnready,
     bigBlind = 50,
     onLeaveGame,
+    turnSecondsRemaining,
 }: ActionPanelProps) {
     const prefersReducedMotion = useReducedMotion();
     const restoreAmountTriggerFocus = useRef(false);
@@ -236,6 +238,7 @@ export function ActionPanel({
     }
 
     const isRaising = showControls && canBetOrRaise && amountAction === actionType;
+    const isUrgentTurn = showControls && typeof turnSecondsRemaining === 'number' && turnSecondsRemaining <= 10;
 
     const sectionMotion = prefersReducedMotion
         ? { initial: false as const, animate: { opacity: 1 }, exit: { opacity: 1 }, transition: { duration: 0 } }
@@ -252,7 +255,8 @@ export function ActionPanel({
             {...sectionMotion}
             style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 8px)' }}
             className={cn(
-                'flex h-full w-full min-w-0 items-center justify-center border-t border-white/5 bg-surface-high relative',
+                'flex h-full w-full min-w-0 items-center justify-center border-t border-white/5 bg-surface-high relative transition-all duration-200',
+                isUrgentTurn && 'border-amber-400/80 shadow-[0_0_20px_rgba(245,158,11,0.25)] ring-1 ring-amber-400/50',
                 isMobileLandscape ? 'px-2 py-1' : isCompactTable ? 'px-3 py-1.5' : 'px-4 py-2 md:px-6',
             )}
         >
@@ -263,10 +267,21 @@ export function ActionPanel({
                         {...fadeMotion}
                         exit={{ opacity: 0, transition: { duration: 0 } }}
                         className={cn(
-                            'flex w-full items-center justify-center',
-                            isMobileLandscape ? 'gap-2 pr-12' : 'gap-3 md:gap-4',
+                            'flex w-full flex-col items-center justify-center gap-1',
+                            isMobileLandscape && 'pr-12',
                         )}
                     >
+                        {isUrgentTurn && (
+                            <div
+                                data-testid="turn-warning"
+                                className="flex items-center justify-center gap-1.5 text-xs font-headline font-bold text-amber-300 uppercase tracking-wider"
+                            >
+                                <span className="sr-only" role="alert" aria-live="polite">
+                                    Warning: 10 seconds or less remaining to act.
+                                </span>
+                                <span aria-hidden="true">⚠️ {turnSecondsRemaining}s left</span>
+                            </div>
+                        )}
                         {isRaising ? (
                             <div
                                 id="amount-action-controls"

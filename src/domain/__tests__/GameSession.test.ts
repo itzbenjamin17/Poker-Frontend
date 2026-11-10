@@ -4,7 +4,7 @@ import { GameSession } from '../GameSession';
 import { TestClock } from '../clock';
 import { InMemoryTransportAdapter } from '../../services/transport';
 import type { AuthResponse, IncomingGameStatePayload, RoomDataResponse } from '../../types';
-import { HOST_LEFT } from '../../constants/strings';
+import { HOST_LEFT, SESSION_SEAT_GONE } from '../../constants/strings';
 import { createValidGameState, createValidPlayer, createValidRoomData, createMockJwt } from '../../test/fixtures';
 import { pokerApi } from '../../services/api';
 
@@ -720,6 +720,63 @@ describe('GameSession Domain Store', () => {
             expect(showdownResult?.players[1].isReadyForNextHand).toBe(true);
             expect(showdown?.winners).toEqual(['Alice']);
             expect(gameState?.winners).toEqual(['Alice']);
+        });
+
+        it('decodes and exposes turnDeadlineEpochMs and clears it during SHOWDOWN or auto-advancing', () => {
+            const { session } = createSession(new TestClock(10_000));
+
+            // Preflop state with turn deadline
+            session.applyGameState(createValidGameState({
+                phase: 'PRE_FLOP',
+                handNumber: 1,
+                turnDeadlineEpochMs: 70_000,
+            }));
+            expect(session.getSnapshot().gameState?.turnDeadlineEpochMs).toBe(70_000);
+
+            // Phase changes to SHOWDOWN - deadline must be cleared
+            session.applyGameState(createValidGameState({
+                phase: 'SHOWDOWN',
+                handNumber: 1,
+                turnDeadlineEpochMs: 70_000,
+            }));
+            expect(session.getSnapshot().gameState?.turnDeadlineEpochMs).toBeUndefined();
+
+            // Auto-advancing state - deadline must be cleared
+            session.applyGameState(createValidGameState({
+                phase: 'FLOP',
+                handNumber: 2,
+                isAutoAdvancing: true,
+                turnDeadlineEpochMs: 80_000,
+            }));
+            expect(session.getSnapshot().gameState?.turnDeadlineEpochMs).toBeUndefined();
+        });
+
+        it('triggers SESSION_SEAT_GONE redirect when hero was seated but is removed from game players', () => {
+            const { session, clock, onLeave } = createSession(new TestClock(10_000));
+            session.attach();
+
+            // Hand 1 starts: Hero is in players
+            session.applyGameState(createValidGameState({
+                handNumber: 1,
+                players: [createValidPlayer({ name: 'Hero', id: 'hero-id' }), createValidPlayer({ name: 'Bob', id: 'bob-id' })],
+            }));
+            expect(session.getSnapshot().myPlayerId).toBe('hero-id');
+            expect(session.getSnapshot().isRedirecting).toBe(false);
+
+            // Hand 1 update: Hero timed out and was departed, only Bob remains
+            session.applyGameState(createValidGameState({
+                handNumber: 1,
+                stateRevision: 2,
+                players: [createValidPlayer({ name: 'Bob', id: 'bob-id' })],
+            }));
+
+            // Session must have scheduled redirect with SESSION_SEAT_GONE
+            expect(session.getSnapshot().isRedirecting).toBe(true);
+            expect(session.getSnapshot().notification).toBe(SESSION_SEAT_GONE);
+
+            // Advancing clock triggers onLeave and clears auth
+            clock.tick(3000);
+            expect(onLeave).toHaveBeenCalledTimes(1);
         });
     });
 

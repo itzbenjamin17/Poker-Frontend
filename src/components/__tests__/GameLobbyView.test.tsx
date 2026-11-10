@@ -129,4 +129,18 @@ describe('GameLobbyView', () => {
         expect(writeTextMock).toHaveBeenCalledWith('HighRollers');
         expect(await screen.findByText(/copied/i)).toBeInTheDocument();
     });
+
+    it('explains the 60s turn deadline rule in table rules', () => {
+        render(
+            <GameLobbyView
+                roomState={baseRoomState}
+                playerName="HostPlayer"
+                onStartGame={mockOnStartGame}
+            />
+        );
+
+        expect(screen.getByText('Turn Time')).toBeInTheDocument();
+        expect(screen.getByText('60s')).toBeInTheDocument();
+        expect(screen.getByText(/Each player has 60 seconds to act. Expired turns result in removal from the table./i)).toBeInTheDocument();
+    });
 });

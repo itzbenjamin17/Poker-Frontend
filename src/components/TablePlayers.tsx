@@ -14,6 +14,7 @@ export interface TablePlayersProps {
     nowMs: number;
     tableScale: TableScale;
     tableDimensions?: TableDimensions;
+    turnDeadlineEpochMs?: number;
 }
 
 export function TablePlayers({
@@ -27,6 +28,7 @@ export function TablePlayers({
     nowMs,
     tableScale,
     tableDimensions,
+    turnDeadlineEpochMs,
 }: TablePlayersProps) {
     const heroIndex = orderedPlayers.findIndex((p) => p.id === myPlayerId);
     const heroPlayer = heroIndex >= 0 ? orderedPlayers[heroIndex] : undefined;
@@ -44,6 +46,7 @@ export function TablePlayers({
                 nowMs={nowMs}
                 tableScale={tableScale}
                 tableDimensions={tableDimensions}
+                turnDeadlineEpochMs={turnDeadlineEpochMs}
             />
             {heroPlayer && (
                 <HeroSeat
@@ -55,6 +58,7 @@ export function TablePlayers({
                     nowMs={nowMs}
                     tableScale={tableScale}
                     seatIndex={heroIndex >= 0 ? heroIndex : 0}
+                    turnDeadlineEpochMs={turnDeadlineEpochMs}
                 />
             )}
         </>

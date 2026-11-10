@@ -23,6 +23,7 @@ export interface LiveTableStageProps {
     showdown?: GameState | null;
     privateState?: { holeCards: string[] } | null;
     className?: string;
+    turnDeadlineEpochMs?: number;
 }
 
 /**
@@ -37,7 +38,13 @@ export function LiveTableStage({
     showdown = null,
     privateState = null,
     className,
+    turnDeadlineEpochMs,
 }: LiveTableStageProps) {
+    const effectiveTurnDeadline = turnDeadlineEpochMs !== undefined
+        ? turnDeadlineEpochMs
+        : (gameState.phase !== 'SHOWDOWN' && !gameState.isReadyCountdownActive && !gameState.isAutoAdvancing
+            ? gameState.turnDeadlineEpochMs
+            : undefined);
     const orderedPlayers = useMemo(
         () => propOrderedPlayers ?? gameState?.players ?? [],
         [propOrderedPlayers, gameState],
@@ -99,6 +106,7 @@ export function LiveTableStage({
                     nowMs={nowMs}
                     tableScale={tableScale}
                     tableDimensions={tableDimensions}
+                    turnDeadlineEpochMs={effectiveTurnDeadline}
                 />
 
                 {heroPlayer && (
@@ -111,6 +119,7 @@ export function LiveTableStage({
                         nowMs={nowMs}
                         tableScale={tableScale}
                         seatIndex={heroIndex >= 0 ? heroIndex : 0}
+                        turnDeadlineEpochMs={effectiveTurnDeadline}
                     />
                 )}
             </TableSurface>

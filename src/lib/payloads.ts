@@ -142,6 +142,7 @@ const gameState = shape({
     carryOverAmount: optional(nullable(nonnegative)), isAutoAdvancing: optional(boolean),
     autoAdvanceMessage: optional(text), isReadyCountdownActive: optional(nullable(boolean)),
     readyCountdownDeadlineEpochMs: optional(nullable(nonnegative)),
+    turnDeadlineEpochMs: optional(nullable(nonnegative)),
     handNumber: optional(nonnegative), stateRevision: optional(nullable(nonnegative)),
     serverTimeEpochMs: optional(nonnegative),
     readyGateState: optional(member(['CLOSED', 'COUNTING_DOWN', 'WAITING_FOR_PLAYERS'])),

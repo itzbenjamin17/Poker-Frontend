@@ -34,6 +34,7 @@ export interface OpponentSeatsProps {
     tableScale: TableScale;
     className?: string;
     tableDimensions?: TableDimensions;
+    turnDeadlineEpochMs?: number;
 }
 
 export function OpponentSeats({
@@ -48,6 +49,7 @@ export function OpponentSeats({
     nowMs,
     tableScale,
     tableDimensions,
+    turnDeadlineEpochMs,
 }: OpponentSeatsProps) {
     const prefersReducedMotion = useReducedMotion();
     const [expandedOpponentId, setExpandedOpponentId] = useState<string | null>(null);
@@ -59,6 +61,11 @@ export function OpponentSeats({
             : undefined;
         if (deadline === undefined) return undefined;
         return Math.max(0, Math.ceil((deadline - nowMs) / 1000));
+    };
+
+    const getTurnSecondsRemaining = (player: Player) => {
+        if (player.id !== currentPlayerId || typeof turnDeadlineEpochMs !== 'number') return undefined;
+        return Math.max(0, Math.ceil((turnDeadlineEpochMs - nowMs) / 1000));
     };
 
     const getPlayerKey = (player: Player, index: number) => player.id || `${player.name}-${index}`;
@@ -162,6 +169,7 @@ export function OpponentSeats({
                                 isWinner={isShowdownWinner}
                                 blindLabel={p.isBigBlind ? 'BB' : p.isSmallBlind ? 'SB' : undefined}
                                 disconnectSecondsRemaining={getDisconnectSecondsRemaining(p)}
+                                turnSecondsRemaining={getTurnSecondsRemaining(p)}
                                 size={avatarSize}
                                 scale={tableScale.avatar}
                                 textScale={tableScale.text}

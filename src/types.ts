@@ -55,6 +55,7 @@ export interface GameState {
     autoAdvanceMessage?: string;
     isReadyCountdownActive?: boolean;
     readyCountdownDeadlineEpochMs?: number;
+    turnDeadlineEpochMs?: number;
     claimWinAvailable?: boolean;
     claimWinPlayerName?: string;
 }
@@ -141,6 +142,7 @@ export type IncomingGameStatePayload = Omit<
     | 'pots'
     | 'isReadyCountdownActive'
     | 'readyCountdownDeadlineEpochMs'
+    | 'turnDeadlineEpochMs'
     | 'handNumber'
     | 'stateRevision'
     | 'serverTimeEpochMs'
@@ -153,6 +155,7 @@ export type IncomingGameStatePayload = Omit<
     pots?: number[] | null;
     isReadyCountdownActive?: boolean | null;
     readyCountdownDeadlineEpochMs?: number | null;
+    turnDeadlineEpochMs?: number | null;
     handNumber?: number | null;
     stateRevision?: number | null;
     serverTimeEpochMs?: number | null;

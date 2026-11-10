@@ -52,16 +52,17 @@ function GameViewInner() {
     // ── Disconnect countdown clock ──────────────────────────────────────────────
     const hasDisconnectedPlayer = Boolean(gameState?.players?.some(p => p.status === 'DISCONNECTED'));
     const hasReadyCountdown = gameState?.phase === 'SHOWDOWN' && Boolean(gameState?.isReadyCountdownActive);
+    const hasTurnCountdown = typeof gameState?.turnDeadlineEpochMs === 'number';
 
     useEffect(() => {
         if (gameEndResult) return;
-        if (!hasDisconnectedPlayer && !hasReadyCountdown) return;
+        if (!hasDisconnectedPlayer && !hasReadyCountdown && !hasTurnCountdown) return;
 
         const update = () => setNowMs(session?.displayNow() ?? Date.now());
         update();
         const id = window.setInterval(update, 1000);
         return () => window.clearInterval(id);
-    }, [hasDisconnectedPlayer, hasReadyCountdown, gameEndResult, session]);
+    }, [hasDisconnectedPlayer, hasReadyCountdown, hasTurnCountdown, gameEndResult, session]);
 
     // ── Session hydration ───────────────────────────────────────────────────────
     const { initialLoadFailed, retryInitialLoad } = useSessionHydration();

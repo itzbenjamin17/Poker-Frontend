@@ -170,6 +170,11 @@ export function GameTableView({
         ? Math.max(0, Math.ceil((gameState.readyCountdownDeadlineEpochMs - nowMs) / 1000))
         : 0;
 
+    const isTurnCountdownActive = gameState.phase !== 'SHOWDOWN' && !isReadyCountdownActive && !gameState.isAutoAdvancing;
+    const turnSecondsRemaining = isTurnCountdownActive && typeof gameState.turnDeadlineEpochMs === 'number'
+        ? Math.max(0, Math.ceil((gameState.turnDeadlineEpochMs - nowMs) / 1000))
+        : undefined;
+
     return (
         <main
             aria-label="Live poker table"
@@ -220,6 +225,7 @@ export function GameTableView({
                     myPlayerId={resolvedHeroId}
                     showdown={showdown}
                     privateState={privateState}
+                    turnDeadlineEpochMs={isTurnCountdownActive ? gameState.turnDeadlineEpochMs : undefined}
                 />
 
                 {/* Claim Win Button: Place inside RoomStage at bottom-left with 8px inset */}
@@ -292,6 +298,7 @@ export function GameTableView({
                         onReady={onReady}
                         onUnready={onUnready}
                         bigBlind={roomState.bigBlind ?? 50}
+                        turnSecondsRemaining={turnSecondsRemaining}
                     />
                 )}
             </RoomDock>

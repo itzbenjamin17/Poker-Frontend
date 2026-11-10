@@ -250,12 +250,14 @@ export function PlayerAvatar({
     size,
     scale,
     textScale,
+    turnSecondsRemaining,
 }: PlayerPartScale & {
     player: Player;
     isCurrent?: boolean;
     isWinner?: boolean;
     blindLabel?: 'SB' | 'BB';
     size: AvatarSize;
+    turnSecondsRemaining?: number;
 }) {
     const isDisconnected = player.status === 'DISCONNECTED';
 
@@ -352,6 +354,32 @@ export function PlayerAvatar({
                         height: `${scale * 16}px`,
                     }}
                 />
+            )}
+
+            {/* Turn Countdown Badge */}
+            {isCurrent && !isWinner && typeof turnSecondsRemaining === 'number' && (
+                <div
+                    data-testid="seat-turn-countdown"
+                    aria-label={`${turnSecondsRemaining} seconds remaining`}
+                    className={cn(
+                        'absolute border shadow-md flex items-center justify-center whitespace-nowrap leading-none font-headline font-bold z-30',
+                        turnSecondsRemaining <= 10
+                            ? 'bg-amber-500 text-surface border-amber-300 animate-pulse motion-reduce:animate-none'
+                            : 'bg-surface-higher/90 text-emerald-primary border-emerald-primary/40'
+                    )}
+                    style={{
+                        top: `-${scale * 8}px`,
+                        right: `-${scale * 8}px`,
+                        paddingLeft: `${scale * 5}px`,
+                        paddingRight: `${scale * 5}px`,
+                        paddingTop: `${Math.max(1, Math.round(scale * 1.5))}px`,
+                        paddingBottom: `${Math.max(1, Math.round(scale * 1.5))}px`,
+                        borderRadius: `${scale * 999}px`,
+                        fontSize: `${fontPx(8, textScale)}px`,
+                    }}
+                >
+                    <span>{turnSecondsRemaining}s</span>
+                </div>
             )}
 
             {isDisconnected && (
@@ -496,6 +524,7 @@ export const PlayerPod = ({
     blindLabel,
     size = 'md',
     disconnectSecondsRemaining,
+    turnSecondsRemaining,
     className,
     scale = 1,
     textScale = scale,
@@ -516,6 +545,7 @@ export const PlayerPod = ({
     blindLabel?: 'SB' | 'BB';
     size?: AvatarSize;
     disconnectSecondsRemaining?: number;
+    turnSecondsRemaining?: number;
     className?: string;
     /** Avatar, badge and spacing scale. */
     scale?: number;
@@ -574,6 +604,7 @@ export const PlayerPod = ({
                 size={size}
                 scale={scale}
                 textScale={textScale}
+                turnSecondsRemaining={turnSecondsRemaining}
             />
 
             {/* Extracted Bottom-Heavy Elements: Positioned absolutely so they do not alter the bounding box center */}

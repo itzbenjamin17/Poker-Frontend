@@ -38,9 +38,22 @@ describe('lib/payloads - Type Guards and Normalizers', () => {
                 uncalledAmount: 0,
                 isReadyCountdownActive: false,
                 readyCountdownDeadlineEpochMs: null,
+                turnDeadlineEpochMs: 60000,
                 pots: [30],
             });
             expect(isGameStatePayload(valid)).toBe(true);
+        });
+
+        it('decodes turnDeadlineEpochMs when valid number or null', () => {
+            const validWithDeadline = decodeGameStatePayload(createValidGameState({
+                turnDeadlineEpochMs: 123456789,
+            }), 'test');
+            expect(validWithDeadline?.turnDeadlineEpochMs).toBe(123456789);
+
+            const validWithNullDeadline = decodeGameStatePayload(createValidGameState({
+                turnDeadlineEpochMs: null,
+            }), 'test');
+            expect(validWithNullDeadline?.turnDeadlineEpochMs).toBeNull();
         });
 
         it('returns true for minimal valid game state payload', () => {

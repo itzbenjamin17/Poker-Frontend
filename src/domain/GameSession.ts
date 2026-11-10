@@ -834,6 +834,7 @@ export class GameSession {
             pots: payload.pots ?? undefined,
             isReadyCountdownActive: payload.isReadyCountdownActive ?? undefined,
             readyCountdownDeadlineEpochMs: payload.readyCountdownDeadlineEpochMs ?? undefined,
+            turnDeadlineEpochMs: typeof payload.turnDeadlineEpochMs === 'number' && payload.turnDeadlineEpochMs > 0 ? payload.turnDeadlineEpochMs : undefined,
             handNumber: typeof payload.handNumber === 'number' ? payload.handNumber : undefined,
             stateRevision: typeof payload.stateRevision === 'number' ? payload.stateRevision : undefined,
             serverTimeEpochMs: payload.serverTimeEpochMs ?? undefined,
@@ -849,6 +850,10 @@ export class GameSession {
             incomingData.readyCountdownDeadlineEpochMs = undefined;
         } else if (incomingData.readyGateState === 'COUNTING_DOWN') {
             incomingData.isReadyCountdownActive = true;
+        }
+
+        if (incomingData.phase === 'SHOWDOWN' || incomingData.isReadyCountdownActive || incomingData.isAutoAdvancing) {
+            incomingData.turnDeadlineEpochMs = undefined;
         }
 
         const previousState = this.snapshot.gameState;
@@ -1015,6 +1020,18 @@ export class GameSession {
             myPlayerId = this.snapshot.myPlayerId;
         } else if (this.auth.playerName && myPlayerId && !data.players.some((p) => p.id === myPlayerId && p.name === this.auth.playerName)) {
             myPlayerId = null;
+        }
+
+        if (
+            this.auth.playerName &&
+            !myPlayer &&
+            (this.snapshot.myPlayerId || previousState?.players.some((p) => p.name === this.auth.playerName)) &&
+            !this.isLeavingPending &&
+            !this.snapshot.isGameOver &&
+            !this.isRedirecting
+        ) {
+            this.scheduleRedirect(SESSION_SEAT_GONE);
+            return true;
         }
 
         let nextPrivateState = this.snapshot.privateState;

@@ -138,6 +138,30 @@ describe('GameUI Components', () => {
             // Bounding box dimensions must remain strictly 80px x 80px
             expect(podEl).toHaveStyle({ width: '80px', height: '80px' });
         });
+
+        test('renders turn countdown badge beside acting seat with urgent styling at <= 10s', () => {
+            const { rerender } = render(
+                <PlayerPod player={mockPlayer} isCurrent={true} turnSecondsRemaining={45} />
+            );
+            const countdownEl = screen.getByTestId('seat-turn-countdown');
+            expect(countdownEl).toBeInTheDocument();
+            expect(countdownEl).toHaveTextContent('45s');
+            expect(countdownEl.className).not.toContain('bg-amber-500');
+
+            // At <= 10s: emphasizes with amber warning style
+            rerender(
+                <PlayerPod player={mockPlayer} isCurrent={true} turnSecondsRemaining={10} />
+            );
+            const urgentCountdownEl = screen.getByTestId('seat-turn-countdown');
+            expect(urgentCountdownEl).toHaveTextContent('10s');
+            expect(urgentCountdownEl.className).toContain('bg-amber-500');
+
+            // When no turn countdown: not rendered
+            rerender(
+                <PlayerPod player={mockPlayer} isCurrent={true} />
+            );
+            expect(screen.queryByTestId('seat-turn-countdown')).not.toBeInTheDocument();
+        });
     });
 });
 

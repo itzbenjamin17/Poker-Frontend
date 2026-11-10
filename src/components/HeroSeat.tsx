@@ -17,6 +17,7 @@ export interface HeroSeatProps {
     tableScale: TableScale;
     className?: string;
     seatIndex?: number;
+    turnDeadlineEpochMs?: number;
 }
 
 export function HeroSeat({
@@ -30,6 +31,7 @@ export function HeroSeat({
     tableScale,
     className,
     seatIndex,
+    turnDeadlineEpochMs,
 }: HeroSeatProps) {
     const prefersReducedMotion = useReducedMotion();
     const showdownPlayer = showdown?.players.find((sp) => sp.id === player.id);
@@ -64,6 +66,11 @@ export function HeroSeat({
         return Math.max(0, Math.ceil((deadline - nowMs) / 1000));
     };
 
+    const getTurnSecondsRemaining = () => {
+        if (!isActiveTurn || typeof turnDeadlineEpochMs !== 'number') return undefined;
+        return Math.max(0, Math.ceil((turnDeadlineEpochMs - nowMs) / 1000));
+    };
+
     return (
         <div
             role="group"
@@ -84,6 +91,7 @@ export function HeroSeat({
                 isWinner={isShowdownWinner}
                 blindLabel={player.isBigBlind ? 'BB' : player.isSmallBlind ? 'SB' : undefined}
                 disconnectSecondsRemaining={getDisconnectSecondsRemaining()}
+                turnSecondsRemaining={getTurnSecondsRemaining()}
                 size={avatarSize}
                 scale={avatarScale}
                 textScale={tableScale.text}

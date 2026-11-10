@@ -95,6 +95,9 @@ export const LABEL_WAITING_HOST = 'Waiting for host to start...';
 export const LABEL_WAITING_PLAYERS = 'Waiting for more...';
 export const LABEL_BLINDS = 'Blinds';
 export const LABEL_MIN_BUYIN = 'Min Buy-in';
+export const LABEL_TURN_TIME = 'Turn Time';
+export const LABEL_TURN_TIME_VALUE = '60s';
+export const LABEL_TURN_TIME_EXPLANATION = 'Each player has 60 seconds to act. Expired turns result in removal from the table.';
 export const LABEL_TABLE_RULES = 'Table Rules';
 export const LABEL_HOST = 'HOST';
 
