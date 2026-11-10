@@ -7,7 +7,11 @@ import {
     BTN_LEAVE_REVIEW,
     REVIEW_TITLE,
     REVIEW_FORFEIT_NOTE,
-    REVIEW_FINAL_BOARD_LABEL
+    REVIEW_FINAL_BOARD_LABEL,
+    REVIEW_ABANDONED_TITLE,
+    REVIEW_ABANDONED_REASON,
+    REVIEW_STOPPED_CHIPS_LABEL,
+    REVIEW_STOPPED_TABLE_LABEL,
 } from '../constants/strings';
 import type { GameEndResult, GameState } from '../types';
 
@@ -23,10 +27,11 @@ export function GameReviewView({ gameEndResult, gameState, onLeave, leaveError, 
     if (!gameEndResult) return null;
 
     const activeState = gameEndResult.finalState ?? gameState;
-    const winnerName = gameEndResult.winnerName;
-    const isForfeit = gameEndResult.isForfeit;
-    const winnerChips = gameEndResult.winnerChips;
-    const message = formatEndMessage(gameEndResult.message);
+    const isAbandoned = Boolean(gameEndResult.abandoned || gameEndResult.reason === 'INACTIVITY');
+    const winnerName = isAbandoned ? null : gameEndResult.winnerName;
+    const isForfeit = isAbandoned ? false : gameEndResult.isForfeit;
+    const winnerChips = isAbandoned ? undefined : gameEndResult.winnerChips;
+    const message = isAbandoned ? null : formatEndMessage(gameEndResult.message);
 
     const sourcePlayers = activeState?.players ?? [];
     const sortedPlayers = sourcePlayers
@@ -55,27 +60,37 @@ export function GameReviewView({ gameEndResult, gameState, onLeave, leaveError, 
             <div className="w-full max-w-4xl space-y-8 py-8">
                 {/* Header */}
                 <div className="text-center space-y-4">
-                    <div className="flex justify-center">
-                        <div className="bg-yellow-500/10 p-4 rounded-full border border-yellow-500/20">
-                            <Trophy className="w-12 h-12 text-yellow-500" />
+                    {!isAbandoned && (
+                        <div className="flex justify-center">
+                            <div className="bg-yellow-500/10 p-4 rounded-full border border-yellow-500/20">
+                                <Trophy className="w-12 h-12 text-yellow-500" />
+                            </div>
                         </div>
-                    </div>
+                    )}
                     <h1 className="text-4xl md:text-6xl font-black tracking-tighter uppercase italic">
-                        {REVIEW_TITLE}
+                        {isAbandoned ? REVIEW_ABANDONED_TITLE : REVIEW_TITLE}
                     </h1>
                     <div className="space-y-2">
-                        <p className="text-2xl md:text-3xl font-bold text-yellow-500">
-                            {winnerName ? `${winnerName} wins!` : 'Game Over'}
-                        </p>
-                        {winnerChips !== undefined && (
-                            <p className="text-xl text-neutral-400">
-                                Collected {winnerChips} chips
+                        {isAbandoned ? (
+                            <p className="text-xl md:text-2xl font-semibold text-neutral-300">
+                                {REVIEW_ABANDONED_REASON}
                             </p>
-                        )}
-                        {isForfeit && (
-                            <p className="text-sm font-semibold tracking-widest text-neutral-500 uppercase">
-                                {REVIEW_FORFEIT_NOTE}
-                            </p>
+                        ) : (
+                            <>
+                                <p className="text-2xl md:text-3xl font-bold text-yellow-500">
+                                    {winnerName ? `${winnerName} wins!` : 'Game Over'}
+                                </p>
+                                {winnerChips !== undefined && (
+                                    <p className="text-xl text-neutral-400">
+                                        Collected {winnerChips} chips
+                                    </p>
+                                )}
+                                {isForfeit && (
+                                    <p className="text-sm font-semibold tracking-widest text-neutral-500 uppercase">
+                                        {REVIEW_FORFEIT_NOTE}
+                                    </p>
+                                )}
+                            </>
                         )}
                     </div>
                     {message && (
@@ -88,7 +103,7 @@ export function GameReviewView({ gameEndResult, gameState, onLeave, leaveError, 
                 {/* Final Board */}
                 <div className="space-y-4">
                     <h2 className="text-xs font-bold uppercase tracking-[0.2em] text-neutral-500 text-center">
-                        {REVIEW_FINAL_BOARD_LABEL}
+                        {isAbandoned ? REVIEW_STOPPED_TABLE_LABEL : REVIEW_FINAL_BOARD_LABEL}
                     </h2>
                     <div className="flex justify-center">
                         <CommunityCardsArea
@@ -101,13 +116,13 @@ export function GameReviewView({ gameEndResult, gameState, onLeave, leaveError, 
                 {/* Player Results List */}
                 <div className="space-y-4">
                     <h2 className="text-xs font-bold uppercase tracking-[0.2em] text-neutral-500">
-                        Final Standings
+                        {isAbandoned ? REVIEW_STOPPED_CHIPS_LABEL : 'Final Standings'}
                     </h2>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         {sortedPlayers.map((player) => {
-                            const isWinner = winnerName
+                            const isWinner = !isAbandoned && (winnerName
                                 ? player.name === winnerName
-                                : Boolean(player.isWinner);
+                                : Boolean(player.isWinner));
                             return (
                                 <div
                                     key={player.id}

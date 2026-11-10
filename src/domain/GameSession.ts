@@ -98,6 +98,7 @@ export class GameSession {
     private notificationTimer: TimerHandle | null = null;
     private redirectTimer: TimerHandle | null = null;
     private lobbyInactivityWarningTimer: TimerHandle | null = null;
+    private gameInactivityWarningTimer: TimerHandle | null = null;
     private recoveryTimer: TimerHandle | null = null;
     private recoveryRetryAttempt = 0;
     private recoveryGeneration = 0;
@@ -160,10 +161,13 @@ export class GameSession {
             recoveryFailed: false,
             isRedirecting: false,
             isLobbyInactivityWarningActive: false,
+            isGameInactivityWarningActive: false,
         });
 
         if (initialRoom && !initialRoom.gameStarted && typeof initialRoom.inactivityDeadlineEpochMs === 'number') {
             this.updateLobbyInactivity(initialRoom);
+        } else if (this.gameStarted || initialGameState) {
+            this.updateGameInactivity(initialGameState, initialRoom);
         }
     }
 
@@ -257,6 +261,8 @@ export class GameSession {
         this.clearNotificationTimer();
         this.clearRedirectTimer();
         this.clearLobbyInactivityTimer();
+        this.clearGameInactivityTimer();
+        this.clearGameInactivityTimer();
         this.isRedirecting = false;
         this.cancelRecovery();
         this.cleanupSubscriptions();
@@ -266,6 +272,7 @@ export class GameSession {
             notification: null,
             isRedirecting: false,
             isLobbyInactivityWarningActive: false,
+            isGameInactivityWarningActive: false,
         }));
         this.transport.disconnect();
     }
@@ -479,6 +486,8 @@ export class GameSession {
         this.clearNotificationTimer();
         this.clearRedirectTimer();
         this.clearLobbyInactivityTimer();
+        this.clearGameInactivityTimer();
+        this.clearGameInactivityTimer();
         this.cancelRecovery();
         this.cleanupSubscriptions();
 
@@ -660,6 +669,7 @@ export class GameSession {
 
         this.clearRedirectTimer();
         this.clearLobbyInactivityTimer();
+        this.clearGameInactivityTimer();
         this.redirectTimer = this.clock.setTimeout(() => {
             this.redirectTimer = null;
             if (this.attached && this.attachmentEpoch === targetEpoch && !this.snapshot.isGameOver) {
@@ -693,6 +703,7 @@ export class GameSession {
 
             if (update.message === 'ROOM_CLOSED') {
                 this.clearLobbyInactivityTimer();
+                this.clearGameInactivityTimer();
                 const isInactive = Boolean(update.data && 'reason' in update.data && update.data.reason === 'INACTIVITY');
                 const redirectMsg = isInactive ? LOBBY_INACTIVE_CLOSED : HOST_LEFT;
                 this.scheduleRedirect(redirectMsg, { clearRoom: true });
@@ -727,8 +738,17 @@ export class GameSession {
                             bigBlind: data.bigBlind ?? prev.roomState?.bigBlind,
                             canStartGame: data.canStartGame ?? false,
                             gameStarted: true,
+                            inactivityDeadlineEpochMs:
+                                typeof data.inactivityDeadlineEpochMs === 'number'
+                                    ? data.inactivityDeadlineEpochMs
+                                    : prev.roomState?.inactivityDeadlineEpochMs,
+                            serverTimeEpochMs:
+                                typeof data.serverTimeEpochMs === 'number'
+                                    ? data.serverTimeEpochMs
+                                    : prev.roomState?.serverTimeEpochMs,
                         },
                     }));
+                    this.updateGameInactivity(this.snapshot.gameState, this.snapshot.roomState);
                     void this.synchronizeSession({ resetBudget: true });
                     return;
                 }
@@ -785,7 +805,11 @@ export class GameSession {
                                 : prev.roomState?.serverTimeEpochMs,
                     },
                 }));
-                this.updateLobbyInactivity(this.snapshot.roomState);
+                if (gameStarted) {
+                    this.updateGameInactivity(this.snapshot.gameState, this.snapshot.roomState);
+                } else {
+                    this.updateLobbyInactivity(this.snapshot.roomState);
+                }
             }
         } catch (err) {
             logger.warn('Ignoring malformed room update payload:', body, err);
@@ -1110,6 +1134,7 @@ export class GameSession {
             myPlayerId,
             claimPending: this.claimRecoveryActive ? this.snapshot.claimPending : false,
         }));
+        this.updateGameInactivity(data, this.snapshot.roomState);
         return true;
     }
 
@@ -1754,6 +1779,8 @@ export class GameSession {
         if (result !== null) {
             this.cancelActionLocks();
             this.clearRedirectTimer();
+            this.clearLobbyInactivityTimer();
+            this.clearGameInactivityTimer();
             this.isRedirecting = false;
         }
         let nextGameState = this.snapshot.gameState;
@@ -1776,6 +1803,8 @@ export class GameSession {
             gameEndResult: result,
             isGameOver: result !== null,
             isRedirecting: result !== null ? false : this.isRedirecting,
+            isLobbyInactivityWarningActive: result !== null ? false : this.snapshot.isLobbyInactivityWarningActive,
+            isGameInactivityWarningActive: result !== null ? false : this.snapshot.isGameInactivityWarningActive,
             claimPending: false,
             gameState: nextGameState,
             showdown: null,
@@ -1791,6 +1820,7 @@ export class GameSession {
         this.clearShowdownTimers();
         this.cancelActionLocks();
         this.cancelRecovery();
+        this.clearGameInactivityTimer();
         this.updateSnapshot(() => ({
             gameState: null,
             error: null,
@@ -1801,6 +1831,7 @@ export class GameSession {
             myPlayerId: null,
             gameEndResult: null,
             isGameOver: false,
+            isGameInactivityWarningActive: false,
         }));
     }
 
@@ -2019,6 +2050,48 @@ export class GameSession {
         this.lobbyInactivityWarningTimer = this.clock.setTimeout(() => {
             this.lobbyInactivityWarningTimer = null;
             this.updateSnapshot(() => ({ isLobbyInactivityWarningActive: true }));
+        }, Math.max(0, delayUntilWarningMs));
+    }
+
+    private clearGameInactivityTimer(): void {
+        if (this.gameInactivityWarningTimer !== null) {
+            this.clock.clearTimeout(this.gameInactivityWarningTimer);
+            this.gameInactivityWarningTimer = null;
+        }
+    }
+
+    private updateGameInactivity(gameState: GameState | null, room?: RoomState | null): void {
+        this.clearGameInactivityTimer();
+
+        const deadline = gameState?.inactivityDeadlineEpochMs ?? room?.inactivityDeadlineEpochMs;
+        if (this.snapshot.isGameOver || typeof deadline !== 'number') {
+            if (this.snapshot.isGameInactivityWarningActive) {
+                this.updateSnapshot(() => ({ isGameInactivityWarningActive: false }));
+            }
+            return;
+        }
+
+        const serverTime = gameState?.serverTimeEpochMs ?? room?.serverTimeEpochMs;
+        if (typeof serverTime === 'number') {
+            this.serverClockOffsetMs = serverTime - this.clock.now();
+        }
+
+        const remainingMs = deadline - this.displayNow();
+        if (remainingMs <= 120_000) {
+            if (!this.snapshot.isGameInactivityWarningActive) {
+                this.updateSnapshot(() => ({ isGameInactivityWarningActive: true }));
+            }
+            return;
+        }
+
+        if (this.snapshot.isGameInactivityWarningActive) {
+            this.updateSnapshot(() => ({ isGameInactivityWarningActive: false }));
+        }
+
+        const delayUntilWarningMs = remainingMs - 120_000;
+        this.gameInactivityWarningTimer = this.clock.setTimeout(() => {
+            this.gameInactivityWarningTimer = null;
+            this.updateSnapshot(() => ({ isGameInactivityWarningActive: true }));
         }, Math.max(0, delayUntilWarningMs));
     }
 }

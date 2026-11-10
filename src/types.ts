@@ -58,6 +58,7 @@ export interface GameState {
     turnDeadlineEpochMs?: number;
     claimWinAvailable?: boolean;
     claimWinPlayerName?: string;
+    inactivityDeadlineEpochMs?: number | null;
 }
 
 /** Shape broadcast by the backend: ApiResponse<RoomDataResponse> */
@@ -151,6 +152,7 @@ export type IncomingGameStatePayload = Omit<
     | 'stateRevision'
     | 'serverTimeEpochMs'
     | 'readyGateState'
+    | 'inactivityDeadlineEpochMs'
 > & {
     gameId?: string;
     claimWinAvailable?: boolean | null;
@@ -164,6 +166,7 @@ export type IncomingGameStatePayload = Omit<
     stateRevision?: number | null;
     serverTimeEpochMs?: number | null;
     readyGateState?: ReadyGateState | null;
+    inactivityDeadlineEpochMs?: number | null;
 };
 
 export type IncomingPrivateStatePayload = {
@@ -210,6 +213,8 @@ export interface GameEndResult {
     winnerName: string | null;
     winnerChips?: number;
     isForfeit: boolean;
+    abandoned?: boolean;
+    reason?: string | null;
     message: string;
     finalState?: PublicGameStateResponse | null;
 }
@@ -235,5 +240,6 @@ export interface SessionSnapshot {
     recoveryFailed?: boolean;
     isRedirecting?: boolean;
     isLobbyInactivityWarningActive?: boolean;
+    isGameInactivityWarningActive?: boolean;
 }
 

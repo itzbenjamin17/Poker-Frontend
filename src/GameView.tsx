@@ -44,6 +44,7 @@ function GameViewInner() {
         retryConnection,
         session,
         isLobbyInactivityWarningActive,
+        isGameInactivityWarningActive,
     } = useGameContext();
 
     const [nowMs, setNowMs] = useState(() => session?.displayNow() ?? Date.now());
@@ -54,16 +55,17 @@ function GameViewInner() {
     const hasDisconnectedPlayer = Boolean(gameState?.players?.some(p => p.status === 'DISCONNECTED'));
     const hasReadyCountdown = gameState?.phase === 'SHOWDOWN' && Boolean(gameState?.isReadyCountdownActive);
     const hasTurnCountdown = typeof gameState?.turnDeadlineEpochMs === 'number';
+    const hasInactivityCountdown = typeof gameState?.inactivityDeadlineEpochMs === 'number' || typeof roomState?.inactivityDeadlineEpochMs === 'number';
 
     useEffect(() => {
         if (gameEndResult) return;
-        if (!hasDisconnectedPlayer && !hasReadyCountdown && !hasTurnCountdown) return;
+        if (!hasDisconnectedPlayer && !hasReadyCountdown && !hasTurnCountdown && !hasInactivityCountdown) return;
 
         const update = () => setNowMs(session?.displayNow() ?? Date.now());
         update();
         const id = window.setInterval(update, 1000);
         return () => window.clearInterval(id);
-    }, [hasDisconnectedPlayer, hasReadyCountdown, hasTurnCountdown, gameEndResult, session]);
+    }, [hasDisconnectedPlayer, hasReadyCountdown, hasTurnCountdown, hasInactivityCountdown, gameEndResult, session]);
 
     // ── Session hydration ───────────────────────────────────────────────────────
     const { initialLoadFailed, retryInitialLoad } = useSessionHydration();
@@ -176,6 +178,7 @@ function GameViewInner() {
                 notificationSequence={notificationSequence}
                 wsStatus={wsStatus}
                 nowMs={nowMs}
+                isGameInactivityWarningActive={isGameInactivityWarningActive}
                 raiseError={null}
                 actionError={dispatcher.error}
                 onAction={(action, amount) => dispatcher.dispatch({ type: 'PLAY_ACTION', action, amount })}

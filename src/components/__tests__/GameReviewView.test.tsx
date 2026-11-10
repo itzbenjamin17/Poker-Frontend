@@ -351,4 +351,28 @@ describe('GameReviewView', () => {
         const names = Array.from(container.querySelectorAll('.truncate')).map((el) => el.textContent);
         expect(names).toEqual(['ForfeitChampion', 'RunnerUpLargeStack', 'ThirdPlace']);
     });
+
+    it('renders abandonment review without trophy, champion, or WINNER badges', () => {
+        render(
+            <GameReviewView
+                gameEndResult={{
+                    gameId: 'ROOM1',
+                    winnerName: null,
+                    isForfeit: false,
+                    abandoned: true,
+                    reason: 'INACTIVITY',
+                }}
+                gameState={mockGameState}
+                onLeave={mockOnLeave}
+            />
+        );
+
+        expect(screen.getByText('GAME ABANDONED')).toBeInTheDocument();
+        expect(screen.getByText('Closed due to inactivity')).toBeInTheDocument();
+        expect(screen.queryByText(/wins!/i)).not.toBeInTheDocument();
+        expect(screen.queryByText('WINNER')).not.toBeInTheDocument();
+        expect(screen.getByText('Table state when play stopped')).toBeInTheDocument();
+        expect(screen.getByText('Chips when play stopped')).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /LEAVE/i })).toBeInTheDocument();
+    });
 });

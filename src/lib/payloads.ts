@@ -147,6 +147,7 @@ const gameState = shape({
     serverTimeEpochMs: optional(nonnegative),
     readyGateState: optional(member(['CLOSED', 'COUNTING_DOWN', 'WAITING_FOR_PLAYERS'])),
     claimWinAvailable: optional(nullable(boolean)), claimWinPlayerName: optional(nullable(text)),
+    inactivityDeadlineEpochMs: optional(nullable(nonnegative)),
 });
 
 function omitNulls(value: Record<string, unknown>, keys: readonly string[]): Record<string, unknown> {
@@ -266,6 +267,9 @@ export function isGameEndPayload(value: unknown): value is {
     winner?: string | null;
     winnerChips?: number | null;
     isForfeit?: boolean | null;
+    abandoned?: boolean | null;
+    reason?: string | null;
+    outcome?: string | null;
     message?: string | null;
     gameId?: string | null;
     finalState?: unknown;
@@ -277,6 +281,9 @@ export function isGameEndPayload(value: unknown): value is {
         (value.winner == null || typeof value.winner === 'string') &&
         (value.winnerChips == null || nonnegative(value.winnerChips)) &&
         (value.isForfeit == null || typeof value.isForfeit === 'boolean') &&
+        (value.abandoned == null || typeof value.abandoned === 'boolean') &&
+        (value.reason == null || typeof value.reason === 'string') &&
+        (value.outcome == null || typeof value.outcome === 'string') &&
         (value.message == null || typeof value.message === 'string') &&
         (value.gameId == null || typeof value.gameId === 'string')
     );
@@ -371,29 +378,59 @@ export function decodeGameEndResult(value: unknown, expectedGameId?: string): Ga
         return null;
     }
 
+    let abandoned: boolean | undefined;
+    if (value.abandoned !== undefined && value.abandoned !== null) {
+        if (typeof value.abandoned !== 'boolean') {
+            return null;
+        }
+        abandoned = value.abandoned;
+    } else if (value.outcome === 'ABANDONED' || value.reason === 'INACTIVITY') {
+        abandoned = true;
+    }
+
+    let reason: string | null | undefined;
+    if (value.reason !== undefined && value.reason !== null) {
+        if (typeof value.reason !== 'string') {
+            return null;
+        }
+        reason = value.reason;
+    } else if (value.reason === null) {
+        reason = null;
+    } else if (abandoned) {
+        reason = 'INACTIVITY';
+    }
+
     const rawWinner = 'winnerName' in value ? value.winnerName : ('winner' in value ? value.winner : null);
     if (rawWinner !== null && typeof rawWinner !== 'string') {
         return null;
     }
-    const winnerName = typeof rawWinner === 'string' ? rawWinner : null;
+    const winnerName = abandoned ? null : (typeof rawWinner === 'string' ? rawWinner : null);
 
     let winnerChips: number | undefined;
     if (value.winnerChips !== undefined && value.winnerChips !== null) {
         if (typeof value.winnerChips !== 'number' || !Number.isSafeInteger(value.winnerChips) || value.winnerChips < 0) {
             return null;
         }
-        winnerChips = value.winnerChips;
+        if (!abandoned) {
+            winnerChips = value.winnerChips;
+        }
     }
 
-    if (typeof value.isForfeit !== 'boolean') {
+    let isForfeit = false;
+    if (typeof value.isForfeit === 'boolean') {
+        isForfeit = value.isForfeit;
+    } else if (!abandoned) {
         return null;
     }
-    const isForfeit = value.isForfeit;
 
-    if (typeof value.message !== 'string' || value.message.trim().length === 0) {
+    let message: string;
+    if (typeof value.message === 'string' && value.message.trim().length > 0) {
+        message = value.message.trim();
+    } else if (abandoned) {
+        message = 'Game abandoned due to inactivity';
+    } else {
         return null;
     }
-    const message = value.message.trim();
 
     let finalState: PublicGameStateResponse | null | undefined = undefined;
     if (value.finalState !== undefined && value.finalState !== null) {
@@ -417,6 +454,8 @@ export function decodeGameEndResult(value: unknown, expectedGameId?: string): Ga
         winnerName,
         ...(winnerChips !== undefined ? { winnerChips } : {}),
         isForfeit,
+        ...(abandoned !== undefined ? { abandoned } : {}),
+        ...(reason !== undefined ? { reason } : {}),
         message,
         ...(finalState !== undefined ? { finalState } : {}),
     };

@@ -12,6 +12,7 @@ import {
     LABEL_TABLE_RULES, LABEL_HOST, ERROR_COPY_ROOM_CODE,
     LABEL_INACTIVITY_LIMIT, VALUE_INACTIVITY_LIMIT, LOBBY_TIMING_RULE_DESC,
     LOBBY_INACTIVITY_WARNING_TITLE, LOBBY_INACTIVITY_WARNING_MESSAGE,
+    LABEL_GAME_INACTIVITY_LIMIT, VALUE_GAME_INACTIVITY_LIMIT, GAME_TIMING_RULE_DESC,
 } from '../constants/strings';
 import type { RoomState } from '../types';
 
@@ -186,6 +187,13 @@ export function GameLobbyView({
                                         <span className="text-emerald-primary font-bold">{VALUE_INACTIVITY_LIMIT}</span>
                                     </div>
                                     <p className="text-zinc-500 text-xs mt-1">{LOBBY_TIMING_RULE_DESC}</p>
+                                </div>
+                                <div className="border-t border-white/5 pt-3">
+                                    <div className="flex justify-between">
+                                        <span className="text-zinc-500 uppercase text-[10px] font-bold">{LABEL_GAME_INACTIVITY_LIMIT}</span>
+                                        <span className="text-emerald-primary font-bold">{VALUE_GAME_INACTIVITY_LIMIT}</span>
+                                    </div>
+                                    <p className="text-zinc-500 text-xs mt-1">{GAME_TIMING_RULE_DESC}</p>
                                 </div>
                             </div>
                         </Card>

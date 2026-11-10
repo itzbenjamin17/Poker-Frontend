@@ -1,4 +1,5 @@
 import { useContext, useMemo } from 'react';
+import { AlertTriangle } from 'lucide-react';
 import { cn } from '../lib/cn';
 import { Button } from './UI';
 import { ActionPanel } from './ActionPanel';
@@ -11,6 +12,7 @@ import { GameContext } from '../context/GameContext';
 import type { ActionError, AuthResponse, GameState, PokerAction, RoomState, WsStatus } from '../types';
 import {
     BTN_LEAVE_TABLE, BTN_CLAIM_WIN, BTN_CLAIMING,
+    TABLE_INACTIVITY_WARNING_TITLE, TABLE_INACTIVITY_WARNING_MESSAGE,
 } from '../constants/strings';
 
 export interface GameTableViewProps {
@@ -30,6 +32,7 @@ export interface GameTableViewProps {
     isRecovering?: boolean;
     recoveryFailed?: boolean;
     onRetryConnection?: () => void;
+    isGameInactivityWarningActive?: boolean;
 
     /** Chrome-density flags for ActionPanel/ResultDock only; the table layout never reads them. */
     isCompactTable?: boolean;
@@ -65,6 +68,7 @@ export function GameTableView({
     isRecovering,
     recoveryFailed,
     onRetryConnection,
+    isGameInactivityWarningActive: propIsGameInactivityWarningActive,
     isCompactTable: propIsCompactTable,
     isMobileLandscape: propIsMobileLandscape,
     nowMs,
@@ -88,6 +92,8 @@ export function GameTableView({
     const effectiveIsRecovering = isRecovering ?? gameContext?.isRecovering ?? false;
     const effectiveRecoveryFailed = recoveryFailed ?? gameContext?.recoveryFailed ?? false;
     const effectiveOnRetry = onRetryConnection ?? gameContext?.retryConnection;
+    const effectiveIsGameInactivityWarningActive =
+        propIsGameInactivityWarningActive ?? gameContext?.isGameInactivityWarningActive ?? false;
     const showStandaloneOverlay =
         !hasShellHeader &&
         (wsStatus !== 'connected' || effectiveIsRecovering || effectiveRecoveryFailed);
@@ -185,6 +191,20 @@ export function GameTableView({
             )}
         >
             <NotificationBanner notification={notification} sequence={notificationSequence} />
+
+            {effectiveIsGameInactivityWarningActive && (
+                <div
+                    role="status"
+                    aria-live="polite"
+                    className="absolute top-16 md:top-20 inset-x-4 md:inset-x-auto md:left-1/2 md:-translate-x-1/2 z-40 max-w-lg p-3 rounded-xl border border-amber-500/30 bg-amber-500/10 text-amber-200 flex items-center gap-3 text-sm backdrop-blur-sm shadow-lg pointer-events-none"
+                >
+                    <AlertTriangle aria-hidden="true" className="w-5 h-5 shrink-0 text-amber-400" />
+                    <div className="flex-1">
+                        <p className="font-semibold text-xs md:text-sm">{TABLE_INACTIVITY_WARNING_TITLE}</p>
+                        <p className="text-zinc-300 text-[11px] md:text-xs mt-0.5">{TABLE_INACTIVITY_WARNING_MESSAGE}</p>
+                    </div>
+                </div>
+            )}
 
             {showStandaloneOverlay && (
                 <ReconnectOverlay

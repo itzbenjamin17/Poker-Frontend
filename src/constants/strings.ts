@@ -104,6 +104,11 @@ export const VALUE_INACTIVITY_LIMIT = '30 min limit';
 export const LOBBY_TIMING_RULE_DESC = 'Lobbies close after 30 minutes without player activity.';
 export const LOBBY_INACTIVITY_WARNING_TITLE = 'Lobby Inactivity Warning';
 export const LOBBY_INACTIVITY_WARNING_MESSAGE = 'This lobby will close soon due to inactivity. Normal participation keeps it open.';
+export const LABEL_GAME_INACTIVITY_LIMIT = 'GAME TIMING';
+export const VALUE_GAME_INACTIVITY_LIMIT = '15 min limit';
+export const GAME_TIMING_RULE_DESC = 'Running games are abandoned after 15 minutes without player activity.';
+export const TABLE_INACTIVITY_WARNING_TITLE = 'Table Inactivity Warning';
+export const TABLE_INACTIVITY_WARNING_MESSAGE = 'This table will be abandoned soon due to inactivity. Normal participation keeps it open.';
 export const LABEL_HOST = 'HOST';
 
 // ─── Game Table ───────────────────────────────────────────────────────────────
@@ -199,3 +204,7 @@ export const BTN_LEAVE_REVIEW = 'LEAVE';
 export const REVIEW_TITLE = 'GAME OVER';
 export const REVIEW_FORFEIT_NOTE = '(Won by forfeit)';
 export const REVIEW_FINAL_BOARD_LABEL = 'Final Community Board';
+export const REVIEW_ABANDONED_TITLE = 'GAME ABANDONED';
+export const REVIEW_ABANDONED_REASON = 'Closed due to inactivity';
+export const REVIEW_STOPPED_CHIPS_LABEL = 'Chips when play stopped';
+export const REVIEW_STOPPED_TABLE_LABEL = 'Table state when play stopped';

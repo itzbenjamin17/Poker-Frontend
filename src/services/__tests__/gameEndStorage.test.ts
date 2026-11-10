@@ -297,5 +297,22 @@ describe('gameEndStorage', () => {
             saveGameEndResult('room-123', validResult, 'token-alice-secret', '   ');
             expect(sessionStorage.getItem('poker-game-end:room-123')).toBeNull();
         });
+
+        it('persists and restores abandonment envelope without declaring a winner', () => {
+            const abandonmentResult: GameEndResult = {
+                gameId: 'room-123',
+                winnerName: null,
+                isForfeit: false,
+                abandoned: true,
+                reason: 'INACTIVITY',
+            };
+
+            savePersistedGameEnd(authA, abandonmentResult);
+            const loaded = loadPersistedGameEnd(authA);
+            expect(loaded).not.toBeNull();
+            expect(loaded?.abandoned).toBe(true);
+            expect(loaded?.reason).toBe('INACTIVITY');
+            expect(loaded?.winnerName).toBeNull();
+        });
     });
 });

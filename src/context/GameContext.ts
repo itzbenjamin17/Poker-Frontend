@@ -33,6 +33,7 @@ export interface GameContextState {
     recoveryFailed?: boolean;
     isRedirecting?: boolean;
     isLobbyInactivityWarningActive?: boolean;
+    isGameInactivityWarningActive?: boolean;
 }
 
 export type Action =
