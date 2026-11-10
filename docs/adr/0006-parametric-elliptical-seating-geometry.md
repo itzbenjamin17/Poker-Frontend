@@ -1,19 +1,13 @@
-# 0006: Parametric Elliptical Seating Geometry and Dynamic Fitting
+# 0006: Shared Parametric Seating Geometry
 
-We decided to calculate player seat coordinates using continuous trigonometric equations along a parametric ellipse rather than static CSS grid or absolute coordinate templates.
+Reviewed against the frontend implementation on 2026-11-10.
 
-## Context
+Calculate seating and fit in a shared geometry module rather than separate CSS coordinate templates for each player count and viewport. The table supports 2–10 players, anchors the hero bottom-center and orders opponents relative to the hero along an ellipse.
 
-A poker room supports anywhere from 2 to 10 players seated around an oval poker table. Standard responsive CSS (Flexbox or CSS Grid) cannot easily place arbitrary numbers of elements along a continuous oval perimeter while preserving the local player (hero) at bottom-center and adjusting relative spacing dynamically to prevent overlapping avatars, chips, and hole cards.
+This keeps placement, footprints and containment under one model. Per-layout templates would require coordinating independent placements as density and card disclosure change. The trade-off is mathematical layout code and the need to align its footprint model with rendered content.
 
-## Decision
+Use the measured stage as the sizing input and avatar centers as seat anchors. The components and fit calculations share seat metrics so expanding a label or changing card presentation does not silently establish a second positioning model. Replacing this approach requires coordinating seat rendering, footprint calculations and layout diagnostics, not just swapping a coordinate formula.
 
-1. **Parametric Ellipse Formula**: Calculate opponent positions in `src/lib/tableGeometry.ts` using parametric equations along an ellipse with fixed aspect ratio (`TABLE_ASPECT = 2.15`).
-2. **Hero-Relative Anchoring**: Place the local player at a fixed bottom-center hero seat `(50%, 86%)` and distribute active opponents clockwise along the remaining elliptical perimeter.
-3. **Dynamic Density Scaling**: Derive seat scale and bounding footprints dynamically based on player count and container width, ensuring zero overlap even with 10 players seated.
+Exact aspect ratio, anchor percentages, density thresholds and viewport gates are tunable implementation details, not architectural commitments. Geometry aims to contain seats and avoid collisions at supported sizes; it cannot guarantee readability or zero overlap for arbitrary content. Geometry tests and rendered visual checks are both needed.
 
-## Consequences
-
-- Guarantees authentic poker table geometry that automatically adapts to any player count (2–10) and responsive screen size.
-- Decouples visual seat rendering from layout math, keeping presentation components declarative and easily testable.
-- Requires mathematical unit tests (`tableGeometry.test.ts`, `tableGeometry.footprint.test.ts`) to verify boundary containment.
+Implementation: [tableGeometry](../../src/lib/tableGeometry.ts), [useSeatLayout](../../src/hooks/useSeatLayout.ts), [LiveTableStage](../../src/components/LiveTableStage.tsx). Current behavior: [project context](../ai/PROJECT.md#table-layout-and-interaction).

@@ -19,11 +19,9 @@ Single-context repo:
 ├── GEMINI.md
 ├── docs/ai/PROJECT.md
 ├── docs/adr/
-│   ├── 0001-adaptive-table-first-game-page.md
 │   ├── 0002-in-process-game-session-and-transport-port.md
 │   ├── 0003-tab-scoped-authentication-via-session-storage.md
 │   ├── 0004-monotonic-attempt-revision-and-abort-guard.md
-│   ├── 0005-routerless-state-driven-view-selection.md
 │   ├── 0006-parametric-elliptical-seating-geometry.md
 │   └── 0007-versioned-offline-envelope-storage-for-post-game-review.md
 └── src/

@@ -1,26 +1,13 @@
-# 0004: Monotonic Attempt Revision and Abort Guard for REST Recovery
+# 0004: Reject Stale REST Recovery Results
 
-We decided to guard REST session synchronization and recovery requests with monotonic attempt and domain revision counters (`attemptId`, `privateSyncRevision`, `stateSyncRevision`, `roomRevision`) and `AbortController` cancellation in `GameSession.ts` and `sessionSync.ts`.
+Reviewed against the frontend implementation on 2026-11-10.
 
-## Context
+Recovery reads REST snapshots while WebSocket frames may advance the room and hand. Completion order cannot determine which state is current.
 
-When initial hydration, a connection hiccup, or tab wake-up occurs, `GameSession.synchronizeSession()` delegates to `loadSessionData()` (`sessionSync.ts`) to fetch room state (`/api/room/{roomId}`) and/or concurrent public and private game snapshots (`/api/game/{gameId}/state` and `/api/game/{gameId}/private-state`), falling back to `/api/game/{gameId}/review` when appropriate. If network latency delays an HTTP response, newer real-time STOMP frames (e.g. next-hand hole cards, public state advances, or room updates) or a newer recovery cycle can arrive before the HTTP response resolves. Without attempt and revision guards, delayed REST responses could overwrite fresher WebSocket state.
+Use recovery-attempt identity and domain revisions to reject obsolete results, alongside cancellation of superseded requests. Ordered public snapshots also use hand/state ordering; private cards must remain coherent with the current hand and player. Cancellation alone is insufficient because a response may already have completed or newer live data may arrive during a request.
 
-## Decision
+For example, when a live frame advances to the next hand while REST recovery is pending, the old public snapshot must not restore the previous hand or pair its private cards with the new board. REST public/private reads must agree on hand and player identity; at commit time they are checked against state already accepted by GameSession. Private live frames arriving ahead of their public hand can be buffered until that hand arrives. Recovery retries when it cannot establish a coherent pair rather than declaring the table recovered with mismatched cards.
 
-1. **Monotonic Attempt and Domain Revisions**:
-   - Assign an incrementing `attemptId` sequence number to every recovery cycle in `GameSession.synchronizeSession()`, and increment `attemptId` whenever recovery is cancelled or scheduled for retry.
-   - Track monotonic domain revision counters for WebSocket-driven updates: `roomRevision` (room membership/start frames), `stateSyncRevision` (accepted public game state frames), and `privateSyncRevision` (accepted private hole-card frames and hand transitions).
-   - Snapshot `(attemptRoomRevision, attemptPrivateRevision, attemptStateSyncRevision)` when starting an attempt.
-2. **Abort Superseded or Failed Requests**:
-   - Store the active attempt's `AbortController` on `activeAttemptController` in `GameSession.ts` and abort it whenever a new `synchronizeSession()` attempt starts, a sync attempt fails (`handleSyncFailure` / `scheduleNextRecoveryRetry`), or recovery is cancelled (`cancelRecovery`, `disconnect`, `scheduleRedirect`).
-   - Inside `loadSessionData()` (`sessionSync.ts`), link a child `attemptController` to the caller's `AbortSignal` so that if either concurrent public or private REST request rejects, the in-flight sibling request is aborted immediately.
-3. **Stale Response Discarding in `commitSyncResult`**:
-   - Ignore resolved `loadSessionData()` results if `controller.signal.aborted` is true or the captured `attempt` no longer matches `this.attemptId`.
-   - In `commitSyncResult()`, apply room snapshots only when `this.roomRevision === attemptRoomRevision`, guard unordered legacy public snapshots with `this.stateSyncRevision === attemptStateSyncRevision` (while ordered snapshots are gated by `(handNumber, stateRevision)` in `applyGameState()`), and skip REST `privateState` when `this.privateSyncRevision > attemptPrivateRevision` and the existing private state already coherently matches the current hand and hero identity.
+The trade-off is ordering bookkeeping across room, public and private state. This prevents recovery overwriting accepted newer data; it does not make chip balances monotonic or independently prove the freshness of every server payload.
 
-## Consequences
-
-- Prevents asynchronous REST race conditions from corrupting newer WebSocket room, public, or private state.
-- Ensures hole cards, hand numbers, and chip balances remain strictly monotonic across reconnects.
-- Cancels unnecessary in-flight HTTP network traffic immediately when superseded or when a sibling request fails.
+Counter names, commit guards and sibling-request cancellation belong in [GameSession](../../src/domain/GameSession.ts) and [sessionSync](../../src/domain/sessionSync.ts), with regression coverage in session ordering tests.

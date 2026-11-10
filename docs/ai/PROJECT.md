@@ -55,9 +55,11 @@ The production [Nginx configuration](../../nginx.conf) serves the built client a
 
 Per [ADR-0002](../adr/0002-in-process-game-session-and-transport-port.md), game session state lives outside React. `GameProvider` accepts injected `GameSession`, `GameTransport`, and `Clock` dependencies for tests. Views receive explicit game data and action callbacks from the container.
 
+Screen selection follows authenticated session state: App selects the entry lobby or GameView, and GameView selects loading, room lobby, table or final review. There are no dedicated bookmarkable table/review routes or in-app screen history. This keeps the current single-room flow simple; revisit routing when shareable URLs or independently navigable screens become requirements.
+
 1. Create/join REST responses wrap `TokenResponse` in `ApiResponse`. The API client normalizes these to `AuthResponse` containing token, room ID, player name, and message.
 2. `useAuthSession` restores validated auth from tab-local `poker-auth` `sessionStorage` (migrating/clearing legacy `localStorage` once), isolating each browser tab so multiple players can multi-table or test simultaneously, and processes token-specific `auth-expired` events.
-3. Initial REST hydration checks room membership, loads public/private game state when a game is active, and redirects when the room or seat is gone. A persisted final-game result allows review after server cleanup without live hydration.
+3. Initial REST hydration checks room membership and loads public/private game state when a game is active. Missing live room/game responses can fall back to the authenticated review endpoint before redirecting for a lost room or seat. A persisted final-game result allows review after server cleanup without live hydration; [ADR-0007](../adr/0007-versioned-offline-envelope-storage-for-post-game-review.md) records this separation.
 4. Once hydrated, the WebSocket hook connects the session. The session subscribes to `/room/{roomId}`, `/game/{roomId}`, and `/user/queue/private`.
 5. The WebSocket hook performs REST resync on connection, tab wake-up, online events, and manual retry. The session deduplicates recovery, bounds retries, and uses generation/revision guards to avoid applying obsolete recovery results over newer state.
 6. Gameplay and readiness commands publish to `/app/{gameId}/action`, `/app/{gameId}/ready`, and `/app/{gameId}/unready`. Start, leave, and claim-win use authenticated REST calls. Backend game IDs reuse room IDs.
@@ -68,7 +70,10 @@ Final-game snapshots use `poker-game-end:{roomId}` stored tab-locally in `sessio
 
 ## Table Layout And Interaction
 
-[ADR-0001](../adr/0001-adaptive-table-first-game-page.md) establishes the table-first experience. Current measured-container sizing and parametric seating are implemented in `LiveTableStage`, `useSeatLayout`, and `tableGeometry.ts`.
+Current measured-container sizing and parametric seating are implemented in `LiveTableStage`, `useSeatLayout`, and `tableGeometry.ts`; [ADR-0006](../adr/0006-parametric-elliptical-seating-geometry.md) records the shared geometry decision.
+
+- `GameTableView` selects `ResultDock` for showdown with a result and `ActionPanel` otherwise. ResultDock includes readiness controls; it is not an expandable sheet. Terminal GameReview is a separate screen.
+- Opponent details expand independently, with at most one opponent expanded. Pot details have separate disclosure controls.
 
 - `PokerRoomLayout` owns viewport eligibility, header/stage/dock regions, and the reconnect overlay. The overlay makes the underlying stage/dock inert while preserving header access.
 - `LiveTableStage` measures its container through `useElementSize`. `getTableDimensions` fits the table to that space; table content sizing uses measured dimensions rather than window size.

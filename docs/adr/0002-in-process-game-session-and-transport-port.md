@@ -1,21 +1,13 @@
-# 0002: In-Process GameSession Store and GameTransport Port
+# 0002: In-Process GameSession and GameTransport Port
 
-We decided to encapsulate poker game state, hand progression, and timer lifecycles inside an in-process TypeScript `GameSession` store connected to React via `useSyncExternalStore`, while decoupling real-time communication behind a `GameTransport` port.
+Reviewed against the frontend implementation on 2026-11-10.
 
-## Context
+Game state, incoming frames, recovery, action locks and session timers belong to an in-process GameSession rather than a collection of React state slices and effects. React subscribes through useSyncExternalStore. This makes lifecycle ownership explicit and permits session tests without rendering the UI.
 
-The previous architecture relied on an ambient React `GameContext` exposing 20+ raw state slices, action reducers, mutable refs, and `useEffect` timers. This forced 6 distinct test suites to fabricate brittle synthetic context mocks and caused race conditions between incoming WebSocket frames and component render lifecycles. Furthermore, tests bypassed the real-time boundary using a production `localStorage` backdoor (`poker-e2e-mock`).
+Real-time communication sits behind GameTransport, with STOMP in production and an in-memory adapter for tests. Browser tests intercept the transport boundary instead of enabling production mock modes. The trade-off is an explicit store lifecycle, immutable snapshots and subscription cleanup that the application must maintain.
 
-## Decision
+GameProvider attaches and detaches the session with the React lifecycle, while the session guards obsolete callbacks and owns recovery cancellation. An injected Clock makes session timers deterministic. Moving this ownership back into component effects would couple recovery and transport correctness to rendering again; a different state library alone would not remove that responsibility.
 
-1. **In-Process `GameSession`**: Move game state transitions, action validation, and lifecycle timers (showdown delay, turn timeout) out of React components and into a standalone TypeScript `GameSession` domain model. React components consume it as an external store using `useSyncExternalStore`.
-2. **`GameTransport` Port**: Define an explicit port (`connect`, `disconnect`, `subscribe`, `publish`, `onStatusChange`) satisfied by `StompTransportAdapter` in production and `InMemoryTransportAdapter` in tests.
-3. **Pure Presentational Views**: Refactor `GameTableView`, `GameLobbyView`, and `GameReviewView` into pure components receiving explicit props from the container rather than reading ambient context.
-4. **E2E WebSocket Interception**: Replace the production `poker-e2e-mock` conditional with Playwright native `page.routeWebSocket()`.
+The container supplies view data and commands. Some presentation components retain context compatibility fallbacks; this record does not claim every view is props-only. Backend poker rules remain authoritative.
 
-## Consequences
-
-- Tests can verify complete game flows, showdown sequences, and timer transitions in pure Node.js in milliseconds without React or JSDOM wrappers.
-- Deletes 6 ad-hoc `useGameContext` test mocks.
-- Removes all test-only backdoor conditionals from production bundles.
-- Requires views to receive explicit props or narrow session queries.
+Implementation: [GameSession](../../src/domain/GameSession.ts), [GameProvider](../../src/context/GameProvider.tsx), [transport](../../src/services/transport.ts).

@@ -1,19 +1,11 @@
 # 0003: Tab-Scoped Authentication via sessionStorage
 
-We decided to persist active player authentication and room tokens in browser `sessionStorage` rather than `localStorage`.
+Reviewed against the frontend implementation on 2026-11-10.
 
-## Context
+Active room credentials use tab-local sessionStorage rather than shared localStorage. Different tabs must represent different players or rooms without one join or leave replacing another tab's identity.
 
-Standard single-tenant web applications use `localStorage` to share login state across all open browser tabs. In a multiplayer poker game, players frequently join multiple tables simultaneously ("multi-tabling"), and developers or testers need to open multiple tabs side-by-side to simulate different players in the same game. If tokens are stored in global `localStorage`, Tab 2 joining as "Bob" overwrites Tab 1's "Alice" token, causing session collisions, cross-tab evictions, and departure wipeouts.
+This favors independent seats over shared-login behavior. Reload can restore a session, but storage is not a durable account login. Closing a tab is not an explicit server-side leave; disconnect and seat cleanup remain server concerns. Browser session restoration or opener-based duplication may retain or copy initial storage, so not every newly duplicated tab starts empty.
 
-## Decision
+The identity boundary is the room, player name and token, not a browser-wide account. An expiry or late leave response for a previous token must not clear a replacement AuthSession. Changing to shared login would therefore require revisiting session lifecycle and final-review ownership as well as the storage API; see [ADR-0007](0007-versioned-offline-envelope-storage-for-post-game-review.md).
 
-1. **sessionStorage Auth**: Store active `AuthResponse` credentials in `sessionStorage` under `poker-auth`.
-2. **One-Time Migration**: During initial startup in `useAuthSession.ts`, inspect legacy `localStorage` once, import it to `sessionStorage`, and purge the legacy entry so subsequent tabs do not inherit it.
-3. **Tab Isolation**: Each browser tab manages an independent authentication context, seat identity, and WebSocket connection.
-
-## Consequences
-
-- Multiple tabs can participate in the same or different rooms as different players without credential interference.
-- Departing or clearing auth in one tab does not affect any other active tab.
-- Closing a tab cleanly cleans up ephemeral player credentials.
+The client migrates and clears legacy shared auth and scopes expiry handling to the affected token. Compatibility mechanics live in [useAuthSession](../../src/hooks/useAuthSession.ts); leave-response ownership is enforced in [App](../../src/App.tsx). Server authorization remains necessary regardless of storage.
