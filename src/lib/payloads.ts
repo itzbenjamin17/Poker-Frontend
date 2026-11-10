@@ -212,6 +212,8 @@ export function isRoomDataPayload(value: unknown): value is RoomDataResponse {
         createdAt: optional(text), hostName: optional(text), currentPlayers: optional(nonnegative),
         canStartGame: optional(boolean), gameStarted: optional(boolean),
         players: list(roomPlayer, 10),
+        inactivityDeadlineEpochMs: optional(nullable(nonnegative)),
+        serverTimeEpochMs: optional(nullable(nonnegative)),
     });
 }
 
@@ -241,6 +243,8 @@ export function mapRoomDataToRoomState(
         bigBlind: roomData.bigBlind,
         canStartGame: roomData.canStartGame,
         gameStarted: roomData.gameStarted,
+        inactivityDeadlineEpochMs: roomData.inactivityDeadlineEpochMs,
+        serverTimeEpochMs: roomData.serverTimeEpochMs,
     };
 }
 
@@ -421,7 +425,7 @@ export function decodeGameEndResult(value: unknown, expectedGameId?: string): Ga
 export function isRoomUpdatePayload(value: unknown): value is RoomUpdate {
     if (!isObject(value) || typeof value.message !== 'string') return false;
     if (value.message === 'ROOM_CLOSED') {
-        return value.data == null || fields(value.data, { roomId: optional(text) });
+        return value.data == null || fields(value.data, { roomId: optional(text), reason: optional(text) });
     }
     if (value.message === 'GAME_STARTED') {
         if (!isObject(value.data)) return false;
@@ -437,6 +441,8 @@ export function isRoomUpdatePayload(value: unknown): value is RoomUpdate {
                 bigBlind: optional(nonnegative),
                 canStartGame: optional(boolean),
                 gameStarted: optional(boolean),
+                inactivityDeadlineEpochMs: optional(nullable(nonnegative)),
+                serverTimeEpochMs: optional(nullable(nonnegative)),
             });
         }
         return fields(data, {
@@ -457,6 +463,8 @@ export function isRoomUpdatePayload(value: unknown): value is RoomUpdate {
             buyIn: optional(nonnegative), smallBlind: optional(nonnegative),
             bigBlind: optional(nonnegative), canStartGame: optional(boolean),
             gameStarted: optional(boolean),
+            inactivityDeadlineEpochMs: optional(nullable(nonnegative)),
+            serverTimeEpochMs: optional(nullable(nonnegative)),
         });
     }
     return false;

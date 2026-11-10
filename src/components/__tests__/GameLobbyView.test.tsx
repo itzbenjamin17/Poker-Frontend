@@ -6,6 +6,11 @@ import {
     BTN_START_GAME,
     BTN_STARTING_GAME,
     LABEL_WAITING_HOST,
+    LABEL_INACTIVITY_LIMIT,
+    VALUE_INACTIVITY_LIMIT,
+    LOBBY_TIMING_RULE_DESC,
+    LOBBY_INACTIVITY_WARNING_TITLE,
+    LOBBY_INACTIVITY_WARNING_MESSAGE,
 } from '../../constants/strings';
 import type { RoomState } from '../../types';
 import '@testing-library/jest-dom';
@@ -142,5 +147,52 @@ describe('GameLobbyView', () => {
         expect(screen.getByText('Turn Time')).toBeInTheDocument();
         expect(screen.getByText('60s')).toBeInTheDocument();
         expect(screen.getByText(/Each player has 60 seconds to act. Expired turns result in removal from the table./i)).toBeInTheDocument();
+    });
+
+    it('renders the fixed 30-minute lobby timing rule under table rules', () => {
+        render(
+            <GameLobbyView
+                roomState={baseRoomState}
+                playerName="HostPlayer"
+                onStartGame={mockOnStartGame}
+            />
+        );
+
+        expect(screen.getByText(LABEL_INACTIVITY_LIMIT)).toBeInTheDocument();
+        expect(screen.getByText(VALUE_INACTIVITY_LIMIT)).toBeInTheDocument();
+        expect(screen.getByText(LOBBY_TIMING_RULE_DESC)).toBeInTheDocument();
+    });
+
+    it('renders accessible warning banner without extension button when isLobbyInactivityWarningActive is true', () => {
+        render(
+            <GameLobbyView
+                roomState={baseRoomState}
+                playerName="HostPlayer"
+                onStartGame={mockOnStartGame}
+                isLobbyInactivityWarningActive={true}
+            />
+        );
+
+        const statusBanner = screen.getByRole('status');
+        expect(statusBanner).toHaveAttribute('aria-live', 'polite');
+        expect(screen.getByText(LOBBY_INACTIVITY_WARNING_TITLE)).toBeInTheDocument();
+        expect(screen.getByText(LOBBY_INACTIVITY_WARNING_MESSAGE)).toBeInTheDocument();
+
+        // Verify there is no extension button or control
+        expect(screen.queryByRole('button', { name: /extend|keep playing|more time/i })).not.toBeInTheDocument();
+    });
+
+    it('does not render warning banner when isLobbyInactivityWarningActive is false', () => {
+        render(
+            <GameLobbyView
+                roomState={baseRoomState}
+                playerName="HostPlayer"
+                onStartGame={mockOnStartGame}
+                isLobbyInactivityWarningActive={false}
+            />
+        );
+
+        expect(screen.queryByRole('status')).not.toBeInTheDocument();
+        expect(screen.queryByText(LOBBY_INACTIVITY_WARNING_TITLE)).not.toBeInTheDocument();
     });
 });

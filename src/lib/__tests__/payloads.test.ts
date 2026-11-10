@@ -282,6 +282,7 @@ describe('lib/payloads - Type Guards and Normalizers', () => {
         it('returns true for valid ROOM_CLOSED and PLAYER_JOINED payloads', () => {
             expect(isRoomUpdatePayload({ message: 'ROOM_CLOSED' })).toBe(true);
             expect(isRoomUpdatePayload({ message: 'ROOM_CLOSED', data: { roomId: 'room-1' } })).toBe(true);
+            expect(isRoomUpdatePayload({ message: 'ROOM_CLOSED', data: { roomId: 'room-1', reason: 'INACTIVITY' } })).toBe(true);
             expect(
                 isRoomUpdatePayload({
                     message: 'PLAYER_JOINED',
@@ -289,6 +290,8 @@ describe('lib/payloads - Type Guards and Normalizers', () => {
                         roomId: 'room-1',
                         roomName: 'Table 1',
                         players: [{ name: 'Alice', isHost: true }],
+                        inactivityDeadlineEpochMs: 1700000000000,
+                        serverTimeEpochMs: 1699998200000,
                     },
                 })
             ).toBe(true);

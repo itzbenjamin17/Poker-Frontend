@@ -177,6 +177,7 @@ export function GameProvider({
         isRecovering: state.isRecovering,
         recoveryFailed: state.recoveryFailed,
         isRedirecting: state.isRedirecting,
+        isLobbyInactivityWarningActive: state.isLobbyInactivityWarningActive,
         auth,
         onLeave,
         requestLeave,
