@@ -375,4 +375,31 @@ describe('GameReviewView', () => {
         expect(screen.getByText('Chips when play stopped')).toBeInTheDocument();
         expect(screen.getByRole('button', { name: /LEAVE/i })).toBeInTheDocument();
     });
+
+    it('preserves original table player order on abandonment without ranking by chips', () => {
+        const abandonedState: GameState = {
+            ...mockGameState,
+            players: [
+                { id: 'p-1', name: 'AliceSmallStack', chips: 1000, status: 'ACTIVE', currentBet: 0, hasFolded: false, isReadyForNextHand: false },
+                { id: 'p-2', name: 'BobLargeStack', chips: 9000, status: 'ACTIVE', currentBet: 0, hasFolded: false, isReadyForNextHand: false },
+            ],
+        };
+
+        const { container } = render(
+            <GameReviewView
+                gameEndResult={{
+                    gameId: 'ROOM1',
+                    winnerName: null,
+                    isForfeit: false,
+                    abandoned: true,
+                    reason: 'INACTIVITY',
+                }}
+                gameState={abandonedState}
+                onLeave={mockOnLeave}
+            />
+        );
+
+        const names = Array.from(container.querySelectorAll('.truncate')).map((el) => el.textContent);
+        expect(names).toEqual(['AliceSmallStack', 'BobLargeStack']);
+    });
 });

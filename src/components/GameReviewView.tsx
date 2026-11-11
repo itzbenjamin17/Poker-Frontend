@@ -34,22 +34,24 @@ export function GameReviewView({ gameEndResult, gameState, onLeave, leaveError, 
     const message = isAbandoned ? null : formatEndMessage(gameEndResult.message);
 
     const sourcePlayers = activeState?.players ?? [];
-    const sortedPlayers = sourcePlayers
-        .map((player, index) => ({ player, index }))
-        .sort((a, b) => {
-            if (winnerName) {
-                const isAWinner = a.player.name === winnerName;
-                const isBWinner = b.player.name === winnerName;
-                if (isAWinner !== isBWinner) {
-                    return isAWinner ? -1 : 1;
+    const sortedPlayers = isAbandoned
+        ? sourcePlayers
+        : sourcePlayers
+            .map((player, index) => ({ player, index }))
+            .sort((a, b) => {
+                if (winnerName) {
+                    const isAWinner = a.player.name === winnerName;
+                    const isBWinner = b.player.name === winnerName;
+                    if (isAWinner !== isBWinner) {
+                        return isAWinner ? -1 : 1;
+                    }
                 }
-            }
-            if (b.player.chips !== a.player.chips) {
-                return b.player.chips - a.player.chips;
-            }
-            return a.index - b.index;
-        })
-        .map(({ player }) => player);
+                if (b.player.chips !== a.player.chips) {
+                    return b.player.chips - a.player.chips;
+                }
+                return a.index - b.index;
+            })
+            .map(({ player }) => player);
 
     return (
         <main

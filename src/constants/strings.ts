@@ -13,6 +13,7 @@ export const AUTH_KEY = 'poker-auth';
 export const SESSION_RESTORING = 'Restoring your seat...';
 export const SESSION_EXPIRED = 'Session expired. Returning to lobby...';
 export const SESSION_SEAT_GONE = 'Your seat is no longer active. Returning to lobby...';
+export const SESSION_SEAT_TIMED_OUT = 'You were removed from the table due to turn timeout. Returning to main lobby...';
 export const BTN_RETURN_TO_LOBBY = 'Return to Lobby';
 
 // ─── Error Boundary ───────────────────────────────────────────────────────────
@@ -97,7 +98,9 @@ export const LABEL_BLINDS = 'Blinds';
 export const LABEL_MIN_BUYIN = 'Min Buy-in';
 export const LABEL_TURN_TIME = 'Turn Time';
 export const LABEL_TURN_TIME_VALUE = '60s';
-export const LABEL_TURN_TIME_EXPLANATION = 'Each player has 60 seconds to act. Expired turns result in removal from the table.';
+export const LABEL_TURN_TIME_EXPLANATION = 'Each player has 60 seconds to act. Expired turns result in removal from the table, even before reconnect grace ends.';
+export const LABEL_TURN_WARNING_SR = 'Warning: 10 seconds or less remaining to act.';
+export const LABEL_TURN_WARNING_BADGE = (seconds: number) => `⚠️ ${seconds}s left`;
 export const LABEL_TABLE_RULES = 'Table Rules';
 export const LABEL_INACTIVITY_LIMIT = 'LOBBY TIMING';
 export const VALUE_INACTIVITY_LIMIT = '30 min limit';

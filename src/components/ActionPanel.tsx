@@ -10,6 +10,7 @@ import {
     READY_PROMPT, BTN_READY, LABEL_PLAYERS_READY_SUFFIX,
     RAISE_VALIDATION_WHOLE_NUMBER, RAISE_VALIDATION_POSITIVE, RAISE_VALIDATION_MAX,
     formatBetMinError, formatRaiseMinError, formatAvailableChipsError,
+    LABEL_TURN_WARNING_SR, LABEL_TURN_WARNING_BADGE,
 } from '../constants/strings';
 import type { ActionError, GameState, Player, PokerAction, ReadyGateState } from '../types';
 
@@ -277,9 +278,9 @@ export function ActionPanel({
                                 className="flex items-center justify-center gap-1.5 text-xs font-headline font-bold text-amber-300 uppercase tracking-wider"
                             >
                                 <span className="sr-only" role="alert" aria-live="polite">
-                                    Warning: 10 seconds or less remaining to act.
+                                    {LABEL_TURN_WARNING_SR}
                                 </span>
-                                <span aria-hidden="true">⚠️ {turnSecondsRemaining}s left</span>
+                                <span aria-hidden="true">{LABEL_TURN_WARNING_BADGE(turnSecondsRemaining)}</span>
                             </div>
                         )}
                         {isRaising ? (

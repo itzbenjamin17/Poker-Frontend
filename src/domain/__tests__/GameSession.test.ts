@@ -4,7 +4,7 @@ import { GameSession } from '../GameSession';
 import { TestClock } from '../clock';
 import { InMemoryTransportAdapter } from '../../services/transport';
 import type { AuthResponse, IncomingGameStatePayload, RoomDataResponse } from '../../types';
-import { HOST_LEFT, SESSION_SEAT_GONE } from '../../constants/strings';
+import { HOST_LEFT, SESSION_SEAT_GONE, SESSION_SEAT_TIMED_OUT } from '../../constants/strings';
 import { createValidGameState, createValidPlayer, createValidRoomData, createMockJwt } from '../../test/fixtures';
 import { pokerApi } from '../../services/api';
 
@@ -773,6 +773,38 @@ describe('GameSession Domain Store', () => {
             // Session must have scheduled redirect with SESSION_SEAT_GONE
             expect(session.getSnapshot().isRedirecting).toBe(true);
             expect(session.getSnapshot().notification).toBe(SESSION_SEAT_GONE);
+
+            // Advancing clock triggers onLeave and clears auth
+            clock.tick(3000);
+            expect(onLeave).toHaveBeenCalledTimes(1);
+        });
+
+        it('triggers SESSION_SEAT_TIMED_OUT redirect when hero removal is caused by expired turn', () => {
+            const { session, clock, onLeave } = createSession(new TestClock(10_000));
+            session.attach();
+
+            // Hand 1 starts: Hero has an active turn deadline
+            session.applyGameState(createValidGameState({
+                handNumber: 1,
+                currentPlayerName: 'Hero',
+                turnDeadlineEpochMs: 15_000,
+                serverTimeEpochMs: 10_000,
+                players: [createValidPlayer({ name: 'Hero', id: 'hero-id' }), createValidPlayer({ name: 'Bob', id: 'bob-id' })],
+            }));
+            expect(session.getSnapshot().myPlayerId).toBe('hero-id');
+            expect(session.getSnapshot().isRedirecting).toBe(false);
+
+            // Clock advances past turn deadline, hero removed from players
+            session.applyGameState(createValidGameState({
+                handNumber: 1,
+                stateRevision: 2,
+                serverTimeEpochMs: 16_000,
+                players: [createValidPlayer({ name: 'Bob', id: 'bob-id' })],
+            }));
+
+            // Session must have scheduled redirect with SESSION_SEAT_TIMED_OUT
+            expect(session.getSnapshot().isRedirecting).toBe(true);
+            expect(session.getSnapshot().notification).toBe(SESSION_SEAT_TIMED_OUT);
 
             // Advancing clock triggers onLeave and clears auth
             clock.tick(3000);

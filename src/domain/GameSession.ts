@@ -26,6 +26,7 @@ import {
     ERROR_INITIAL_TABLE_LOAD,
     SESSION_EXPIRED,
     SESSION_SEAT_GONE,
+    SESSION_SEAT_TIMED_OUT,
     STATUS_CONNECTED,
     STATUS_CONNECTING,
     STATUS_RECOVERING_TABLE,
@@ -38,6 +39,7 @@ import { loadSessionData, type SyncResult } from './sessionSync';
 import { pokerApi } from '../services/api';
 
 const ROOM_CLOSED_REDIRECT_MS = 3_000;
+export const INACTIVITY_WARNING_WINDOW_MS = 120_000;
 const ACTION_LOCK_TIMEOUT_MS = 3_000;
 const BASE_RETRY_DELAY_MS = 1_000;
 const MAX_RETRY_DELAY_MS = 8_000;
@@ -262,7 +264,6 @@ export class GameSession {
         this.clearRedirectTimer();
         this.clearLobbyInactivityTimer();
         this.clearGameInactivityTimer();
-        this.clearGameInactivityTimer();
         this.isRedirecting = false;
         this.cancelRecovery();
         this.cleanupSubscriptions();
@@ -486,7 +487,6 @@ export class GameSession {
         this.clearNotificationTimer();
         this.clearRedirectTimer();
         this.clearLobbyInactivityTimer();
-        this.clearGameInactivityTimer();
         this.clearGameInactivityTimer();
         this.cancelRecovery();
         this.cleanupSubscriptions();
@@ -774,7 +774,15 @@ export class GameSession {
                     if (this.isLeavingPending) {
                         return;
                     }
-                    this.scheduleRedirect(SESSION_SEAT_GONE);
+                    const previousState = this.snapshot.gameState;
+                    const hadActiveTurn =
+                        previousState?.currentPlayerName === this.auth.playerName &&
+                        typeof previousState?.turnDeadlineEpochMs === 'number';
+                    const now = typeof update.data.serverTimeEpochMs === 'number'
+                        ? update.data.serverTimeEpochMs
+                        : this.displayNow();
+                    const turnExpired = hadActiveTurn && now >= (previousState!.turnDeadlineEpochMs as number);
+                    this.scheduleRedirect(turnExpired ? SESSION_SEAT_TIMED_OUT : SESSION_SEAT_GONE);
                     return;
                 }
 
@@ -1082,7 +1090,14 @@ export class GameSession {
             !this.snapshot.isGameOver &&
             !this.isRedirecting
         ) {
-            this.scheduleRedirect(SESSION_SEAT_GONE);
+            const hadActiveTurn =
+                previousState?.currentPlayerName === this.auth.playerName &&
+                typeof previousState?.turnDeadlineEpochMs === 'number';
+            const now = typeof data.serverTimeEpochMs === 'number'
+                ? data.serverTimeEpochMs
+                : this.displayNow();
+            const turnExpired = hadActiveTurn && now >= (previousState!.turnDeadlineEpochMs as number);
+            this.scheduleRedirect(turnExpired ? SESSION_SEAT_TIMED_OUT : SESSION_SEAT_GONE);
             return true;
         }
 
@@ -2035,7 +2050,7 @@ export class GameSession {
         }
 
         const remainingMs = room.inactivityDeadlineEpochMs - this.displayNow();
-        if (remainingMs <= 120_000) {
+        if (remainingMs <= INACTIVITY_WARNING_WINDOW_MS) {
             if (!this.snapshot.isLobbyInactivityWarningActive) {
                 this.updateSnapshot(() => ({ isLobbyInactivityWarningActive: true }));
             }
@@ -2046,7 +2061,7 @@ export class GameSession {
             this.updateSnapshot(() => ({ isLobbyInactivityWarningActive: false }));
         }
 
-        const delayUntilWarningMs = remainingMs - 120_000;
+        const delayUntilWarningMs = remainingMs - INACTIVITY_WARNING_WINDOW_MS;
         this.lobbyInactivityWarningTimer = this.clock.setTimeout(() => {
             this.lobbyInactivityWarningTimer = null;
             this.updateSnapshot(() => ({ isLobbyInactivityWarningActive: true }));
@@ -2077,7 +2092,7 @@ export class GameSession {
         }
 
         const remainingMs = deadline - this.displayNow();
-        if (remainingMs <= 120_000) {
+        if (remainingMs <= INACTIVITY_WARNING_WINDOW_MS) {
             if (!this.snapshot.isGameInactivityWarningActive) {
                 this.updateSnapshot(() => ({ isGameInactivityWarningActive: true }));
             }
@@ -2088,7 +2103,7 @@ export class GameSession {
             this.updateSnapshot(() => ({ isGameInactivityWarningActive: false }));
         }
 
-        const delayUntilWarningMs = remainingMs - 120_000;
+        const delayUntilWarningMs = remainingMs - INACTIVITY_WARNING_WINDOW_MS;
         this.gameInactivityWarningTimer = this.clock.setTimeout(() => {
             this.gameInactivityWarningTimer = null;
             this.updateSnapshot(() => ({ isGameInactivityWarningActive: true }));
