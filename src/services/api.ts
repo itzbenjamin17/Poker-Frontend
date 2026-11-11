@@ -119,10 +119,7 @@ export function isJwtValid(token: string): boolean {
         if (typeof record.exp === 'number') {
             return record.exp * 1000 > Date.now();
         }
-        if (record.exp !== undefined) {
-            return false;
-        }
-        return true;
+        return record.exp === undefined;
     } catch {
         return false;
     }

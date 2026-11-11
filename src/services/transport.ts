@@ -24,7 +24,7 @@ export interface GameTransport {
  * Production adapter wrapping the @stomp/stompjs Client behind the GameTransport port.
  */
 export class StompTransportAdapter implements GameTransport {
-    private client: Client;
+    private readonly client: Client;
     private statusListeners: Set<(status: TransportStatus) => void> = new Set();
     private errorListeners: Set<(error: string) => void> = new Set();
     private currentStatus: TransportStatus = 'disconnected';

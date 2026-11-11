@@ -19,8 +19,6 @@ const ButtonWithRef = Button as ComponentType<
     ComponentProps<typeof Button> & RefAttributes<HTMLButtonElement>
 >;
 
-export type DockState = 'ready_countdown' | 'waiting' | 'raising' | 'betting';
-
 interface ActionPanelProps {
     gameState: GameState;
     me: Player | undefined;

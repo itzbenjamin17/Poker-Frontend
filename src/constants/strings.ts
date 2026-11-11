@@ -5,8 +5,6 @@
 
 // ─── App / Nav ────────────────────────────────────────────────────────────────
 export const APP_NAME = 'POKER';
-export const NAV_LOBBY = 'Lobby';
-export const NAV_TABLES = 'Tables';
 
 // ─── Auth / Session ───────────────────────────────────────────────────────────
 export const AUTH_KEY = 'poker-auth';
@@ -25,13 +23,8 @@ export const BTN_RELOAD = 'Reload';
 // ─── Connection ───────────────────────────────────────────────────────────────
 export const STATUS_CONNECTING = 'Connecting...';
 export const STATUS_CONNECTED = 'Connected.';
-export const STATUS_RECONNECTING = 'Reconnecting...';
-export const STATUS_SEAT_RESTORED = 'Seat restored. Syncing live updates...';
-export const STATUS_RECONNECTING_TABLE = 'Reconnecting to table...';
 export const STATUS_RECOVERING_TABLE = 'Reconnecting / restoring table…';
 export const STATUS_RETURNING = 'Returning...';
-export const STATUS_WAITING_CONNECTION = 'Waiting for table connection...';
-export const STATUS_SYSTEM_MALFUNCTION = 'System malfunction. Please refresh.';
 export const BTN_RETRY_CONNECTION = 'Retry connection';
 export const BTN_RETRY = 'Retry';
 export const ERROR_INITIAL_TABLE_LOAD = 'Couldn’t load the table data. Please retry.';
@@ -88,12 +81,9 @@ export const ERROR_JOIN_FALLBACK = 'Failed to join room. Room may not exist or p
 
 // ─── Game Lobby ───────────────────────────────────────────────────────────────
 export const GAME_LOBBY_LABEL = 'Live Table';
-export const GAME_LOBBY_HEADING_PREFIX = 'GAME LOBBY:';
-export const BTN_LEAVE_LOBBY = 'LEAVE LOBBY';
 export const BTN_START_GAME = 'START GAME';
 export const BTN_STARTING_GAME = 'STARTING...';
 export const LABEL_WAITING_HOST = 'Waiting for host to start...';
-export const LABEL_WAITING_PLAYERS = 'Waiting for more...';
 export const LABEL_BLINDS = 'Blinds';
 export const LABEL_MIN_BUYIN = 'Min Buy-in';
 export const LABEL_TURN_TIME = 'Turn Time';
@@ -136,36 +126,23 @@ export const LABEL_UNCALLED = 'Uncalled';
 export const READY_PROMPT = 'Round complete. Confirm READY to continue.';
 export const BTN_READY = 'READY';
 export const BTN_UNREADY = 'WAITING... (UNREADY)';
-export const BTN_READY_CONFIRMED = 'READY CONFIRMED';
 export const LABEL_PLAYERS_READY_SUFFIX = 'players ready';
 
 // ─── Showdown ─────────────────────────────────────────────────────────────────
 export const SHOWDOWN_ROUND_RESULT = 'Round Result';
-export const SHOWDOWN_GAME_OVER = 'Game Over';
-export const SHOWDOWN_ROUND_OVER = 'Round Over';
 export const SHOWDOWN_PROCESSING = 'Processing results...';
 export const SHOWDOWN_HAND_COMPLETE = 'Hand complete';
 export const SHOWDOWN_CARRY_OVER = 'chips carry over';
 export const SHOWDOWN_MULTIPLE_WINNERS = 'Contested pots awarded to';
-export const SHOWDOWN_TIE_PREFIX = "It's a tie: ";
 export const SHOWDOWN_FORFEIT_SUFFIX = ' won by forfeit!';
 export const SHOWDOWN_WIN_SUFFIX = ' won!';
-export const SHOWDOWN_POT_SPLIT = 'Pot split equally';
 export const SHOWDOWN_WON_WITH_PREFIX = 'Won with ';
-export const SHOWDOWN_WON_ROUND = 'Won the round';
-export const SHOWDOWN_SHOW_DETAILS = 'Show result details';
-export const SHOWDOWN_HIDE_DETAILS = 'Hide result details';
 export const ARIA_ROUND_RESULT = 'Round Result';
 export const SHOWDOWN_BOARD_PLAYS_TOOLTIP = 'Hole cards do not play; best hand is on the board.';
 
 // ─── Notifications ────────────────────────────────────────────────────────────
 export const HOST_LEFT = 'Host left the lobby. Returning to main lobby...';
 export const LOBBY_INACTIVE_CLOSED = 'Lobby closed due to inactivity. Returning to main lobby...';
-export const GAME_FINISHED_FALLBACK = 'Game finished. Returning to lobby...';
-export const FAILED_LEAVE = 'Failed to leave game safely.';
-export const FAILED_START = 'Only the host can start the game.';
-export const RAISE_ERROR_GENERIC = 'Enter a valid amount.';
-export const RAISE_ERROR_FORBIDDEN_BET = 'That bet size is not allowed. Adjust the amount and try again.';
 
 // ─── Raise validation ────────────────────────────────────────────────────────
 export const RAISE_VALIDATION_WHOLE_NUMBER = 'Enter a whole number.';

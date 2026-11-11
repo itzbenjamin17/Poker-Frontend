@@ -1389,7 +1389,7 @@ export class GameSession {
                 : STATUS_RECOVERING_TABLE,
         }));
 
-        const syncPromise = loadSessionData({
+        return loadSessionData({
             auth: this.auth,
             isStarted: () => this.isStarted(),
             isHydrated: () => this.snapshot.isHydrated,
@@ -1419,8 +1419,6 @@ export class GameSession {
                     this.activeAttemptController = null;
                 }
             });
-
-        return syncPromise;
     };
 
     public recoverClaimReview = async (
