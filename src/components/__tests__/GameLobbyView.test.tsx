@@ -9,6 +9,7 @@ import {
     LABEL_INACTIVITY_LIMIT,
     VALUE_INACTIVITY_LIMIT,
     LOBBY_TIMING_RULE_DESC,
+    LABEL_TURN_TIME_EXPLANATION,
     LOBBY_INACTIVITY_WARNING_TITLE,
     LOBBY_INACTIVITY_WARNING_MESSAGE,
 } from '../../constants/strings';
@@ -146,7 +147,7 @@ describe('GameLobbyView', () => {
 
         expect(screen.getByText('Turn Time')).toBeInTheDocument();
         expect(screen.getByText('60s')).toBeInTheDocument();
-        expect(screen.getByText(/Each player has 60 seconds to act. Expired turns result in removal from the table./i)).toBeInTheDocument();
+        expect(screen.getByText(LABEL_TURN_TIME_EXPLANATION)).toBeInTheDocument();
     });
 
     it('renders the fixed 30-minute lobby timing rule under table rules', () => {
