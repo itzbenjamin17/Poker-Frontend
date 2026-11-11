@@ -2,10 +2,12 @@
 
 Reviewed against the frontend implementation on 2026-11-10.
 
-Active room credentials use tab-local sessionStorage rather than shared localStorage. Different tabs must represent different players or rooms without one join or leave replacing another tab's identity.
+Active room login credentials (`AuthSession`: `roomId`, `playerName`, and JWT `token`) are saved in the browser tab's `sessionStorage` rather than `localStorage`. Because `sessionStorage` is isolated per tab, a player or developer can open multiple tabs to join as different players or sit at different rooms without one tab overwriting another tab's login.
 
-This favors independent seats over shared-login behavior. Reload can restore a session, but storage is not a durable account login. Closing a tab is not an explicit server-side leave; disconnect and seat cleanup remain server concerns. Browser session restoration or opener-based duplication may retain or copy initial storage, so not every newly duplicated tab starts empty.
+Refreshing a tab restores its `AuthSession` from `sessionStorage`, whereas closing a tab does not send an explicit "leave room" request—the server handles closed tabs through its WebSocket disconnect grace period ([Backend ADR-0009]). Note that duplicating an existing tab in the browser may copy the original tab's initial `sessionStorage`.
 
-The identity boundary is the room, player name and token, not a browser-wide account. An expiry or late leave response for a previous token must not clear a replacement AuthSession. Changing to shared login would therefore require revisiting session lifecycle and final-review ownership as well as the storage API; see [ADR-0007](0007-versioned-offline-envelope-storage-for-post-game-review.md).
+Each `AuthSession` is tied to a specific `{ roomId, playerName, token }` triple rather than a global user account. If an old token expires or a delayed "leave room" response arrives after the tab has already joined a new room, the client checks the token before clearing `AuthSession` so an old request never logs out a newer session; see also [ADR-0007](0007-versioned-offline-envelope-storage-for-post-game-review.md).
 
-The client migrates and clears legacy shared auth and scopes expiry handling to the affected token. Compatibility mechanics live in [useAuthSession](../../src/hooks/useAuthSession.ts); leave-response ownership is enforced in [App](../../src/App.tsx). Server authorization remains necessary regardless of storage.
+On startup, `useAuthSession` migrates and deletes any old `localStorage` auth entries from earlier versions. All security and permission checks are still enforced by the backend server.
+
+Implementation: [useAuthSession](../../src/hooks/useAuthSession.ts), [App](../../src/App.tsx).

@@ -1,13 +1,13 @@
-# 0002: In-Process GameSession and GameTransport Port
+# 0002: In-Process GameSession and GameTransport Boundary
 
 Reviewed against the frontend implementation on 2026-11-10.
 
-Game state, incoming frames, recovery, action locks and session timers belong to an in-process GameSession rather than a collection of React state slices and effects. React subscribes through useSyncExternalStore. This makes lifecycle ownership explicit and permits session tests without rendering the UI.
+Room and table state, incoming WebSocket messages, reconnect recovery, action locks, and countdown timers live inside a plain TypeScript class (`GameSession`) rather than being spread across React `useState` and `useEffect` hooks. React components subscribe to `GameSession` snapshots (`SessionSnapshot`) using `useSyncExternalStore`. Keeping this logic in a standalone class makes it easy to follow and lets unit tests run full game sessions without rendering React components.
 
-Real-time communication sits behind GameTransport, with STOMP in production and an in-memory adapter for tests. Browser tests intercept the transport boundary instead of enabling production mock modes. The trade-off is an explicit store lifecycle, immutable snapshots and subscription cleanup that the application must maintain.
+Real-time messaging sits behind the `GameTransport` interface, which uses STOMP over WebSockets in production and a fast in-memory fake (`InMemoryTransportAdapter`) in unit tests. End-to-end browser tests intercept WebSocket traffic at the network boundary instead of adding test-only flags to production code. In exchange, `GameSession` is responsible for producing read-only `SessionSnapshot` objects and cleaning up subscriptions when unmounted.
 
-GameProvider attaches and detaches the session with the React lifecycle, while the session guards obsolete callbacks and owns recovery cancellation. An injected Clock makes session timers deterministic. Moving this ownership back into component effects would couple recovery and transport correctness to rendering again; a different state library alone would not remove that responsibility.
+`GameProvider` connects and disconnects `GameSession` when the React tree mounts and unmounts, while `GameSession` cancels outdated recovery requests and ignores stale timer callbacks. Passing in a `Clock` interface makes timer tests deterministic without waiting for real time to pass.
 
-The container supplies view data and commands. Some presentation components retain context compatibility fallbacks; this record does not claim every view is props-only. Backend poker rules remain authoritative.
+`GameView` passes table data and action callbacks down to UI components. Backend poker rules remain the single source of truth.
 
 Implementation: [GameSession](../../src/domain/GameSession.ts), [GameProvider](../../src/context/GameProvider.tsx), [transport](../../src/services/transport.ts).
