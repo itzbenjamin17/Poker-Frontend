@@ -361,6 +361,7 @@ describe('GameReviewView', () => {
                     isForfeit: false,
                     abandoned: true,
                     reason: 'INACTIVITY',
+                    message: 'Game abandoned due to inactivity.',
                 }}
                 gameState={mockGameState}
                 onLeave={mockOnLeave}
@@ -393,6 +394,7 @@ describe('GameReviewView', () => {
                     isForfeit: false,
                     abandoned: true,
                     reason: 'INACTIVITY',
+                    message: 'Game abandoned due to inactivity.',
                 }}
                 gameState={abandonedState}
                 onLeave={mockOnLeave}

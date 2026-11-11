@@ -305,6 +305,7 @@ describe('gameEndStorage', () => {
                 isForfeit: false,
                 abandoned: true,
                 reason: 'INACTIVITY',
+                message: 'Game abandoned due to inactivity.',
             };
 
             savePersistedGameEnd(authA, abandonmentResult);

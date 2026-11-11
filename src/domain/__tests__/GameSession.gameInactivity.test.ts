@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { GameSession } from '../GameSession';
 import { TestClock } from '../clock';
 import { InMemoryTransportAdapter } from '../../services/transport';
@@ -160,6 +160,7 @@ describe('GameSession Active Game Inactivity Lifecycle & Enforcement', () => {
             winnerName: null,
             abandoned: true,
             reason: 'INACTIVITY',
+            message: 'Game abandoned due to inactivity.',
             isForfeit: false,
         });
 
