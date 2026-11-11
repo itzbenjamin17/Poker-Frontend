@@ -98,7 +98,7 @@ export const LABEL_BLINDS = 'Blinds';
 export const LABEL_MIN_BUYIN = 'Min Buy-in';
 export const LABEL_TURN_TIME = 'Turn Time';
 export const LABEL_TURN_TIME_VALUE = '60s';
-export const LABEL_TURN_TIME_EXPLANATION = 'Each player has 60 seconds to act. Expired turns result in removal from the table, even before reconnect grace ends.';
+export const LABEL_TURN_TIME_EXPLANATION = 'Each player has 60 seconds to act. Expired turns result in removal from the table';
 export const LABEL_TURN_WARNING_SR = 'Warning: 10 seconds or less remaining to act.';
 export const LABEL_TURN_WARNING_BADGE = (seconds: number) => `⚠️ ${seconds}s left`;
 export const LABEL_TABLE_RULES = 'Table Rules';
