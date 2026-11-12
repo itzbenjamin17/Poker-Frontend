@@ -93,6 +93,14 @@ Preserve keyboard access, semantic labels, focus handling, reduced motion, and n
 
 ## Tests And CI
 
+### Execution And Verification
+
+- For bug fixes and feature logic, add a meaningful failing test first, confirm it fails for the intended reason, then implement and confirm it passes. Before geometry changes or refactors, establish passing behavioral or characterization coverage; do not create an artificial failure for that sequence.
+- Run Vitest once with `npm run test -- --run` (or target a file with `npm run test -- --run <test-file>`). Before logging checks, create the ignored `.scratch/` directory and redirect full output there, for example `npm run test -- --run <test-file> > .scratch/test.log 2>&1` or `npm run build > .scratch/build.log 2>&1`.
+- Report each relevant check with its command, pass/fail status, test count when applicable, and log path. Include checks not run and why; summarize failures from the log instead of pasting full output.
+- Inspect `git status` and the relevant diff before editing, and preserve unrelated changes. Stage only explicit paths with `git add <file>` when staging is authorized; do not stage or commit otherwise.
+- For documentation-only edits, review the diff, verify referenced links and paths, and check formatting. Application tests and builds are unnecessary unless the documentation changes executable configuration.
+
 - Vitest defaults to JSDOM through `vite.config.ts`; domain tests can opt into Node. Shared setup/fixtures and MSW/STOMP doubles live in `src/test/`.
 - Session flows use `TestClock` and `InMemoryTransportAdapter`. Component/integration tests exercise rendering, actions, recovery, and auth; geometry tests cover footprint fitting, anchoring, and preservation.
 - [playwright.config.ts](../../playwright.config.ts) runs Chromium specs in `e2e/` and starts Vite plus the sibling backend with the `e2e` profile. Override `BACKEND_DIR` when the backend is elsewhere. Java 25, backend configuration, and installed Playwright Chromium are prerequisites even when individual specs mock traffic.
