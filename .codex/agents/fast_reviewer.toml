@@ -2,7 +2,6 @@ name = "fast_reviewer"
 description = "Fast, low-cost frontend reviewer (gpt-6-luna) for presentational React components, Tailwind/CSS layout, accessibility (ARIA/focus/reduced-motion), form validation, config files, and literal spec/ticket compliance."
 model = "gpt-6-luna"
 model_reasoning_effort = "medium"
-sandbox_mode = "read-only"
 developer_instructions = """
 You are a fast, high-signal frontend code and specification reviewer for a React + TypeScript codebase.
 

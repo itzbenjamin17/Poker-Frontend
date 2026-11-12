@@ -2,7 +2,6 @@ name = "deep_reviewer"
 description = "Deep architectural reviewer (gpt-6.1-sol) for domain state machines, custom React hooks, context providers, REST/WebSocket lifecycles, async concurrency, timer management, and TypeScript runtime type safety."
 model = "gpt-6.1-sol"
 model_reasoning_effort = "high"
-sandbox_mode = "read-only"
 developer_instructions = """
 You are a staff-level TypeScript and React systems reviewer specializing in asynchronous concurrency, real-time transport lifecycles, and state integrity.
 
