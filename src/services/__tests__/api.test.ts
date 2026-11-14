@@ -72,7 +72,7 @@ describe('api service', () => {
         it('dispatches auth-expired and throws status 401 for locally expired token', async () => {
             const expiredToken = createJwt({ exp: Math.floor(Date.now() / 1000) - 3600 });
 
-            await expect(pokerApi.getRoomInfo('room-1', expiredToken)).rejects.toMatchObject({
+            await expect(pokerApi.getRoomData('room-1', expiredToken)).rejects.toMatchObject({
                 status: 401,
                 message: 'Session expired',
             });
@@ -91,7 +91,7 @@ describe('api service', () => {
                 })
             );
 
-            await expect(pokerApi.getRoomInfo('room-1', validToken)).rejects.toMatchObject({
+            await expect(pokerApi.getRoomData('room-1', validToken)).rejects.toMatchObject({
                 status: 401,
             });
 
@@ -136,7 +136,7 @@ describe('api service', () => {
             });
 
             try {
-                const promise = pokerApi.getRoomInfo('room-1', validToken);
+                const promise = pokerApi.getRoomData('room-1', validToken);
                 const assertion = expect(promise).rejects.toMatchObject({
                     status: 408,
                     message: 'Request timed out. Please try again.',
@@ -153,7 +153,7 @@ describe('api service', () => {
             const fetchSpy = vi.spyOn(globalThis, 'fetch').mockRejectedValueOnce(new TypeError('Failed to fetch'));
 
             try {
-                await expect(pokerApi.getRoomInfo('room-1', validToken)).rejects.toMatchObject({
+                await expect(pokerApi.getRoomData('room-1', validToken)).rejects.toMatchObject({
                     status: 0,
                     message: 'Unable to reach the server. Check your connection.',
                 });
@@ -176,7 +176,7 @@ describe('api service', () => {
                     return HttpResponse.json({ message: 'Room not found in registry' }, { status: 404 });
                 })
             );
-            await expect(pokerApi.getRoomInfo('room-1', validToken)).rejects.toMatchObject({
+            await expect(pokerApi.getRoomData('room-1', validToken)).rejects.toMatchObject({
                 status: 404,
                 message: 'Room not found in registry',
             });
@@ -196,7 +196,7 @@ describe('api service', () => {
                     return HttpResponse.json({ error: 'Unauthorized operation' }, { status: 400 });
                 })
             );
-            await expect(pokerApi.getRoomInfo('room-1', validToken)).rejects.toMatchObject({
+            await expect(pokerApi.getRoomData('room-1', validToken)).rejects.toMatchObject({
                 status: 400,
                 message: 'Unauthorized operation',
             });
@@ -213,7 +213,7 @@ describe('api service', () => {
                     return new HttpResponse('rate limited', { status: 429 });
                 })
             );
-            await expect(pokerApi.getRoomInfo('room-1', validToken)).rejects.toMatchObject({
+            await expect(pokerApi.getRoomData('room-1', validToken)).rejects.toMatchObject({
                 status: 429,
                 message: 'Too many requests. Please try again later.',
             });
@@ -230,7 +230,7 @@ describe('api service', () => {
                     return new HttpResponse('', { status: 500 });
                 })
             );
-            await expect(pokerApi.getRoomInfo('room-1', validToken)).rejects.toMatchObject({
+            await expect(pokerApi.getRoomData('room-1', validToken)).rejects.toMatchObject({
                 status: 500,
                 message: 'Request failed',
             });
@@ -257,7 +257,7 @@ describe('api service', () => {
                     });
                 })
             );
-            await expect(pokerApi.getRoomInfo('room-1', validToken)).rejects.toMatchObject({
+            await expect(pokerApi.getRoomData('room-1', validToken)).rejects.toMatchObject({
                 status,
                 message: ERROR_TECHNICAL,
             });
@@ -312,7 +312,7 @@ describe('api service', () => {
                     });
                 })
             );
-            await expect(pokerApi.getRoomInfo('room-1', validToken)).rejects.toMatchObject({
+            await expect(pokerApi.getRoomData('room-1', validToken)).rejects.toMatchObject({
                 status: 500,
                 message: ERROR_SYSTEM,
             });
@@ -410,7 +410,7 @@ describe('api service', () => {
             const validToken = createJwt({ exp: Math.floor(Date.now() / 1000) + 3600 });
             server.use(http.get('/api/room/:roomId', response));
 
-            await expect(pokerApi.getRoomInfo('room-1', validToken)).rejects.toMatchObject({
+            await expect(pokerApi.getRoomData('room-1', validToken)).rejects.toMatchObject({
                 status: 502,
                 message: 'The server returned an invalid response. Please try again.',
             });

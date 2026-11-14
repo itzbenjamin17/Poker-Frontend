@@ -209,18 +209,13 @@ async function fetchApi<T>(url: string, options: RequestInit & { token?: string;
 
 function resolveAuthAndSignal(
     tokenOrSignal?: string | AbortSignal,
-    playerNameOrSignal?: string | AbortSignal,
     signal?: AbortSignal
-): { token?: string; playerName?: string; signal?: AbortSignal } {
+): { token?: string; signal?: AbortSignal } {
     if (tokenOrSignal instanceof AbortSignal) {
         return { signal: tokenOrSignal };
     }
     const token = typeof tokenOrSignal === 'string' ? tokenOrSignal : undefined;
-    if (playerNameOrSignal instanceof AbortSignal) {
-        return { token, signal: playerNameOrSignal };
-    }
-    const playerName = typeof playerNameOrSignal === 'string' ? playerNameOrSignal : undefined;
-    return { token, playerName, signal };
+    return { token, signal };
 }
 
 export const pokerApi = {
@@ -266,35 +261,27 @@ export const pokerApi = {
         return normalizeAuthResponse(data);
     },
 
-    async getRoomInfo(roomId: string, token?: string, signal?: AbortSignal): Promise<RoomDataResponse> {
-        return fetchApi<RoomDataResponse>(`${API_BASE}/room/${encodeURIComponent(roomId)}`, {
-            method: 'GET',
-            token,
-            signal,
-            expectJson: true,
-        });
-    },
-
     async getRoomData(roomId: string, tokenOrSignal?: string | AbortSignal, signal?: AbortSignal): Promise<RoomDataResponse> {
         const resolved = resolveAuthAndSignal(tokenOrSignal, signal);
-        return pokerApi.getRoomInfo(roomId, resolved.token, resolved.signal);
-    },
-
-    async getGameState(gameId: string, token?: string, signal?: AbortSignal): Promise<unknown> {
-        return fetchApi<unknown>(`${API_BASE}/game/${encodeURIComponent(gameId)}/state`, {
+        return fetchApi<RoomDataResponse>(`${API_BASE}/room/${encodeURIComponent(roomId)}`, {
             method: 'GET',
-            token,
-            signal,
+            token: resolved.token,
+            signal: resolved.signal,
             expectJson: true,
         });
     },
 
     async getPublicGameState(gameId: string, tokenOrSignal?: string | AbortSignal, signal?: AbortSignal): Promise<unknown> {
         const resolved = resolveAuthAndSignal(tokenOrSignal, signal);
-        return pokerApi.getGameState(gameId, resolved.token, resolved.signal);
+        return fetchApi<unknown>(`${API_BASE}/game/${encodeURIComponent(gameId)}/state`, {
+            method: 'GET',
+            token: resolved.token,
+            signal: resolved.signal,
+            expectJson: true,
+        });
     },
 
-    async getPrivateState(gameId: string, token: string, signal?: AbortSignal): Promise<unknown> {
+    async getPrivatePlayerState(gameId: string, token: string, signal?: AbortSignal): Promise<unknown> {
         return fetchApi<unknown>(`${API_BASE}/game/${encodeURIComponent(gameId)}/private-state`, {
             method: 'GET',
             token,
@@ -303,19 +290,13 @@ export const pokerApi = {
         });
     },
 
-    async getPrivatePlayerState(gameId: string, token: string, signal?: AbortSignal): Promise<unknown> {
-        return pokerApi.getPrivateState(gameId, token, signal);
-    },
-
     async getReview(
         gameId: string,
         tokenOrSignal?: string | AbortSignal,
-        playerNameOrSignal?: string | AbortSignal,
         signal?: AbortSignal
     ): Promise<GameEndResult> {
-        const resolved = resolveAuthAndSignal(tokenOrSignal, playerNameOrSignal, signal);
-        const query = resolved.playerName ? `?playerName=${encodeURIComponent(resolved.playerName)}` : '';
-        const raw = await fetchApi<unknown>(`${API_BASE}/game/${encodeURIComponent(gameId)}/review${query}`, {
+        const resolved = resolveAuthAndSignal(tokenOrSignal, signal);
+        const raw = await fetchApi<unknown>(`${API_BASE}/game/${encodeURIComponent(gameId)}/review`, {
             method: 'GET',
             token: resolved.token,
             signal: resolved.signal,
@@ -330,10 +311,6 @@ export const pokerApi = {
 
     async leaveRoom(roomId: string, token: string, keepalive = false, signal?: AbortSignal): Promise<void> {
         await fetchApi<void>(`${API_BASE}/room/${encodeURIComponent(roomId)}/leave`, { method: 'POST', token, keepalive, signal });
-    },
-
-    async leaveGame(gameId: string, token: string, keepalive = false, signal?: AbortSignal): Promise<void> {
-        await fetchApi<void>(`${API_BASE}/game/${encodeURIComponent(gameId)}/leave`, { method: 'POST', token, keepalive, signal });
     },
 
     async startGame(roomId: string, token: string, signal?: AbortSignal): Promise<unknown> {

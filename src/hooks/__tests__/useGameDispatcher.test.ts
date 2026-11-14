@@ -18,7 +18,6 @@ vi.mock('../../services/api', async (importOriginal) => {
             startGame: vi.fn(),
             claimWin: vi.fn(),
             getReview: vi.fn(),
-            leaveGame: vi.fn(),
             leaveRoom: vi.fn(),
         },
     };
@@ -383,7 +382,6 @@ describe('useGameDispatcher', () => {
     });
 
     it('dispatch LEAVE_GAME calls the shared room departure endpoint once', async () => {
-        const leaveGameSpy = vi.mocked(pokerApi.leaveGame).mockResolvedValue();
         const leaveRoomSpy = vi.mocked(pokerApi.leaveRoom).mockResolvedValue();
         const clearShowdownSpy = vi.spyOn(session, 'clearShowdownTimers');
         session.applyPrivateState({ playerId: 'p-1', holeCards: ['AS', 'KS'] });
@@ -398,7 +396,6 @@ describe('useGameDispatcher', () => {
 
         expect(clearShowdownSpy).toHaveBeenCalled();
         expect(session.getSnapshot().privateState).toBeNull();
-        expect(leaveGameSpy).not.toHaveBeenCalled();
         expect(leaveRoomSpy).toHaveBeenCalledWith('ROOM123', 'test-token', false, expect.any(AbortSignal));
         expect(leaveRoomSpy).toHaveBeenCalledTimes(1);
         expect(onLeave).toHaveBeenCalled();
@@ -406,7 +403,6 @@ describe('useGameDispatcher', () => {
 
     it('retains the session and surfaces an error when room departure fails', async () => {
         const error = Object.assign(new Error('Network failure'), { status: 500 });
-        const leaveGameSpy = vi.mocked(pokerApi.leaveGame);
         const leaveRoomSpy = vi.mocked(pokerApi.leaveRoom).mockRejectedValue(error);
         const clearShowdownSpy = vi.spyOn(session, 'clearShowdownTimers');
         session.applyPrivateState({ playerId: 'p-1', holeCards: ['AS', 'KS'] });
@@ -423,7 +419,6 @@ describe('useGameDispatcher', () => {
             await result.current.dispatch({ type: 'LEAVE_GAME' });
         });
 
-        expect(leaveGameSpy).not.toHaveBeenCalled();
         expect(leaveRoomSpy).toHaveBeenCalledWith('ROOM123', 'test-token', false, expect.any(AbortSignal));
         expect(leaveRoomSpy).toHaveBeenCalledTimes(1);
         expect(clearShowdownSpy).not.toHaveBeenCalled();
@@ -433,7 +428,6 @@ describe('useGameDispatcher', () => {
     });
 
     it('dispatch LEAVE_REVIEW clears persisted game-end snapshot and calls onLeave even if REST fails', async () => {
-        const leaveGameSpy = vi.mocked(pokerApi.leaveGame);
         const leaveRoomSpy = vi.mocked(pokerApi.leaveRoom);
         const clearShowdownSpy = vi.spyOn(session, 'clearShowdownTimers');
         const { result } = renderHook(() => useGameDispatcher(), {
@@ -450,7 +444,6 @@ describe('useGameDispatcher', () => {
 
         expect(sessionStorage.getItem('poker-game-end:ROOM123')).toBeNull();
         expect(leaveRoomSpy).not.toHaveBeenCalled();
-        expect(leaveGameSpy).not.toHaveBeenCalled();
         expect(clearShowdownSpy).toHaveBeenCalled();
         expect(session.getSnapshot().gameState).toBeNull();
         expect(onLeave).toHaveBeenCalled();

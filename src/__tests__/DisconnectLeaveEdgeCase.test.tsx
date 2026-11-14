@@ -12,13 +12,12 @@ vi.mock('../services/api', async (importOriginal) => {
     return {
         ...actual,
         pokerApi: {
-            getRoomInfo: vi.fn().mockResolvedValue(null),
-            getGameState: vi.fn().mockResolvedValue(null),
-            getPrivateState: vi.fn().mockResolvedValue(null),
+            getRoomData: vi.fn().mockResolvedValue(null),
+            getPublicGameState: vi.fn().mockResolvedValue(null),
+            getPrivatePlayerState: vi.fn().mockResolvedValue(null),
             getReview: vi.fn().mockRejectedValue(Object.assign(new Error('Review not found'), { status: 404 })),
             startGame: vi.fn(),
             claimWin: vi.fn(),
-            leaveGame: vi.fn(),
             leaveRoom: vi.fn(),
         },
     };
@@ -54,7 +53,7 @@ describe('Disconnect & Leave Edge Cases', () => {
         sessionStorage.clear();
         window.innerWidth = 1280;
         window.innerHeight = 800;
-        vi.mocked(pokerApi.getRoomInfo).mockResolvedValue({
+        vi.mocked(pokerApi.getRoomData).mockResolvedValue({
             roomId: 'ROOM123',
             roomName: 'Test',
             players: [
@@ -71,8 +70,8 @@ describe('Disconnect & Leave Edge Cases', () => {
             hostName: 'P1',
             currentPlayers: 2,
         });
-        vi.mocked(pokerApi.getGameState).mockResolvedValue(initialGameState);
-        vi.mocked(pokerApi.getPrivateState).mockResolvedValue({ playerId: 'p-1', handNumber: 0, holeCards: ['2c', '4h'] });
+        vi.mocked(pokerApi.getPublicGameState).mockResolvedValue(initialGameState);
+        vi.mocked(pokerApi.getPrivatePlayerState).mockResolvedValue({ playerId: 'p-1', handNumber: 0, holeCards: ['2c', '4h'] });
     });
 
     afterEach(() => {
@@ -80,7 +79,7 @@ describe('Disconnect & Leave Edge Cases', () => {
     });
 
     it('defers a server GAME_END review during leave and keeps it when departure fails', async () => {
-        vi.mocked(pokerApi.getPrivateState).mockResolvedValue({ playerId: 'p-2', handNumber: 0, holeCards: ['2c', '4h'] });
+        vi.mocked(pokerApi.getPrivatePlayerState).mockResolvedValue({ playerId: 'p-2', handNumber: 0, holeCards: ['2c', '4h'] });
         const transport = new InMemoryTransportAdapter();
         const clock = new TestClock(1000);
         const onLeave = vi.fn();
@@ -145,7 +144,7 @@ describe('Disconnect & Leave Edge Cases', () => {
     });
 
     it('clears a GAME_END review after a successful standalone fallback leave and provider effects', async () => {
-        vi.mocked(pokerApi.getPrivateState).mockResolvedValue({ playerId: 'p-2', handNumber: 0, holeCards: ['2c', '4h'] });
+        vi.mocked(pokerApi.getPrivatePlayerState).mockResolvedValue({ playerId: 'p-2', handNumber: 0, holeCards: ['2c', '4h'] });
         const transport = new InMemoryTransportAdapter();
         const session = new GameSession({
             auth: { ...mockAuth, playerName: 'P2' },
@@ -189,7 +188,7 @@ describe('Disconnect & Leave Edge Cases', () => {
             roomId: 'ROOM123', roomName: 'Test', players: [{ name: 'P1', isHost: true }], gameStarted: true,
         } });
         session.setHydrated(true);
-        vi.mocked(pokerApi.getGameState).mockImplementation(() => new Promise(() => {}));
+        vi.mocked(pokerApi.getPublicGameState).mockImplementation(() => new Promise(() => {}));
         const requestLeave = vi.fn().mockResolvedValue(false);
         vi.spyOn(window, 'confirm').mockReturnValue(true);
 
@@ -235,7 +234,7 @@ describe('Disconnect & Leave Edge Cases', () => {
             const onLeave = vi.fn();
             const session = new GameSession({ auth: mockAuth, transport, clock, onLeave });
             const notFoundErr = Object.assign(new Error('Game not found'), { status: 404 });
-            vi.mocked(pokerApi.getGameState).mockRejectedValue(notFoundErr);
+            vi.mocked(pokerApi.getPublicGameState).mockRejectedValue(notFoundErr);
 
             render(<GameView auth={mockAuth} onLeave={onLeave} session={session} />);
 

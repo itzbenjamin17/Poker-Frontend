@@ -352,7 +352,6 @@ describe('GameView - Actions & Flows Integration', () => {
                 handNumber: 0,
                 holeCards: ['AS', 'KS'],
             })),
-            http.post('/api/game/ROOM123/leave', () => new HttpResponse(null, { status: 200 })),
             http.post('/api/room/ROOM123/leave', () => new HttpResponse(null, { status: 200 }))
         );
 

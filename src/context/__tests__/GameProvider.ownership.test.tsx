@@ -19,8 +19,8 @@ vi.mock('../../services/api', async (importOriginal) => {
         pokerApi: {
             ...actual.pokerApi,
             getRoomData: vi.fn(),
-            getGame: vi.fn(),
-            getPrivateState: vi.fn(),
+            getPublicGameState: vi.fn(),
+            getPrivatePlayerState: vi.fn(),
             getReview: vi.fn(),
             claimWin: vi.fn(),
             startGame: vi.fn(),

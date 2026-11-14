@@ -245,7 +245,6 @@ Commands (`POST`) return `ApiResponse<T>` (`{ message, data }`), whereas queries
 | `GET` | `/api/game/:gameId/state` | Fetch the current public game snapshot |
 | `GET` | `/api/game/:gameId/private-state` | Fetch the authenticated player's hole cards |
 | `GET` | `/api/game/:gameId/review` | Fetch the frozen terminal game review snapshot |
-| `POST` | `/api/game/:gameId/leave` | Leave an active game |
 | `POST` | `/api/game/:gameId/claim-win` | Claim victory when all other remaining players are disconnected |
 
 ### WebSocket Channels (STOMP over `/ws`)

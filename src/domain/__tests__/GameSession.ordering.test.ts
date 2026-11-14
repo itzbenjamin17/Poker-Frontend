@@ -188,10 +188,8 @@ describe('GameSession Public State Ordering & Revision Invariants', () => {
         const customApi = {
             ...pokerApi,
             getPublicGameState: vi.fn(() => restPromise),
-            getGameState: vi.fn(() => restPromise),
             getRoomData: vi.fn(() => Promise.resolve({ roomId: 'room-ordering', roomName: 'Room', players: [{ name: 'Hero', isHost: true }], maxPlayers: 6, buyIn: 100, smallBlind: 5, bigBlind: 10, createdAt: '2026-01-01', hostName: 'Hero', currentPlayers: 1, canStartGame: false, gameStarted: true })),
             getPrivatePlayerState: vi.fn(() => Promise.resolve({ handNumber: 0, playerId: 'p1', holeCards: ['Ah', 'Kh'] })),
-            getPrivateState: vi.fn(() => Promise.resolve({ handNumber: 0, playerId: 'p1', holeCards: ['Ah', 'Kh'] })),
         };
 
         const sessionWithApi = new GameSession({
@@ -253,10 +251,8 @@ describe('GameSession Public State Ordering & Revision Invariants', () => {
         const customApi = {
             ...pokerApi,
             getPublicGameState: vi.fn(() => Promise.resolve(makeGameState({ handNumber: 1, stateRevision: 2, pot: 250 }))),
-            getGameState: vi.fn(() => Promise.resolve(makeGameState({ handNumber: 1, stateRevision: 2, pot: 250 }))),
             getRoomData: vi.fn(() => Promise.resolve({ roomId: 'room-ordering', roomName: 'Room', players: [{ name: 'Hero', isHost: true }], maxPlayers: 6, buyIn: 100, smallBlind: 5, bigBlind: 10, createdAt: '2026-01-01', hostName: 'Hero', currentPlayers: 1, canStartGame: false, gameStarted: true })),
             getPrivatePlayerState: vi.fn(() => Promise.resolve({ handNumber: 1, playerId: 'p1', holeCards: ['As', 'Ks'] })),
-            getPrivateState: vi.fn(() => Promise.resolve({ handNumber: 1, playerId: 'p1', holeCards: ['As', 'Ks'] })),
         };
 
         const session = new GameSession({

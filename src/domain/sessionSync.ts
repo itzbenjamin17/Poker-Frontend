@@ -62,11 +62,7 @@ export async function loadSessionData(deps: SessionSyncDeps): Promise<SyncResult
         if (shouldFetchRoom) {
             let roomRaw: unknown;
             try {
-                roomRaw = typeof api.getRoomData === 'function'
-                    ? await api.getRoomData(auth.roomId, auth.token, attemptController.signal)
-                    : typeof api.getRoomInfo === 'function'
-                    ? await api.getRoomInfo(auth.roomId, auth.token, attemptController.signal)
-                    : await Promise.reject(new Error('api.getRoomInfo is not a function'));
+                roomRaw = await api.getRoomData(auth.roomId, auth.token, attemptController.signal);
             } catch (err) {
                 if (signal.aborted) {
                     attemptController.abort();
@@ -110,16 +106,8 @@ export async function loadSessionData(deps: SessionSyncDeps): Promise<SyncResult
         }
 
         // 3. If started, fetch public and private state concurrently
-        const fetchPublic = typeof api.getPublicGameState === 'function'
-            ? api.getPublicGameState(auth.roomId, auth.token, attemptController.signal)
-            : typeof api.getGameState === 'function'
-            ? api.getGameState(auth.roomId, auth.token, attemptController.signal)
-            : Promise.reject(new Error('api.getGameState is not a function'));
-        const fetchPrivate = typeof api.getPrivatePlayerState === 'function'
-            ? api.getPrivatePlayerState(auth.roomId, auth.token, attemptController.signal)
-            : typeof api.getPrivateState === 'function'
-            ? api.getPrivateState(auth.roomId, auth.token, attemptController.signal)
-            : Promise.reject(new Error('api.getPrivateState is not a function'));
+        const fetchPublic = api.getPublicGameState(auth.roomId, auth.token, attemptController.signal);
+        const fetchPrivate = api.getPrivatePlayerState(auth.roomId, auth.token, attemptController.signal);
 
         // If either request rejects, immediately abort in-flight sibling to prevent hanging / deadlocks
         let publicError: unknown = null;
