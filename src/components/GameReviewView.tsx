@@ -1,7 +1,7 @@
 import { CommunityCardsArea } from './CommunityCardsArea';
 import { Button } from './UI';
 import { CardUI } from './GameUI';
-import { formatHandRank, formatEndMessage } from '../lib/game';
+import { formatHandRank } from '../lib/game';
 import { Trophy } from 'lucide-react';
 import {
     BTN_LEAVE_REVIEW,
@@ -31,7 +31,6 @@ export function GameReviewView({ gameEndResult, gameState, onLeave, leaveError, 
     const winnerName = isAbandoned ? null : gameEndResult.winnerName;
     const isForfeit = isAbandoned ? false : gameEndResult.isForfeit;
     const winnerChips = isAbandoned ? undefined : gameEndResult.winnerChips;
-    const message = isAbandoned ? null : formatEndMessage(gameEndResult.message);
 
     const sourcePlayers = activeState?.players ?? [];
     const sortedPlayers = isAbandoned
@@ -95,11 +94,6 @@ export function GameReviewView({ gameEndResult, gameState, onLeave, leaveError, 
                             </>
                         )}
                     </div>
-                    {message && (
-                        <div className="max-w-md mx-auto p-4 bg-white/5 border border-white/10 rounded-lg">
-                            <p className="text-neutral-300 italic">{message}</p>
-                        </div>
-                    )}
                 </div>
 
                 {/* Final Board */}

@@ -98,12 +98,6 @@ export function formatHandRankShort(handRank: string | undefined, tier: TableTie
     return tier === 'compact' ? forms[1] : forms[0];
 }
 
-/** Returns null for backend sentinel values (e.g. 'NO_HAND') that should not be displayed. */
-export function formatEndMessage(message?: string): string | null {
-    if (!message || message.toUpperCase() === 'NO_HAND') return null;
-    return message;
-}
-
 export const SHOWDOWN_UNUSED_CARD_CLASS = 'grayscale brightness-75 contrast-90';
 
 export function getShowdownHoleCardState(

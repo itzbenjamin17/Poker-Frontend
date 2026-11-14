@@ -60,7 +60,6 @@ describe('GameReviewView', () => {
         expect(screen.getByRole('region', { name: /game review/i })).toBeInTheDocument();
         expect(screen.getByText(/WinnerPlayer wins!/i)).toBeInTheDocument();
         expect(screen.getByText(/Collected 5000 chips/i)).toBeInTheDocument();
-        expect(screen.getByText(/WinnerPlayer wins with a Royal Flush!/i)).toBeInTheDocument();
         
         // Check final standings
         expect(screen.getByText('WinnerPlayer')).toBeInTheDocument();

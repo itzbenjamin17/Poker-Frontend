@@ -115,7 +115,7 @@ describe('GameEnd Auth Binding & Offline Review Integration', () => {
         // 4. Assert GameReviewView renders terminal standings immediately from valid auth-bound cache
         const gameOverHeading = await screen.findByRole('heading', { name: /game over/i });
         expect(gameOverHeading).toBeInTheDocument();
-        expect(screen.getByText(/Alice won the game!/i)).toBeInTheDocument();
+        expect(screen.getByText(/Alice wins!/i)).toBeInTheDocument();
         expect(screen.getByText(/Collected 5000 chips/i)).toBeInTheDocument();
 
         // Check community cards from finalState
@@ -353,7 +353,7 @@ describe('GameEnd Auth Binding & Offline Review Integration', () => {
         render(<App />);
 
         expect(await screen.findByRole('heading', { name: /game over/i })).toBeInTheDocument();
-        expect(screen.getByText(/Alice won the game!/i)).toBeInTheDocument();
+        expect(screen.getByText(/Alice wins!/i)).toBeInTheDocument();
 
         const leaveButton = screen.getByRole('button', { name: /leave/i });
         await user.click(leaveButton);
