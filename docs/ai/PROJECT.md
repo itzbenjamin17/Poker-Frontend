@@ -21,10 +21,10 @@ Use `npm ci` to install the lockfile dependencies. CI uses Node.js 22; see [the 
 | `npm run test -- --run` | Run Vitest once; plain `npm run test` uses Vitest's default interactive behavior. |
 | `npm run test -- --run <test-file>` | Run a targeted Vitest test file. |
 | `npm run test:all` | Run Vitest once, then the standard Playwright suite. |
-| `npm run backend:test` | Invoke the sibling backend with the `test` profile using the Windows Maven wrapper. |
+| `npm run backend:e2e` | Invoke the sibling backend on port 8080 with `spring-boot:test-run` and `test,frontend-e2e` profiles using the Windows Maven wrapper. |
 | `npm run layout:overlap` / `npm run layout:screenshots` / `npm run layout:all` | Run optional layout diagnostics using the separate layout Playwright configuration. |
 
-Scripts are defined in `package.json`; proxying and Vitest setup are in [vite.config.ts](../../vite.config.ts). The `backend:test` script is distinct from Playwright's backend setup: backend test resources use a random server port, while standard Playwright expects port 8080 and the `e2e` profile.
+Scripts are defined in `package.json`; proxying and Vitest setup are in [vite.config.ts](../../vite.config.ts). The `backend:e2e` script matches Playwright's backend setup (`spring-boot:test-run` with `test,frontend-e2e` profiles on port 8080, so Playwright can reuse a locally started backend).
 
 [api.ts](../../src/services/api.ts) reads these Vite build-time settings:
 
@@ -103,7 +103,7 @@ Preserve keyboard access, semantic labels, focus handling, reduced motion, and n
 
 - Vitest defaults to JSDOM through `vite.config.ts`; domain tests can opt into Node. Shared setup/fixtures and MSW/STOMP doubles live in `src/test/`.
 - Session flows use `TestClock` and `InMemoryTransportAdapter`. Component/integration tests exercise rendering, actions, recovery, and auth; geometry tests cover footprint fitting, anchoring, and preservation.
-- [playwright.config.ts](../../playwright.config.ts) runs Chromium specs in `e2e/` and starts Vite plus the sibling backend with the `e2e` profile. Override `BACKEND_DIR` when the backend is elsewhere. Java 25, backend configuration, and installed Playwright Chromium are prerequisites even when individual specs mock traffic.
+- [playwright.config.ts](../../playwright.config.ts) runs Chromium specs in `e2e/` and starts Vite plus the sibling backend with `spring-boot:test-run` and the `test,frontend-e2e` profiles. Override `BACKEND_DIR` when the backend is elsewhere. Java 25, backend configuration, and installed Playwright Chromium are prerequisites even when individual specs mock traffic.
 - Mocked browser flows use [stompWsMock.ts](../../e2e/support/stompWsMock.ts) and Playwright `routeWebSocket`. Keep mocks at the transport boundary rather than add production test switches.
 - [playwright.layout.config.ts](../../playwright.layout.config.ts) runs `scripts/layout/` diagnostics with Vite only. These are separate from standard E2E and are not run by the normal CI workflow.
 - The `main` push/PR workflow runs lint, Vitest, standard Playwright with the companion backend, and the production build. Successful pushes to `main` then build/push Docker images.
