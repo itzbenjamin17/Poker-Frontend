@@ -2,6 +2,7 @@ import { useMemo, useRef, useState } from 'react';
 import type { ComponentProps, ComponentType, RefAttributes } from 'react';
 import { motion, AnimatePresence, useReducedMotion } from 'motion/react';
 import { cn } from '../lib/cn';
+import { rangeSliderStyle } from '../lib/rangeSlider';
 import { Button } from './UI';
 import {
     BTN_FOLD, BTN_CHECK, BTN_CALL_PREFIX, BTN_ALL_IN_PREFIX,
@@ -345,7 +346,9 @@ export function ActionPanel({
                                             aria-label={ARIA_RAISE_AMOUNT}
                                             aria-describedby={activeRaiseError ? 'raise-amount-error' : undefined}
                                             aria-invalid={hasError}
-                                            className="w-24 sm:w-32 md:w-36 cursor-pointer accent-gold-secondary h-1.5"
+                                            aria-valuetext={`$${parsedRaiseAmount.toLocaleString()}`}
+                                            className="range-slider range-slider-compact range-slider-gold w-24 sm:w-32 md:w-36"
+                                            style={rangeSliderStyle(parsedRaiseAmount, defaultRaiseAmount, Math.max(defaultRaiseAmount, availableChips))}
                                             value={parsedRaiseAmount}
                                             onChange={e => handleRaiseChange(e.target.value)}
                                             min={defaultRaiseAmount}

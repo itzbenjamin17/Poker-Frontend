@@ -65,6 +65,15 @@ describe('ActionPanel', () => {
         expect(screen.getByRole('slider', { name: /raise amount/i })).toHaveValue('60');
         expect(screen.getByText('60')).toBeInTheDocument();
     });
+    it('announces the raise slider value in the same formatted dollars it shows', async () => {
+        const user = userEvent.setup();
+        renderActionPanel({
+            gameState: { ...mockGameState, minimumRaiseAmount: 1500 },
+            me: { ...mockMe, chips: 5000 },
+        });
+        await user.click(screen.getByRole('button', { name: /^raise$/i }));
+        expect(screen.getByRole('slider', { name: /raise amount/i })).toHaveAttribute('aria-valuetext', '$1,500');
+    });
     it('submits the backend minimum in incremental chips after the call amount', async () => {
         const user = userEvent.setup();
         const onAction = vi.fn();

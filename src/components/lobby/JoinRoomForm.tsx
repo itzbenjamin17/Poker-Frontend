@@ -86,6 +86,7 @@ export function JoinRoomForm({ onAuth, onError, isSubmitting, loading = false, d
                     <Input
                         label={LABEL_PASSWORD_OPTIONAL}
                         type="password"
+                        autoComplete="current-password"
                         placeholder={PLACEHOLDER_PASSWORD_OPTIONAL}
                         value={joinData.password}
                         onChange={e => setJoinData({ ...joinData, password: e.target.value })}

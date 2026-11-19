@@ -15,6 +15,7 @@ import { VALIDATION, validateCreate, parseCreateRoomSubmission } from './validat
 import { useLobbyRequest } from './useLobbyRequest';
 import type { LobbyRequestLock } from './useLobbyRequest';
 import type { AuthResponse } from '../../types';
+import { rangeSliderStyle } from '../../lib/rangeSlider';
 
 interface CreateRoomFormProps {
     onAuth: (data: AuthResponse) => void;
@@ -95,6 +96,7 @@ export function CreateRoomForm({ onAuth, onError, isSubmitting, loading = false,
                         <Input
                             label={LABEL_PASSWORD_OPTIONAL}
                             type="password"
+                            autoComplete="new-password"
                             placeholder={PLACEHOLDER_PASSWORD_OPTIONAL}
                             value={createData.password}
                             onChange={e => setCreateData({ ...createData, password: e.target.value })}
@@ -142,7 +144,8 @@ export function CreateRoomForm({ onAuth, onError, isSubmitting, loading = false,
                                 const v = Number.parseInt(e.target.value, 10);
                                 setCreateData({ ...createData, maxPlayers: Number.isNaN(v) ? createData.maxPlayers : v });
                             }}
-                            className="w-full h-2 rounded-full appearance-none cursor-pointer bg-surface-highest accent-emerald-primary focus:outline-none focus:ring-1 focus:ring-emerald-primary/30"
+                            className="range-slider w-full"
+                            style={rangeSliderStyle(createData.maxPlayers, VALIDATION.maxPlayers.min, VALIDATION.maxPlayers.max)}
                         />
                         <div className="flex justify-between text-[10px] text-zinc-600 font-headline select-none">
                             {Array.from({ length: VALIDATION.maxPlayers.max - VALIDATION.maxPlayers.min + 1 }, (_, i) => (

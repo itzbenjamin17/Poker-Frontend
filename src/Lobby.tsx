@@ -25,7 +25,7 @@ export default function Lobby({
 
     return (
         <MotionConfig reducedMotion="user">
-        <div className="min-h-screen pt-24 pb-32 px-6 flex flex-col items-center justify-center">
+        <div className="min-h-dvh pt-24 pb-32 px-6 flex flex-col items-center justify-center">
             <AnimatePresence>
                 {error && (
                     <motion.div

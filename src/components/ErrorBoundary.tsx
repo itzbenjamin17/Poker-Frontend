@@ -45,7 +45,7 @@ export class ErrorBoundary extends React.Component<Props, State> {
             if (this.props.fallback) return this.props.fallback;
 
             return (
-                <div className="min-h-screen flex items-center justify-center p-8">
+                <div className="min-h-dvh flex items-center justify-center p-8">
                     <div className="glass-card rounded-2xl p-10 max-w-md w-full text-center space-y-6">
                         <div className="text-5xl">♠</div>
                         <h1 className="font-headline text-2xl font-bold text-white">{ERROR_BOUNDARY_HEADING}</h1>

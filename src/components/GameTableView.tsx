@@ -187,7 +187,7 @@ export function GameTableView({
             data-testid="game-table-view"
             className={cn(
                 'flex w-full max-w-full flex-col relative overflow-hidden overscroll-none',
-                hasShellHeader ? 'flex-1 min-h-0 min-w-0' : 'h-[100dvh] min-h-[600px] md:h-screen',
+                hasShellHeader ? 'flex-1 min-h-0 min-w-0' : 'h-dvh min-h-[600px]',
             )}
         >
             <NotificationBanner notification={notification} sequence={notificationSequence} />

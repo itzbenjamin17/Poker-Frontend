@@ -14,7 +14,7 @@ export function LoadingView({ status, onRetry, onLeave, error = false, errorMess
         <div className="flex items-center justify-center h-full w-full">
             <div className="flex flex-col items-center gap-6">
                 {!error && <div
-                    className="w-12 h-12 border-4 border-emerald-primary border-t-transparent rounded-full animate-spin motion-reduce:animate-none"
+                    className="w-12 h-12 border-4 border-emerald-primary border-t-transparent rounded-full animate-spin"
                     aria-hidden="true"
                 />}
                 <p role={error ? 'alert' : 'status'} className="font-headline text-xs tracking-widest uppercase text-emerald-primary text-center max-w-xs px-4">

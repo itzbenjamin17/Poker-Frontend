@@ -142,7 +142,7 @@ export function ReconnectOverlay({
             aria-live="assertive"
         >
             <div
-                className="w-12 h-12 border-4 border-emerald-primary border-t-transparent rounded-full animate-spin motion-reduce:animate-none"
+                className="w-12 h-12 border-4 border-emerald-primary border-t-transparent rounded-full animate-spin"
                 aria-hidden="true"
             />
             <h2 className="font-headline text-2xl font-bold text-white tracking-tight">

@@ -91,7 +91,7 @@ export default function App() {
     }, [setAuth]);
 
     return (
-        <div className="min-h-screen bg-surface selection:bg-emerald-primary selection:text-surface">
+        <div className="min-h-dvh bg-surface selection:bg-emerald-primary selection:text-surface">
             {/* Global Nav */}
             {!auth && (
                 <nav

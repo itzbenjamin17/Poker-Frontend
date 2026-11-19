@@ -3,10 +3,21 @@
 /* Short viewports: chrome (header/dock) compacts via CSS only; the table never reads the window. */
 @custom-variant short (@media (max-height: 640px));
 
+/* The app is dark-only: render built-in UI (sliders, autofill, scrollbars, pickers) dark too. */
+:root {
+  color-scheme: dark;
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .animate-pulse,
-  .animate-spin {
+  /* Pulses are decorative: drop them. */
+  .animate-pulse {
     animation: none;
+  }
+
+  /* Spinners signal ongoing work: slow them down rather than freezing them,
+     so the page still reads as busy. */
+  .animate-spin {
+    animation-duration: 6s;
   }
 }
 
@@ -48,11 +59,115 @@
     background-image: radial-gradient(circle at 2px 2px, rgba(170, 234, 208, 0.05) 1px, transparent 0);
     background-size: 32px 32px;
   }
+
+  /* Scale the fallback font to the web font's x-height so text keeps its size
+     while Google Fonts load (and if they never do). Set per family, because the
+     computed ratio is inherited. */
+  body,
+  .font-body,
+  .font-headline {
+    font-size-adjust: from-font;
+  }
 }
 
 @layer components {
   .glass-card {
     @apply bg-surface-highest/60 backdrop-blur-3xl border border-emerald-primary/10;
+  }
+
+  /* Native range input with a branded track, fill and thumb.
+     Pair with rangeSliderStyle() (src/lib/rangeSlider.ts), which sets
+     --control-value, --attr-min and --attr-max. */
+  .range-slider {
+    --slider-track-size: 0.5rem;
+    --slider-thumb-size: 1.25rem;
+    --slider-block-size: 1.5rem;
+    --slider-track-color: #71717a; /* >= 3:1 against the dark surfaces */
+    --slider-fill-color: var(--color-emerald-primary);
+    --slider-thumb-color: var(--slider-fill-color);
+    --slider-direction: to right;
+    --slider-progress: calc(progress(var(--control-value), var(--attr-min), var(--attr-max)) * 100%);
+
+    appearance: none;
+    block-size: var(--slider-block-size);
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    cursor: pointer;
+
+    &:disabled {
+      cursor: not-allowed;
+      opacity: 0.5;
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--slider-fill-color);
+      outline-offset: 4px;
+    }
+  }
+
+  .range-slider-gold {
+    --slider-fill-color: var(--color-gold-secondary);
+  }
+
+  .range-slider-compact {
+    --slider-track-size: 0.375rem;
+    --slider-thumb-size: 1rem;
+    --slider-block-size: 1.25rem;
+  }
+
+  @supports not (opacity: progress(1, 0, 100)) {
+    .range-slider {
+      --slider-progress: calc((var(--control-value) - var(--attr-min)) / (var(--attr-max) - var(--attr-min)) * 100%);
+    }
+  }
+
+  /* WebKit/Blink. Vendor pseudo-elements stay in separate rules: one unknown
+     selector in a list drops the whole rule. */
+  .range-slider::-webkit-slider-runnable-track {
+    block-size: var(--slider-track-size);
+    border: 0;
+    border-radius: 999px;
+    background: linear-gradient(
+      var(--slider-direction),
+      var(--slider-fill-color) var(--slider-progress),
+      var(--slider-track-color) var(--slider-progress)
+    );
+  }
+
+  .range-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    inline-size: var(--slider-thumb-size);
+    block-size: var(--slider-thumb-size);
+    margin-block-start: calc((var(--slider-track-size) - var(--slider-thumb-size)) / 2);
+    border: 0;
+    border-radius: 50%;
+    background: var(--slider-thumb-color);
+  }
+
+  /* Firefox. */
+  .range-slider::-moz-range-track {
+    block-size: var(--slider-track-size);
+    border: 0;
+    border-radius: 999px;
+    background: var(--slider-track-color);
+  }
+
+  .range-slider::-moz-range-progress {
+    block-size: var(--slider-track-size);
+    border-radius: 999px;
+    background: var(--slider-fill-color);
+  }
+
+  .range-slider::-moz-range-thumb {
+    inline-size: var(--slider-thumb-size);
+    block-size: var(--slider-thumb-size);
+    border: 0;
+    border-radius: 50%;
+    background: var(--slider-thumb-color);
   }
 
   .poker-table-gradient {

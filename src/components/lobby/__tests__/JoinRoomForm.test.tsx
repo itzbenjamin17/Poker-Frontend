@@ -23,6 +23,19 @@ describe('JoinRoomForm', () => {
         vi.clearAllMocks();
     });
 
+    it('marks the room password as a current password so password managers can fill it', () => {
+        render(
+            <JoinRoomForm
+                onAuth={mockOnAuth}
+                onError={mockOnError}
+                loading={false}
+                setLoading={mockSetLoading}
+            />
+        );
+
+        expect(screen.getByLabelText(/password/i)).toHaveAttribute('autocomplete', 'current-password');
+    });
+
     it('submitting empty room name or player name shows inline validation errors and prevents submission', async () => {
         const user = userEvent.setup();
         render(

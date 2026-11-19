@@ -56,7 +56,7 @@ export function GameReviewView({ gameEndResult, gameState, onLeave, leaveError, 
         <main
             role="region"
             aria-label="Game review"
-            className="flex flex-col items-center justify-center min-h-screen w-full bg-neutral-950 text-white p-4 overflow-y-auto"
+            className="flex flex-col items-center justify-center min-h-dvh w-full bg-neutral-950 text-white p-4 overflow-y-auto"
         >
             <div className="w-full max-w-4xl space-y-8 py-8">
                 {/* Header */}

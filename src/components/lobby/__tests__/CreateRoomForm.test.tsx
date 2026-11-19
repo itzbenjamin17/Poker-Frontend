@@ -21,6 +21,19 @@ describe('CreateRoomForm', () => {
         vi.clearAllMocks();
     });
 
+    it('marks the room password as a new password so saved passwords are not autofilled into it', () => {
+        render(
+            <CreateRoomForm
+                onAuth={mockOnAuth}
+                onError={mockOnError}
+                loading={false}
+                setLoading={mockSetLoading}
+            />
+        );
+
+        expect(screen.getByLabelText(/password/i)).toHaveAttribute('autocomplete', 'new-password');
+    });
+
     it('calls onError without calling pokerApi when local validation fails', async () => {
         const user = userEvent.setup();
         render(
