@@ -1,8 +1,9 @@
-import { useContext } from 'react';
+import { useContext, useState } from 'react';
 import { Button } from './UI';
 import { cn } from '../lib/cn';
 import { BTN_LEAVE_TABLE } from '../constants/strings';
 import { GameContext } from '../context/GameContext';
+import { useIsTruncated } from '../hooks/useIsTruncated';
 import type { WsStatus } from '../types';
 
 // eslint-disable-next-line react-refresh/only-export-components
@@ -41,6 +42,43 @@ export function WsStatusBadge({ status }: { status: WsStatus }) {
                 {cfg.label}
             </span>
         </div>
+    );
+}
+
+/**
+ * The room name chip. A name too long for its space truncates with an ellipsis;
+ * the chip then becomes a toggle that expands to the full name, because hover
+ * reveals nothing on touch and a `title` is unreachable from the keyboard.
+ */
+function RoomNameChip({ name }: { name: string }) {
+    const [expanded, setExpanded] = useState(false);
+    const { ref, truncated } = useIsTruncated<HTMLSpanElement>(name);
+    // While expanded the text fits, so keep the toggle until it is collapsed again.
+    const expandable = truncated || expanded;
+
+    const chipClass = cn(
+        'min-w-0 text-zinc-400 text-xs font-mono bg-white/5 px-2 py-0.5 rounded border border-white/10',
+        '[interpolate-size:allow-keywords] motion-safe:transition-[max-width] motion-safe:duration-300',
+        expanded ? 'max-w-max' : 'max-w-[120px] sm:max-w-[200px]',
+    );
+    const text = <span ref={ref} className="block truncate">{name}</span>;
+
+    if (!expandable) {
+        return <span className={chipClass}>{text}</span>;
+    }
+
+    return (
+        <button
+            type="button"
+            aria-expanded={expanded}
+            onClick={() => setExpanded(open => !open)}
+            className={cn(
+                chipClass,
+                'cursor-pointer text-left hover:text-zinc-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-primary',
+            )}
+        >
+            {text}
+        </button>
     );
 }
 
@@ -109,14 +147,7 @@ export function RoomHeader({
                     {brandTitle}
                 </span>
 
-                {effectiveRoomName && (
-                    <span
-                        className="text-zinc-400 text-xs font-mono bg-white/5 px-2 py-0.5 rounded border border-white/10 truncate max-w-[120px] sm:max-w-[200px]"
-                        title={effectiveRoomName}
-                    >
-                        {effectiveRoomName}
-                    </span>
-                )}
+                {effectiveRoomName && <RoomNameChip name={effectiveRoomName} />}
 
                 {effectivePlayerCount !== undefined && (
                     <span className="text-zinc-400 text-xs hidden sm:inline">

@@ -55,6 +55,9 @@ export const formatPasswordMaxError = (max: number) => `Password must be at most
 export const ERROR_MALFORMED_RESPONSE =
     'The server returned an invalid response. Please try again.';
 export const ERROR_COPY_ROOM_CODE = 'Could not copy room code.';
+export const COPY_ROOM_CODE_SUCCESS = 'Copied';
+export const ARIA_COPY_ROOM_CODE = 'Copy room code';
+export const ARIA_CLOSE_NOTIFICATION = 'Close notification';
 export const ROTATE_REQUIRED = 'Landscape mode required.';
 export const ROTATE_INSTRUCTIONS =
     'Please widen your browser window or rotate your device to play.';

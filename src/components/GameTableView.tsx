@@ -4,7 +4,7 @@ import { cn } from '../lib/cn';
 import { Button } from './UI';
 import { ActionPanel } from './ActionPanel';
 import { ResultDock } from './ResultDock';
-import { NotificationBanner } from './NotificationBanner';
+import { NotificationBanner, type NotificationControls } from './NotificationBanner';
 import { ReconnectOverlay, RoomStage, RoomDock, useOrientationGating } from './PokerRoomLayout';
 import { LiveTableStage } from './LiveTableStage';
 import { GameContext } from '../context/GameContext';
@@ -28,6 +28,7 @@ export interface GameTableViewProps {
     claimPending?: boolean;
     notification?: string | null;
     notificationSequence?: number;
+    notificationControls?: NotificationControls;
     wsStatus?: WsStatus;
     isRecovering?: boolean;
     recoveryFailed?: boolean;
@@ -64,6 +65,7 @@ export function GameTableView({
     claimPending = false,
     notification = null,
     notificationSequence = 0,
+    notificationControls,
     wsStatus = 'connected',
     isRecovering,
     recoveryFailed,
@@ -190,7 +192,7 @@ export function GameTableView({
                 hasShellHeader ? 'flex-1 min-h-0 min-w-0' : 'h-dvh min-h-[600px]',
             )}
         >
-            <NotificationBanner notification={notification} sequence={notificationSequence} />
+            <NotificationBanner notification={notification} sequence={notificationSequence} {...notificationControls} />
 
             {effectiveIsGameInactivityWarningActive && (
                 <div

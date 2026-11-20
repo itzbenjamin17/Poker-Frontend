@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { renderHook } from '@testing-library/react';
@@ -14,6 +14,7 @@ import {
     seatStatusFitsFelt,
     statusBoxSize,
 } from '../../lib/tableGeometry';
+import { SHOWDOWN_BOARD_PLAYS_TOOLTIP } from '../../constants/strings';
 import type { GameState, Player } from '../../types';
 import '@testing-library/jest-dom';
 
@@ -368,6 +369,79 @@ describe('OpponentSeats', () => {
 
         // No visible PLAYS THE BOARD label
         expect(screen.queryByText(/plays the board/i)).toBeNull();
+    });
+
+    it('explains that the board plays inside the expanded seat details, where touch and keyboard users can reach it', async () => {
+        const user = userEvent.setup();
+        const tableDimensions = { width: 900, height: 419 };
+        const players: Player[] = [
+            { id: 'p-1', name: 'Hero', chips: 1000, status: 'ACTIVE', currentBet: 0, hasFolded: false, isReadyForNextHand: false },
+            { id: 'p-2', name: 'Villain', chips: 1000, status: 'ACTIVE', currentBet: 0, hasFolded: false, isReadyForNextHand: false },
+        ];
+        const boardHand = ['AS', 'KS', 'QS', 'JS', 'TS'];
+        const { result } = renderHook(() => useSeatLayout(tableDimensions, players.length));
+        const showdownState: GameState = {
+            gameId: 'g-board-details',
+            phase: 'SHOWDOWN',
+            pot: 400,
+            communityCards: boardHand,
+            currentPlayerId: 'p-1',
+            currentPlayerName: 'Hero',
+            currentBet: 0,
+            maxPlayers: 6,
+            winners: ['p-1', 'p-2'],
+            players: [
+                { ...players[0], isWinner: true, holeCards: ['2H', '3D'], handRank: 'ROYAL_FLUSH', bestHand: boardHand },
+                { ...players[1], isWinner: true, holeCards: ['4C', '5D'], handRank: 'ROYAL_FLUSH', bestHand: boardHand },
+            ],
+        };
+
+        render(
+            <TablePlayers
+                orderedPlayers={players}
+                currentPlayerId="p-1"
+                myPlayerId="p-1"
+                showdown={showdownState}
+                privateState={{ holeCards: ['2H', '3D'] }}
+                getSeatPosition={result.current.getSeatPosition}
+                isCompactTable={false}
+                nowMs={100000}
+                tableScale={result.current.tableScale}
+                tableDimensions={tableDimensions}
+            />,
+        );
+
+        await user.click(screen.getByRole('button', { name: 'Villain seat details' }));
+        const details = screen.getByRole('region', { name: 'Villain expanded details' });
+        // The panel fades in from opacity 0, so wait for it to finish opening.
+        await waitFor(() => expect(within(details).getByText(SHOWDOWN_BOARD_PLAYS_TOOLTIP)).toBeVisible());
+    });
+
+    it('does not mention the board in seat details when hole cards play', async () => {
+        const user = userEvent.setup();
+        const tableDimensions = { width: 900, height: 419 };
+        const players = makePlayers(3);
+        const { result } = renderHook(() => useSeatLayout(tableDimensions, players.length));
+        const tableScale = getTableScale(tableDimensions, players.length);
+
+        render(
+            <OpponentSeats
+                orderedPlayers={players}
+                currentPlayerId="p-1"
+                myPlayerId="p-1"
+                showdown={null}
+                heroIndex={0}
+                getSeatPosition={result.current.getSeatPosition}
+                isCompactTable={result.current.isCompactTable}
+                nowMs={100000}
+                tableScale={tableScale}
+                tableDimensions={tableDimensions}
+            />,
+        );
+
+        await user.click(screen.getByRole('button', { name: 'Player_2 seat details' }));
+        const details = screen.getByRole('region', { name: 'Player_2 expanded details' });
+        expect(within(details).queryByText(SHOWDOWN_BOARD_PLAYS_TOOLTIP)).not.toBeInTheDocument();
     });
 
     it('elevates contributing best-hand hole cards above unused hole cards for all revealed players while keeping the gold border winner-only', () => {

@@ -1013,6 +1013,51 @@ describe('GameSession Domain Store', () => {
             expect(session.getSnapshot().notification).toBeNull();
         });
 
+        it('pauses auto-dismiss while held and dismisses after the remaining time once released', () => {
+            const { session, clock } = createSession(new TestClock(1000));
+
+            session.setNotification('Claim failed', 4000);
+            clock.tick(1000);
+            session.holdNotification();
+
+            clock.tick(10_000);
+            expect(session.getSnapshot().notification).toBe('Claim failed');
+
+            session.releaseNotification();
+            clock.tick(2999);
+            expect(session.getSnapshot().notification).toBe('Claim failed');
+            clock.tick(1);
+            expect(session.getSnapshot().notification).toBeNull();
+        });
+
+        it('keeps a notification that arrives while held until the hold is released', () => {
+            const { session, clock } = createSession(new TestClock(1000));
+
+            session.setNotification('First', 4000);
+            session.holdNotification();
+            session.setNotification('Second', 4000);
+
+            clock.tick(10_000);
+            expect(session.getSnapshot().notification).toBe('Second');
+
+            session.releaseNotification();
+            clock.tick(4000);
+            expect(session.getSnapshot().notification).toBeNull();
+        });
+
+        it('drops the hold when the notification is dismissed, so later ones auto-dismiss again', () => {
+            const { session, clock } = createSession(new TestClock(1000));
+
+            session.setNotification('First', 4000);
+            session.holdNotification();
+            // Closing the banner removes it before any pointer-leave or blur can release the hold.
+            session.setNotification(null);
+
+            session.setNotification('Second', 4000);
+            clock.tick(4000);
+            expect(session.getSnapshot().notification).toBeNull();
+        });
+
         it('increments notification sequence when identical text is emitted again', () => {
             const { session } = createSession();
             session.setNotification('Same message');

@@ -1,26 +1,29 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { cn } from '../lib/cn';
 import { Card } from './UI';
 import { Button } from './UI';
 import { Info, Play, Copy, Check, Crown, AlertTriangle } from 'lucide-react';
-import { NotificationBanner } from './NotificationBanner';
+import { NotificationBanner, type NotificationControls } from './NotificationBanner';
 import {
     GAME_LOBBY_LABEL,
     BTN_START_GAME, BTN_STARTING_GAME, LABEL_WAITING_HOST,
     LABEL_BLINDS, LABEL_MIN_BUYIN,
     LABEL_TURN_TIME, LABEL_TURN_TIME_VALUE, LABEL_TURN_TIME_EXPLANATION,
-    LABEL_TABLE_RULES, LABEL_HOST, ERROR_COPY_ROOM_CODE,
+    LABEL_TABLE_RULES, LABEL_HOST, ERROR_COPY_ROOM_CODE, COPY_ROOM_CODE_SUCCESS, ARIA_COPY_ROOM_CODE,
     LABEL_INACTIVITY_LIMIT, VALUE_INACTIVITY_LIMIT, LOBBY_TIMING_RULE_DESC,
     LOBBY_INACTIVITY_WARNING_TITLE, LOBBY_INACTIVITY_WARNING_MESSAGE,
     LABEL_GAME_INACTIVITY_LIMIT, VALUE_GAME_INACTIVITY_LIMIT, GAME_TIMING_RULE_DESC,
 } from '../constants/strings';
 import type { RoomState } from '../types';
 
+const NO_BREAK_SPACE = String.fromCharCode(0xa0);
+
 export interface GameLobbyViewProps {
     roomState: RoomState | null;
     playerName?: string;
     auth?: { playerName: string } | null;
     notification?: string | null;
+    notificationControls?: NotificationControls;
     onStartGame: () => void;
     onLeaveGame?: () => void;
     isStartingGame?: boolean;
@@ -32,36 +35,61 @@ export function GameLobbyView({
     playerName,
     auth,
     notification = null,
+    notificationControls,
     onStartGame,
     isStartingGame = false,
     isLobbyInactivityWarningActive = false,
 }: GameLobbyViewProps) {
-    const [copied, setCopied] = useState(false);
-    const [copyFailed, setCopyFailed] = useState(false);
+    const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle');
+    // One message for sighted and screen reader users: it is both the visible bubble and the live region.
+    const [copyMessage, setCopyMessage] = useState('');
     const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const copyFrame = useRef<number | null>(null);
     const copyAttempt = useRef(0);
+    const lastCopyMessage = useRef('');
+    const inactivityTitleId = useId();
 
     useEffect(() => () => {
         copyAttempt.current += 1;
         if (copyTimer.current !== null) clearTimeout(copyTimer.current);
+        if (copyFrame.current !== null) cancelAnimationFrame(copyFrame.current);
     }, []);
 
     if (!roomState) return null;
+
+    const reportCopy = (attempt: number, ok: boolean) => {
+        if (attempt !== copyAttempt.current) return;
+        // VoiceOver skips a message identical to the previous one; a no-break space makes a repeat differ.
+        const base = ok ? COPY_ROOM_CODE_SUCCESS : ERROR_COPY_ROOM_CODE;
+        const message = lastCopyMessage.current === base ? base + NO_BREAK_SPACE : base;
+        lastCopyMessage.current = message;
+        // Set the text on the next frame, after the region was emptied, so it is announced as new.
+        copyFrame.current = requestAnimationFrame(() => {
+            copyFrame.current = null;
+            if (attempt !== copyAttempt.current) return;
+            setCopyState(ok ? 'copied' : 'failed');
+            setCopyMessage(message);
+            copyTimer.current = setTimeout(() => {
+                copyTimer.current = null;
+                setCopyState('idle');
+                setCopyMessage('');
+            }, 2000);
+        });
+    };
 
     const handleCopyCode = async () => {
         const code = roomState.roomName || '';
         if (!code) return;
         const attempt = ++copyAttempt.current;
         if (copyTimer.current !== null) clearTimeout(copyTimer.current);
-        setCopied(false);
-        setCopyFailed(false);
+        if (copyFrame.current !== null) cancelAnimationFrame(copyFrame.current);
+        setCopyState('idle');
+        setCopyMessage('');
         try {
             await navigator.clipboard.writeText(code);
-            if (attempt !== copyAttempt.current) return;
-            setCopied(true);
-            copyTimer.current = setTimeout(() => setCopied(false), 2000);
+            reportCopy(attempt, true);
         } catch {
-            if (attempt === copyAttempt.current) setCopyFailed(true);
+            reportCopy(attempt, false);
         }
     };
 
@@ -83,8 +111,7 @@ export function GameLobbyView({
             aria-label="Game lobby"
             className="w-full max-w-5xl p-4 sm:p-8 overflow-y-auto max-h-full"
         >
-            <NotificationBanner notification={notification} />
-            {copyFailed && <p role="alert">{ERROR_COPY_ROOM_CODE}</p>}
+            <NotificationBanner notification={notification} {...notificationControls} />
 
             <div className="w-full">
                 <div className="mb-8">
@@ -93,18 +120,31 @@ export function GameLobbyView({
                     </span>
                     <h1 className="text-5xl font-headline font-bold mt-2 flex items-center flex-wrap gap-4">
                         <span className="text-white">GAME LOBBY </span>
-                        <button type="button" className="flex items-center gap-4 bg-white/5 px-6 py-2 rounded-2xl cursor-pointer hover:bg-white/10 transition-colors group" onClick={handleCopyCode} aria-label="Copy room code">
-                            <span className="text-emerald-primary/80 group-hover:text-emerald-primary transition-colors">
-                                {roomState.roomName || ''}
-                            </span>
-                            {copied ? (
-                                <span className="text-emerald-primary flex items-center gap-1 text-sm bg-emerald-primary/10 px-2 py-1 rounded-md ml-2">
-                                    <Check className="w-4 h-4" /> Copied!
+                        <span className="relative inline-flex">
+                            {/* The visible room code is part of the name, prefixed with the action for screen readers. */}
+                            <button type="button" className="flex items-center gap-4 bg-white/5 px-6 py-2 rounded-2xl cursor-pointer hover:bg-white/10 transition-colors group" onClick={handleCopyCode}>
+                                <span className="sr-only">{ARIA_COPY_ROOM_CODE} </span>
+                                <span className="text-emerald-primary/80 group-hover:text-emerald-primary transition-colors">
+                                    {roomState.roomName || ''}
                                 </span>
-                            ) : (
-                                <Copy className="w-6 h-6 text-emerald-primary/40 group-hover:text-emerald-primary/80 transition-colors ml-2" />
-                            )}
-                        </button>
+                                {copyState === 'copied' ? (
+                                    <Check aria-hidden="true" className="w-6 h-6 text-emerald-primary ml-2" />
+                                ) : (
+                                    <Copy aria-hidden="true" className="w-6 h-6 text-emerald-primary/40 group-hover:text-emerald-primary/80 transition-colors ml-2" />
+                                )}
+                            </button>
+                            {/* Outside the button: a button's children are presentational, so a live region inside it is not reliably announced. */}
+                            <span
+                                role="status"
+                                className={cn(
+                                    'pointer-events-none absolute left-1/2 top-full mt-2 -translate-x-1/2 whitespace-nowrap rounded-md px-2 py-1 font-body text-sm font-normal tracking-normal transition-opacity duration-200',
+                                    copyMessage ? 'opacity-100' : 'opacity-0',
+                                    copyState === 'failed' ? 'bg-red-500/10 text-red-400' : 'bg-emerald-primary/10 text-emerald-primary',
+                                )}
+                            >
+                                {copyMessage}
+                            </span>
+                        </span>
                     </h1>
                 </div>
 
@@ -112,11 +152,12 @@ export function GameLobbyView({
                     <div
                         role="status"
                         aria-live="polite"
+                        aria-labelledby={inactivityTitleId}
                         className="mb-8 p-4 rounded-xl border border-amber-500/30 bg-amber-500/10 text-amber-200 flex items-center gap-3 text-sm"
                     >
                         <AlertTriangle aria-hidden="true" className="w-5 h-5 shrink-0 text-amber-400" />
                         <div className="flex-1">
-                            <p className="font-semibold">{LOBBY_INACTIVITY_WARNING_TITLE}</p>
+                            <p id={inactivityTitleId} className="font-semibold">{LOBBY_INACTIVITY_WARNING_TITLE}</p>
                             <p className="text-zinc-300 text-xs mt-0.5">{LOBBY_INACTIVITY_WARNING_MESSAGE}</p>
                         </div>
                     </div>

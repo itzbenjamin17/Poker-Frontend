@@ -16,7 +16,7 @@ import {
 } from '../lib/tableGeometry';
 import type { AvatarSize, TableDimensions, TableScale } from '../lib/tableGeometry';
 import type { Player, SeatPosition, GameState } from '../types';
-import { LABEL_PLAYER } from '../constants/strings';
+import { LABEL_PLAYER, SHOWDOWN_BOARD_PLAYS_TOOLTIP } from '../constants/strings';
 
 /** Narrowest expanded panel (px); 176px at scale 1 would be unreadable at the scale floor. */
 const MIN_PANEL_WIDTH_PX = 120;
@@ -346,6 +346,10 @@ export function OpponentSeats({
                                         <div className="col-span-2">
                                             <dt className="text-zinc-500">Hand</dt>
                                             <dd style={ddStyle} className="font-bold text-emerald-primary">{handRankFull}</dd>
+                                            {/* The seat's card group carries this as a hover title and screen reader description; here touch users can read it too. */}
+                                            {playsTheBoard && (
+                                                <dd style={ddStyle} className="text-zinc-300">{SHOWDOWN_BOARD_PLAYS_TOOLTIP}</dd>
+                                            )}
                                         </div>
                                     )}
                                     {blindText && (

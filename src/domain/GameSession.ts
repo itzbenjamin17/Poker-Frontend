@@ -98,6 +98,9 @@ export class GameSession {
 
     private actionTimeoutTimers = new Map<string, TimerHandle>();
     private notificationTimer: TimerHandle | null = null;
+    private notificationHeld = false;
+    private notificationRemainingMs = 0;
+    private notificationDeadline = 0;
     private redirectTimer: TimerHandle | null = null;
     private lobbyInactivityWarningTimer: TimerHandle | null = null;
     private gameInactivityWarningTimer: TimerHandle | null = null;
@@ -261,6 +264,7 @@ export class GameSession {
         this.cancelActionLocks();
         this.clearShowdownTimers();
         this.clearNotificationTimer();
+        this.notificationHeld = false;
         this.clearRedirectTimer();
         this.clearLobbyInactivityTimer();
         this.clearGameInactivityTimer();
@@ -485,6 +489,7 @@ export class GameSession {
         this.cancelActionLocks();
         this.clearShowdownTimers();
         this.clearNotificationTimer();
+        this.notificationHeld = false;
         this.clearRedirectTimer();
         this.clearLobbyInactivityTimer();
         this.clearGameInactivityTimer();
@@ -1994,16 +1999,50 @@ export class GameSession {
             notificationSequence: msg === null ? this.notificationSequence : ++this.notificationSequence,
         }));
 
-        if (msg !== null && ms > 0) {
-            const targetEpoch = this.attachmentEpoch;
-            this.notificationTimer = this.clock.setTimeout(() => {
-                this.notificationTimer = null;
-                if (!this.attached || this.isDisposed || this.attachmentEpoch !== targetEpoch) return;
-                this.updateSnapshot(() => ({
-                    notification: null,
-                }));
-            }, ms);
+        if (msg === null) {
+            // A dismissed banner never gets its pointer-leave or blur, so it cannot release its own hold.
+            this.notificationHeld = false;
+            this.notificationRemainingMs = 0;
+            return;
         }
+
+        this.notificationRemainingMs = ms > 0 ? ms : 0;
+        if (!this.notificationHeld) this.startNotificationTimer();
+    }
+
+    /**
+     * Pauses auto-dismiss while the user is hovering or focused on the banner,
+     * so a message is never removed while it is being read or its Close button is focused.
+     */
+    public holdNotification(): void {
+        if (this.notificationHeld) return;
+        this.notificationHeld = true;
+        if (this.notificationTimer !== null) {
+            this.notificationRemainingMs = Math.max(0, this.notificationDeadline - this.clock.now());
+            this.clearNotificationTimer();
+        }
+    }
+
+    /** Resumes auto-dismiss with the time that was left when the hold started. */
+    public releaseNotification(): void {
+        if (!this.notificationHeld) return;
+        this.notificationHeld = false;
+        if (this.snapshot.notification !== null) this.startNotificationTimer();
+    }
+
+    private startNotificationTimer(): void {
+        const ms = this.notificationRemainingMs;
+        if (ms <= 0) return;
+        const targetEpoch = this.attachmentEpoch;
+        this.notificationDeadline = this.clock.now() + ms;
+        this.notificationTimer = this.clock.setTimeout(() => {
+            this.notificationTimer = null;
+            this.notificationRemainingMs = 0;
+            if (!this.attached || this.isDisposed || this.attachmentEpoch !== targetEpoch) return;
+            this.updateSnapshot(() => ({
+                notification: null,
+            }));
+        }, ms);
     }
 
     private clearNotificationTimer(): void {

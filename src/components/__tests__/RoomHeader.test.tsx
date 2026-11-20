@@ -10,6 +10,47 @@ describe('RoomHeader', () => {
         vi.clearAllMocks();
     });
 
+    describe('room name overflow', () => {
+        const longName = 'Friday Night High Stakes Hold em Club';
+
+        function mockTextWidths(scrollWidth: number, clientWidth: number) {
+            const scroll = vi.spyOn(HTMLElement.prototype, 'scrollWidth', 'get').mockReturnValue(scrollWidth);
+            const client = vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(clientWidth);
+            return () => { scroll.mockRestore(); client.mockRestore(); };
+        }
+
+        it('lets touch and keyboard users expand a room name that is cut off', async () => {
+            const restore = mockTextWidths(300, 120);
+            try {
+                const user = userEvent.setup();
+                render(<RoomHeader roomName={longName} wsStatus="connected" onLeave={vi.fn()} />);
+
+                const toggle = screen.getByRole('button', { name: longName });
+                expect(toggle).toHaveAttribute('aria-expanded', 'false');
+
+                await user.click(toggle);
+                expect(toggle).toHaveAttribute('aria-expanded', 'true');
+
+                await user.click(toggle);
+                expect(toggle).toHaveAttribute('aria-expanded', 'false');
+            } finally {
+                restore();
+            }
+        });
+
+        it('keeps a room name that fits as plain text', () => {
+            const restore = mockTextWidths(80, 120);
+            try {
+                render(<RoomHeader roomName="VIP Table" wsStatus="connected" onLeave={vi.fn()} />);
+
+                expect(screen.getByText('VIP Table')).toBeInTheDocument();
+                expect(screen.queryByRole('button', { name: 'VIP Table' })).not.toBeInTheDocument();
+            } finally {
+                restore();
+            }
+        });
+    });
+
     it('renders brand identity, connection status, and leave button', () => {
         render(
             <RoomHeader

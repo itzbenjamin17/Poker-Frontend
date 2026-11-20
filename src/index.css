@@ -170,6 +170,20 @@
     background: var(--slider-thumb-color);
   }
 
+  /* Notification auto-dismiss countdown; NotificationBanner sets the duration. */
+  .notification-countdown {
+    animation: notification-countdown linear forwards;
+  }
+
+  @keyframes notification-countdown {
+    from {
+      scale: 1 1;
+    }
+    to {
+      scale: 0 1;
+    }
+  }
+
   .poker-table-gradient {
     background: radial-gradient(circle at 50% 50%, var(--color-emerald-container) 0%, #1b2a22 80%);
   }

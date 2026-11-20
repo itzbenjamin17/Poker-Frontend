@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { GameLobbyView } from '../GameLobbyView';
@@ -12,6 +12,7 @@ import {
     LABEL_TURN_TIME_EXPLANATION,
     LOBBY_INACTIVITY_WARNING_TITLE,
     LOBBY_INACTIVITY_WARNING_MESSAGE,
+    ERROR_COPY_ROOM_CODE,
 } from '../../constants/strings';
 import type { RoomState } from '../../types';
 import '@testing-library/jest-dom';
@@ -136,6 +137,82 @@ describe('GameLobbyView', () => {
         expect(await screen.findByText(/copied/i)).toBeInTheDocument();
     });
 
+    describe('copy room code feedback', () => {
+        function mockClipboard(writeText: ReturnType<typeof vi.fn>) {
+            Object.defineProperty(navigator, 'clipboard', {
+                value: { writeText },
+                configurable: true,
+                writable: true,
+            });
+        }
+
+        function renderLobby() {
+            return render(
+                <GameLobbyView
+                    roomState={baseRoomState}
+                    playerName="HostPlayer"
+                    onStartGame={mockOnStartGame}
+                />
+            );
+        }
+
+        it('names the copy button with its visible room code', () => {
+            renderLobby();
+            expect(screen.getByRole('button', { name: /copy room code/i })).toHaveAccessibleName(/HighRollers/);
+        });
+
+        it('announces a successful copy in a status region', async () => {
+            const user = userEvent.setup();
+            mockClipboard(vi.fn().mockResolvedValue(undefined));
+            renderLobby();
+
+            await user.click(screen.getByRole('button', { name: /copy room code/i }));
+
+            await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent(/copied/i));
+        });
+
+        it('announces a failed copy in the same status region, not a separate alert', async () => {
+            const user = userEvent.setup();
+            mockClipboard(vi.fn().mockRejectedValue(new Error('denied')));
+            renderLobby();
+
+            await user.click(screen.getByRole('button', { name: /copy room code/i }));
+
+            await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent(ERROR_COPY_ROOM_CODE));
+            expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+        });
+
+        it('makes a repeated message differ so VoiceOver announces it again', async () => {
+            const user = userEvent.setup();
+            mockClipboard(vi.fn().mockResolvedValue(undefined));
+            renderLobby();
+            const button = screen.getByRole('button', { name: /copy room code/i });
+
+            await user.click(button);
+            await waitFor(() => expect(screen.getByRole('status').textContent).toBe('Copied'));
+
+            await user.click(button);
+            await waitFor(() => expect(screen.getByRole('status').textContent).toBe(`Copied${String.fromCharCode(0xa0)}`));
+        });
+
+        it('clears the feedback after a short delay', async () => {
+            vi.useFakeTimers({ shouldAdvanceTime: true });
+            try {
+                const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+                mockClipboard(vi.fn().mockResolvedValue(undefined));
+                renderLobby();
+
+                await user.click(screen.getByRole('button', { name: /copy room code/i }));
+                await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent(/copied/i));
+
+                await act(async () => { vi.advanceTimersByTime(2500); });
+                expect(screen.getByRole('status').textContent).toBe('');
+            } finally {
+                vi.useRealTimers();
+            }
+        });
+    });
+
     it('explains the 60s turn deadline rule in table rules', () => {
         render(
             <GameLobbyView
@@ -174,7 +251,8 @@ describe('GameLobbyView', () => {
             />
         );
 
-        const statusBanner = screen.getByRole('status');
+        // Named, because the copy-feedback live region is also a status.
+        const statusBanner = screen.getByRole('status', { name: LOBBY_INACTIVITY_WARNING_TITLE });
         expect(statusBanner).toHaveAttribute('aria-live', 'polite');
         expect(screen.getByText(LOBBY_INACTIVITY_WARNING_TITLE)).toBeInTheDocument();
         expect(screen.getByText(LOBBY_INACTIVITY_WARNING_MESSAGE)).toBeInTheDocument();
@@ -193,7 +271,7 @@ describe('GameLobbyView', () => {
             />
         );
 
-        expect(screen.queryByRole('status')).not.toBeInTheDocument();
+        expect(screen.queryByRole('status', { name: LOBBY_INACTIVITY_WARNING_TITLE })).not.toBeInTheDocument();
         expect(screen.queryByText(LOBBY_INACTIVITY_WARNING_TITLE)).not.toBeInTheDocument();
     });
 });

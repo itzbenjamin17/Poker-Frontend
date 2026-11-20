@@ -12,6 +12,7 @@ import { GameTableView } from './components/GameTableView';
 import { GameReviewView } from './components/GameReviewView';
 import { PokerRoomLayout, RoomStage } from './components/PokerRoomLayout';
 import { RoomHeader } from './components/RoomHeader';
+import type { NotificationControls } from './components/NotificationBanner';
 
 type GameViewProps = {
     auth: AuthResponse;
@@ -77,6 +78,15 @@ function GameViewInner() {
         void dispatcher.dispatch({ type: 'LEAVE_GAME' });
     };
 
+    // Banner controls act on the session notification only; a leave error shown in its place is not the session's to dismiss.
+    const notificationControls: NotificationControls | undefined = session && !leaveError
+        ? {
+            onDismiss: () => session.setNotification(null),
+            onHold: () => session.holdNotification(),
+            onRelease: () => session.releaseNotification(),
+        }
+        : undefined;
+
     // ── Routing (no hooks below this line) ──────────────────────────────────────
 
     if (gameEndResult && !dispatcher.isPending('LEAVE_GAME')) {
@@ -118,6 +128,7 @@ function GameViewInner() {
                             playerName={auth.playerName}
                             auth={auth}
                             notification={leaveError ?? notification}
+                            notificationControls={notificationControls}
                             onStartGame={() => dispatcher.dispatch({ type: 'START_GAME' })}
                             isStartingGame={dispatcher.isPending('START_GAME')}
                             onLeaveGame={handleLeaveRequest}
@@ -176,6 +187,7 @@ function GameViewInner() {
                 claimPending={claimPending}
                 notification={leaveError ?? notification}
                 notificationSequence={notificationSequence}
+                notificationControls={notificationControls}
                 wsStatus={wsStatus}
                 nowMs={nowMs}
                 isGameInactivityWarningActive={isGameInactivityWarningActive}
