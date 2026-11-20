@@ -1,4 +1,4 @@
-import { useContext, useMemo } from 'react';
+import { useContext, useMemo, useState } from 'react';
 import { AlertTriangle } from 'lucide-react';
 import { cn } from '../lib/cn';
 import { Button } from './UI';
@@ -8,10 +8,12 @@ import { NotificationBanner, type NotificationControls } from './NotificationBan
 import { ReconnectOverlay, RoomStage, RoomDock, useOrientationGating } from './PokerRoomLayout';
 import { LiveTableStage } from './LiveTableStage';
 import { GameContext } from '../context/GameContext';
+import { ConfirmDialog } from './ConfirmDialog';
 
 import type { ActionError, AuthResponse, GameState, PokerAction, RoomState, WsStatus } from '../types';
 import {
     BTN_LEAVE_TABLE, BTN_CLAIM_WIN, BTN_CLAIMING,
+    BTN_CONFIRM_LEAVE, BTN_CANCEL_LEAVE, CONFIRM_LEAVE_TABLE_TITLE, CONFIRM_LEAVE_TABLE_MESSAGE,
     TABLE_INACTIVITY_WARNING_TITLE, TABLE_INACTIVITY_WARNING_MESSAGE,
 } from '../constants/strings';
 
@@ -88,6 +90,7 @@ export function GameTableView({
     hasShellHeader = false,
 }: GameTableViewProps) {
     const gameContext = useContext(GameContext);
+    const [isConfirmingLeave, setIsConfirmingLeave] = useState(false);
     const { isMobileLandscape: detectedMobileLandscape, isCompactViewport } = useOrientationGating();
     const isMobileLandscape = propIsMobileLandscape ?? detectedMobileLandscape;
     const isCompactTable = propIsCompactTable ?? isCompactViewport;
@@ -223,15 +226,23 @@ export function GameTableView({
                     <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => {
-                            if (window.confirm('Are you sure you want to leave the table? This will abandon your seat.')) {
-                                onLeaveGame();
-                            }
-                        }}
+                        onClick={() => setIsConfirmingLeave(true)}
                         className="border-red-500/50 text-red-500 hover:bg-red-500/10"
                     >
                         {BTN_LEAVE_TABLE}
                     </Button>
+                    <ConfirmDialog
+                        open={isConfirmingLeave}
+                        title={CONFIRM_LEAVE_TABLE_TITLE}
+                        message={CONFIRM_LEAVE_TABLE_MESSAGE}
+                        confirmLabel={BTN_CONFIRM_LEAVE}
+                        cancelLabel={BTN_CANCEL_LEAVE}
+                        onConfirm={() => {
+                            setIsConfirmingLeave(false);
+                            onLeaveGame();
+                        }}
+                        onCancel={() => setIsConfirmingLeave(false)}
+                    />
                 </div>
             )}
 

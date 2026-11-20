@@ -200,10 +200,9 @@ test.describe('Comprehensive Poker Scenarios', () => {
         await expect(guestPage.getByRole('region', { name: /action dock/i })).toContainText(/waiting for host to act/i);
 
         // Mid-Game Forfeit -> Final Game Review: Guest leaves table
-        guestPage.on('dialog', async (dialog) => {
-            await dialog.accept();
-        });
         await guestPage.getByRole('button', { name: /leave table/i }).click();
+        // Leaving asks for confirmation in an in-page modal dialog.
+        await guestPage.getByRole('dialog').getByRole('button', { name: 'Leave', exact: true }).click();
 
         // Verify guestPage returns to the main lobby
         await expect(guestPage.getByRole('button', { name: /create game/i })).toBeVisible();

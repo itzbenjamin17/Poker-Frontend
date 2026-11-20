@@ -39,10 +39,9 @@ test.describe('Tab-local authentication', () => {
     await expect(tabB.getByRole('button', { name: /create game/i })).toBeVisible();
 
     // 4. Tab A clicks "Leave Table"
-    tabA.on('dialog', async (dialog) => {
-      await dialog.accept();
-    });
     await tabA.getByRole('button', { name: /leave table/i }).click();
+    // Leaving asks for confirmation in an in-page modal dialog.
+    await tabA.getByRole('dialog').getByRole('button', { name: 'Leave', exact: true }).click();
 
     // Tab A clears auth and returns to lobby home
     await expect(tabA.getByRole('button', { name: /create game/i })).toBeVisible();

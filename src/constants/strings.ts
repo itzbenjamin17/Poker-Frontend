@@ -58,6 +58,12 @@ export const ERROR_COPY_ROOM_CODE = 'Could not copy room code.';
 export const COPY_ROOM_CODE_SUCCESS = 'Copied';
 export const ARIA_COPY_ROOM_CODE = 'Copy room code';
 export const ARIA_CLOSE_NOTIFICATION = 'Close notification';
+export const CONFIRM_LEAVE_TABLE_TITLE = 'Leave the table?';
+export const CONFIRM_LEAVE_TABLE_MESSAGE = 'Are you sure you want to leave the table? This will abandon your seat.';
+export const CONFIRM_LEAVE_LOBBY_TITLE = 'Leave the lobby?';
+export const CONFIRM_LEAVE_LOBBY_MESSAGE = 'Are you sure you want to leave the lobby?';
+export const BTN_CONFIRM_LEAVE = 'Leave';
+export const BTN_CANCEL_LEAVE = 'Stay';
 export const ROTATE_REQUIRED = 'Landscape mode required.';
 export const ROTATE_INSTRUCTIONS =
     'Please widen your browser window or rotate your device to play.';

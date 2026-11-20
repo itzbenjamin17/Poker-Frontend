@@ -1,5 +1,6 @@
 import { render, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
+import userEvent from '@testing-library/user-event';
 import { GameTableView } from '../GameTableView';
 import { WAITING_RECONNECT_PREFIX, WAITING_RECONNECT_SUFFIX } from '../../constants/strings';
 import type { GameState, RoomState, Player } from '../../types';
@@ -76,6 +77,33 @@ describe('GameTableView', () => {
         vi.clearAllMocks();
         window.innerWidth = 1024;
         window.innerHeight = 768;
+    });
+
+    describe('standalone leave button', () => {
+        it('asks for confirmation in a modal dialog before leaving', async () => {
+            const user = userEvent.setup();
+            const onLeaveGame = vi.fn();
+            const confirmSpy = vi.spyOn(window, 'confirm');
+            render(<GameTableView {...defaultProps} onLeaveGame={onLeaveGame} />);
+
+            await user.click(screen.getByRole('button', { name: /leave table/i }));
+            const dialog = screen.getByRole('dialog', { name: /leave the table/i });
+            expect(onLeaveGame).not.toHaveBeenCalled();
+
+            await user.click(within(dialog).getByRole('button', { name: 'Leave' }));
+            expect(onLeaveGame).toHaveBeenCalledTimes(1);
+            expect(confirmSpy).not.toHaveBeenCalled();
+        });
+
+        it('stays at the table when the confirmation is cancelled', async () => {
+            const user = userEvent.setup();
+            const onLeaveGame = vi.fn();
+            render(<GameTableView {...defaultProps} onLeaveGame={onLeaveGame} />);
+
+            await user.click(screen.getByRole('button', { name: /leave table/i }));
+            await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Stay' }));
+            expect(onLeaveGame).not.toHaveBeenCalled();
+        });
     });
 
     describe('Item 18: Disconnect Overlay & Reconnect Banner', () => {

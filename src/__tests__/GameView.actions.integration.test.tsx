@@ -236,7 +236,6 @@ describe('GameView - Actions & Flows Integration', () => {
 
     it('prompts confirmation when leaving the table', async () => {
         const user = userEvent.setup();
-        const confirmSpy = vi.spyOn(window, 'confirm').mockImplementation(() => false);
 
         server.use(
             http.get('/api/room/ROOM123', () => HttpResponse.json(createValidRoomData({
@@ -268,7 +267,7 @@ describe('GameView - Actions & Flows Integration', () => {
         const leaveBtn = await screen.findByRole('button', { name: /leave table/i });
         await user.click(leaveBtn);
 
-        expect(confirmSpy).toHaveBeenCalledWith(expect.stringContaining('leave the table'));
+        expect(await screen.findByRole('dialog', { name: /leave the table/i })).toBeInTheDocument();
     });
 
     it('displays Connection Lost overlay when WebSocket is disconnected', async () => {

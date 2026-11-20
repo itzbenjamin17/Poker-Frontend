@@ -97,13 +97,10 @@ test.describe('Lobby and Room Lifecycle', () => {
     await expect(hostPage.getByText(guestName)).toBeVisible();
     await expect(guestPage.getByText(hostName)).toBeVisible();
 
-    // Register dialog handler on hostPage
-    hostPage.on('dialog', async (dialog) => {
-      await dialog.accept();
-    });
-
     // Host clicks LEAVE TABLE in the lobby header
     await hostPage.getByRole('button', { name: /leave table/i }).click();
+    // Leaving asks for confirmation in an in-page modal dialog.
+    await hostPage.getByRole('dialog').getByRole('button', { name: 'Leave', exact: true }).click();
 
     // Verify hostPage returns to the main lobby
     await expect(hostPage.getByRole('button', { name: /create game/i })).toBeVisible();

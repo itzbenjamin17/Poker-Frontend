@@ -1,4 +1,4 @@
-import { render, screen, act } from '@testing-library/react';
+import { render, screen, act, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import {
@@ -189,7 +189,6 @@ describe('PokerRoomLayout', () => {
     it('renders reconnect overlay when wsStatus is disconnected while keeping header leave action interactive', async () => {
         const user = userEvent.setup();
         const onLeaveSpy = vi.fn();
-        vi.spyOn(window, 'confirm').mockReturnValue(true);
 
         render(
             <PokerRoomLayout
@@ -210,6 +209,7 @@ describe('PokerRoomLayout', () => {
         // Header leave action is interactive even with overlay active
         const leaveBtn = screen.getByRole('button', { name: /leave table/i });
         await user.click(leaveBtn);
+        await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Leave' }));
         expect(onLeaveSpy).toHaveBeenCalledTimes(1);
     });
 

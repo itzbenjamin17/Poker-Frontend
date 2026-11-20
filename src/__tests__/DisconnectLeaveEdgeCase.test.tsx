@@ -5,6 +5,7 @@ import { GameSession } from '../domain/GameSession';
 import { InMemoryTransportAdapter } from '../services/transport';
 import { TestClock } from '../domain/clock';
 import { pokerApi } from '../services/api';
+import { confirmLeave } from '../test/confirmDialog';
 import type { AuthResponse, GameState } from '../types';
 
 vi.mock('../services/api', async (importOriginal) => {
@@ -110,11 +111,10 @@ describe('Disconnect & Leave Edge Cases', () => {
             leaveError="Network failure. Try again." session={session} />);
 
         const leaveBtn = await screen.findByRole('button', { name: /leave table/i });
-        vi.spyOn(window, 'confirm').mockReturnValue(true);
-
         await act(async () => {
             leaveBtn.click();
         });
+        await confirmLeave();
 
         transport.simulateMessage('/game/ROOM123', {
             type: 'GAME_END', gameId: 'ROOM123', winner: 'P1', winnerChips: 1050,
@@ -159,14 +159,13 @@ describe('Disconnect & Leave Edge Cases', () => {
         });
         let resolveLeave!: () => void;
         vi.mocked(pokerApi.leaveRoom).mockReturnValueOnce(new Promise<void>((resolve) => { resolveLeave = resolve; }));
-        vi.spyOn(window, 'confirm').mockReturnValue(true);
-
         render(<GameView auth={{ ...mockAuth, playerName: 'P2' }} session={session} />);
         const leaveButton = await screen.findByRole('button', { name: /leave table/i });
 
         await act(async () => {
             leaveButton.click();
         });
+        await confirmLeave();
         await act(async () => {
             transport.simulateMessage('/game/ROOM123', {
                 type: 'GAME_END', gameId: 'ROOM123', winner: 'P1', winnerChips: 1050,
@@ -190,11 +189,10 @@ describe('Disconnect & Leave Edge Cases', () => {
         session.setHydrated(true);
         vi.mocked(pokerApi.getPublicGameState).mockImplementation(() => new Promise(() => {}));
         const requestLeave = vi.fn().mockResolvedValue(false);
-        vi.spyOn(window, 'confirm').mockReturnValue(true);
-
         render(<GameView auth={mockAuth} session={session} onRequestLeave={requestLeave} leaveError="Could not leave the room. Try again." />);
 
         expect(await screen.findByText('Could not leave the room. Try again.')).toBeInTheDocument();
+        // The hydrating header leaves without confirmation (confirmLeave={false}).
         await act(async () => screen.getByRole('button', { name: /leave table/i }).click());
         expect(requestLeave).toHaveBeenCalledTimes(1);
         expect(screen.getByText('Could not leave the room. Try again.')).toBeInTheDocument();
@@ -317,14 +315,13 @@ describe('Disconnect & Leave Edge Cases', () => {
         vi.mocked(pokerApi.leaveRoom).mockImplementation(() => new Promise((resolve) => {
             resolveLeave = resolve;
         }));
-        vi.spyOn(window, 'confirm').mockReturnValue(true);
-
         render(<GameView auth={{ ...mockAuth, token: 'token-A' }} onLeave={onLeave} session={session} />);
 
         const leaveButton = await screen.findByRole('button', { name: /leave table/i });
         await act(async () => {
             leaveButton.click();
         });
+        await confirmLeave();
 
         expect(pokerApi.leaveRoom).toHaveBeenCalledWith('ROOM123', 'token-A', false, expect.any(AbortSignal));
 
@@ -378,14 +375,13 @@ describe('Disconnect & Leave Edge Cases', () => {
             initialGameState,
         });
 
-        vi.spyOn(window, 'confirm').mockReturnValue(true);
-
         render(<GameView auth={{ ...mockAuth, token: 'token-A' }} onRequestLeave={requestLeave} session={session} />);
 
         const leaveButton = await screen.findByRole('button', { name: /leave table/i });
         await act(async () => {
             leaveButton.click();
         });
+        await confirmLeave();
 
         expect(requestLeave).toHaveBeenCalledWith('token-A');
 

@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { RoomHeader } from '../RoomHeader';
@@ -93,34 +93,55 @@ describe('RoomHeader', () => {
     it('prompts confirmation when clicking leave button and invokes onLeave on confirm', async () => {
         const user = userEvent.setup();
         const onLeaveSpy = vi.fn();
-        const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+        // The native confirm() blocks the main thread (timers, WebSocket), so it must not be used.
+        const confirmSpy = vi.spyOn(window, 'confirm');
 
         render(<RoomHeader wsStatus="connected" onLeave={onLeaveSpy} />);
 
         const leaveBtn = screen.getByRole('button', { name: /leave table/i });
         await user.click(leaveBtn);
 
-        expect(confirmSpy).toHaveBeenCalledWith(expect.stringContaining('leave the table'));
+        const dialog = screen.getByRole('dialog', { name: /leave the table/i });
+        expect(dialog).toHaveAccessibleDescription(expect.stringContaining('leave the table'));
+        expect(onLeaveSpy).not.toHaveBeenCalled();
+
+        await user.click(within(dialog).getByRole('button', { name: 'Leave' }));
+
         expect(onLeaveSpy).toHaveBeenCalledTimes(1);
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+        expect(confirmSpy).not.toHaveBeenCalled();
     });
 
     it('does not invoke onLeave when confirmation is cancelled', async () => {
         const user = userEvent.setup();
         const onLeaveSpy = vi.fn();
-        vi.spyOn(window, 'confirm').mockReturnValue(false);
 
         render(<RoomHeader wsStatus="connected" onLeave={onLeaveSpy} />);
 
         const leaveBtn = screen.getByRole('button', { name: /leave table/i });
         await user.click(leaveBtn);
+        await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Stay' }));
 
         expect(onLeaveSpy).not.toHaveBeenCalled();
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+
+    it('does not invoke onLeave when the confirmation is dismissed with Escape', async () => {
+        const user = userEvent.setup();
+        const onLeaveSpy = vi.fn();
+
+        render(<RoomHeader wsStatus="connected" onLeave={onLeaveSpy} />);
+
+        await user.click(screen.getByRole('button', { name: /leave table/i }));
+        await user.keyboard('{Escape}');
+
+        expect(onLeaveSpy).not.toHaveBeenCalled();
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     });
 
     it('leave button remains interactive even when disconnected or reconnecting', async () => {
         const user = userEvent.setup();
         const onLeaveSpy = vi.fn();
-        vi.spyOn(window, 'confirm').mockReturnValue(true);
 
         render(<RoomHeader wsStatus="disconnected" onLeave={onLeaveSpy} />);
 
@@ -128,6 +149,7 @@ describe('RoomHeader', () => {
         expect(leaveBtn).toBeEnabled();
 
         await user.click(leaveBtn);
+        await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Leave' }));
         expect(onLeaveSpy).toHaveBeenCalledTimes(1);
     });
 

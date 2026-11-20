@@ -1,7 +1,11 @@
 import { useContext, useState } from 'react';
 import { Button } from './UI';
 import { cn } from '../lib/cn';
-import { BTN_LEAVE_TABLE } from '../constants/strings';
+import {
+    BTN_LEAVE_TABLE, BTN_CONFIRM_LEAVE, BTN_CANCEL_LEAVE,
+    CONFIRM_LEAVE_TABLE_TITLE, CONFIRM_LEAVE_TABLE_MESSAGE,
+} from '../constants/strings';
+import { ConfirmDialog } from './ConfirmDialog';
 import { GameContext } from '../context/GameContext';
 import { useIsTruncated } from '../hooks/useIsTruncated';
 import type { WsStatus } from '../types';
@@ -90,6 +94,7 @@ export interface RoomHeaderProps {
     onLeave?: () => void;
     isCompact?: boolean;
     confirmLeave?: boolean;
+    confirmLeaveTitle?: string;
     confirmLeaveMessage?: string;
     className?: string;
 }
@@ -102,10 +107,12 @@ export function RoomHeader({
     onLeave,
     isCompact = false,
     confirmLeave = true,
-    confirmLeaveMessage = 'Are you sure you want to leave the table? This will abandon your seat.',
+    confirmLeaveTitle = CONFIRM_LEAVE_TABLE_TITLE,
+    confirmLeaveMessage = CONFIRM_LEAVE_TABLE_MESSAGE,
     className,
 }: RoomHeaderProps) {
     const gameContext = useContext(GameContext);
+    const [isConfirmingLeave, setIsConfirmingLeave] = useState(false);
 
     const effectiveWsStatus = wsStatus ?? gameContext?.wsStatus ?? 'connected';
     const effectiveRoomName = roomName ?? gameContext?.roomState?.roomName;
@@ -115,9 +122,7 @@ export function RoomHeader({
     const handleLeave = () => {
         if (!effectiveOnLeave) return;
         if (confirmLeave) {
-            if (window.confirm(confirmLeaveMessage)) {
-                effectiveOnLeave();
-            }
+            setIsConfirmingLeave(true);
         } else {
             effectiveOnLeave();
         }
@@ -169,6 +174,21 @@ export function RoomHeader({
                     {BTN_LEAVE_TABLE}
                 </Button>
             </div>
+
+            {confirmLeave && (
+                <ConfirmDialog
+                    open={isConfirmingLeave}
+                    title={confirmLeaveTitle}
+                    message={confirmLeaveMessage}
+                    confirmLabel={BTN_CONFIRM_LEAVE}
+                    cancelLabel={BTN_CANCEL_LEAVE}
+                    onConfirm={() => {
+                        setIsConfirmingLeave(false);
+                        effectiveOnLeave?.();
+                    }}
+                    onCancel={() => setIsConfirmingLeave(false)}
+                />
+            )}
         </header>
     );
 }

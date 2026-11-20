@@ -188,3 +188,14 @@
     background: radial-gradient(circle at 50% 50%, var(--color-emerald-container) 0%, #1b2a22 80%);
   }
 }
+
+/* Native modal dialogs: keep scroll gestures from chaining to the page behind
+   (both rules are needed; ::backdrop is not a scroll container by default). */
+dialog:modal {
+  overscroll-behavior: contain;
+}
+
+dialog::backdrop {
+  overflow: hidden;
+  overscroll-behavior: contain;
+}

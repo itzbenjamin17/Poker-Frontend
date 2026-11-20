@@ -13,6 +13,7 @@ import { GameReviewView } from './components/GameReviewView';
 import { PokerRoomLayout, RoomStage } from './components/PokerRoomLayout';
 import { RoomHeader } from './components/RoomHeader';
 import type { NotificationControls } from './components/NotificationBanner';
+import { CONFIRM_LEAVE_LOBBY_TITLE, CONFIRM_LEAVE_LOBBY_MESSAGE } from './constants/strings';
 
 type GameViewProps = {
     auth: AuthResponse;
@@ -116,7 +117,8 @@ function GameViewInner() {
                             playerCount={roomState?.players?.length || 0}
                             wsStatus={wsStatus}
                             onLeave={handleLeaveRequest}
-                            confirmLeaveMessage="Are you sure you want to leave the lobby?"
+                            confirmLeaveTitle={CONFIRM_LEAVE_LOBBY_TITLE}
+                            confirmLeaveMessage={CONFIRM_LEAVE_LOBBY_MESSAGE}
                         />
                     }
                     wsStatus={wsStatus}
