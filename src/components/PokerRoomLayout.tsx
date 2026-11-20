@@ -68,10 +68,8 @@ export function useOrientationGating() {
         };
 
         window.addEventListener('resize', handleResize);
-        window.addEventListener('orientationchange', handleResize);
         return () => {
             window.removeEventListener('resize', handleResize);
-            window.removeEventListener('orientationchange', handleResize);
         };
     }, []);
 
@@ -135,7 +133,7 @@ export function ReconnectOverlay({
     return (
         <div
             className={cn(
-                'absolute inset-0 bg-surface/80 backdrop-blur-sm z-30 flex flex-col items-center justify-center gap-4 text-center select-none pointer-events-auto',
+                'absolute inset-0 bg-surface/80 backdrop-blur-sm z-30 flex flex-col items-center justify-center gap-4 text-center pointer-events-auto',
                 className,
             )}
             role={role}
@@ -204,7 +202,7 @@ export function PokerRoomLayout({
         <div
             data-testid="poker-room-layout"
             className={cn(
-                'isolate flex h-dvh w-full max-w-full flex-col relative overflow-hidden overscroll-none select-none bg-surface',
+                'isolate flex h-dvh w-full max-w-full flex-col relative overflow-hidden overscroll-none bg-surface',
                 'pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]',
                 className
             )}

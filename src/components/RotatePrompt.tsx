@@ -29,7 +29,7 @@ export function RotatePrompt({
             aria-label={ARIA_ROTATE_PROMPT}
             data-testid="rotate-prompt"
             className={cn(
-                'h-dvh w-full flex flex-col items-center justify-center gap-6 bg-surface px-6 text-center select-none overscroll-none',
+                'h-dvh w-full flex flex-col items-center justify-center gap-6 bg-surface px-6 text-center overscroll-none',
                 className
             )}
         >

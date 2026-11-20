@@ -206,7 +206,7 @@ export function GameTableView({
                     <AlertTriangle aria-hidden="true" className="w-5 h-5 shrink-0 text-amber-400" />
                     <div className="flex-1">
                         <p className="font-semibold text-xs md:text-sm">{TABLE_INACTIVITY_WARNING_TITLE}</p>
-                        <p className="text-zinc-300 text-[11px] md:text-xs mt-0.5">{TABLE_INACTIVITY_WARNING_MESSAGE}</p>
+                        <p className="text-zinc-300 text-[0.6875rem] md:text-xs mt-0.5">{TABLE_INACTIVITY_WARNING_MESSAGE}</p>
                     </div>
                 </div>
             )}
@@ -370,7 +370,7 @@ function WsStatusBadge({ status }: { status: WsStatus }) {
             aria-label={`Connection status: ${label}`}
         >
             {showLabel && (
-                <span className={cn('text-[10px] font-bold uppercase tracking-wider hidden sm:inline', labelClass)}>
+                <span className={cn('text-[0.625rem] font-bold uppercase tracking-wider hidden sm:inline', labelClass)}>
                     {label}
                 </span>
             )}

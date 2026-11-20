@@ -42,7 +42,7 @@ export function WsStatusBadge({ status }: { status: WsStatus }) {
             className="flex items-center gap-2 px-2.5 py-1 rounded-full bg-surface/90 border border-white/10 text-xs backdrop-blur-sm shrink-0"
         >
             <span className={cn('w-2 h-2 rounded-full inline-block shrink-0', cfg.dot)} />
-            <span className={cn('font-mono font-medium text-[11px]', cfg.labelClass)}>
+            <span className={cn('font-mono font-medium text-[0.6875rem]', cfg.labelClass)}>
                 {cfg.label}
             </span>
         </div>
@@ -134,7 +134,7 @@ export function RoomHeader({
             role="banner"
             aria-label="Room Header"
             className={cn(
-                'w-full shrink-0 flex items-center justify-between border-b border-white/5 bg-surface/90 backdrop-blur-md z-40 transition-all select-none',
+                'w-full shrink-0 flex items-center justify-between border-b border-white/5 bg-surface/90 backdrop-blur-md z-40 transition-all',
                 isCompact ? 'h-11 px-3 py-1' : 'h-14 md:h-16 px-4 md:px-8 py-2 md:py-3',
                 'short:h-8 short:px-3 short:py-0',
                 className

@@ -115,7 +115,7 @@ export function GameLobbyView({
 
             <div className="w-full">
                 <div className="mb-8">
-                    <span className="text-emerald-primary text-[10px] font-bold tracking-[0.3em] uppercase">
+                    <span className="text-emerald-primary text-[0.625rem] font-bold tracking-[0.3em] uppercase">
                         {GAME_LOBBY_LABEL}
                     </span>
                     <h1 className="text-5xl font-headline font-bold mt-2 flex items-center flex-wrap gap-4">
@@ -208,30 +208,30 @@ export function GameLobbyView({
                             </h3>
                             <div className="space-y-4 text-sm">
                                 <div className="flex justify-between">
-                                    <span className="text-zinc-500 uppercase text-[10px] font-bold">{LABEL_BLINDS}</span>
+                                    <span className="text-zinc-500 uppercase text-[0.625rem] font-bold">{LABEL_BLINDS}</span>
                                     <span className="text-emerald-primary font-bold">{blindsLabel}</span>
                                 </div>
                                 <div className="flex justify-between">
-                                    <span className="text-zinc-500 uppercase text-[10px] font-bold">{LABEL_MIN_BUYIN}</span>
+                                    <span className="text-zinc-500 uppercase text-[0.625rem] font-bold">{LABEL_MIN_BUYIN}</span>
                                     <span className="text-emerald-primary font-bold">{buyInLabel}</span>
                                 </div>
                                 <div className="flex justify-between">
-                                    <span className="text-zinc-500 uppercase text-[10px] font-bold">{LABEL_TURN_TIME}</span>
+                                    <span className="text-zinc-500 uppercase text-[0.625rem] font-bold">{LABEL_TURN_TIME}</span>
                                     <span className="text-emerald-primary font-bold">{LABEL_TURN_TIME_VALUE}</span>
                                 </div>
-                                <p className="text-[11px] text-zinc-400">
+                                <p className="text-[0.6875rem] text-zinc-400">
                                     {LABEL_TURN_TIME_EXPLANATION}
                                 </p>
                                 <div className="border-t border-white/5 pt-3">
                                     <div className="flex justify-between">
-                                        <span className="text-zinc-500 uppercase text-[10px] font-bold">{LABEL_INACTIVITY_LIMIT}</span>
+                                        <span className="text-zinc-500 uppercase text-[0.625rem] font-bold">{LABEL_INACTIVITY_LIMIT}</span>
                                         <span className="text-emerald-primary font-bold">{VALUE_INACTIVITY_LIMIT}</span>
                                     </div>
                                     <p className="text-zinc-500 text-xs mt-1">{LOBBY_TIMING_RULE_DESC}</p>
                                 </div>
                                 <div className="border-t border-white/5 pt-3">
                                     <div className="flex justify-between">
-                                        <span className="text-zinc-500 uppercase text-[10px] font-bold">{LABEL_GAME_INACTIVITY_LIMIT}</span>
+                                        <span className="text-zinc-500 uppercase text-[0.625rem] font-bold">{LABEL_GAME_INACTIVITY_LIMIT}</span>
                                         <span className="text-emerald-primary font-bold">{VALUE_GAME_INACTIVITY_LIMIT}</span>
                                     </div>
                                     <p className="text-zinc-500 text-xs mt-1">{GAME_TIMING_RULE_DESC}</p>

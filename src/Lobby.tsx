@@ -52,7 +52,7 @@ export default function Lobby({
                 animate={{ opacity: 1, y: 0 }}
                 className="w-full max-w-6xl mb-16"
             >
-                <span className="block text-gold-secondary font-headline text-[10px] tracking-[0.2em] uppercase font-bold mb-4">
+                <span className="block text-gold-secondary font-headline text-[0.625rem] tracking-[0.2em] uppercase font-bold mb-4">
                     {LOBBY_HERO_SUBTITLE}
                 </span>
                 <h1 className="font-headline text-5xl md:text-7xl font-bold tracking-tighter leading-none text-white max-w-3xl">

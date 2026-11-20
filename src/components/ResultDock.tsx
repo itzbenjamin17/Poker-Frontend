@@ -86,7 +86,7 @@ export function ResultDock({
         >
             <div className="flex w-full h-full items-center justify-between px-4 py-2 md:px-6 short:py-1">
                 <div className="flex-1 min-w-0 mr-4">
-                    <div className="text-[10px] font-headline font-extrabold uppercase tracking-[0.15em] text-emerald-primary mb-0.5">
+                    <div className="text-[0.625rem] font-headline font-extrabold uppercase tracking-[0.15em] text-emerald-primary mb-0.5">
                         {SHOWDOWN_ROUND_RESULT}
                     </div>
                     <div className="flex items-baseline gap-2 truncate">
@@ -119,7 +119,7 @@ export function ResultDock({
                                 {readyCountdownSecondsRemaining}s
                             </span>
                             {readyEligibleCount > 0 && (
-                                <span className="text-zinc-400 text-[10px] uppercase tracking-widest">
+                                <span className="text-zinc-400 text-[0.625rem] uppercase tracking-widest">
                                     ({readyCount}/{readyEligibleCount} {LABEL_PLAYERS_READY_SUFFIX})
                                 </span>
                             )}

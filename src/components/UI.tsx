@@ -22,7 +22,7 @@ export const Button = ({
     };
 
     const sizes = {
-        xs: 'px-2.5 py-1 text-[10px]',
+        xs: 'px-2.5 py-1 text-[0.625rem]',
         sm: 'px-3 py-1.5 text-xs',
         md: 'px-6 py-2.5 text-sm',
         lg: 'px-8 py-4 text-lg',
@@ -62,7 +62,7 @@ export const Input = ({
             {label && (
                 <label
                     htmlFor={id}
-                    className="block font-headline text-[10px] font-bold tracking-widest text-zinc-500 uppercase"
+                    className="block font-headline text-[0.625rem] font-bold tracking-widest text-zinc-500 uppercase"
                 >
                     {label}
                 </label>
@@ -81,7 +81,7 @@ export const Input = ({
                     className
                 )}
             />
-            {error && <p id={errorId} role="alert" className="text-[10px] text-red-500 uppercase tracking-wider">{error}</p>}
+            {error && <p id={errorId} role="alert" className="text-[0.625rem] text-red-500 uppercase tracking-wider">{error}</p>}
         </div>
     );
 };

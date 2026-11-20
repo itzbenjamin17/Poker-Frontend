@@ -81,7 +81,8 @@ export function LiveTableStage({
             data-testid="live-table-stage"
             aria-label="Live table stage"
             className={cn(
-                'relative grid h-full w-full min-h-0 min-w-0 place-items-center overflow-hidden',
+                // The felt is a game surface: long-presses during play should not start a text selection.
+                'relative grid h-full w-full min-h-0 min-w-0 place-items-center overflow-hidden select-none',
                 className,
             )}
         >

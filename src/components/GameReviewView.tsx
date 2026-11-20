@@ -133,7 +133,7 @@ export function GameReviewView({ gameEndResult, gameState, onLeave, leaveError, 
                                             <div className="flex items-center gap-2 flex-wrap">
                                                 <span className="font-bold text-lg truncate">{player.name}</span>
                                                 {isWinner && (
-                                                    <span className="bg-yellow-500 text-neutral-950 text-[10px] font-black px-1.5 py-0.5 rounded leading-none uppercase tracking-tighter">
+                                                    <span className="bg-yellow-500 text-neutral-950 text-[0.625rem] font-black px-1.5 py-0.5 rounded leading-none uppercase tracking-tighter">
                                                         WINNER
                                                     </span>
                                                 )}

@@ -124,7 +124,7 @@ export function CreateRoomForm({ onAuth, onError, isSubmitting, loading = false,
                     />
                     <div className="space-y-3">
                         <div className="flex items-baseline justify-between">
-                            <label htmlFor="max-players" className="block font-headline text-[10px] font-bold tracking-widest text-zinc-500 uppercase">
+                            <label htmlFor="max-players" className="block font-headline text-[0.625rem] font-bold tracking-widest text-zinc-500 uppercase">
                                 Max Players
                             </label>
                             <span className="font-headline text-lg font-bold text-emerald-primary tabular-nums">
@@ -147,7 +147,7 @@ export function CreateRoomForm({ onAuth, onError, isSubmitting, loading = false,
                             className="range-slider w-full"
                             style={rangeSliderStyle(createData.maxPlayers, VALIDATION.maxPlayers.min, VALIDATION.maxPlayers.max)}
                         />
-                        <div className="flex justify-between text-[10px] text-zinc-600 font-headline select-none">
+                        <div className="flex justify-between text-[0.625rem] text-zinc-600 font-headline select-none">
                             {Array.from({ length: VALIDATION.maxPlayers.max - VALIDATION.maxPlayers.min + 1 }, (_, i) => (
                                 <span key={i + VALIDATION.maxPlayers.min}>{i + VALIDATION.maxPlayers.min}</span>
                             ))}

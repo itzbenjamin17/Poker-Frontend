@@ -384,7 +384,7 @@ export function ActionPanel({
                                             }}
                                             className={cn(
                                                 'select-none rounded-xl font-headline font-extrabold uppercase tracking-wider transition-all duration-150 flex items-center justify-center',
-                                                controlButtonSize === 'xs' ? 'px-3 py-1 text-[10px]' : controlButtonSize === 'sm' ? 'px-4 py-1.5 text-xs' : 'px-5 py-2 text-xs',
+                                                controlButtonSize === 'xs' ? 'px-3 py-1 text-[0.625rem]' : controlButtonSize === 'sm' ? 'px-4 py-1.5 text-xs' : 'px-5 py-2 text-xs',
                                                 canSubmitRaise && !isControlsDisabled
                                                     ? 'cursor-pointer bg-gold-secondary text-surface shadow-[0_12px_24px_rgba(252,192,37,0.2)] hover:brightness-110 active:brightness-95'
                                                     : 'cursor-not-allowed bg-white/5 text-zinc-600',
@@ -473,13 +473,13 @@ export function ActionPanel({
                         )}
                     >
                         <div className="flex items-center gap-2 flex-wrap justify-center">
-                            <p className="text-emerald-primary font-headline font-bold uppercase tracking-wider text-[10px] sm:text-xs">
+                            <p className="text-emerald-primary font-headline font-bold uppercase tracking-wider text-[0.625rem] sm:text-xs">
                                 {READY_PROMPT}
                             </p>
                             <span className="text-white font-headline font-bold text-sm sm:text-base">
                                 {readyCountdownSecondsRemaining}s
                             </span>
-                            <span className="text-zinc-400 text-[9px] sm:text-[10px] uppercase tracking-widest">
+                            <span className="text-zinc-400 text-[0.5625rem] sm:text-[0.625rem] uppercase tracking-widest">
                                 ({readyCount}/{readyEligibleCount} {LABEL_PLAYERS_READY_SUFFIX})
                             </span>
                         </div>
@@ -492,7 +492,7 @@ export function ActionPanel({
                                     <div
                                         key={player.id}
                                         className={cn(
-                                            'flex items-center gap-1 px-1.5 py-0.5 rounded-lg border text-[8px] sm:text-[9px] uppercase tracking-wider font-bold',
+                                            'flex items-center gap-1 px-1.5 py-0.5 rounded-lg border text-[0.5rem] sm:text-[0.5625rem] uppercase tracking-wider font-bold',
                                             isReady
                                                 ? 'bg-emerald-primary/15 border-emerald-primary/35 text-emerald-primary'
                                                 : 'bg-amber-500/10 border-amber-300/35 text-amber-200',
@@ -501,7 +501,7 @@ export function ActionPanel({
                                     >
                                         <span className={cn('w-1.5 h-1.5 rounded-full shrink-0', isReady ? 'bg-emerald-primary' : 'bg-amber-300')} />
                                         <span className="truncate max-w-[4.5rem]">{player.name}</span>
-                                        <span className="ml-auto text-[7px] sm:text-[8px]">{isReady ? 'READY' : 'WAIT'}</span>
+                                        <span className="ml-auto text-[0.4375rem] sm:text-[0.5rem]">{isReady ? 'READY' : 'WAIT'}</span>
                                     </div>
                                 );
                             })}
@@ -547,7 +547,7 @@ export function ActionPanel({
                 <p
                     id="raise-amount-error"
                     role="alert"
-                    className="absolute bottom-0 left-1/2 w-[calc(100%-1rem)] min-w-0 -translate-x-1/2 overflow-hidden text-ellipsis whitespace-nowrap text-center text-[10px] font-bold text-red-400"
+                    className="absolute bottom-0 left-1/2 w-[calc(100%-1rem)] min-w-0 -translate-x-1/2 overflow-hidden text-ellipsis whitespace-nowrap text-center text-[0.625rem] font-bold text-red-400"
                 >
                     {displayedError}
                 </p>
