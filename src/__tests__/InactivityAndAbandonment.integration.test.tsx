@@ -14,8 +14,8 @@ const gameTopic = `/game/${auth.roomId}`;
 const privateTopic = '/user/queue/private';
 const storageKey = `poker-game-end:${auth.roomId}`;
 const roster = [
-    { name: auth.playerName, isHost: true, joinedAt: '2026-01-01T00:00:00Z' },
-    { name: 'Opponent', isHost: false, joinedAt: '2026-01-01T00:00:00Z' },
+    { name: auth.playerName, isHost: true },
+    { name: 'Opponent', isHost: false },
 ];
 
 // Only HTTP/STOMP and time are doubled: GameView, GameProvider, GameSession,
@@ -245,7 +245,7 @@ describe('Inactivity and abandonment UI integration (checks 12–24)', () => {
         render(<GameView auth={auth} />);
         await connected();
         warning(LOBBY_INACTIVITY_WARNING_TITLE);
-        const players = message === 'PLAYER_JOINED' ? [...roster, { name: 'Guest', isHost: false, joinedAt: new Date().toISOString() }] : [roster[0]];
+        const players = message === 'PLAYER_JOINED' ? [...roster, { name: 'Guest', isHost: false }] : [roster[0]];
         state.room = { ...state.room, players, inactivityDeadlineEpochMs: Date.now() + 30 * 60_000 };
         await frame(roomTopic, { message, data: { ...state.room, serverTimeEpochMs: Date.now() } });
         expect(screen.queryByText(LOBBY_INACTIVITY_WARNING_TITLE)).not.toBeInTheDocument();

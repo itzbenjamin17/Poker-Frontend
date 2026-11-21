@@ -87,7 +87,6 @@ export interface RoomDataResponse {
     players: {
         name: string;
         isHost: boolean;
-        joinedAt: string;
     }[];
     currentPlayers: number;
     canStartGame: boolean;
@@ -100,7 +99,7 @@ export interface RoomDataResponse {
 export interface RoomState {
     roomId: string;
     roomName?: string;
-    players?: { name: string; isHost: boolean; joinedAt?: string }[];
+    players?: { name: string; isHost: boolean }[];
     maxPlayers?: number;
     buyIn?: number;
     smallBlind?: number;

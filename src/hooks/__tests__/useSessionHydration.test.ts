@@ -17,7 +17,7 @@ function setup(started = false) {
     const auth = { token: createMockJwt(), roomId: 'ROOM123', playerName: 'TestPlayer', message: 'Success' };
     const room = createValidRoomData({
         roomId: auth.roomId, gameStarted: started,
-        players: [{ name: auth.playerName, isHost: true, joinedAt: '2026-05-22T00:00:00Z' }],
+        players: [{ name: auth.playerName, isHost: true }],
     });
     const publicState = createValidGameState({
         gameId: auth.roomId, handNumber: 1, stateRevision: 1,

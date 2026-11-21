@@ -329,8 +329,8 @@ describe('useGameWebSocket', () => {
             roomId: 'ROOM123',
             roomName: 'LobbyRoom',
             players: [
-                { name: 'TestPlayer', isHost: true, joinedAt: '2026-01-01T00:00:00Z' },
-                { name: 'NewOpponent', isHost: false, joinedAt: '2026-01-01T00:00:05Z' },
+                { name: 'TestPlayer', isHost: true },
+                { name: 'NewOpponent', isHost: false },
             ],
             currentPlayers: 2,
             hostName: 'TestPlayer',
@@ -1171,7 +1171,7 @@ describe('useGameWebSocket', () => {
         session.setRoomState({
             roomId: 'ROOM123',
             roomName: 'ActiveRoom',
-            players: [{ name: 'TestPlayer', isHost: true, joinedAt: '2026-01-01T00:00:00Z' }],
+            players: [{ name: 'TestPlayer', isHost: true }],
             gameStarted: false,
         });
         let resolveRoomInfo!: (value: ReturnType<typeof createValidRoomData>) => void;
@@ -1190,8 +1190,8 @@ describe('useGameWebSocket', () => {
                 data: {
                     roomId: 'ROOM123',
                     players: [
-                        { name: 'TestPlayer', isHost: true, joinedAt: '2026-01-01T00:00:00Z' },
-                        { name: 'Opponent', isHost: false, joinedAt: '2026-01-01T00:00:01Z' },
+                        { name: 'TestPlayer', isHost: true },
+                        { name: 'Opponent', isHost: false },
                     ],
                 },
             });
@@ -1201,7 +1201,7 @@ describe('useGameWebSocket', () => {
         await act(async () => {
             resolveRoomInfo(createValidRoomData({
                 roomId: 'ROOM123',
-                players: [{ name: 'TestPlayer', isHost: true, joinedAt: '2026-01-01T00:00:00Z' }],
+                players: [{ name: 'TestPlayer', isHost: true }],
             }));
             await Promise.resolve();
         });

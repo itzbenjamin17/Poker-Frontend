@@ -186,8 +186,8 @@ describe('GameSession Domain Store', () => {
                     roomId: 'room-123',
                     roomName: 'High Stakes',
                     players: [
-                        { name: 'Hero', isHost: true, joinedAt: '2026-01-01T00:00:00Z' },
-                        { name: 'Villain', isHost: false, joinedAt: '2026-01-01T00:00:01Z' },
+                        { name: 'Hero', isHost: true },
+                        { name: 'Villain', isHost: false },
                     ],
                     gameStarted: false,
                 },
@@ -1551,8 +1551,8 @@ describe('GameSession Domain Store', () => {
                     roomId: 'room-123',
                     roomName: 'Main Room',
                     players: [
-                        { name: 'Hero', isHost: true, joinedAt: '2026-01-01T00:00:00Z' },
-                        { name: 'Player2', isHost: false, joinedAt: '2026-01-01T00:01:00Z' },
+                        { name: 'Hero', isHost: true },
+                        { name: 'Player2', isHost: false },
                     ],
                     maxPlayers: 6,
                     buyIn: 1000,
@@ -1674,8 +1674,8 @@ describe('GameSession Domain Store', () => {
                 roomId: 'room-123',
                 gameStarted: false,
                 players: [
-                    { name: 'Hero', isHost: true, joinedAt: '2026-01-01T00:00:00Z' },
-                    { name: 'Player2', isHost: false, joinedAt: '2026-01-01T00:00:00Z' },
+                    { name: 'Hero', isHost: true },
+                    { name: 'Player2', isHost: false },
                 ],
             }));
             await syncPromise;

@@ -116,7 +116,7 @@ function shape(schema: Record<string, Check>): Check {
 }
 
 const roomPlayer = shape({
-    name: text, isHost: boolean, joinedAt: optional(text),
+    name: text, isHost: boolean,
 });
 
 const player = shape({
@@ -236,7 +236,6 @@ export function mapRoomDataToRoomState(
         players: roomData.players.map(p => ({
             name: p.name,
             isHost: p.isHost,
-            joinedAt: p.joinedAt,
         })),
         maxPlayers: roomData.maxPlayers,
         buyIn: roomData.buyIn,

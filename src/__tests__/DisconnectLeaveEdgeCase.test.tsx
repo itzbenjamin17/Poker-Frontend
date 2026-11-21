@@ -58,8 +58,8 @@ describe('Disconnect & Leave Edge Cases', () => {
             roomId: 'ROOM123',
             roomName: 'Test',
             players: [
-                { name: 'P1', isHost: true, joinedAt: '2026-10-12T00:00:00Z' },
-                { name: 'P2', isHost: false, joinedAt: '2026-10-12T00:00:00Z' },
+                { name: 'P1', isHost: true },
+                { name: 'P2', isHost: false },
             ],
             maxPlayers: 6,
             buyIn: 1000,

@@ -50,8 +50,8 @@ export const handlers = [
       createdAt: '2026-01-01T00:00:00Z',
       hostName: 'Player 1',
       players: [
-        { name: 'Player 1', isHost: true, joinedAt: '2026-01-01T00:00:00Z' },
-        { name: 'Player 2', isHost: false, joinedAt: '2026-01-01T00:00:00Z' },
+        { name: 'Player 1', isHost: true },
+        { name: 'Player 2', isHost: false },
       ],
       currentPlayers: 2,
       canStartGame: true,

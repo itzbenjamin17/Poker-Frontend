@@ -72,7 +72,7 @@ test.describe('Layout Screenshots 3 to 10 players', () => {
                 hostName: 'Host',
                 currentPlayers: numPlayers,
                 canStartGame: false,
-                players: generatePlayers(numPlayers).map(p => ({ name: p.name, isHost: p.id === 'p-1', joinedAt: '2026-01-01T00:00:00.000Z' })),
+                players: generatePlayers(numPlayers).map(p => ({ name: p.name, isHost: p.id === 'p-1' })),
                 gameStarted: true,
             };
 

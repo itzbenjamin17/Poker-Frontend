@@ -64,8 +64,8 @@ describe('GameEnd Auth Binding & Offline Review Integration', () => {
                 roomId: 'ROOM-100',
                 roomName: 'Poker Table',
                 players: [
-                    { name: 'Alice', isHost: true, joinedAt: '2026-01-01T00:00:00.000Z' },
-                    { name: 'Bob', isHost: false, joinedAt: '2026-01-01T00:00:00.000Z' },
+                    { name: 'Alice', isHost: true },
+                    { name: 'Bob', isHost: false },
                 ],
                 gameStarted: true,
             }))),

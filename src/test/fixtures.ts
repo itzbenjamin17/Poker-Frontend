@@ -65,7 +65,7 @@ export function createValidRoomData(overrides: Record<string, unknown> = {}): Ro
         currentPlayers: 1,
         canStartGame: false,
         gameStarted: false,
-        players: [{ name: 'Player 1', isHost: true, joinedAt: '2026-01-01T00:00:00.000Z' }],
+        players: [{ name: 'Player 1', isHost: true }],
         ...overrides,
     } as RoomDataResponse;
 }

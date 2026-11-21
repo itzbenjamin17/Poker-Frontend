@@ -317,8 +317,8 @@ describe('lib/payloads - Type Guards and Normalizers', () => {
                         roomId: 'room-1',
                         roomName: 'High Stakes',
                         players: [
-                            { name: 'Alice', isHost: true, joinedAt: '2026-01-01T00:00:00Z' },
-                            { name: 'Bob', isHost: false, joinedAt: '2026-01-01T00:01:00Z' },
+                            { name: 'Alice', isHost: true },
+                            { name: 'Bob', isHost: false },
                         ],
                         maxPlayers: 6,
                         buyIn: 1000,

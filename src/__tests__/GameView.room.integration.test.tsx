@@ -21,7 +21,7 @@ describe('GameView - Room Lobby Integration', () => {
           roomId: 'ROOM123',
           roomName: 'High Stakes',
           players: [
-            { name: 'HostPlayer', isHost: true, joinedAt: '2023-01-01' }
+            { name: 'HostPlayer', isHost: true }
           ],
           maxPlayers: 6,
           smallBlind: 50,
