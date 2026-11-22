@@ -52,7 +52,7 @@ npm run dev
 | `npm run test -- --run` | Run the Vitest unit and integration suite once |
 | `npm test` | Run Vitest in interactive watch mode |
 | `npm run test:all` | Run Vitest once followed by the full Playwright E2E suite |
-| `npm run backend:e2e` | Launch the sibling `../Poker` backend on port `8080` with the `test,frontend-e2e` profiles via `mvnw.cmd spring-boot:test-run` |
+| `npm run backend:e2e` | Launch the sibling `../Poker` backend on port `8080` with the `test,frontend-e2e` profiles via `.\mvnw.cmd spring-boot:test-run` |
 | `npm run layout:overlap` | Run Playwright bounding-box overlap & containment checks across seat counts/viewports |
 | `npm run layout:screenshots` | Capture 3–10 player table & showdown screenshots across 8 viewports into `test-results/layout-screenshots/` |
 | `npm run layout:all` | Run all layout diagnostic suites using [`playwright.layout.config.ts`](playwright.layout.config.ts) |
