@@ -47,14 +47,19 @@ function buildApiError(status: number, message: string): HttpError {
 }
 
 export async function getErrorMessage(res: Response, fallback: string): Promise<string> {
-    if (res.status === 429) {
-        return 'Too many requests. Please try again later.';
+    const isRateLimited = res.status === 429;
+    if (isRateLimited) {
+        fallback = 'Too many requests. Please try again later.';
     }
     try {
         const contentType = (res.headers.get('content-type') ?? '').toLowerCase();
         if (contentType.includes('application/json') || contentType.includes('application/problem+json')) {
             const data = await res.json();
             return normalizeErrorMessage(data?.message) ?? normalizeErrorMessage(data?.error) ?? fallback;
+        }
+        // A rate-limited plain-text body is not a user-facing message; keep the standard copy.
+        if (isRateLimited) {
+            return fallback;
         }
         const text = await res.text();
         return normalizeErrorMessage(text) ?? fallback;

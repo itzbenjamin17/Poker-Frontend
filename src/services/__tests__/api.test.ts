@@ -219,6 +219,16 @@ describe('api service', () => {
             });
         });
 
+        it('shows the server rate limit message when the 429 body carries one', async () => {
+            const res = new Response(
+                JSON.stringify({ message: 'Too many requests. Please try again in 15 minutes.' }),
+                { status: 429, headers: { 'content-type': 'application/json' } },
+            );
+            expect(await getErrorMessage(res, 'Default fallback')).toBe(
+                'Too many requests. Please try again in 15 minutes.',
+            );
+        });
+
         it('falls back to "Request failed" on empty body 500 response', async () => {
             const res = new Response('', { status: 500 });
             const msg = await getErrorMessage(res, 'Request failed');
