@@ -28,6 +28,15 @@ export interface Player {
     chipsWon?: number;
 }
 
+export interface GameEnd {
+    winner: string | null;
+    winnerChips?: number;
+    isForfeit: boolean;
+    abandoned?: boolean;
+    reason?: string | null;
+    message: string;
+}
+
 export interface GameState {
     gameId: string;
     handNumber?: number;
@@ -59,21 +68,8 @@ export interface GameState {
     claimWinAvailable?: boolean;
     claimWinPlayerName?: string;
     inactivityDeadlineEpochMs?: number | null;
+    gameEnd?: GameEnd | null;
 }
-
-/** Shape broadcast by the backend: ApiResponse<RoomDataResponse> */
-export type RoomUpdate =
-    | { message: 'ROOM_CLOSED'; data?: { roomId?: string; reason?: string } | null }
-    | {
-        message: 'ROOM_CREATED' | 'PLAYER_JOINED' | 'PLAYER_LEFT';
-        data: Partial<RoomState> & { players: NonNullable<RoomState['players']> };
-    }
-    | {
-        message: 'GAME_STARTED';
-        data:
-            | (Partial<RoomState> & { players: NonNullable<RoomState['players']> })
-            | { gameId: string; message?: string };
-    };
 
 export interface RoomDataResponse {
     roomId: string;
@@ -82,17 +78,15 @@ export interface RoomDataResponse {
     buyIn: number;
     smallBlind: number;
     bigBlind: number;
-    createdAt: string;
-    hostName: string;
     players: {
         name: string;
         isHost: boolean;
     }[];
-    currentPlayers: number;
     canStartGame: boolean;
     gameStarted: boolean;
     inactivityDeadlineEpochMs?: number | null;
     serverTimeEpochMs?: number | null;
+    closedReason?: string | null;
 }
 
 /** Derived lobby state used internally by GameView / GameContext */
@@ -108,12 +102,7 @@ export interface RoomState {
     gameStarted?: boolean;
     inactivityDeadlineEpochMs?: number | null;
     serverTimeEpochMs?: number | null;
-}
-
-/** Generic API response wrapper matching Spring Boot's ApiResponse<T> envelope. */
-export interface ApiResponse<T> {
-    message: string;
-    data: T;
+    closedReason?: string | null;
 }
 
 /** Token and room identification payload returned by room create and join endpoints. */
@@ -121,19 +110,11 @@ export interface TokenResponse {
     token: string;
     roomId: string;
     playerName: string;
-}
-
-/** Wire response format returned by Spring Boot room creation and join endpoints. */
-export type RoomAuthResponse = ApiResponse<TokenResponse>;
-
-export interface AuthResponse {
-    message: string;
-    token: string;
-    roomId: string;
-    playerName: string;
     // NOTE: playerId is NOT part of the auth response from the backend.
     // It is obtained later from game state (PublicGameStateResponse.players[].id).
 }
+
+export type AuthResponse = TokenResponse;
 
 // ─── GameView internal types (exported for hook/component use) ─────────────────
 
@@ -166,6 +147,7 @@ export type IncomingGameStatePayload = Omit<
     serverTimeEpochMs?: number | null;
     readyGateState?: ReadyGateState | null;
     inactivityDeadlineEpochMs?: number | null;
+    gameEnd?: GameEnd | null;
 };
 
 export type IncomingPrivateStatePayload = {
@@ -197,6 +179,11 @@ export interface ActionError {
     message: string;
 }
 
+export interface PlayerNotification {
+    type: 'PLAYER_NOTIFICATION';
+    message: string;
+}
+
 export type Card = string;
 
 export interface PrivatePlayerState {
@@ -206,17 +193,6 @@ export interface PrivatePlayerState {
 }
 
 export type PublicGameStateResponse = GameState;
-
-export interface GameEndResult {
-    gameId: string;
-    winnerName: string | null;
-    winnerChips?: number;
-    isForfeit: boolean;
-    abandoned?: boolean;
-    reason?: string | null;
-    message: string;
-    finalState?: PublicGameStateResponse | null;
-}
 
 export interface SessionSnapshot {
     roomState: RoomState | null;
@@ -232,7 +208,7 @@ export interface SessionSnapshot {
     wsStatus: WsStatus;
     isHydrated: boolean;
     isGameOver: boolean;
-    gameEndResult: GameEndResult | null;
+    gameEndResult: PublicGameStateResponse | null;
     pendingActions: ReadonlySet<string>;
     error: ActionError | null;
     isRecovering?: boolean;

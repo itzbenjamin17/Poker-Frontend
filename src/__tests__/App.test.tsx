@@ -102,13 +102,12 @@ describe('App', () => {
                 roomId: 'room-123',
                 playerName: 'CardMaster',
                 token: 'valid-jwt',
-                message: 'Success',
             },
             setAuth: mockSetAuth,
             clearAuth: mockClearAuth,
             authExpired: false,
             dismissAuthExpired: vi.fn(),
-            isCurrentToken: vi.fn(() => true), getCurrentAuth: vi.fn(() => ({ roomId: 'room-123', playerName: 'CardMaster', token: 'valid-jwt', message: 'Success' })),
+            isCurrentToken: vi.fn(() => true), getCurrentAuth: vi.fn(() => ({ roomId: 'room-123', playerName: 'CardMaster', token: 'valid-jwt' })),
         });
 
         render(<App />);
@@ -127,9 +126,9 @@ describe('App', () => {
         const user = userEvent.setup();
         vi.mocked(pokerApi.leaveRoom).mockRejectedValueOnce(Object.assign(new Error('Network unavailable'), { status: 500 }));
         vi.mocked(useAuthSession).mockReturnValue({
-            auth: { roomId: 'room-123', playerName: 'CardMaster', token: 'valid-jwt', message: 'Success' },
+            auth: { roomId: 'room-123', playerName: 'CardMaster', token: 'valid-jwt' },
             setAuth: mockSetAuth, clearAuth: mockClearAuth, authExpired: false,
-            dismissAuthExpired: vi.fn(), isCurrentToken: vi.fn(() => true), getCurrentAuth: vi.fn(() => ({ roomId: 'room-123', playerName: 'CardMaster', token: 'valid-jwt', message: 'Success' })),
+            dismissAuthExpired: vi.fn(), isCurrentToken: vi.fn(() => true), getCurrentAuth: vi.fn(() => ({ roomId: 'room-123', playerName: 'CardMaster', token: 'valid-jwt' })),
         });
 
         render(<App />);
@@ -153,9 +152,9 @@ describe('App', () => {
             resolveLeave = () => status === 200 ? resolve() : reject(Object.assign(new Error('Gone'), { status }));
         }));
         vi.mocked(useAuthSession).mockReturnValue({
-            auth: { roomId: 'room-123', playerName: 'CardMaster', token: 'valid-jwt', message: 'Success' },
+            auth: { roomId: 'room-123', playerName: 'CardMaster', token: 'valid-jwt' },
             setAuth: mockSetAuth, clearAuth: mockClearAuth, authExpired: false,
-            dismissAuthExpired: vi.fn(), isCurrentToken: vi.fn((token: string) => currentToken === token), getCurrentAuth: vi.fn(() => currentToken === 'valid-jwt' ? ({ roomId: 'room-123', playerName: 'CardMaster', token: 'valid-jwt', message: 'Success' }) : ({ roomId: 'room-123', playerName: 'CardMaster', token: currentToken, message: 'Success' })),
+            dismissAuthExpired: vi.fn(), isCurrentToken: vi.fn((token: string) => currentToken === token), getCurrentAuth: vi.fn(() => currentToken === 'valid-jwt' ? ({ roomId: 'room-123', playerName: 'CardMaster', token: 'valid-jwt' }) : ({ roomId: 'room-123', playerName: 'CardMaster', token: currentToken })),
         });
 
         render(<App />);
@@ -175,9 +174,9 @@ describe('App', () => {
         sessionStorage.setItem('poker-game-end:room-123', JSON.stringify({ winnerName: 'W', isForfeit: false, message: 'm' }));
         vi.mocked(pokerApi.leaveRoom).mockRejectedValueOnce(Object.assign(new Error('Server unavailable'), { status: 503 }));
         vi.mocked(useAuthSession).mockReturnValue({
-            auth: { roomId: 'room-123', playerName: 'CardMaster', token: 'valid-jwt', message: 'Success' },
+            auth: { roomId: 'room-123', playerName: 'CardMaster', token: 'valid-jwt' },
             setAuth: mockSetAuth, clearAuth: mockClearAuth, authExpired: false,
-            dismissAuthExpired: vi.fn(), isCurrentToken: vi.fn(() => true), getCurrentAuth: vi.fn(() => ({ roomId: 'room-123', playerName: 'CardMaster', token: 'valid-jwt', message: 'Success' })),
+            dismissAuthExpired: vi.fn(), isCurrentToken: vi.fn(() => true), getCurrentAuth: vi.fn(() => ({ roomId: 'room-123', playerName: 'CardMaster', token: 'valid-jwt' })),
         });
 
         render(<App />);
@@ -194,9 +193,9 @@ describe('App', () => {
         sessionStorage.setItem('poker-game-end:room-123', JSON.stringify({ winnerName: 'W', isForfeit: false, message: 'm' }));
         vi.mocked(pokerApi.leaveRoom).mockRejectedValueOnce(Object.assign(new Error('Gone'), { status: 410 }));
         vi.mocked(useAuthSession).mockReturnValue({
-            auth: { roomId: 'room-123', playerName: 'CardMaster', token: 'valid-jwt', message: 'Success' },
+            auth: { roomId: 'room-123', playerName: 'CardMaster', token: 'valid-jwt' },
             setAuth: mockSetAuth, clearAuth: mockClearAuth, authExpired: false,
-            dismissAuthExpired: vi.fn(), isCurrentToken: vi.fn(() => true), getCurrentAuth: vi.fn(() => ({ roomId: 'room-123', playerName: 'CardMaster', token: 'valid-jwt', message: 'Success' })),
+            dismissAuthExpired: vi.fn(), isCurrentToken: vi.fn(() => true), getCurrentAuth: vi.fn(() => ({ roomId: 'room-123', playerName: 'CardMaster', token: 'valid-jwt' })),
         });
 
         render(<App />);
@@ -209,10 +208,10 @@ describe('App', () => {
 
     it('ignores a stale local leave callback for a same-room replacement token', async () => {
         const user = userEvent.setup();
-        const replacement = { roomId: 'room-123', playerName: 'CardMaster', token: 'replacement', message: 'Success' };
+        const replacement = { roomId: 'room-123', playerName: 'CardMaster', token: 'replacement' };
         sessionStorage.setItem('poker-game-end:room-123', JSON.stringify({ winnerName: 'W', isForfeit: false, message: 'm' }));
         vi.mocked(useAuthSession).mockReturnValue({
-            auth: { roomId: 'room-123', playerName: 'CardMaster', token: 'old-token', message: 'Success' },
+            auth: { roomId: 'room-123', playerName: 'CardMaster', token: 'old-token' },
             setAuth: mockSetAuth, clearAuth: mockClearAuth, authExpired: false,
             dismissAuthExpired: vi.fn(), isCurrentToken: vi.fn(() => false), getCurrentAuth: vi.fn(() => replacement),
         });
@@ -230,7 +229,7 @@ describe('App', () => {
         sessionStorage.setItem('poker-game-end:room-old', JSON.stringify({ winnerName: 'Old', isForfeit: false, message: 'old' }));
         sessionStorage.setItem('poker-game-end:room-new', JSON.stringify({ winnerName: 'New', isForfeit: false, message: 'new' }));
 
-        let currentAuth: any = { roomId: 'room-old', playerName: 'CardMaster', token: 'token-old', message: 'Success' };
+        let currentAuth: any = { roomId: 'room-old', playerName: 'CardMaster', token: 'token-old' };
         vi.mocked(useAuthSession).mockImplementation(() => ({
             auth: currentAuth,
             setAuth: mockSetAuth, clearAuth: mockClearAuth, authExpired: false,
@@ -242,7 +241,7 @@ describe('App', () => {
         await user.click(screen.getByRole('button', { name: 'Mock Leave Game' }));
 
         // Now user is in a different room with a new token
-        currentAuth = { roomId: 'room-new', playerName: 'CardMaster', token: 'token-new', message: 'Success' };
+        currentAuth = { roomId: 'room-new', playerName: 'CardMaster', token: 'token-new' };
         resolveLeave();
 
         await Promise.resolve();
@@ -292,14 +291,13 @@ describe('App', () => {
                     roomId: 'room-123',
                     playerName: 'CardMaster',
                     token: 'valid-jwt',
-                    message: 'Success',
                 },
                 setAuth: mockSetAuth,
                 clearAuth: mockClearAuth,
                 authExpired: false,
                 dismissAuthExpired: vi.fn(),
                 isCurrentToken: vi.fn(() => true),
-                getCurrentAuth: vi.fn(() => ({ roomId: 'room-123', playerName: 'CardMaster', token: 'valid-jwt', message: 'Success' })),
+                getCurrentAuth: vi.fn(() => ({ roomId: 'room-123', playerName: 'CardMaster', token: 'valid-jwt' })),
             });
             const { default: AppWithFailedGameView } = await import('../App');
 
@@ -325,7 +323,6 @@ describe('App', () => {
                 roomId: 'room-1',
                 playerName: 'UserA',
                 token: 'crash-token',
-                message: 'Success',
             };
 
             vi.mocked(useAuthSession).mockImplementation(() => ({
@@ -349,7 +346,6 @@ describe('App', () => {
                 roomId: 'room-2',
                 playerName: 'UserB',
                 token: 'valid-token-b',
-                message: 'Success',
             };
 
             rerender(<App />);
@@ -368,7 +364,6 @@ describe('App', () => {
             roomId: 'room-1',
             playerName: 'UserA',
             token: 'token-a',
-            message: 'Success',
         };
 
         vi.mocked(useAuthSession).mockImplementation(() => ({
@@ -404,7 +399,6 @@ describe('App', () => {
             roomId: 'room-2',
             playerName: 'UserB',
             token: 'token-b',
-            message: 'Success',
         };
         rerender(<App />);
 
@@ -419,7 +413,6 @@ describe('App', () => {
             roomId: 'room-1',
             playerName: 'UserA',
             token: 'token-a1',
-            message: 'Success',
         };
 
         vi.mocked(useAuthSession).mockImplementation(() => ({
@@ -448,7 +441,6 @@ describe('App', () => {
             roomId: 'room-1',
             playerName: 'UserA',
             token: 'token-a1',
-            message: 'Success',
         };
         rerender(<App />);
 
@@ -461,7 +453,6 @@ describe('App', () => {
             roomId: 'room-1',
             playerName: 'UserA',
             token: 'token-a2',
-            message: 'Success',
         };
         rerender(<App />);
 
@@ -478,7 +469,6 @@ describe('App', () => {
                 roomId: 'room-1',
                 playerName: 'UserA',
                 token: 'crash-token',
-                message: 'Success',
             };
 
             vi.mocked(useAuthSession).mockImplementation(() => ({
@@ -502,7 +492,6 @@ describe('App', () => {
                 roomId: 'room-1',
                 playerName: 'UserA',
                 token: 'fresh-token',
-                message: 'Success',
             };
 
             rerender(<App />);

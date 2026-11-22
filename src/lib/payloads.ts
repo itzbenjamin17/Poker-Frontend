@@ -2,14 +2,13 @@ import type {
     ActionError,
     AuthResponse,
     Card,
-    GameEndResult,
     IncomingGameStatePayload,
     IncomingPrivateStatePayload,
+    PlayerNotification,
     PrivatePlayerState,
     PublicGameStateResponse,
     RoomDataResponse,
     RoomState,
-    RoomUpdate,
 } from '../types';
 import {
     ERROR_INVALID_FORMAT,
@@ -28,8 +27,7 @@ export function isAuthResponse(value: unknown): value is AuthResponse {
     return (
         typeof value.token === 'string' && value.token.trim().length > 0 &&
         typeof value.roomId === 'string' && value.roomId.trim().length > 0 &&
-        typeof value.playerName === 'string' && value.playerName.trim().length > 0 &&
-        typeof value.message === 'string' && value.message.trim().length > 0
+        typeof value.playerName === 'string' && value.playerName.trim().length > 0
     );
 }
 
@@ -130,6 +128,20 @@ const player = shape({
     isWinner: optional(boolean), chipsWon: optional(nonnegative),
 });
 
+const gameEndSchema = rule('valid GameEnd object', value => {
+    if (!isObject(value)) return false;
+    if (typeof value.isForfeit !== 'boolean') return false;
+    if (typeof value.message !== 'string' || value.message.trim().length === 0) return false;
+    if (value.winner !== null && typeof value.winner !== 'string') return false;
+    if (value.winnerChips !== undefined && value.winnerChips !== null && !nonnegative(value.winnerChips)) return false;
+    if (value.abandoned !== undefined && value.abandoned !== null && typeof value.abandoned !== 'boolean') return false;
+    if (value.reason !== undefined && value.reason !== null && typeof value.reason !== 'string') return false;
+    if (typeof value.winner === 'string' && value.winner.trim().length === 0) {
+        return false;
+    }
+    return true;
+});
+
 const gameState = shape({
     gameId: optional(text), maxPlayers: capacity, pot: nonnegative,
     pots: optional(nullable(list(nonnegative, 10))), uncalledAmount: optional(nullable(nonnegative)),
@@ -148,6 +160,7 @@ const gameState = shape({
     readyGateState: optional(member(['CLOSED', 'COUNTING_DOWN', 'WAITING_FOR_PLAYERS'])),
     claimWinAvailable: optional(nullable(boolean)), claimWinPlayerName: optional(nullable(text)),
     inactivityDeadlineEpochMs: optional(nullable(nonnegative)),
+    gameEnd: optional(nullable(gameEndSchema)),
 });
 
 function omitNulls(value: Record<string, unknown>, keys: readonly string[]): Record<string, unknown> {
@@ -176,8 +189,11 @@ export function decodeGameStatePayload(value: unknown, source?: GameSnapshotSour
     }
     const decoded = omitNulls(value, [
         'legalActions', 'minimumBetAmount', 'minimumRaiseAmount', 'winners', 'winningsPerPlayer', 'handSettled', 'carryOverAmount', 'isAutoAdvancing',
-        'autoAdvanceMessage',
+        'autoAdvanceMessage', 'gameEnd',
     ]);
+    if (isObject(decoded.gameEnd)) {
+        decoded.gameEnd = omitNulls(decoded.gameEnd, ['winnerChips', 'abandoned', 'reason']);
+    }
     if (!Array.isArray(value.communityCards)) {
         return reject(gameState.diagnose(value, '$')!);
     }
@@ -196,7 +212,20 @@ export function decodeGameStatePayload(value: unknown, source?: GameSnapshotSour
         ...(Array.isArray(p.bestHand) ? { bestHand: p.bestHand.map(normalizeCard) } : {}),
     } : p);
     const failure = gameState.diagnose(decoded, '$');
-    return failure ? reject(failure) : decoded as IncomingGameStatePayload;
+    if (failure) return reject(failure);
+    if (isObject(decoded.gameEnd)) {
+        const end = { ...decoded.gameEnd };
+        const isAbandoned = Boolean(end.abandoned || end.reason === 'INACTIVITY');
+        if (isAbandoned) {
+            delete end.winnerChips;
+            end.winner = null;
+            end.abandoned = true;
+            end.isForfeit = false;
+        }
+        end.message = (end.message as string).trim();
+        decoded.gameEnd = end;
+    }
+    return decoded as IncomingGameStatePayload;
 }
 
 export function decodePublicGameState(value: unknown, source?: GameSnapshotSource): PublicGameStateResponse | null {
@@ -205,16 +234,39 @@ export function decodePublicGameState(value: unknown, source?: GameSnapshotSourc
     return decoded as PublicGameStateResponse;
 }
 
+export function decodeCompletedGameState(
+    value: unknown,
+    expectedGameId?: string,
+    source?: GameSnapshotSource,
+): PublicGameStateResponse | null {
+    const decoded = decodePublicGameState(value, source);
+    if (!decoded || !decoded.gameEnd) return null;
+    if (decoded.gameId !== undefined && decoded.gameId.trim().length === 0) {
+        return null;
+    }
+    if (expectedGameId !== undefined) {
+        if (decoded.gameId && decoded.gameId !== expectedGameId) {
+            return null;
+        }
+        if (!decoded.gameId) {
+            decoded.gameId = expectedGameId;
+        }
+    } else if (!decoded.gameId) {
+        return null;
+    }
+    return decoded;
+}
+
 export function isRoomDataPayload(value: unknown): value is RoomDataResponse {
     if (!isObject(value)) return false;
     return fields(value, {
         roomId: text, roomName: text, maxPlayers: optional(capacity),
         buyIn: optional(nonnegative), smallBlind: optional(nonnegative), bigBlind: optional(nonnegative),
-        createdAt: optional(text), hostName: optional(text), currentPlayers: optional(nonnegative),
         canStartGame: optional(boolean), gameStarted: optional(boolean),
         players: list(roomPlayer, 10),
         inactivityDeadlineEpochMs: optional(nullable(nonnegative)),
         serverTimeEpochMs: optional(nullable(nonnegative)),
+        closedReason: optional(nullable(text)),
     });
 }
 
@@ -245,6 +297,7 @@ export function mapRoomDataToRoomState(
         gameStarted: roomData.gameStarted,
         inactivityDeadlineEpochMs: roomData.inactivityDeadlineEpochMs,
         serverTimeEpochMs: roomData.serverTimeEpochMs,
+        closedReason: roomData.closedReason ?? null,
     };
 }
 
@@ -261,31 +314,8 @@ export function isActionErrorPayload(value: unknown): value is ActionError {
         typeof value.message === 'string' && value.message.trim().length > 0;
 }
 
-export function isGameEndPayload(value: unknown): value is {
-    type: 'GAME_END';
-    winner?: string | null;
-    winnerChips?: number | null;
-    isForfeit?: boolean | null;
-    abandoned?: boolean | null;
-    reason?: string | null;
-    outcome?: string | null;
-    message?: string | null;
-    gameId?: string | null;
-    finalState?: unknown;
-} {
-    if (!isObject(value)) return false;
-    return (
-        typeof value.type === 'string' &&
-        value.type === 'GAME_END' &&
-        (value.winner == null || typeof value.winner === 'string') &&
-        (value.winnerChips == null || nonnegative(value.winnerChips)) &&
-        (value.isForfeit == null || typeof value.isForfeit === 'boolean') &&
-        (value.abandoned == null || typeof value.abandoned === 'boolean') &&
-        (value.reason == null || typeof value.reason === 'string') &&
-        (value.outcome == null || typeof value.outcome === 'string') &&
-        (value.message == null || typeof value.message === 'string') &&
-        (value.gameId == null || typeof value.gameId === 'string')
-    );
+export function isPlayerNotificationPayload(value: unknown): value is PlayerNotification {
+    return isObject(value) && value.type === 'PLAYER_NOTIFICATION' && typeof value.message === 'string' && value.message.trim().length > 0;
 }
 
 export function isPrivateStatePayload(value: unknown): value is IncomingPrivateStatePayload {
@@ -356,156 +386,6 @@ export function validatePrivatePlayerIdentity(
         return false;
     }
     return matchingPlayer.id === privateState.playerId;
-}
-
-export function decodeGameEndResult(value: unknown, expectedGameId?: string): GameEndResult | null {
-    if (!isObject(value)) return null;
-
-    let gameId: string | undefined;
-    if (typeof value.gameId === 'string' && value.gameId.trim().length > 0) {
-        gameId = value.gameId.trim();
-        if (expectedGameId !== undefined && gameId !== expectedGameId) {
-            return null;
-        }
-    } else if (
-        (value.gameId === undefined || value.gameId === null) &&
-        expectedGameId !== undefined &&
-        expectedGameId.trim().length > 0
-    ) {
-        gameId = expectedGameId.trim();
-    } else {
-        return null;
-    }
-
-    let abandoned: boolean | undefined;
-    if (value.abandoned !== undefined && value.abandoned !== null) {
-        if (typeof value.abandoned !== 'boolean') {
-            return null;
-        }
-        abandoned = value.abandoned;
-    } else if (value.outcome === 'ABANDONED' || value.reason === 'INACTIVITY') {
-        abandoned = true;
-    }
-
-    let reason: string | null | undefined;
-    if (value.reason !== undefined && value.reason !== null) {
-        if (typeof value.reason !== 'string') {
-            return null;
-        }
-        reason = value.reason;
-    } else if (value.reason === null) {
-        reason = null;
-    } else if (abandoned) {
-        reason = 'INACTIVITY';
-    }
-
-    const rawWinner = 'winnerName' in value ? value.winnerName : ('winner' in value ? value.winner : null);
-    if (rawWinner !== null && typeof rawWinner !== 'string') {
-        return null;
-    }
-    const winnerName = abandoned ? null : (typeof rawWinner === 'string' ? rawWinner : null);
-
-    let winnerChips: number | undefined;
-    if (value.winnerChips !== undefined && value.winnerChips !== null) {
-        if (typeof value.winnerChips !== 'number' || !Number.isSafeInteger(value.winnerChips) || value.winnerChips < 0) {
-            return null;
-        }
-        if (!abandoned) {
-            winnerChips = value.winnerChips;
-        }
-    }
-
-    let isForfeit = false;
-    if (typeof value.isForfeit === 'boolean') {
-        isForfeit = value.isForfeit;
-    } else if (!abandoned) {
-        return null;
-    }
-
-    let message: string;
-    if (typeof value.message === 'string' && value.message.trim().length > 0) {
-        message = value.message.trim();
-    } else if (abandoned) {
-        message = 'Game abandoned due to inactivity';
-    } else {
-        return null;
-    }
-
-    let finalState: PublicGameStateResponse | null | undefined = undefined;
-    if (value.finalState !== undefined && value.finalState !== null) {
-        const decodedFinal = decodePublicGameState(value.finalState);
-        if (!decodedFinal) {
-            return null;
-        }
-        if (decodedFinal.gameId && decodedFinal.gameId !== gameId) {
-            return null;
-        }
-        if (!decodedFinal.gameId) {
-            decodedFinal.gameId = gameId;
-        }
-        finalState = decodedFinal;
-    } else if (value.finalState === null) {
-        finalState = null;
-    }
-
-    return {
-        gameId,
-        winnerName,
-        ...(winnerChips !== undefined ? { winnerChips } : {}),
-        isForfeit,
-        ...(abandoned !== undefined ? { abandoned } : {}),
-        ...(reason !== undefined ? { reason } : {}),
-        message,
-        ...(finalState !== undefined ? { finalState } : {}),
-    };
-}
-
-export function isRoomUpdatePayload(value: unknown): value is RoomUpdate {
-    if (!isObject(value) || typeof value.message !== 'string') return false;
-    if (value.message === 'ROOM_CLOSED') {
-        return value.data == null || fields(value.data, { roomId: optional(text), reason: optional(text) });
-    }
-    if (value.message === 'GAME_STARTED') {
-        if (!isObject(value.data)) return false;
-        const data = value.data;
-        if ('players' in data && Array.isArray(data.players)) {
-            return fields(data, {
-                roomId: optional(text),
-                roomName: optional(text),
-                players: list(roomPlayer, 10),
-                maxPlayers: optional(capacity),
-                buyIn: optional(nonnegative),
-                smallBlind: optional(nonnegative),
-                bigBlind: optional(nonnegative),
-                canStartGame: optional(boolean),
-                gameStarted: optional(boolean),
-                inactivityDeadlineEpochMs: optional(nullable(nonnegative)),
-                serverTimeEpochMs: optional(nullable(nonnegative)),
-            });
-        }
-        return fields(data, {
-            gameId: text,
-            message: optional(text),
-        });
-    }
-    if (
-        value.message === 'ROOM_CREATED' ||
-        value.message === 'PLAYER_JOINED' ||
-        value.message === 'PLAYER_LEFT'
-    ) {
-        if (!isObject(value.data)) return false;
-        const data = value.data;
-        return fields(data, {
-            roomId: optional(text), roomName: optional(text),
-            players: list(roomPlayer, 10), maxPlayers: optional(capacity),
-            buyIn: optional(nonnegative), smallBlind: optional(nonnegative),
-            bigBlind: optional(nonnegative), canStartGame: optional(boolean),
-            gameStarted: optional(boolean),
-            inactivityDeadlineEpochMs: optional(nullable(nonnegative)),
-            serverTimeEpochMs: optional(nullable(nonnegative)),
-        });
-    }
-    return false;
 }
 
 export function getErrorStatusCode(error: unknown): number | undefined {

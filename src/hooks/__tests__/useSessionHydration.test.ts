@@ -14,7 +14,7 @@ import type { RoomDataResponse, SessionSnapshot } from '../../types';
 const sessions: GameSession[] = [];
 
 function setup(started = false) {
-    const auth = { token: createMockJwt(), roomId: 'ROOM123', playerName: 'TestPlayer', message: 'Success' };
+    const auth = { token: createMockJwt(), roomId: 'ROOM123', playerName: 'TestPlayer' };
     const room = createValidRoomData({
         roomId: auth.roomId, gameStarted: started,
         players: [{ name: auth.playerName, isHost: true }],
@@ -24,10 +24,17 @@ function setup(started = false) {
         players: [{ id: 'hero-id', name: auth.playerName }],
     });
     const privateState = { playerId: 'hero-id', handNumber: 1, holeCards: ['AS', 'KS'] };
-    const review = {
-        gameId: auth.roomId, winnerName: auth.playerName, winnerChips: 1000,
-        isForfeit: false, message: 'Game Over',
-    };
+    const review = createValidGameState({
+        gameId: auth.roomId,
+        phase: 'SHOWDOWN',
+        players: [{ id: 'hero-id', name: auth.playerName, chips: 1000 }],
+        gameEnd: {
+            winner: auth.playerName,
+            winnerChips: 1000,
+            isForfeit: false,
+            message: 'Game Over',
+        },
+    });
     const api = {
         ...pokerApi,
         getRoomData: vi.fn<typeof pokerApi.getRoomData>().mockResolvedValue(room),
@@ -179,7 +186,7 @@ describe('useSessionHydration through the session coordinator', () => {
 
         expect(api.getReview).toHaveBeenCalledOnce();
         expect(session.getSnapshot()).toMatchObject({
-            isGameOver: true, isHydrated: true, gameEndResult: { winnerName: 'TestPlayer' },
+            isGameOver: true, isHydrated: true, gameEndResult: { gameEnd: { winner: 'TestPlayer' } },
         });
         expect(onLeave).not.toHaveBeenCalled();
     });

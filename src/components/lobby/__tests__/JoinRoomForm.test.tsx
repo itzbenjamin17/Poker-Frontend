@@ -90,7 +90,6 @@ describe('JoinRoomForm', () => {
 
         await waitFor(() => {
             expect(mockOnAuth).toHaveBeenCalledWith({
-                message: 'Successfully joined room',
                 token: expect.any(String),
                 roomId: 'PokerNight',
                 playerName: 'CardShark',
@@ -104,7 +103,7 @@ describe('JoinRoomForm', () => {
         const user = userEvent.setup();
         server.use(
             http.post('/api/room/join', () => {
-                return HttpResponse.json({ message: 'Room not found' }, { status: 404 });
+                return HttpResponse.json({ detail: 'Room not found' }, { status: 404 });
             })
         );
 
@@ -175,12 +174,9 @@ describe('JoinRoomForm', () => {
             http.post('/api/room/join', async ({ request }) => {
                 capturedWireBody = (await request.json()) as Record<string, unknown>;
                 return HttpResponse.json({
-                    message: 'Successfully joined room',
-                    data: {
-                        token: 'mock-token',
-                        roomId: 'JoinPasswordRoom',
-                        playerName: 'Guest1',
-                    },
+                    token: 'mock-token',
+                    roomId: 'JoinPasswordRoom',
+                    playerName: 'Guest1',
                 });
             })
         );
@@ -229,12 +225,9 @@ describe('JoinRoomForm', () => {
             http.post('/api/room/join', async ({ request }) => {
                 capturedWireBody = (await request.json()) as Record<string, unknown>;
                 return HttpResponse.json({
-                    message: 'Successfully joined room',
-                    data: {
-                        token: 'mock-token',
-                        roomId: 'PublicJoinRoom',
-                        playerName: 'Guest2',
-                    },
+                    token: 'mock-token',
+                    roomId: 'PublicJoinRoom',
+                    playerName: 'Guest2',
                 });
             })
         );

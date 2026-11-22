@@ -5,9 +5,9 @@ import type {
     ActionError,
     AuthResponse,
     GameState,
-    GameEndResult,
     IncomingGameStatePayload,
     IncomingPrivateStatePayload,
+    PublicGameStateResponse,
     RoomState,
     WsStatus,
 } from '../types';
@@ -26,7 +26,7 @@ export interface GameContextState {
     wsStatus: WsStatus;
     isHydrated: boolean;
     isGameOver: boolean;
-    gameEndResult: GameEndResult | null;
+    gameEndResult: PublicGameStateResponse | null;
     pendingActions?: ReadonlySet<string>;
     error?: ActionError | null;
     isRecovering?: boolean;
@@ -44,8 +44,8 @@ export type Action =
     | { type: 'SET_CLAIM_PENDING'; payload: boolean }
     | { type: 'SET_WS_STATUS'; payload: WsStatus }
     | { type: 'SET_HYDRATED'; payload: boolean }
-    | { type: 'SET_GAME_END_RESULT'; payload: GameEndResult | null }
-    | { type: 'INSTALL_TERMINAL_RESULT'; payload: GameEndResult }
+    | { type: 'SET_GAME_END_RESULT'; payload: PublicGameStateResponse | null }
+    | { type: 'INSTALL_TERMINAL_RESULT'; payload: PublicGameStateResponse }
     | { type: 'CLEAR_GAME_STATE' };
 
 export interface GameContextValue extends GameContextState {

@@ -6,7 +6,7 @@ import { GameProvider } from '../../context/GameProvider';
 import { GameSession } from '../../domain/GameSession';
 import { InMemoryTransportAdapter } from '../../services/transport';
 import { pokerApi } from '../../services/api';
-import type { GameEndResult, GameState } from '../../types';
+import type { GameState, PublicGameStateResponse } from '../../types';
 import { createValidGameState } from '../../test/fixtures';
 
 vi.mock('../../services/api', async (importOriginal) => {
@@ -28,7 +28,6 @@ describe('useGameDispatcher', () => {
         token: 'test-token',
         roomId: 'ROOM123',
         playerName: 'TestPlayer',
-        message: 'Success',
     };
     const onLeave = vi.fn();
     let transport: InMemoryTransportAdapter;
@@ -159,7 +158,7 @@ describe('useGameDispatcher', () => {
     });
 
     it('dispatch START_GAME calls pokerApi', async () => {
-        const startGameSpy = vi.mocked(pokerApi.startGame).mockResolvedValue({});
+        const startGameSpy = vi.mocked(pokerApi.startGame).mockResolvedValue(undefined);
         const { result } = renderHook(() => useGameDispatcher(), {
             wrapper: createWrapper(),
         });
@@ -186,17 +185,18 @@ describe('useGameDispatcher', () => {
 
     it('dispatch CLAIM_WIN success installs terminal result and clears claimPending', async () => {
         const installSpy = vi.spyOn(session, 'installTerminalResult');
-        const terminalData = {
+        const terminalData: PublicGameStateResponse = createValidGameState({
             gameId: 'GAME123',
-            winnerName: 'TestPlayer',
-            winnerChips: 1980,
-            isForfeit: true,
-            message: 'Win claimed',
-        };
-        const claimWinSpy = vi.mocked(pokerApi.claimWin).mockResolvedValue({
-            message: 'Win claimed',
-            data: terminalData,
+            phase: 'SHOWDOWN',
+            players: [{ id: 'p-1', name: 'TestPlayer', chips: 1980 }],
+            gameEnd: {
+                winner: 'TestPlayer',
+                winnerChips: 1980,
+                isForfeit: true,
+                message: 'Win claimed',
+            },
         });
+        const claimWinSpy = vi.mocked(pokerApi.claimWin).mockResolvedValue(terminalData);
         const { result } = renderHook(() => useGameDispatcher(), {
             wrapper: createWrapper(),
         });
@@ -209,21 +209,22 @@ describe('useGameDispatcher', () => {
         expect(installSpy).toHaveBeenCalledWith(terminalData);
         expect(session.getSnapshot().claimPending).toBe(false);
         expect(session.getSnapshot().isGameOver).toBe(true);
-        expect(session.getSnapshot().gameEndResult?.winnerName).toBe('TestPlayer');
+        expect(session.getSnapshot().gameEndResult?.gameEnd?.winner).toBe('TestPlayer');
     });
 
     it('dispatch CLAIM_WIN directly transitions session to review state and invokes setGameEndResult without waiting for STOMP', async () => {
-        const terminalData = {
+        const terminalData: PublicGameStateResponse = createValidGameState({
             gameId: 'GAME123',
-            winnerName: 'TestPlayer',
-            winnerChips: 1980,
-            isForfeit: true,
-            message: 'Win claimed directly',
-        };
-        const claimWinSpy = vi.mocked(pokerApi.claimWin).mockResolvedValue({
-            message: 'Win claimed',
-            data: terminalData,
+            phase: 'SHOWDOWN',
+            players: [{ id: 'p-1', name: 'TestPlayer', chips: 1980 }],
+            gameEnd: {
+                winner: 'TestPlayer',
+                winnerChips: 1980,
+                isForfeit: true,
+                message: 'Win claimed directly',
+            },
         });
+        const claimWinSpy = vi.mocked(pokerApi.claimWin).mockResolvedValue(terminalData);
         const setGameEndResultSpy = vi.spyOn(session, 'setGameEndResult');
         const installSpy = vi.spyOn(session, 'installTerminalResult');
 
@@ -238,22 +239,29 @@ describe('useGameDispatcher', () => {
         expect(claimWinSpy).toHaveBeenCalledWith('GAME123', 'test-token', expect.any(AbortSignal));
         expect(installSpy).toHaveBeenCalledWith(terminalData);
         expect(setGameEndResultSpy).toHaveBeenCalledTimes(1);
-        expect(setGameEndResultSpy).toHaveBeenCalledWith(expect.objectContaining(terminalData));
+        expect(setGameEndResultSpy).toHaveBeenCalledWith(expect.objectContaining({
+            gameId: 'GAME123',
+            gameEnd: terminalData.gameEnd,
+        }));
         expect(pokerApi.getReview).not.toHaveBeenCalled();
         expect(session.getSnapshot().claimPending).toBe(false);
         expect(session.getSnapshot().isGameOver).toBe(true);
-        expect(session.getSnapshot().gameEndResult?.winnerName).toBe('TestPlayer');
+        expect(session.getSnapshot().gameEndResult?.gameEnd?.winner).toBe('TestPlayer');
     });
 
     it('recovers terminal game review from getReview when public state polling encounters 404', async () => {
         session.markGameStarted();
-        const reviewResult = {
+        const reviewResult: PublicGameStateResponse = createValidGameState({
             gameId: 'ROOM123',
-            winnerName: 'TestPlayer',
-            winnerChips: 2000,
-            isForfeit: true,
-            message: 'Recovered review from polling 404',
-        };
+            phase: 'SHOWDOWN',
+            players: [{ id: 'p-1', name: 'TestPlayer', chips: 2000 }],
+            gameEnd: {
+                winner: 'TestPlayer',
+                winnerChips: 2000,
+                isForfeit: true,
+                message: 'Recovered review from polling 404',
+            },
+        });
         const getPublicSpy = vi.spyOn(pokerApi, 'getPublicGameState').mockRejectedValue({ status: 404 });
         vi.spyOn(pokerApi, 'getPrivatePlayerState').mockRejectedValue({ status: 404 });
         const getReviewSpy = vi.mocked(pokerApi.getReview).mockResolvedValue(reviewResult);
@@ -269,20 +277,24 @@ describe('useGameDispatcher', () => {
         expect(getPublicSpy).toHaveBeenCalled();
         expect(getReviewSpy).toHaveBeenCalledWith('ROOM123', 'test-token', expect.any(AbortSignal));
         expect(session.getSnapshot().isGameOver).toBe(true);
-        expect(session.getSnapshot().gameEndResult?.winnerName).toBe('TestPlayer');
-        expect(session.getSnapshot().gameEndResult?.message).toBe('Recovered review from polling 404');
+        expect(session.getSnapshot().gameEndResult?.gameEnd?.winner).toBe('TestPlayer');
+        expect(session.getSnapshot().gameEndResult?.gameEnd?.message).toBe('Recovered review from polling 404');
     });
 
     it('dispatch CLAIM_WIN triggers review recovery via pokerApi.getReview on network/timeout failure and installs terminal result', async () => {
         const networkError = new TypeError('Failed to fetch');
         vi.mocked(pokerApi.claimWin).mockRejectedValue(networkError);
-        const reviewResult = {
+        const reviewResult: PublicGameStateResponse = createValidGameState({
             gameId: 'GAME123',
-            winnerName: 'TestPlayer',
-            winnerChips: 2000,
-            isForfeit: true,
-            message: 'Recovered review: TestPlayer won',
-        };
+            phase: 'SHOWDOWN',
+            players: [{ id: 'p-1', name: 'TestPlayer', chips: 2000 }],
+            gameEnd: {
+                winner: 'TestPlayer',
+                winnerChips: 2000,
+                isForfeit: true,
+                message: 'Recovered review: TestPlayer won',
+            },
+        });
         const getReviewSpy = vi.mocked(pokerApi.getReview).mockResolvedValue(reviewResult);
         const installSpy = vi.spyOn(session, 'installTerminalResult');
 
@@ -298,15 +310,22 @@ describe('useGameDispatcher', () => {
         expect(installSpy).toHaveBeenCalledWith(reviewResult);
         expect(session.getSnapshot().claimPending).toBe(false);
         expect(session.getSnapshot().isGameOver).toBe(true);
-        expect(session.getSnapshot().gameEndResult?.winnerName).toBe('TestPlayer');
+        expect(session.getSnapshot().gameEndResult?.gameEnd?.winner).toBe('TestPlayer');
     });
 
     it('recovers by review after a timed-out claim response', async () => {
         vi.mocked(pokerApi.claimWin).mockRejectedValue(Object.assign(new Error('Request timed out'), { status: 408 }));
-        vi.mocked(pokerApi.getReview).mockResolvedValue({
-            gameId: 'GAME123', winnerName: 'TestPlayer', winnerChips: 2000,
-            isForfeit: true, message: 'Recovered review',
-        });
+        vi.mocked(pokerApi.getReview).mockResolvedValue(createValidGameState({
+            gameId: 'GAME123',
+            phase: 'SHOWDOWN',
+            players: [{ id: 'p-1', name: 'TestPlayer', chips: 2000 }],
+            gameEnd: {
+                winner: 'TestPlayer',
+                winnerChips: 2000,
+                isForfeit: true,
+                message: 'Recovered review',
+            },
+        }));
         const { result } = renderHook(() => useGameDispatcher(), { wrapper: createWrapper() });
 
         await act(async () => { await result.current.dispatch({ type: 'CLAIM_WIN' }); });
@@ -316,7 +335,7 @@ describe('useGameDispatcher', () => {
     });
 
     it('keeps claim pending across public socket updates during deferred review recovery', async () => {
-        let resolveReview!: (value: GameEndResult) => void;
+        let resolveReview!: (value: PublicGameStateResponse) => void;
         vi.mocked(pokerApi.claimWin).mockRejectedValue(new TypeError('Lost claim response'));
         vi.mocked(pokerApi.getReview).mockReturnValue(new Promise((resolve) => { resolveReview = resolve; }));
         const { result } = renderHook(() => useGameDispatcher(), { wrapper: createWrapper() });
@@ -333,10 +352,17 @@ describe('useGameDispatcher', () => {
         expect(session.getSnapshot().claimPending).toBe(true);
 
         await act(async () => {
-            resolveReview({
-                gameId: 'GAME123', winnerName: 'TestPlayer', winnerChips: 2000,
-                isForfeit: true, message: 'Recovered review',
-            });
+            resolveReview(createValidGameState({
+                gameId: 'GAME123',
+                phase: 'SHOWDOWN',
+                players: [{ id: 'p-1', name: 'TestPlayer', chips: 2000 }],
+                gameEnd: {
+                    winner: 'TestPlayer',
+                    winnerChips: 2000,
+                    isForfeit: true,
+                    message: 'Recovered review',
+                },
+            }));
             await dispatchPromise;
         });
         expect(session.getSnapshot().isGameOver).toBe(true);
@@ -408,7 +434,16 @@ describe('useGameDispatcher', () => {
         session.applyPrivateState({ playerId: 'p-1', holeCards: ['AS', 'KS'] });
         localStorage.setItem(
             'poker-game-end:ROOM123',
-            JSON.stringify({ winnerName: 'TestPlayer', isForfeit: false, message: 'TestPlayer wins!' })
+            JSON.stringify({
+                version: 2,
+                roomId: 'ROOM123',
+                playerName: 'TestPlayer',
+                token: 'test-token',
+                result: createValidGameState({
+                    gameId: 'ROOM123',
+                    gameEnd: { winner: 'TestPlayer', isForfeit: false, message: 'TestPlayer wins!' },
+                }),
+            })
         );
 
         const { result } = renderHook(() => useGameDispatcher(), {
@@ -435,7 +470,16 @@ describe('useGameDispatcher', () => {
         });
         sessionStorage.setItem(
             'poker-game-end:ROOM123',
-            JSON.stringify({ winnerName: 'TestPlayer', isForfeit: false, message: 'TestPlayer wins!' })
+            JSON.stringify({
+                version: 2,
+                roomId: 'ROOM123',
+                playerName: 'TestPlayer',
+                token: 'test-token',
+                result: createValidGameState({
+                    gameId: 'ROOM123',
+                    gameEnd: { winner: 'TestPlayer', isForfeit: false, message: 'TestPlayer wins!' },
+                }),
+            })
         );
 
         await act(async () => {
@@ -530,7 +574,7 @@ describe('useGameDispatcher', () => {
     });
 
     it('missing GAME_STARTED or public STOMP after successful Start still reaches the table through REST; duplicate clicks produce one POST', async () => {
-        const startGameSpy = vi.mocked(pokerApi.startGame).mockResolvedValue({});
+        const startGameSpy = vi.mocked(pokerApi.startGame).mockResolvedValue(undefined);
         const syncSpy = vi.spyOn(session, 'synchronizeSession').mockImplementation(async () => {
             session.setGameState(createValidGameState({ gameId: 'ROOM123', phase: 'PRE_FLOP' }));
         });
@@ -555,7 +599,7 @@ describe('useGameDispatcher', () => {
     });
 
     it('ignores START_GAME continuation and does not update state if detached before completion', async () => {
-        let resolveStart!: (val?: unknown) => void;
+        let resolveStart!: () => void;
         let capturedSignal: AbortSignal | undefined;
         vi.mocked(pokerApi.startGame).mockImplementation((_roomId, _token, signal) => {
             capturedSignal = signal;

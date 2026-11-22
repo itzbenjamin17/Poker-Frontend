@@ -1,5 +1,5 @@
-import type { GameEndResult } from '../types';
-import { decodeGameEndResult } from '../lib/payloads';
+import type { PublicGameStateResponse } from '../types';
+import { decodeCompletedGameState } from '../lib/payloads';
 
 const GAME_END_STORAGE_PREFIX = 'poker-game-end:';
 
@@ -10,11 +10,11 @@ export interface AuthIdentity {
 }
 
 export interface PersistedGameEndEnvelope {
-    version: 1;
+    version: 2;
     roomId: string;
     playerName: string;
     token: string;
-    result: GameEndResult;
+    result: PublicGameStateResponse;
     storedAt?: number;
 }
 
@@ -28,7 +28,7 @@ function isValidEnvelope(value: unknown): value is PersistedGameEndEnvelope {
     }
     const candidate = value as Record<string, unknown>;
     return (
-        candidate.version === 1 &&
+        candidate.version === 2 &&
         typeof candidate.roomId === 'string' &&
         candidate.roomId.trim().length > 0 &&
         typeof candidate.playerName === 'string' &&
@@ -72,8 +72,8 @@ function decodeAndValidateRoomResult(
     rawResult: unknown,
     roomId: string,
     key: string
-): GameEndResult | null {
-    const decodedResult = decodeGameEndResult(rawResult, roomId);
+): PublicGameStateResponse | null {
+    const decodedResult = decodeCompletedGameState(rawResult, roomId);
     if (!decodedResult || decodedResult.gameId !== roomId) {
         removeSessionEntry(key);
         return null;
@@ -104,7 +104,7 @@ function readPersistedGameEndInternal(
     token?: string,
     playerName?: string,
     requireFullAuth = false
-): GameEndResult | null {
+): PublicGameStateResponse | null {
     const key = getStorageKey(roomId);
     purgeLegacyLocalStorage(key);
 
@@ -140,18 +140,14 @@ function readPersistedGameEndInternal(
         return decodeAndValidateRoomResult(parsed.result, roomId, key);
     }
 
-    if (requireFullAuth || token || playerName) {
-        removeSessionEntry(key);
-        return null;
-    }
-
-    // Fallback: unversioned legacy payload when no identity constraints were requested
-    return decodeAndValidateRoomResult(parsed, roomId, key);
+    // Legacy v1 or unversioned entries cannot decode against the v2 shape; purge cleanly.
+    removeSessionEntry(key);
+    return null;
 }
 
 function writePersistedGameEndInternal(
     roomId: string,
-    result: GameEndResult | null,
+    result: PublicGameStateResponse | null,
     token?: string,
     playerName?: string,
     storedAt?: number,
@@ -184,7 +180,7 @@ function writePersistedGameEndInternal(
                 return;
             }
             const envelope: PersistedGameEndEnvelope = {
-                version: 1,
+                version: 2,
                 roomId,
                 playerName,
                 token,
@@ -210,17 +206,17 @@ function writePersistedGameEndInternal(
  * Auth binding: Only loads when roomId, playerName, and token all match the
  * originating session and the inner result belongs to that room.
  */
-export function loadPersistedGameEnd(auth: AuthIdentity): GameEndResult | null;
+export function loadPersistedGameEnd(auth: AuthIdentity): PublicGameStateResponse | null;
 export function loadPersistedGameEnd(
     roomId: string,
     currentToken?: string,
     currentUsername?: string
-): GameEndResult | null;
+): PublicGameStateResponse | null;
 export function loadPersistedGameEnd(
     authOrRoomId: AuthIdentity | string,
     currentToken?: string,
     currentUsername?: string
-): GameEndResult | null {
+): PublicGameStateResponse | null {
     if (typeof authOrRoomId === 'string') {
         return loadGameEndResult(authOrRoomId, currentToken, currentUsername);
     }
@@ -235,14 +231,13 @@ export function loadPersistedGameEnd(
 /**
  * Loads a persisted game end result for a roomId, validating identity ownership if token
  * and/or playerName are provided. Rejects and invalidates stale entries from different users
- * or expired/corrupted entries. Preserves backward compatibility if an old unadorned payload
- * is encountered and no identity constraints are specified.
+ * or expired/corrupted entries.
  */
 export function loadGameEndResult(
     roomId: string,
     currentToken?: string,
     currentUsername?: string
-): GameEndResult | null {
+): PublicGameStateResponse | null {
     return readPersistedGameEndInternal(
         roomId,
         currentToken,
@@ -260,19 +255,19 @@ export function loadGameEndResult(
  */
 export function savePersistedGameEnd(
     auth: AuthIdentity,
-    result: GameEndResult | null,
+    result: PublicGameStateResponse | null,
     storedAt?: number
 ): void;
 export function savePersistedGameEnd(
     roomId: string,
-    result: GameEndResult | null,
+    result: PublicGameStateResponse | null,
     token?: string,
     playerName?: string,
     storedAt?: number
 ): void;
 export function savePersistedGameEnd(
     authOrRoomId: AuthIdentity | string,
-    result: GameEndResult | null,
+    result: PublicGameStateResponse | null,
     tokenOrStoredAt?: string | number,
     playerName?: string,
     storedAt?: number
@@ -301,7 +296,7 @@ export function savePersistedGameEnd(
  */
 export function saveGameEndResult(
     roomId: string,
-    result: GameEndResult | null,
+    result: PublicGameStateResponse | null,
     token?: string,
     playerName?: string,
     storedAt?: number

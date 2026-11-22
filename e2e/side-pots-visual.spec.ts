@@ -19,7 +19,6 @@ test.describe('Item 35: Visual rendering of side pots in multi-way all-in', () =
             token: authToken,
             roomId: rId,
             playerName: 'PlayerA',
-            message: 'Session restored',
             playerId: 'p-1',
           }),
         );

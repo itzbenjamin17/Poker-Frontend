@@ -13,26 +13,25 @@ import {
     REVIEW_STOPPED_CHIPS_LABEL,
     REVIEW_STOPPED_TABLE_LABEL,
 } from '../constants/strings';
-import type { GameEndResult, GameState } from '../types';
+import type { PublicGameStateResponse } from '../types';
 
 export interface GameReviewViewProps {
-    gameEndResult: GameEndResult | null;
-    gameState?: GameState | null;
+    gameEndResult: PublicGameStateResponse | null;
     onLeave: () => void;
     leaveError?: string | null;
     onRetryLeave?: () => void;
 }
 
-export function GameReviewView({ gameEndResult, gameState, onLeave, leaveError, onRetryLeave }: GameReviewViewProps) {
-    if (!gameEndResult) return null;
+export function GameReviewView({ gameEndResult, onLeave, leaveError, onRetryLeave }: GameReviewViewProps) {
+    if (!gameEndResult || !gameEndResult.gameEnd) return null;
 
-    const activeState = gameEndResult.finalState ?? gameState;
-    const isAbandoned = Boolean(gameEndResult.abandoned || gameEndResult.reason === 'INACTIVITY');
-    const winnerName = isAbandoned ? null : gameEndResult.winnerName;
-    const isForfeit = isAbandoned ? false : gameEndResult.isForfeit;
-    const winnerChips = isAbandoned ? undefined : gameEndResult.winnerChips;
+    const end = gameEndResult.gameEnd;
+    const isAbandoned = Boolean(end.abandoned || end.reason === 'INACTIVITY');
+    const winnerName = isAbandoned ? null : end.winner;
+    const isForfeit = isAbandoned ? false : end.isForfeit;
+    const winnerChips = isAbandoned ? undefined : end.winnerChips;
 
-    const sourcePlayers = activeState?.players ?? [];
+    const sourcePlayers = gameEndResult.players ?? [];
     const sortedPlayers = isAbandoned
         ? sourcePlayers
         : sourcePlayers
@@ -103,7 +102,7 @@ export function GameReviewView({ gameEndResult, gameState, onLeave, leaveError, 
                     </h2>
                     <div className="flex justify-center">
                         <CommunityCardsArea
-                            communityCards={activeState?.communityCards ?? []}
+                            communityCards={gameEndResult.communityCards ?? []}
                             scale={1.2}
                         />
                     </div>

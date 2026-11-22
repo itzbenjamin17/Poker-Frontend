@@ -1,9 +1,8 @@
 import { Client, ReconnectionTimeMode } from '@stomp/stompjs';
-import type { ApiResponse, AuthResponse, GameEndResult, RoomDataResponse, TokenResponse } from '../types';
-export type GameEndResponse = GameEndResult;
+import type { AuthResponse, PublicGameStateResponse, RoomDataResponse, TokenResponse } from '../types';
 import { logger } from '../security/logger';
 import { ERROR_MALFORMED_AUTH, ERROR_MALFORMED_RESPONSE, ERROR_REQUEST_TIMEOUT } from '../constants/strings';
-import { decodeGameEndResult, isAuthResponse, normalizeErrorMessage } from '../lib/payloads';
+import { decodeCompletedGameState, isAuthResponse, normalizeErrorMessage } from '../lib/payloads';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api';
 const REQUEST_TIMEOUT_MS = 15000;
@@ -55,7 +54,11 @@ export async function getErrorMessage(res: Response, fallback: string): Promise<
         const contentType = (res.headers.get('content-type') ?? '').toLowerCase();
         if (contentType.includes('application/json') || contentType.includes('application/problem+json')) {
             const data = await res.json();
-            return normalizeErrorMessage(data?.message) ?? normalizeErrorMessage(data?.error) ?? fallback;
+            return normalizeErrorMessage(data?.detail)
+                ?? normalizeErrorMessage(data?.title)
+                ?? normalizeErrorMessage(data?.message)
+                ?? normalizeErrorMessage(data?.error)
+                ?? fallback;
         }
         // A rate-limited plain-text body is not a user-facing message; keep the standard copy.
         if (isRateLimited) {
@@ -70,42 +73,14 @@ export async function getErrorMessage(res: Response, fallback: string): Promise<
 }
 
 function normalizeAuthResponse(res: unknown): AuthResponse {
-    if (
-        !res ||
-        typeof res !== 'object' ||
-        Array.isArray(res)
-    ) {
+    if (!isAuthResponse(res)) {
         throw buildApiError(500, ERROR_MALFORMED_AUTH);
     }
-    const r = res as Record<string, unknown>;
-    if (typeof r.message !== 'string' || r.message.trim().length === 0) {
-        throw buildApiError(500, ERROR_MALFORMED_AUTH);
-    }
-    if (
-        !r.data ||
-        typeof r.data !== 'object' ||
-        Array.isArray(r.data)
-    ) {
-        throw buildApiError(500, ERROR_MALFORMED_AUTH);
-    }
-    const d = r.data as Record<string, unknown>;
-    if (
-        typeof d.token !== 'string' || d.token.trim().length === 0 ||
-        typeof d.roomId !== 'string' || d.roomId.trim().length === 0 ||
-        typeof d.playerName !== 'string' || d.playerName.trim().length === 0
-    ) {
-        throw buildApiError(500, ERROR_MALFORMED_AUTH);
-    }
-    const auth: AuthResponse = {
-        message: r.message,
-        token: d.token,
-        roomId: d.roomId,
-        playerName: d.playerName,
+    return {
+        token: res.token,
+        roomId: res.roomId,
+        playerName: res.playerName,
     };
-    if (!isAuthResponse(auth)) {
-        throw buildApiError(500, ERROR_MALFORMED_AUTH);
-    }
-    return auth;
 }
 
 /** Decode JWT payload and check exp claim. Returns false if expired or malformed. */
@@ -241,7 +216,7 @@ export const pokerApi = {
                 body.password = payload.password;
             }
         }
-        const data = await fetchApi<ApiResponse<TokenResponse>>(`${API_BASE}/room/create`, {
+        const data = await fetchApi<TokenResponse>(`${API_BASE}/room/create`, {
             method: 'POST',
             body: JSON.stringify(body),
             signal,
@@ -258,7 +233,7 @@ export const pokerApi = {
                 body.password = payload.password;
             }
         }
-        const data = await fetchApi<ApiResponse<TokenResponse>>(`${API_BASE}/room/join`, {
+        const data = await fetchApi<TokenResponse>(`${API_BASE}/room/join`, {
             method: 'POST',
             body: JSON.stringify(body),
             signal,
@@ -299,7 +274,7 @@ export const pokerApi = {
         gameId: string,
         tokenOrSignal?: string | AbortSignal,
         signal?: AbortSignal
-    ): Promise<GameEndResult> {
+    ): Promise<PublicGameStateResponse> {
         const resolved = resolveAuthAndSignal(tokenOrSignal, signal);
         const raw = await fetchApi<unknown>(`${API_BASE}/game/${encodeURIComponent(gameId)}/review`, {
             method: 'GET',
@@ -307,7 +282,7 @@ export const pokerApi = {
             signal: resolved.signal,
             expectJson: true,
         });
-        const decoded = decodeGameEndResult(raw, gameId);
+        const decoded = decodeCompletedGameState(raw, gameId);
         if (!decoded) {
             throw new MalformedResponseError(raw === null ? 'null' : Array.isArray(raw) ? 'array' : typeof raw);
         }
@@ -318,33 +293,27 @@ export const pokerApi = {
         await fetchApi<void>(`${API_BASE}/room/${encodeURIComponent(roomId)}/leave`, { method: 'POST', token, keepalive, signal });
     },
 
-    async startGame(roomId: string, token: string, signal?: AbortSignal): Promise<unknown> {
-        return fetchApi<unknown>(`${API_BASE}/room/${encodeURIComponent(roomId)}/start-game`, { method: 'POST', token, signal });
+    async startGame(roomId: string, token: string, signal?: AbortSignal): Promise<void> {
+        await fetchApi<void>(`${API_BASE}/room/${encodeURIComponent(roomId)}/start-game`, { method: 'POST', token, signal });
     },
 
     async claimWin(
         gameId: string,
         tokenOrSignal?: string | AbortSignal,
         signal?: AbortSignal
-    ): Promise<ApiResponse<GameEndResponse>> {
+    ): Promise<PublicGameStateResponse> {
         const resolved = resolveAuthAndSignal(tokenOrSignal, signal);
-        const raw = await fetchApi<ApiResponse<unknown>>(`${API_BASE}/game/${encodeURIComponent(gameId)}/claim-win`, {
+        const raw = await fetchApi<unknown>(`${API_BASE}/game/${encodeURIComponent(gameId)}/claim-win`, {
             method: 'POST',
             token: resolved.token,
             signal: resolved.signal,
             expectJson: true,
         });
-        if (!raw || typeof raw !== 'object' || typeof raw.message !== 'string' || !('data' in raw)) {
-            throw new MalformedResponseError(raw === null ? 'null' : typeof raw);
-        }
-        const decoded = decodeGameEndResult(raw.data, gameId);
+        const decoded = decodeCompletedGameState(raw, gameId);
         if (!decoded) {
-            throw new MalformedResponseError(raw.data === null ? 'null' : typeof raw.data);
+            throw new MalformedResponseError(raw === null ? 'null' : Array.isArray(raw) ? 'array' : typeof raw);
         }
-        return {
-            message: raw.message,
-            data: decoded,
-        };
+        return decoded;
     },
 };
 

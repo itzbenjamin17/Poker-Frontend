@@ -30,7 +30,6 @@ describe('useAuthSession', () => {
             token: createJwt({ exp: Math.floor(Date.now() / 1000) + 3600 }),
             roomId: 'room-1',
             playerName: 'Alice',
-            message: 'Success',
         };
         localStorage.setItem('poker-auth', JSON.stringify(validAuth));
 
@@ -45,7 +44,7 @@ describe('useAuthSession', () => {
     it('retires a legacy shared value when this tab already has its own session', async () => {
         const tabAuth = {
             token: createJwt({ exp: Math.floor(Date.now() / 1000) + 3600, tab: 'own' }),
-            roomId: 'tab-room', playerName: 'Tab User', message: 'Ok',
+            roomId: 'tab-room', playerName: 'Tab User',
         };
         sessionStorage.setItem('poker-auth', JSON.stringify(tabAuth));
         localStorage.setItem('poker-auth', JSON.stringify({ ...tabAuth, roomId: 'legacy-room' }));
@@ -60,7 +59,6 @@ describe('useAuthSession', () => {
             token: createJwt({ exp: Math.floor(Date.now() / 1000) - 3600 }),
             roomId: 'room-1',
             playerName: 'Alice',
-            message: 'Success',
         };
         localStorage.setItem('poker-auth', JSON.stringify(expiredAuth));
 
@@ -81,14 +79,13 @@ describe('useAuthSession', () => {
         expect(localStorage.getItem('poker-auth')).toBeNull();
     });
 
-    it('clears storage and returns null auth when stored auth has empty or whitespace message', async () => {
-        const invalidMessageAuth = {
+    it('clears storage and returns null auth when stored auth has empty or whitespace playerName', async () => {
+        const invalidPlayerAuth = {
             token: createJwt({ exp: Math.floor(Date.now() / 1000) + 3600 }),
             roomId: 'room-1',
-            playerName: 'Alice',
-            message: '   ',
+            playerName: '   ',
         };
-        sessionStorage.setItem('poker-auth', JSON.stringify(invalidMessageAuth));
+        sessionStorage.setItem('poker-auth', JSON.stringify(invalidPlayerAuth));
 
         const { useAuthSession } = await import('../useAuthSession');
         const { result } = renderHook(() => useAuthSession());
@@ -102,7 +99,6 @@ describe('useAuthSession', () => {
             token: '   ',
             roomId: 'room-1',
             playerName: 'Alice',
-            message: 'ok',
         };
         sessionStorage.setItem('poker-auth', JSON.stringify(whitespaceTokenAuth));
 
@@ -121,7 +117,6 @@ describe('useAuthSession', () => {
             token: createJwt({ exp: Math.floor(Date.now() / 1000) + 3600 }),
             roomId: 'room-valid',
             playerName: 'ValidUser',
-            message: 'Success',
         };
 
         act(() => {
@@ -137,7 +132,6 @@ describe('useAuthSession', () => {
                 token: '',
                 roomId: 'room-2',
                 playerName: 'BadUser',
-                message: 'Fail',
             } as any);
         });
         expect(result.current.auth).toEqual(validAuth);
@@ -147,9 +141,8 @@ describe('useAuthSession', () => {
         act(() => {
             result.current.setAuth({
                 token: validAuth.token,
-                roomId: 'room-valid',
+                roomId: '   ',
                 playerName: 'ValidUser',
-                message: '   ',
             } as any);
         });
         expect(result.current.auth).toEqual(validAuth);
@@ -179,7 +172,6 @@ describe('useAuthSession', () => {
             token: createJwt({ exp: Math.floor(Date.now() / 1000) + 3600 }),
             roomId: 'room-2',
             playerName: 'Bob',
-            message: 'Joined',
         };
 
         act(() => {
@@ -195,7 +187,7 @@ describe('useAuthSession', () => {
         const { useAuthSession } = await import('../useAuthSession');
         const { result } = renderHook(() => useAuthSession());
         const getCurrentAuth = result.current.getCurrentAuth;
-        const nextAuth = { token: createJwt({ exp: Math.floor(Date.now() / 1000) + 3600 }), roomId: 'room-sync', playerName: 'Sync', message: 'Ok' };
+        const nextAuth = { token: createJwt({ exp: Math.floor(Date.now() / 1000) + 3600 }), roomId: 'room-sync', playerName: 'Sync' };
         act(() => result.current.setAuth(nextAuth));
         expect(result.current.getCurrentAuth).toBe(getCurrentAuth);
         expect(getCurrentAuth()).toEqual(nextAuth);
@@ -208,7 +200,6 @@ describe('useAuthSession', () => {
             token: createJwt({ exp: Math.floor(Date.now() / 1000) + 3600 }),
             roomId: 'room-3',
             playerName: 'Charlie',
-            message: 'Ok',
         };
         localStorage.setItem('poker-auth', JSON.stringify(validAuth));
 
@@ -230,7 +221,6 @@ describe('useAuthSession', () => {
             token: createJwt({ exp: Math.floor(Date.now() / 1000) + 3600 }),
             roomId: 'room-4',
             playerName: 'Dave',
-            message: 'Ok',
         };
         localStorage.setItem('poker-auth', JSON.stringify(validAuth));
 
@@ -255,7 +245,6 @@ describe('useAuthSession', () => {
             token: createJwt({ exp: Math.floor(Date.now() / 1000) + 3600 }),
             roomId: 'room-5',
             playerName: 'Eve',
-            message: 'Ok',
         };
         localStorage.setItem('poker-auth', JSON.stringify(validAuth));
 
@@ -280,7 +269,6 @@ describe('useAuthSession', () => {
             token: createJwt({ exp: Math.floor(Date.now() / 1000) + 3600, session: 'current' }),
             roomId: 'room-current',
             playerName: 'Current Player',
-            message: 'Ok',
         };
         const staleToken = createJwt({ exp: Math.floor(Date.now() / 1000) + 3600, session: 'stale' });
         localStorage.setItem('poker-auth', JSON.stringify(currentAuth));
@@ -301,7 +289,6 @@ describe('useAuthSession', () => {
             token: createJwt({ exp: Math.floor(Date.now() / 1000) + 3600 }),
             roomId: 'room-clear',
             playerName: 'Clear Test',
-            message: 'Ok',
         };
         localStorage.setItem('poker-auth', JSON.stringify(validAuth));
         const { useAuthSession } = await import('../useAuthSession');
@@ -318,8 +305,8 @@ describe('useAuthSession', () => {
     it('does not let stale token cleanup clear a replacement session', async () => {
         const { useAuthSession } = await import('../useAuthSession');
         const { result } = renderHook(() => useAuthSession());
-        const oldAuth = { token: createJwt({ exp: Math.floor(Date.now() / 1000) + 3600, id: 'old' }), roomId: 'old', playerName: 'A', message: 'Old' };
-        const newAuth = { token: createJwt({ exp: Math.floor(Date.now() / 1000) + 3600, id: 'new' }), roomId: 'new', playerName: 'B', message: 'New' };
+        const oldAuth = { token: createJwt({ exp: Math.floor(Date.now() / 1000) + 3600, id: 'old' }), roomId: 'old', playerName: 'A' };
+        const newAuth = { token: createJwt({ exp: Math.floor(Date.now() / 1000) + 3600, id: 'new' }), roomId: 'new', playerName: 'B' };
         act(() => result.current.setAuth(oldAuth));
         act(() => result.current.setAuth(newAuth));
         act(() => result.current.clearAuth(oldAuth.token));
@@ -349,7 +336,6 @@ describe('useAuthSession', () => {
                 token: createJwt({ exp: Math.floor(Date.now() / 1000) + 3600 }),
                 roomId: 'room-mem',
                 playerName: 'InMemoryUser',
-                message: 'Ok',
             };
 
             act(() => {
@@ -375,7 +361,6 @@ describe('useAuthSession', () => {
             token: validToken,
             roomId: 'room-corrupt',
             playerName: 'CorruptTest',
-            message: 'Ok',
         };
         const { result } = renderHook(() => useAuthSession());
         act(() => {
@@ -399,7 +384,6 @@ describe('useAuthSession', () => {
             token: createJwt({ exp: Math.floor(Date.now() / 1000) + 3600 }),
             roomId: 'room-migration',
             playerName: 'MigratedUser',
-            message: 'Ok',
         };
         localStorage.setItem('poker-auth', JSON.stringify(legacyAuth));
 
@@ -424,7 +408,6 @@ describe('useAuthSession', () => {
                 token: createJwt({ exp: Math.floor(Date.now() / 1000) + 3600, id: 'token-no-arg' }),
                 roomId: 'room-no-arg',
                 playerName: 'Player1',
-                message: 'Ok',
             };
             const { useAuthSession } = await import('../useAuthSession');
             const { result } = renderHook(() => useAuthSession());
@@ -447,7 +430,6 @@ describe('useAuthSession', () => {
                 token,
                 roomId: 'room-matching',
                 playerName: 'Player2',
-                message: 'Ok',
             };
             const { useAuthSession } = await import('../useAuthSession');
             const { result } = renderHook(() => useAuthSession());
@@ -471,7 +453,6 @@ describe('useAuthSession', () => {
                 token: activeToken,
                 roomId: 'room-active',
                 playerName: 'Player3',
-                message: 'Ok',
             };
             const { useAuthSession } = await import('../useAuthSession');
             const { result } = renderHook(() => useAuthSession());

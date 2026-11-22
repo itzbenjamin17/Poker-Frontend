@@ -31,7 +31,6 @@ describe('useGameWebSocket', () => {
         token,
         roomId: 'ROOM123',
         playerName: 'TestPlayer',
-        message: 'Success',
     };
     const onLeave = vi.fn();
     const onSocketError = vi.fn();
@@ -103,9 +102,10 @@ describe('useGameWebSocket', () => {
         });
 
         act(() => {
-            MockStompClient.simulateMessage('/room/ROOM123', {
-                message: 'ROOM_CLOSED',
-            });
+            MockStompClient.simulateMessage('/room/ROOM123', createValidRoomData({
+                roomId: 'ROOM123',
+                closedReason: 'HOST_LEFT',
+            }));
         });
 
         expect(session.getSnapshot().notification).toBe(HOST_LEFT);
@@ -194,46 +194,53 @@ describe('useGameWebSocket', () => {
         expect(activeSubscriptions.has('/user/queue/private')).toBe(true);
     });
 
-    it('updates gameEndResult with snapshot on GAME_END frame', async () => {
+    it('updates gameEndResult with snapshot on completed game state frame', async () => {
         renderHook(() => useGameWebSocket({ onSocketError }), {
             wrapper: createWrapper(),
         });
         await act(async () => { await vi.advanceTimersByTimeAsync(10); });
 
-        const gameEndPayload = {
-            type: 'GAME_END',
-            winner: 'Player1',
-            winnerChips: 500,
-            isForfeit: false,
-            message: 'Player1 wins!',
-            finalState: createValidGameState({
-                gameId: 'ROOM123',
-                phase: 'SHOWDOWN',
-                pot: 1000,
-                currentPlayerName: '',
-                currentPlayerId: '',
-                players: [createValidGameState().players[0]],
-                communityCards: ['AS', 'KS', 'QS', 'JS', 'TS'],
-            }),
-        };
+        const gameEndPayload = createValidGameState({
+            gameId: 'ROOM123',
+            phase: 'SHOWDOWN',
+            pot: 1000,
+            currentPlayerName: '',
+            currentPlayerId: '',
+            players: [createValidGameState().players[0]],
+            communityCards: ['AS', 'KS', 'QS', 'JS', 'TS'],
+            gameEnd: {
+                winner: 'Player1',
+                winnerChips: 500,
+                isForfeit: false,
+                message: 'Player1 wins!',
+            },
+        });
 
         act(() => {
             MockStompClient.simulateMessage('/game/ROOM123', gameEndPayload);
         });
 
         expect(session.getSnapshot().isGameOver).toBe(true);
-        expect(session.getSnapshot().gameEndResult).toEqual({
+        expect(session.getSnapshot().gameEndResult).toMatchObject({
             gameId: 'ROOM123',
-            winnerName: 'Player1',
-            winnerChips: 500,
-            isForfeit: false,
-            message: 'Player1 wins!',
-            finalState: expect.objectContaining({ phase: 'SHOWDOWN' }),
+            phase: 'SHOWDOWN',
+            pot: 1000,
+            gameEnd: {
+                winner: 'Player1',
+                winnerChips: 500,
+                isForfeit: false,
+                message: 'Player1 wins!',
+            },
         });
     });
 
     it('ignores subsequent game updates after game end', async () => {
-        session.setGameEndResult({ gameId: 'ROOM123', winnerName: 'Player1', isForfeit: false, message: 'Done' });
+        session.setGameEndResult(createValidGameState({
+            gameId: 'ROOM123',
+            phase: 'SHOWDOWN',
+            players: [{ id: 'p-1', name: 'Player1', chips: 1000 }],
+            gameEnd: { winner: 'Player1', isForfeit: false, message: 'Done' },
+        }));
 
         renderHook(() => useGameWebSocket({ onSocketError }), {
             wrapper: createWrapper(),
@@ -249,11 +256,16 @@ describe('useGameWebSocket', () => {
             });
         });
 
-        expect(session.getSnapshot().gameState).toBeNull();
+        expect(session.getSnapshot().gameState?.phase).toBe('SHOWDOWN');
     });
 
     it('does not schedule redirect on 403 after game end', async () => {
-        session.setGameEndResult({ gameId: 'ROOM123', winnerName: 'Player1', isForfeit: false, message: 'Done' });
+        session.setGameEndResult(createValidGameState({
+            gameId: 'ROOM123',
+            phase: 'SHOWDOWN',
+            players: [{ id: 'p-1', name: 'Player1', chips: 1000 }],
+            gameEnd: { winner: 'Player1', isForfeit: false, message: 'Done' },
+        }));
 
         // Mock pokerApi.getPublicGameState to reject with 403
         vi.mocked(pokerApi.getPublicGameState).mockRejectedValue({ status: 403 });
@@ -273,7 +285,12 @@ describe('useGameWebSocket', () => {
     });
 
     it('ignores ROOM_CLOSED after game end', async () => {
-        session.setGameEndResult({ gameId: 'ROOM123', winnerName: 'Player1', isForfeit: false, message: 'Done' });
+        session.setGameEndResult(createValidGameState({
+            gameId: 'ROOM123',
+            phase: 'SHOWDOWN',
+            players: [{ id: 'p-1', name: 'Player1', chips: 1000 }],
+            gameEnd: { winner: 'Player1', isForfeit: false, message: 'Done' },
+        }));
 
         renderHook(() => useGameWebSocket({ onSocketError }), {
             wrapper: createWrapper(),
@@ -281,9 +298,10 @@ describe('useGameWebSocket', () => {
         await act(async () => { await vi.advanceTimersByTimeAsync(10); });
 
         act(() => {
-            MockStompClient.simulateMessage('/room/ROOM123', {
-                message: 'ROOM_CLOSED',
-            });
+            MockStompClient.simulateMessage('/room/ROOM123', createValidRoomData({
+                roomId: 'ROOM123',
+                closedReason: 'HOST_LEFT',
+            }));
         });
 
         expect(session.getSnapshot().roomState).not.toBeNull();
@@ -332,9 +350,6 @@ describe('useGameWebSocket', () => {
                 { name: 'TestPlayer', isHost: true },
                 { name: 'NewOpponent', isHost: false },
             ],
-            currentPlayers: 2,
-            hostName: 'TestPlayer',
-            createdAt: '2026-01-01T00:00:00Z',
             maxPlayers: 6,
             buyIn: 1000,
             smallBlind: 10,
@@ -401,7 +416,12 @@ describe('useGameWebSocket', () => {
 
         // Simulate game end while connected
         act(() => {
-            session.setGameEndResult({ gameId: 'ROOM123', winnerName: 'Player1', isForfeit: false, message: 'Done' });
+            session.setGameEndResult(createValidGameState({
+                gameId: 'ROOM123',
+                phase: 'SHOWDOWN',
+                players: [{ id: 'p-1', name: 'Player1', chips: 1000 }],
+                gameEnd: { winner: 'Player1', isForfeit: false, message: 'Done' },
+            }));
         });
         rerender();
 
@@ -470,9 +490,10 @@ describe('useGameWebSocket', () => {
 
         // Test packet injection
         act(() => {
-            inMemoryTransport.simulateMessage('/room/ROOM123', JSON.stringify({
-                message: 'ROOM_CLOSED',
-            }));
+            inMemoryTransport.simulateMessage('/room/ROOM123', JSON.stringify(createValidRoomData({
+                roomId: 'ROOM123',
+                closedReason: 'HOST_LEFT',
+            })));
         });
 
         expect(session.getSnapshot().roomState).toBeNull();
@@ -788,7 +809,12 @@ describe('useGameWebSocket', () => {
         const callsBeforeEnd = vi.mocked(pokerApi.getPublicGameState).mock.calls.length;
 
         act(() => {
-            session3.setGameEndResult({ gameId: 'ROOM123', winnerName: 'TestPlayer', isForfeit: false, message: 'Game over' });
+            session3.setGameEndResult(createValidGameState({
+                gameId: 'ROOM123',
+                phase: 'SHOWDOWN',
+                players: [{ id: 'p-1', name: 'TestPlayer', chips: 1000 }],
+                gameEnd: { winner: 'TestPlayer', isForfeit: false, message: 'Game over' },
+            }));
         });
 
         expect(session3.hasPendingRecoveryTimer()).toBe(false);
@@ -1195,7 +1221,7 @@ describe('useGameWebSocket', () => {
         expect(session.getSnapshot().privateState).toEqual({ holeCards: ['KS', 'KC'] });
     });
 
-    it('does not let stale room recovery roll back an intervening PLAYER_JOINED frame', async () => {
+    it('does not let stale room recovery roll back an intervening room update frame', async () => {
         const inMemoryTransport = new InMemoryTransportAdapter();
         session.setRoomState({
             roomId: 'ROOM123',
@@ -1214,16 +1240,13 @@ describe('useGameWebSocket', () => {
         expect(pokerApi.getRoomData).toHaveBeenCalledTimes(1);
 
         act(() => {
-            inMemoryTransport.simulateMessage('/room/ROOM123', {
-                message: 'PLAYER_JOINED',
-                data: {
-                    roomId: 'ROOM123',
-                    players: [
-                        { name: 'TestPlayer', isHost: true },
-                        { name: 'Opponent', isHost: false },
-                    ],
-                },
-            });
+            inMemoryTransport.simulateMessage('/room/ROOM123', createValidRoomData({
+                roomId: 'ROOM123',
+                players: [
+                    { name: 'TestPlayer', isHost: true },
+                    { name: 'Opponent', isHost: false },
+                ],
+            }));
         });
         expect(session.getSnapshot().roomState?.players).toHaveLength(2);
 

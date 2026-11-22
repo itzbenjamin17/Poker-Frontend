@@ -3,7 +3,8 @@ import { describe, expect, it, vi } from 'vitest';
 import { GameSession } from '../GameSession';
 import { TestClock } from '../clock';
 import { InMemoryTransportAdapter } from '../../services/transport';
-import type { AuthResponse, GameEndResult, IncomingGameStatePayload } from '../../types';
+import type { AuthResponse, IncomingGameStatePayload, PublicGameStateResponse } from '../../types';
+import { createValidGameState, createValidRoomData } from '../../test/fixtures';
 import { HOST_LEFT, SESSION_EXPIRED, SESSION_SEAT_GONE } from '../../constants/strings';
 
 describe('GameSession Redirect Lifecycle & Transport Barrier', () => {
@@ -11,7 +12,6 @@ describe('GameSession Redirect Lifecycle & Transport Barrier', () => {
         roomId: 'room-redirect',
         playerName: 'Hero',
         token: 'token-hero',
-        message: 'Success',
     };
 
     function createSession(clock = new TestClock(1000)) {
@@ -54,15 +54,15 @@ describe('GameSession Redirect Lifecycle & Transport Barrier', () => {
         expect(onLeave).toHaveBeenCalledTimes(1);
     });
 
-    it('routes ROOM_CLOSED through shared redirect, clearing roomState and setting HOST_LEFT', () => {
+    it('routes closed room frame through shared redirect, clearing roomState and setting HOST_LEFT', () => {
         const { session, transport, clock, onLeave } = createSession();
         session.connect();
         transport.simulateStatus('connected');
 
-        transport.simulateMessage('/room/room-redirect', {
-            message: 'ROOM_CLOSED',
-            data: { roomId: 'room-redirect' },
-        });
+        transport.simulateMessage('/room/room-redirect', createValidRoomData({
+            roomId: 'room-redirect',
+            closedReason: 'HOST_LEFT',
+        }));
 
         expect(session.getSnapshot().isRedirecting).toBe(true);
         expect(session.getSnapshot().roomState).toBeNull();
@@ -121,13 +121,17 @@ describe('GameSession Redirect Lifecycle & Transport Barrier', () => {
 
     it('does not start redirect on an already terminal session', () => {
         const { session, transport, clock, onLeave } = createSession();
-        const terminalResult: GameEndResult = {
+        const terminalResult: PublicGameStateResponse = createValidGameState({
             gameId: 'room-redirect',
-            winnerName: 'Hero',
-            winnerChips: 1000,
-            isForfeit: false,
-            message: 'Hero won',
-        };
+            phase: 'SHOWDOWN',
+            players: [{ id: 'p-1', name: 'Hero', chips: 1000 }],
+            gameEnd: {
+                winner: 'Hero',
+                winnerChips: 1000,
+                isForfeit: false,
+                message: 'Hero won',
+            },
+        });
 
         session.installTerminalResult(terminalResult);
         expect(session.getSnapshot().isGameOver).toBe(true);
@@ -136,11 +140,11 @@ describe('GameSession Redirect Lifecycle & Transport Barrier', () => {
         session.scheduleRedirect(SESSION_EXPIRED);
         expect(session.getSnapshot().isRedirecting).toBe(false);
 
-        // Attempt redirect via ROOM_CLOSED
-        transport.simulateMessage('/room/room-redirect', {
-            message: 'ROOM_CLOSED',
-            data: { roomId: 'room-redirect' },
-        });
+        // Attempt redirect via closed room frame
+        transport.simulateMessage('/room/room-redirect', createValidRoomData({
+            roomId: 'room-redirect',
+            closedReason: 'HOST_LEFT',
+        }));
         expect(session.getSnapshot().isRedirecting).toBe(false);
 
         clock.tick(5000);
@@ -152,13 +156,17 @@ describe('GameSession Redirect Lifecycle & Transport Barrier', () => {
         session.scheduleRedirect('Lost connection');
         expect(session.getSnapshot().isRedirecting).toBe(true);
 
-        const terminalResult: GameEndResult = {
+        const terminalResult: PublicGameStateResponse = createValidGameState({
             gameId: 'room-redirect',
-            winnerName: 'Hero',
-            winnerChips: 1000,
-            isForfeit: false,
-            message: 'Hero won tournament',
-        };
+            phase: 'SHOWDOWN',
+            players: [{ id: 'p-1', name: 'Hero', chips: 1000 }],
+            gameEnd: {
+                winner: 'Hero',
+                winnerChips: 1000,
+                isForfeit: false,
+                message: 'Hero won tournament',
+            },
+        });
 
         // Explicit install from current authorized owner
         session.installTerminalResult(terminalResult);
@@ -179,13 +187,16 @@ describe('GameSession Redirect Lifecycle & Transport Barrier', () => {
         expect(session.getSnapshot().isRedirecting).toBe(true);
 
         // Stale STOMP frame arrives on /game after redirect entered
-        transport.simulateMessage('/game/room-redirect', {
-            type: 'GAME_END',
+        transport.simulateMessage('/game/room-redirect', createValidGameState({
             gameId: 'room-redirect',
-            winnerName: 'Hero',
-            message: 'Hero won',
-            isForfeit: false,
-        });
+            phase: 'SHOWDOWN',
+            players: [{ id: 'p-1', name: 'Hero', chips: 1000 }],
+            gameEnd: {
+                winner: 'Hero',
+                message: 'Hero won',
+                isForfeit: false,
+            },
+        }));
 
         // Frame must be rejected at barrier
         expect(session.getSnapshot().isGameOver).toBe(false);

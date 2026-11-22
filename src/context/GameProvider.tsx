@@ -47,18 +47,18 @@ export function GameProvider({
     clock,
     children,
 }: GameProviderProps) {
-    const { roomId, playerName, token, message } = auth;
+    const { roomId, playerName, token } = auth;
 
     const session = useMemo(() => {
         if (sessionProp) return sessionProp;
         const persistedGameEnd = loadPersistedGameEnd(auth);
         return new GameSession({
-            auth: { roomId, playerName, token, message },
+            auth: { roomId, playerName, token },
             transport: transportProp ?? new StompTransportAdapter(token),
             clock,
             initialGameEndResult: persistedGameEnd,
         });
-    }, [sessionProp, auth, roomId, playerName, token, message, transportProp, clock]);
+    }, [sessionProp, auth, roomId, playerName, token, transportProp, clock]);
 
     const onLeaveRef = useRef(onLeave);
     useEffect(() => {

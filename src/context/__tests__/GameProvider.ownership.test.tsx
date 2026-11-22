@@ -10,7 +10,7 @@ import { useGameWebSocket } from '../../hooks/useGameWebSocket';
 import { useGameContext } from '../GameContext';
 import { pokerApi } from '../../services/api';
 import type { AuthResponse } from '../../types';
-import { createValidRoomData } from '../../test/fixtures';
+import { createValidGameState, createValidRoomData } from '../../test/fixtures';
 
 vi.mock('../../services/api', async (importOriginal) => {
     const actual = await importOriginal<typeof import('../../services/api')>();
@@ -34,14 +34,12 @@ describe('GameProvider Ownership Lifecycle & StrictMode', () => {
         roomId: 'room-A',
         playerName: 'PlayerA',
         token: 'token-A',
-        message: 'Success',
     };
 
     const authB: AuthResponse = {
         roomId: 'room-B',
         playerName: 'PlayerB',
         token: 'token-B',
-        message: 'Success',
     };
 
     beforeEach(() => {
@@ -234,13 +232,17 @@ describe('GameProvider Ownership Lifecycle & StrictMode', () => {
             clock,
         });
 
-        const resultA = {
+        const resultA = createValidGameState({
             gameId: authA.roomId,
-            winnerName: 'PlayerA',
-            winnerChips: 1000,
-            isForfeit: false,
-            message: 'PlayerA wins tournament',
-        };
+            phase: 'SHOWDOWN',
+            players: [{ id: 'p-1', name: 'PlayerA', chips: 1000 }],
+            gameEnd: {
+                winner: 'PlayerA',
+                winnerChips: 1000,
+                isForfeit: false,
+                message: 'PlayerA wins tournament',
+            },
+        });
 
         const { unmount } = render(
             createElement(GameProvider, {
@@ -258,7 +260,7 @@ describe('GameProvider Ownership Lifecycle & StrictMode', () => {
         const raw = sessionStorage.getItem(`poker-game-end:${authA.roomId}`);
         expect(raw).not.toBeNull();
         expect(JSON.parse(raw!)).toMatchObject({
-            version: 1,
+            version: 2,
             roomId: authA.roomId,
             playerName: authA.playerName,
             token: authA.token,
@@ -275,7 +277,10 @@ describe('GameProvider Ownership Lifecycle & StrictMode', () => {
         act(() => {
             session.setGameEndResult({
                 ...resultA,
-                message: 'Should not persist after detach',
+                gameEnd: {
+                    ...resultA.gameEnd!,
+                    message: 'Should not persist after detach',
+                },
             });
         });
 

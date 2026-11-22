@@ -10,7 +10,6 @@ describe('GameSession Active Game Inactivity Lifecycle & Enforcement', () => {
         roomId: 'room-game-inactivity',
         playerName: 'Hero',
         token: 'token-hero',
-        message: 'Success',
     };
 
     const baseGameState: GameState = {
@@ -130,13 +129,11 @@ describe('GameSession Active Game Inactivity Lifecycle & Enforcement', () => {
         // Game starts with 15m active game deadline
         const gameDeadline = clock.now() + 15 * 60_000;
         transport.simulateMessage(`/room/${auth.roomId}`, {
-            message: 'GAME_STARTED',
-            data: {
-                roomId: auth.roomId,
-                gameStarted: true,
-                inactivityDeadlineEpochMs: gameDeadline,
-                players: [{ name: auth.playerName, isHost: true }],
-            },
+            roomId: auth.roomId,
+            roomName: 'Lobby',
+            gameStarted: true,
+            inactivityDeadlineEpochMs: gameDeadline,
+            players: [{ name: auth.playerName, isHost: true }],
         });
 
         // Lobby warning is dismissed and game warning is not yet active
@@ -156,17 +153,19 @@ describe('GameSession Active Game Inactivity Lifecycle & Enforcement', () => {
 
         // Set game end result as abandonment
         session.setGameEndResult({
-            gameId: auth.roomId,
-            winnerName: null,
-            abandoned: true,
-            reason: 'INACTIVITY',
-            message: 'Game abandoned due to inactivity.',
-            isForfeit: false,
+            ...initialGame,
+            gameEnd: {
+                winner: null,
+                abandoned: true,
+                reason: 'INACTIVITY',
+                message: 'Game abandoned due to inactivity.',
+                isForfeit: false,
+            },
         });
 
         expect(session.getSnapshot().isGameOver).toBe(true);
         expect(session.getSnapshot().isGameInactivityWarningActive).toBe(false);
-        expect(session.getSnapshot().gameEndResult?.abandoned).toBe(true);
-        expect(session.getSnapshot().gameEndResult?.winnerName).toBeNull();
+        expect(session.getSnapshot().gameEndResult?.gameEnd?.abandoned).toBe(true);
+        expect(session.getSnapshot().gameEndResult?.gameEnd?.winner).toBeNull();
     });
 });

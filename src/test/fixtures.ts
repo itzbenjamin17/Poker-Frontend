@@ -14,7 +14,6 @@ export const mockAuth = {
     },
     roomId: 'room-123',
     playerName: 'Player 1',
-    message: 'Success',
 };
 
 export function createValidPlayer(overrides: Record<string, unknown> = {}): Player {
@@ -60,9 +59,6 @@ export function createValidRoomData(overrides: Record<string, unknown> = {}): Ro
         buyIn: 1_000,
         smallBlind: 10,
         bigBlind: 20,
-        createdAt: '2026-01-01T00:00:00.000Z',
-        hostName: 'Player 1',
-        currentPlayers: 1,
         canStartGame: false,
         gameStarted: false,
         players: [{ name: 'Player 1', isHost: true }],

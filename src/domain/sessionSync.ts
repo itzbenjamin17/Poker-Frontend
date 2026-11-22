@@ -1,13 +1,12 @@
 import type {
     AuthResponse,
-    GameEndResult,
     PrivatePlayerState,
     PublicGameStateResponse,
     RoomDataResponse,
     RoomState,
 } from '../types';
 import {
-    decodeGameEndResult,
+    decodeCompletedGameState,
     decodePrivatePlayerState,
     decodePublicGameState,
     decodeRoomDataResponse,
@@ -27,7 +26,7 @@ export type SyncResult =
           publicState: PublicGameStateResponse;
           privateState: PrivatePlayerState;
       }
-    | { type: 'TERMINAL'; review: GameEndResult };
+    | { type: 'TERMINAL'; review: PublicGameStateResponse };
 
 export interface SessionSyncDeps {
     auth: AuthResponse;
@@ -216,7 +215,7 @@ async function handleReviewFallback(
     }
     try {
         const reviewRaw = await api.getReview(auth.roomId, auth.token, signal);
-        const review = decodeGameEndResult(reviewRaw, auth.roomId);
+        const review = decodeCompletedGameState(reviewRaw, auth.roomId);
         if (!review) {
             throw new MalformedResponseError(receivedType(reviewRaw));
         }

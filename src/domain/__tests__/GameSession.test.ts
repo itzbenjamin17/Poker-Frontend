@@ -13,7 +13,6 @@ describe('GameSession Domain Store', () => {
         roomId: 'room-123',
         playerName: 'Hero',
         token: 'token-hero',
-        message: 'Success',
     };
 
     function createSession(clock = new TestClock(1000)) {
@@ -179,18 +178,15 @@ describe('GameSession Domain Store', () => {
             const { session, transport, clock, onLeave } = createSession();
             session.connect();
 
-            // Player joined
+            // Player joined / room snapshot update
             transport.simulateMessage('/room/room-123', {
-                message: 'PLAYER_JOINED',
-                data: {
-                    roomId: 'room-123',
-                    roomName: 'High Stakes',
-                    players: [
-                        { name: 'Hero', isHost: true },
-                        { name: 'Villain', isHost: false },
-                    ],
-                    gameStarted: false,
-                },
+                roomId: 'room-123',
+                roomName: 'High Stakes',
+                players: [
+                    { name: 'Hero', isHost: true },
+                    { name: 'Villain', isHost: false },
+                ],
+                gameStarted: false,
             });
 
             expect(session.getSnapshot().roomState?.roomName).toBe('High Stakes');
@@ -198,8 +194,10 @@ describe('GameSession Domain Store', () => {
 
             // Room closed
             transport.simulateMessage('/room/room-123', {
-                message: 'ROOM_CLOSED',
-                data: { roomId: 'room-123' },
+                roomId: 'room-123',
+                roomName: 'High Stakes',
+                players: [],
+                closedReason: 'HOST_LEFT',
             });
 
             expect(session.getSnapshot().notification).toBe(HOST_LEFT);
@@ -217,30 +215,27 @@ describe('GameSession Domain Store', () => {
             session.connect();
 
             transport.simulateMessage('/room/room-123', {
-                message: 'ROOM_CREATED',
-                data: {
-                    roomId: 'room-123',
-                    roomName: 'Valid Room',
-                    players: [{ name: 'Hero', isHost: true }],
-                    gameStarted: false,
-                },
+                roomId: 'room-123',
+                roomName: 'Valid Room',
+                players: [{ name: 'Hero', isHost: true }],
+                gameStarted: false,
             });
 
             const validRoomState = session.getSnapshot().roomState;
             expect(validRoomState?.roomName).toBe('Valid Room');
             expect(validRoomState?.players).toEqual([{ name: 'Hero', isHost: true }]);
 
-            // Malformed frame 1: data is null
+            // Malformed frame 1: missing required roomName and players
             transport.simulateMessage('/room/room-123', {
-                message: 'PLAYER_JOINED',
-                data: null,
+                roomId: 'room-123',
             });
             expect(session.getSnapshot().roomState).toBe(validRoomState);
 
             // Malformed frame 2: players is not an array
             transport.simulateMessage('/room/room-123', {
-                message: 'PLAYER_JOINED',
-                data: { roomId: 'room-123', roomName: 'Bad', players: 'bad' },
+                roomId: 'room-123',
+                roomName: 'Bad',
+                players: 'bad',
             });
             expect(session.getSnapshot().roomState).toBe(validRoomState);
         });
@@ -1066,7 +1061,7 @@ describe('GameSession Domain Store', () => {
             expect(session.getSnapshot().notificationSequence).toBe((firstSequence ?? 0) + 1);
         });
 
-        it('does not allow an earlier notification timer to overwrite ROOM_CLOSED (HOST_LEFT) notification', () => {
+        it('does not allow an earlier notification timer to overwrite closed-room (HOST_LEFT) notification', () => {
             const { session, transport, clock } = createSession(new TestClock(1000));
             session.connect();
             transport.simulateStatus('connected');
@@ -1076,10 +1071,10 @@ describe('GameSession Domain Store', () => {
 
             clock.tick(2000);
 
-            transport.simulateMessage('/room/room-123', {
-                message: 'ROOM_CLOSED',
-                data: { roomId: 'room-123' },
-            });
+            transport.simulateMessage('/room/room-123', createValidRoomData({
+                roomId: 'room-123',
+                closedReason: 'HOST_LEFT',
+            }));
             expect(session.getSnapshot().notification).toBe(HOST_LEFT);
 
             // Advance another 2000ms (t=4000ms total, when 'Minor toast' timer would have fired, < 3000ms redirect)
@@ -1103,51 +1098,57 @@ describe('GameSession Domain Store', () => {
     });
 
     describe('Game End Lifecycle', () => {
-        it('setGameEndResult clears action locks and a pending ROOM_CLOSED redirect', () => {
+        it('setGameEndResult clears action locks and a pending closed-room redirect', () => {
             const { session, transport, clock, onLeave } = createSession();
             session.connect();
             transport.simulateStatus('connected');
             session.playAction('CHECK');
-            transport.simulateMessage('/room/room-123', { message: 'ROOM_CLOSED' });
+            transport.simulateMessage('/room/room-123', createValidRoomData({
+                roomId: 'room-123',
+                closedReason: 'HOST_LEFT',
+            }));
 
-            session.setGameEndResult({
+            session.setGameEndResult(createValidGameState({
                 gameId: 'room-123',
-                winnerName: 'Hero',
-                isForfeit: false,
-                message: 'Hero wins',
-            });
+                phase: 'SHOWDOWN',
+                players: [createValidPlayer({ name: 'Hero', chips: 1000 })],
+                gameEnd: {
+                    winner: 'Hero',
+                    isForfeit: false,
+                    message: 'Hero wins',
+                },
+            }));
 
             expect(session.getSnapshot().pendingActions).toHaveLength(0);
             clock.tick(3_000);
             expect(onLeave).not.toHaveBeenCalled();
         });
 
-        it('transitions to isGameOver and freezes finalState upon GAME_END payload', () => {
+        it('transitions to isGameOver and freezes finalState upon completed game state payload', () => {
             const { session, transport } = createSession();
             session.connect();
             transport.simulateStatus('connected');
 
             transport.simulateMessage('/game/room-123', {
-                type: 'GAME_END',
-                winner: 'Hero',
-                winnerChips: 2000,
-                isForfeit: false,
-                message: 'Hero wins tournament!',
-                finalState: {
-                    phase: 'SHOWDOWN',
-                    pot: 2000,
-                    currentBet: 0,
-                    communityCards: ['Ah', 'Kh', 'Qh', 'Jh', 'Th'],
-                    maxPlayers: 2,
-                    currentPlayerName: '',
-                    currentPlayerId: '',
-                    players: [],
+                phase: 'SHOWDOWN',
+                pot: 2000,
+                currentBet: 0,
+                communityCards: ['Ah', 'Kh', 'Qh', 'Jh', 'Th'],
+                maxPlayers: 2,
+                currentPlayerName: '',
+                currentPlayerId: '',
+                players: [],
+                gameEnd: {
+                    winner: 'Hero',
+                    winnerChips: 2000,
+                    isForfeit: false,
+                    message: 'Hero wins tournament!',
                 },
             });
 
             expect(session.getSnapshot().isGameOver).toBe(true);
-            expect(session.getSnapshot().gameEndResult?.winnerName).toBe('Hero');
-            expect(session.getSnapshot().gameEndResult?.message).toBe('Hero wins tournament!');
+            expect(session.getSnapshot().gameEndResult?.gameEnd?.winner).toBe('Hero');
+            expect(session.getSnapshot().gameEndResult?.gameEnd?.message).toBe('Hero wins tournament!');
             expect(session.getSnapshot().showdown).toBeNull();
 
             // Subsequent game state packets are ignored after game end
@@ -1164,6 +1165,42 @@ describe('GameSession Domain Store', () => {
 
             expect(session.getSnapshot().gameState?.phase).toBe('SHOWDOWN');
         });
+
+        it.each([
+            ['mismatched gameId', 'wrong-room-999'],
+            ['empty gameId', ''],
+            ['whitespace gameId', '   '],
+        ])('rejects terminal STOMP frame with %s and triggers synchronizeSession instead of installing gameEndResult', (_label, badGameId) => {
+            const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+            const { session, transport } = createSession();
+            try {
+                session.connect();
+                transport.simulateStatus('connected');
+                const syncSpy = vi.spyOn(session, 'synchronizeSession').mockResolvedValue();
+
+                transport.simulateMessage('/game/room-123', createValidGameState({
+                    gameId: badGameId,
+                    phase: 'SHOWDOWN',
+                    players: [createValidPlayer({ name: 'Hero', chips: 2000 })],
+                    gameEnd: {
+                        winner: 'Hero',
+                        winnerChips: 2000,
+                        isForfeit: false,
+                        message: 'Hero wins tournament!',
+                    },
+                }));
+
+                expect(session.getSnapshot().isGameOver).toBe(false);
+                expect(session.getSnapshot().gameEndResult).toBeNull();
+                expect(syncSpy).toHaveBeenCalledTimes(1);
+                expect(warn).toHaveBeenCalledWith('Rejected terminal STOMP payload:', expect.objectContaining({
+                    gameId: badGameId,
+                }));
+            } finally {
+                session.disconnect();
+                warn.mockRestore();
+            }
+        });
     });
 
     describe('Guarded Synchronization Workflow, Private-Card Ordering & Room Reconciliation (Ticket #46)', () => {
@@ -1172,7 +1209,6 @@ describe('GameSession Domain Store', () => {
             roomId: 'room-123',
             playerName: 'Hero',
             token: validToken,
-            message: 'Success',
         };
 
         function createAuthedSession(clock = new TestClock(1000)) {
@@ -1511,18 +1547,22 @@ describe('GameSession Domain Store', () => {
 
             vi.spyOn(pokerApi, 'getPublicGameState').mockResolvedValueOnce(createValidGameState({ gameId: 'room-123' }));
             vi.spyOn(pokerApi, 'getPrivatePlayerState').mockRejectedValueOnce({ status: 404 });
-            vi.spyOn(pokerApi, 'getReview').mockResolvedValueOnce({
+            vi.spyOn(pokerApi, 'getReview').mockResolvedValueOnce(createValidGameState({
                 gameId: 'room-123',
-                winnerName: 'Hero',
-                winnerChips: 2000,
-                isForfeit: false,
-                message: 'Game over review',
-            });
+                phase: 'SHOWDOWN',
+                players: [createValidPlayer({ name: 'Hero', chips: 2000 })],
+                gameEnd: {
+                    winner: 'Hero',
+                    winnerChips: 2000,
+                    isForfeit: false,
+                    message: 'Game over review',
+                },
+            }));
 
             await session.synchronizeSession();
 
             expect(session.getSnapshot().isGameOver).toBe(true);
-            expect(session.getSnapshot().gameEndResult?.winnerName).toBe('Hero');
+            expect(session.getSnapshot().gameEndResult?.gameEnd?.winner).toBe('Hero');
             expect(session.getSnapshot().loadingStatus).toBe('Connected.');
 
             const { session: session2 } = createAuthedSession();
@@ -1539,29 +1579,25 @@ describe('GameSession Domain Store', () => {
             expect(session2.getSnapshot().isGameOver).toBe(false);
         });
 
-        it('canonical GAME_STARTED installs room data into snapshot, marks started, and synchronizes', async () => {
+        it('started RoomDataResponse installs room data into snapshot, marks started, and synchronizes', async () => {
             const { session, transport } = createAuthedSession();
             session.connect();
 
             const syncSpy = vi.spyOn(session, 'synchronizeSession');
 
             transport.simulateMessage('/room/room-123', {
-                message: 'GAME_STARTED',
-                data: {
-                    roomId: 'room-123',
-                    roomName: 'Main Room',
-                    players: [
-                        { name: 'Hero', isHost: true },
-                        { name: 'Player2', isHost: false },
-                    ],
-                    maxPlayers: 6,
-                    buyIn: 1000,
-                    smallBlind: 10,
-                    bigBlind: 20,
-                    currentPlayers: 2,
-                    canStartGame: false,
-                    gameStarted: true,
-                },
+                roomId: 'room-123',
+                roomName: 'Main Room',
+                players: [
+                    { name: 'Hero', isHost: true },
+                    { name: 'Player2', isHost: false },
+                ],
+                maxPlayers: 6,
+                buyIn: 1000,
+                smallBlind: 10,
+                bigBlind: 20,
+                canStartGame: false,
+                gameStarted: true,
             });
 
             expect(session.isStarted()).toBe(true);
@@ -1575,28 +1611,25 @@ describe('GameSession Domain Store', () => {
             expect(syncSpy).toHaveBeenCalledWith({ resetBudget: true });
         });
 
-        it('canonical GAME_STARTED schedules redirect if hero is not in room players', async () => {
+        it('started RoomDataResponse schedules redirect if hero is not in room players', async () => {
             const { session, transport } = createAuthedSession();
             session.connect();
 
             transport.simulateMessage('/room/room-123', {
-                message: 'GAME_STARTED',
-                data: {
-                    roomId: 'room-123',
-                    roomName: 'Main Room',
-                    players: [
-                        { name: 'Other1', isHost: true },
-                        { name: 'Other2', isHost: false },
-                    ],
-                    gameStarted: true,
-                },
+                roomId: 'room-123',
+                roomName: 'Main Room',
+                players: [
+                    { name: 'Other1', isHost: true },
+                    { name: 'Other2', isHost: false },
+                ],
+                gameStarted: true,
             });
 
             expect(session.getSnapshot().notification).toBe('Your seat is no longer active. Returning to lobby...');
             expect(session.hasLifecyclePermission()).toBe(false);
         });
 
-        it('canonical GAME_STARTED for wrong room changes nothing', async () => {
+        it('started RoomDataResponse for wrong room changes nothing', async () => {
             const { session, transport } = createAuthedSession();
             session.connect();
 
@@ -1604,12 +1637,10 @@ describe('GameSession Domain Store', () => {
             const revisionBefore = (session as unknown as { roomRevision: number }).roomRevision;
 
             transport.simulateMessage('/room/room-123', {
-                message: 'GAME_STARTED',
-                data: {
-                    roomId: 'wrong-room-999',
-                    players: [{ name: 'Hero', isHost: true }],
-                    gameStarted: true,
-                },
+                roomId: 'wrong-room-999',
+                roomName: 'Other Room',
+                players: [{ name: 'Hero', isHost: true }],
+                gameStarted: true,
             });
 
             expect(session.isStarted()).toBe(false);
@@ -1617,7 +1648,7 @@ describe('GameSession Domain Store', () => {
             expect(syncSpy).not.toHaveBeenCalled();
         });
 
-        it('legacy GAME_STARTED for wrong gameId changes nothing', async () => {
+        it('unrecognized legacy envelope changes nothing', async () => {
             const { session, transport } = createAuthedSession();
             session.connect();
 
@@ -1649,22 +1680,24 @@ describe('GameSession Domain Store', () => {
             const syncPromise = session.synchronizeSession();
 
             transport.simulateMessage('/room/room-123', {
-                message: 'PLAYER_JOINED',
-                data: {
-                    roomId: 'room-123',
-                    players: [
-                        { name: 'Hero', isHost: true },
-                        { name: 'Player2', isHost: false },
-                        { name: 'Player3', isHost: false },
-                    ],
-                },
+                roomId: 'room-123',
+                roomName: 'Main Room',
+                players: [
+                    { name: 'Hero', isHost: true },
+                    { name: 'Player2', isHost: false },
+                    { name: 'Player3', isHost: false },
+                ],
+                gameStarted: false,
             });
             transport.simulateMessage('/room/room-123', {
-                message: 'GAME_STARTED',
-                data: {
-                    gameId: 'room-123',
-                    message: 'Game has started',
-                },
+                roomId: 'room-123',
+                roomName: 'Main Room',
+                players: [
+                    { name: 'Hero', isHost: true },
+                    { name: 'Player2', isHost: false },
+                    { name: 'Player3', isHost: false },
+                ],
+                gameStarted: true,
             });
 
             expect(session.getSnapshot().roomState?.players).toHaveLength(3);
@@ -1685,27 +1718,31 @@ describe('GameSession Domain Store', () => {
             expect(session.isStarted()).toBe(true);
         });
 
-        it('GAME_END during pending leave retains established success/failure behavior', async () => {
+        it('completed game state during pending leave retains established success/failure behavior', async () => {
             const { session, transport } = createAuthedSession();
             session.connect();
 
             session.setPendingLeave(true);
             expect(session.hasLifecyclePermission()).toBe(false);
 
-            transport.simulateMessage('/game/room-123', {
-                type: 'GAME_END',
-                winner: 'Hero',
-                winnerChips: 2000,
-                isForfeit: false,
-                message: 'Hero won during leave',
-            });
+            transport.simulateMessage('/game/room-123', createValidGameState({
+                gameId: 'room-123',
+                phase: 'SHOWDOWN',
+                players: [createValidPlayer({ name: 'Hero', chips: 2000 })],
+                gameEnd: {
+                    winner: 'Hero',
+                    winnerChips: 2000,
+                    isForfeit: false,
+                    message: 'Hero won during leave',
+                },
+            }));
 
             expect(session.getSnapshot().isGameOver).toBe(true);
-            expect(session.getSnapshot().gameEndResult?.winnerName).toBe('Hero');
+            expect(session.getSnapshot().gameEndResult?.gameEnd?.winner).toBe('Hero');
 
             session.setPendingLeave(false);
             expect(session.getSnapshot().isGameOver).toBe(true);
-            expect(session.getSnapshot().gameEndResult?.winnerName).toBe('Hero');
+            expect(session.getSnapshot().gameEndResult?.gameEnd?.winner).toBe('Hero');
 
             session.disconnect();
             expect(session.getSnapshot().wsStatus).toBe('disconnected');

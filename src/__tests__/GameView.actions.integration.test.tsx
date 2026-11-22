@@ -361,23 +361,22 @@ describe('GameView - Actions & Flows Integration', () => {
 
         // Simulate Game Over WebSocket event
         await act(async () => {
-            MockStompClient.simulateMessage('/game/ROOM123', {
-                type: 'GAME_END',
-                message: 'TestPlayer won the game!',
-                winner: 'TestPlayer',
-                winnerChips: 2000,
-                isForfeit: false,
-                finalState: createValidGameState({
-                    gameId: 'ROOM123',
-                    phase: 'SHOWDOWN',
-                    pot: 30,
-                    players: [
-                        { id: 'p-1', name: 'TestPlayer', chips: 2000, currentBet: 0, status: 'ACTIVE', isWinner: true },
-                        { id: 'p-2', name: 'Opponent', chips: 0, currentBet: 0, status: 'ACTIVE' },
-                    ],
-                    communityCards: ['AH', 'KH', 'QD', 'JS', '2C'],
-                })
-            });
+            MockStompClient.simulateMessage('/game/ROOM123', createValidGameState({
+                gameId: 'ROOM123',
+                phase: 'SHOWDOWN',
+                pot: 30,
+                players: [
+                    { id: 'p-1', name: 'TestPlayer', chips: 2000, currentBet: 0, status: 'ACTIVE', isWinner: true },
+                    { id: 'p-2', name: 'Opponent', chips: 0, currentBet: 0, status: 'ACTIVE' },
+                ],
+                communityCards: ['AH', 'KH', 'QD', 'JS', '2C'],
+                gameEnd: {
+                    message: 'TestPlayer won the game!',
+                    winner: 'TestPlayer',
+                    winnerChips: 2000,
+                    isForfeit: false,
+                },
+            }));
         });
 
         // Dedicated Game Over screen should render
@@ -403,24 +402,23 @@ describe('GameView - Actions & Flows Integration', () => {
         const onLeaveSpy = vi.fn();
 
         // Simulate a previous session having already recorded a game end - this
-        // is what GameProvider persists to sessionStorage when GAME_END arrives.
-        savePersistedGameEnd(auth, {
+        // is what GameProvider persists to sessionStorage when terminal state arrives.
+        savePersistedGameEnd(auth, createValidGameState({
             gameId: 'ROOM123',
-            winnerName: 'TestPlayer',
-            winnerChips: 2000,
-            isForfeit: false,
-            message: 'TestPlayer won the game!',
-            finalState: createValidGameState({
-                gameId: 'ROOM123',
-                phase: 'SHOWDOWN',
-                pot: 30,
-                players: [
-                    { id: 'p-1', name: 'TestPlayer', chips: 2000, currentBet: 0, status: 'ACTIVE', hasFolded: false, isWinner: true },
-                    { id: 'p-2', name: 'Opponent', chips: 0, currentBet: 0, status: 'ACTIVE', hasFolded: false },
-                ],
-                communityCards: ['AH', 'KH', 'QD', 'JS', '2C'],
-            }),
-        });
+            phase: 'SHOWDOWN',
+            pot: 30,
+            players: [
+                { id: 'p-1', name: 'TestPlayer', chips: 2000, currentBet: 0, status: 'ACTIVE', hasFolded: false, isWinner: true },
+                { id: 'p-2', name: 'Opponent', chips: 0, currentBet: 0, status: 'ACTIVE', hasFolded: false },
+            ],
+            communityCards: ['AH', 'KH', 'QD', 'JS', '2C'],
+            gameEnd: {
+                winner: 'TestPlayer',
+                winnerChips: 2000,
+                isForfeit: false,
+                message: 'TestPlayer won the game!',
+            },
+        }));
 
         // The room/game no longer exist server-side (already cleaned up) - if
         // hydration were attempted it would 404 and redirect to the lobby.

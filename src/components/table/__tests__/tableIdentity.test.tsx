@@ -182,7 +182,7 @@ describe('Table Identity Resolution', () => {
     });
 
     it('populates session hero identity from initial state, accepted state, and setGameState', () => {
-        const auth: AuthResponse = { token: 'tok', roomId: 'ROOM123', playerName: 'Alice', message: 'Success' };
+        const auth: AuthResponse = { token: 'tok', roomId: 'ROOM123', playerName: 'Alice' };
         const transport = new InMemoryTransportAdapter();
 
         // 1. Initial state constructor resolution

@@ -130,12 +130,18 @@ describe('Inactivity and abandonment UI integration (checks 12–24)', () => {
         sessionStorage.setItem(AUTH_KEY, JSON.stringify(auth));
         const first = render(<App />);
         await connected(true);
-        await frame(gameTopic, { type: 'GAME_END', abandoned: true, reason: 'INACTIVITY', finalState: state.game });
+        await frame(gameTopic, {
+            ...state.game,
+            gameEnd: { winner: null, isForfeit: false, abandoned: true, reason: 'INACTIVITY', message: 'Game abandoned due to inactivity.' },
+        });
         expectAbandonmentReview();
         expect(JSON.parse(sessionStorage.getItem(storageKey)!)).toMatchObject({
-            version: 1, roomId: auth.roomId, token: auth.token, playerName: auth.playerName,
-            result: { abandoned: true, reason: 'INACTIVITY', winnerName: null,
-                finalState: { pot: 30, players: [{ chips: 990 }, { chips: 980 }] } },
+            version: 2, roomId: auth.roomId, token: auth.token, playerName: auth.playerName,
+            result: {
+                pot: 30,
+                players: [{ chips: 990 }, { chips: 980 }],
+                gameEnd: { abandoned: true, reason: 'INACTIVITY', winner: null },
+            },
         });
         await advance(21_000);
         first.unmount();
@@ -165,7 +171,10 @@ describe('Inactivity and abandonment UI integration (checks 12–24)', () => {
         await connected(true);
         await advance(5000);
         // The browser does not adjudicate expiry. The server decides which outcome wins.
-        await frame(gameTopic, { type: 'GAME_END', abandoned: true, reason: 'INACTIVITY', finalState: state.game });
+        await frame(gameTopic, {
+            ...state.game,
+            gameEnd: { winner: null, isForfeit: false, abandoned: true, reason: 'INACTIVITY', message: 'Game abandoned due to inactivity.' },
+        });
         expectAbandonmentReview();
         await advance(60_000);
         expectAbandonmentReview();
@@ -247,7 +256,7 @@ describe('Inactivity and abandonment UI integration (checks 12–24)', () => {
         warning(LOBBY_INACTIVITY_WARNING_TITLE);
         const players = message === 'PLAYER_JOINED' ? [...roster, { name: 'Guest', isHost: false }] : [roster[0]];
         state.room = { ...state.room, players, inactivityDeadlineEpochMs: Date.now() + 30 * 60_000 };
-        await frame(roomTopic, { message, data: { ...state.room, serverTimeEpochMs: Date.now() } });
+        await frame(roomTopic, { ...state.room, serverTimeEpochMs: Date.now() });
         expect(screen.queryByText(LOBBY_INACTIVITY_WARNING_TITLE)).not.toBeInTheDocument();
         const list = screen.getByRole('list');
         if (message === 'PLAYER_JOINED') expect(within(list).getByText('Guest')).toBeVisible();
@@ -262,7 +271,7 @@ describe('Inactivity and abandonment UI integration (checks 12–24)', () => {
         const onLeave = vi.fn();
         render(<GameView auth={auth} onLeave={onLeave} />);
         await connected();
-        await frame(roomTopic, { message: 'ROOM_CLOSED', data: { roomId: auth.roomId } });
+        await frame(roomTopic, createValidRoomData({ roomId: auth.roomId, players: roster, closedReason: 'HOST_LEFT' }));
         expect(screen.getByText(HOST_LEFT)).toBeVisible();
         await advance(3000);
         expect(onLeave).toHaveBeenCalledExactlyOnceWith(auth.token);
@@ -281,7 +290,7 @@ describe('Inactivity and abandonment UI integration (checks 12–24)', () => {
         warning(LOBBY_INACTIVITY_WARNING_TITLE);
         expect(screen.queryByRole('button', { name: /keep playing|extend/i })).not.toBeInTheDocument();
         await advance(state.room.inactivityDeadlineEpochMs! - Date.now());
-        await frame(roomTopic, { message: 'ROOM_CLOSED', data: { reason: 'INACTIVITY' } });
+        await frame(roomTopic, { ...state.room, closedReason: 'INACTIVITY' });
         expect(screen.getByText(LOBBY_INACTIVE_CLOSED)).toBeVisible();
         await advance(3000);
         expect(onLeave).toHaveBeenCalledExactlyOnceWith(auth.token);
@@ -295,7 +304,7 @@ describe('Inactivity and abandonment UI integration (checks 12–24)', () => {
         warning(LOBBY_INACTIVITY_WARNING_TITLE);
         state.room = { ...state.room, gameStarted: true, inactivityDeadlineEpochMs: Date.now() + 900_000 };
         state.game = { ...state.game, inactivityDeadlineEpochMs: Date.now() + 900_000 };
-        await frame(roomTopic, { message: 'GAME_STARTED', data: state.room });
+        await frame(roomTopic, state.room);
         await screen.findByRole('region', { name: /poker table/i });
         expect(screen.queryByText(LOBBY_INACTIVITY_WARNING_TITLE)).not.toBeInTheDocument();
         await advance(120_000);
@@ -315,7 +324,7 @@ describe('Inactivity and abandonment UI integration (checks 12–24)', () => {
         warning(LOBBY_INACTIVITY_WARNING_TITLE);
         expect(screen.queryByRole('button', { name: /keep playing|extend/i })).not.toBeInTheDocument();
         await advance(2 * 60_000);
-        await frame(roomTopic, { message: 'ROOM_CLOSED', data: { roomId: auth.roomId, reason: 'INACTIVITY' } });
+        await frame(roomTopic, createValidRoomData({ roomId: auth.roomId, players: roster, closedReason: 'INACTIVITY' }));
         expect(screen.getByText(LOBBY_INACTIVE_CLOSED)).toBeVisible();
         expect(screen.queryByText('GAME LOBBY')).not.toBeInTheDocument();
         await advance(3000);

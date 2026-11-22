@@ -1,12 +1,12 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { GameReviewView } from '../GameReviewView';
-import type { GameState } from '../../types';
+import type { PublicGameStateResponse } from '../../types';
 import '@testing-library/jest-dom';
 
 describe('GameReviewView', () => {
     const mockOnLeave = vi.fn();
-    const mockGameState: GameState = {
+    const mockGameState: PublicGameStateResponse = {
         gameId: 'game-1',
         phase: 'SHOWDOWN',
         pot: 5000,
@@ -46,13 +46,15 @@ describe('GameReviewView', () => {
         render(
             <GameReviewView
                 gameEndResult={{
+                    ...mockGameState,
                     gameId: 'ROOM1',
-                    winnerName: 'WinnerPlayer',
-                    winnerChips: 5000,
-                    isForfeit: false,
-                    message: 'WinnerPlayer wins with a Royal Flush!',
+                    gameEnd: {
+                        winner: 'WinnerPlayer',
+                        winnerChips: 5000,
+                        isForfeit: false,
+                        message: 'WinnerPlayer wins with a Royal Flush!',
+                    },
                 }}
-                gameState={mockGameState}
                 onLeave={mockOnLeave}
             />
         );
@@ -74,12 +76,14 @@ describe('GameReviewView', () => {
         render(
             <GameReviewView
                 gameEndResult={{
+                    ...mockGameState,
                     gameId: 'ROOM1',
-                    winnerName: 'WinnerPlayer',
-                    isForfeit: true,
-                    message: 'LoserPlayer left the game.',
+                    gameEnd: {
+                        winner: 'WinnerPlayer',
+                        isForfeit: true,
+                        message: 'LoserPlayer left the game.',
+                    },
                 }}
-                gameState={mockGameState}
                 onLeave={mockOnLeave}
             />
         );
@@ -91,12 +95,14 @@ describe('GameReviewView', () => {
         render(
             <GameReviewView
                 gameEndResult={{
+                    ...mockGameState,
                     gameId: 'ROOM1',
-                    winnerName: 'WinnerPlayer',
-                    isForfeit: false,
-                    message: 'Game Over',
+                    gameEnd: {
+                        winner: 'WinnerPlayer',
+                        isForfeit: false,
+                        message: 'Game Over',
+                    },
                 }}
-                gameState={mockGameState}
                 onLeave={mockOnLeave}
             />
         );
@@ -105,9 +111,10 @@ describe('GameReviewView', () => {
         expect(screen.queryByText(/LEAVE TABLE/i)).not.toBeInTheDocument();
     });
 
-    it('renders board and players from gameEndResult.finalState when provided rather than gameState', () => {
-        const finalState: GameState = {
+    it('renders board and players directly from completed PublicGameStateResponse gameEndResult', () => {
+        const finalState: PublicGameStateResponse = {
             ...mockGameState,
+            gameId: 'ROOM1',
             communityCards: ['2C', '3D', '4H', '5S', '9C'],
             players: [
                 {
@@ -133,19 +140,17 @@ describe('GameReviewView', () => {
                     holeCards: ['KH', 'KC'],
                 },
             ],
+            gameEnd: {
+                winner: 'FinalWinner',
+                winnerChips: 8000,
+                isForfeit: false,
+                message: 'FinalWinner won',
+            },
         };
 
         render(
             <GameReviewView
-                gameEndResult={{
-                    gameId: 'ROOM1',
-                    winnerName: 'FinalWinner',
-                    winnerChips: 8000,
-                    isForfeit: false,
-                    message: 'FinalWinner won',
-                    finalState,
-                }}
-                gameState={mockGameState}
+                gameEndResult={finalState}
                 onLeave={mockOnLeave}
             />
         );
@@ -156,8 +161,8 @@ describe('GameReviewView', () => {
         expect(screen.queryByText('LoserPlayer')).not.toBeInTheDocument();
     });
 
-    it('awards exactly one champion WINNER badge when winnerName exists even if other players have isWinner true', () => {
-        const stateWithMultipleWinners: GameState = {
+    it('awards exactly one champion WINNER badge when gameEnd.winner exists even if other players have isWinner true', () => {
+        const stateWithMultipleWinners: PublicGameStateResponse = {
             ...mockGameState,
             players: [
                 {
@@ -186,13 +191,15 @@ describe('GameReviewView', () => {
         render(
             <GameReviewView
                 gameEndResult={{
+                    ...stateWithMultipleWinners,
                     gameId: 'ROOM1',
-                    winnerName: 'PlayerTwo',
-                    winnerChips: 9000,
-                    isForfeit: false,
-                    message: 'PlayerTwo won',
+                    gameEnd: {
+                        winner: 'PlayerTwo',
+                        winnerChips: 9000,
+                        isForfeit: false,
+                        message: 'PlayerTwo won',
+                    },
                 }}
-                gameState={stateWithMultipleWinners}
                 onLeave={mockOnLeave}
             />
         );
@@ -211,21 +218,23 @@ describe('GameReviewView', () => {
             { id: 'p-5', name: 'Seat5Equal', chips: 1500, status: 'ACTIVE' as const, currentBet: 0, hasFolded: false, isReadyForNextHand: false },
         ]);
 
-        const state: GameState = {
+        const state: PublicGameStateResponse = {
             ...mockGameState,
-            players: sourcePlayers as unknown as GameState['players'],
+            players: sourcePlayers as unknown as PublicGameStateResponse['players'],
         };
 
         const { container } = render(
             <GameReviewView
                 gameEndResult={{
+                    ...state,
                     gameId: 'ROOM1',
-                    winnerName: 'Seat3Champion',
-                    winnerChips: 3000,
-                    isForfeit: false,
-                    message: 'Champion won',
+                    gameEnd: {
+                        winner: 'Seat3Champion',
+                        winnerChips: 3000,
+                        isForfeit: false,
+                        message: 'Champion won',
+                    },
                 }}
-                gameState={state}
                 onLeave={mockOnLeave}
             />
         );
@@ -245,13 +254,15 @@ describe('GameReviewView', () => {
         render(
             <GameReviewView
                 gameEndResult={{
+                    ...mockGameState,
                     gameId: 'ROOM1',
-                    winnerName: 'Seat3Champion',
-                    winnerChips: 3000,
-                    isForfeit: false,
-                    message: 'Champion won',
+                    gameEnd: {
+                        winner: 'Seat3Champion',
+                        winnerChips: 3000,
+                        isForfeit: false,
+                        message: 'Champion won',
+                    },
                 }}
-                gameState={mockGameState}
                 onLeave={mockOnLeave}
             />
         );
@@ -262,7 +273,7 @@ describe('GameReviewView', () => {
     });
 
     it('enforces an exclusive WINNER badge for champion and suppresses multiple lingering isWinner flags', () => {
-        const legacyMultiWinnerState: GameState = {
+        const legacyMultiWinnerState: PublicGameStateResponse = {
             ...mockGameState,
             players: [
                 { id: 'p-1', name: 'Alice', chips: 1000, status: 'ACTIVE', currentBet: 0, hasFolded: false, isReadyForNextHand: false, isWinner: true },
@@ -275,13 +286,15 @@ describe('GameReviewView', () => {
         const { container } = render(
             <GameReviewView
                 gameEndResult={{
+                    ...legacyMultiWinnerState,
                     gameId: 'ROOM1',
-                    winnerName: 'CharlieChampion',
-                    winnerChips: 8000,
-                    isForfeit: false,
-                    message: 'CharlieChampion is the tournament champion',
+                    gameEnd: {
+                        winner: 'CharlieChampion',
+                        winnerChips: 8000,
+                        isForfeit: false,
+                        message: 'CharlieChampion is the tournament champion',
+                    },
                 }}
-                gameState={legacyMultiWinnerState}
                 onLeave={mockOnLeave}
             />
         );
@@ -296,8 +309,8 @@ describe('GameReviewView', () => {
         expect(names).toEqual(['CharlieChampion', 'Bob', 'Alice', 'David']);
     });
 
-    it('falls back to Boolean(player.isWinner) when winnerName is absent', () => {
-        const stateWithoutWinnerName: GameState = {
+    it('falls back to Boolean(player.isWinner) when gameEnd.winner is absent', () => {
+        const stateWithoutWinnerName: PublicGameStateResponse = {
             ...mockGameState,
             players: [
                 { id: 'p-1', name: 'PlayerOne', chips: 5000, status: 'ACTIVE', currentBet: 0, hasFolded: false, isReadyForNextHand: false, isWinner: true },
@@ -308,12 +321,14 @@ describe('GameReviewView', () => {
         render(
             <GameReviewView
                 gameEndResult={{
+                    ...stateWithoutWinnerName,
                     gameId: 'ROOM1',
-                    winnerName: null,
-                    isForfeit: false,
-                    message: 'Game Concluded',
+                    gameEnd: {
+                        winner: null,
+                        isForfeit: false,
+                        message: 'Game Concluded',
+                    },
                 }}
-                gameState={stateWithoutWinnerName}
                 onLeave={mockOnLeave}
             />
         );
@@ -324,7 +339,7 @@ describe('GameReviewView', () => {
     });
 
     it('places champion first even if another player has a larger chip stack due to forfeit', () => {
-        const forfeitState: GameState = {
+        const forfeitState: PublicGameStateResponse = {
             ...mockGameState,
             players: [
                 { id: 'p-1', name: 'RunnerUpLargeStack', chips: 7000, status: 'ACTIVE', currentBet: 0, hasFolded: false, isReadyForNextHand: false },
@@ -336,13 +351,15 @@ describe('GameReviewView', () => {
         const { container } = render(
             <GameReviewView
                 gameEndResult={{
+                    ...forfeitState,
                     gameId: 'ROOM1',
-                    winnerName: 'ForfeitChampion',
-                    winnerChips: 3000,
-                    isForfeit: true,
-                    message: 'RunnerUp forfeited the match',
+                    gameEnd: {
+                        winner: 'ForfeitChampion',
+                        winnerChips: 3000,
+                        isForfeit: true,
+                        message: 'RunnerUp forfeited the match',
+                    },
                 }}
-                gameState={forfeitState}
                 onLeave={mockOnLeave}
             />
         );
@@ -355,14 +372,16 @@ describe('GameReviewView', () => {
         render(
             <GameReviewView
                 gameEndResult={{
+                    ...mockGameState,
                     gameId: 'ROOM1',
-                    winnerName: null,
-                    isForfeit: false,
-                    abandoned: true,
-                    reason: 'INACTIVITY',
-                    message: 'Game abandoned due to inactivity.',
+                    gameEnd: {
+                        winner: null,
+                        isForfeit: false,
+                        abandoned: true,
+                        reason: 'INACTIVITY',
+                        message: 'Game abandoned due to inactivity.',
+                    },
                 }}
-                gameState={mockGameState}
                 onLeave={mockOnLeave}
             />
         );
@@ -377,7 +396,7 @@ describe('GameReviewView', () => {
     });
 
     it('preserves original table player order on abandonment without ranking by chips', () => {
-        const abandonedState: GameState = {
+        const abandonedState: PublicGameStateResponse = {
             ...mockGameState,
             players: [
                 { id: 'p-1', name: 'AliceSmallStack', chips: 1000, status: 'ACTIVE', currentBet: 0, hasFolded: false, isReadyForNextHand: false },
@@ -388,14 +407,16 @@ describe('GameReviewView', () => {
         const { container } = render(
             <GameReviewView
                 gameEndResult={{
+                    ...abandonedState,
                     gameId: 'ROOM1',
-                    winnerName: null,
-                    isForfeit: false,
-                    abandoned: true,
-                    reason: 'INACTIVITY',
-                    message: 'Game abandoned due to inactivity.',
+                    gameEnd: {
+                        winner: null,
+                        isForfeit: false,
+                        abandoned: true,
+                        reason: 'INACTIVITY',
+                        message: 'Game abandoned due to inactivity.',
+                    },
                 }}
-                gameState={abandonedState}
                 onLeave={mockOnLeave}
             />
         );

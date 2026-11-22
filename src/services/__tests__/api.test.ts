@@ -3,6 +3,7 @@ import { http, HttpResponse } from 'msw';
 import { server } from '../../test/mocks/server';
 import { isJwtValid, getErrorMessage, pokerApi, HttpError, MalformedResponseError } from '../api';
 import { ERROR_MALFORMED_AUTH, ERROR_TECHNICAL, ERROR_SYSTEM, ERROR_INVALID_FORMAT } from '../../constants/strings';
+import { createValidGameState } from '../../test/fixtures';
 
 function toBase64Url(str: string): string {
     return btoa(str).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
@@ -361,17 +362,23 @@ describe('api service', () => {
         });
 
         it('handles case-insensitive Content-Type and application/problem+json', async () => {
-            const resUpper = new Response(JSON.stringify({ message: 'Uppercase content type' }), {
+            const resUpper = new Response(JSON.stringify({ detail: 'Uppercase content type' }), {
                 status: 400,
                 headers: { 'Content-Type': 'APPLICATION/JSON' },
             });
             expect(await getErrorMessage(resUpper, 'Default fallback')).toBe('Uppercase content type');
 
-            const resProblem = new Response(JSON.stringify({ error: 'Problem details error' }), {
+            const resProblem = new Response(JSON.stringify({ status: 400, title: 'Bad Request', detail: 'Problem details error' }), {
                 status: 400,
                 headers: { 'Content-Type': 'application/problem+json' },
             });
             expect(await getErrorMessage(resProblem, 'Default fallback')).toBe('Problem details error');
+
+            const resTitleOnly = new Response(JSON.stringify({ status: 401, title: 'Unauthorized' }), {
+                status: 401,
+                headers: { 'Content-Type': 'application/problem+json' },
+            });
+            expect(await getErrorMessage(resTitleOnly, 'Default fallback')).toBe('Unauthorized');
         });
 
         it('normalizes HTML or stack traces inside valid JSON error responses', async () => {
@@ -412,7 +419,7 @@ describe('api service', () => {
         });
     });
 
-    describe('room responses with ApiResponse envelope', () => {
+    describe('room responses and TokenResponse decoding', () => {
         it.each([
             ['HTML', () => new HttpResponse('<html>not json</html>', { status: 200, headers: { 'Content-Type': 'text/html' } })],
             ['JSON null', () => HttpResponse.json(null, { status: 200 })],
@@ -426,7 +433,7 @@ describe('api service', () => {
             });
         });
 
-        it('createRoom cleanly handles and normalizes ApiResponse<TokenResponse>', async () => {
+        it('createRoom cleanly handles bare TokenResponse', async () => {
             const result = await pokerApi.createRoom({
                 roomName: 'High Roller',
                 playerName: 'Alice',
@@ -437,21 +444,19 @@ describe('api service', () => {
             });
 
             expect(result).toEqual({
-                message: 'Room created successfully',
                 token: expect.any(String),
                 roomId: 'ABCD',
                 playerName: 'Alice',
             });
         });
 
-        it('joinRoom cleanly handles and normalizes ApiResponse<TokenResponse>', async () => {
+        it('joinRoom cleanly handles bare TokenResponse', async () => {
             const result = await pokerApi.joinRoom({
                 roomName: 'Room99',
                 playerName: 'Bob',
             });
 
             expect(result).toEqual({
-                message: 'Successfully joined room',
                 token: expect.any(String),
                 roomId: 'Room99',
                 playerName: 'Bob',
@@ -468,10 +473,10 @@ describe('api service', () => {
             });
         });
 
-        it('throws status 500 ApiError when auth endpoint returns malformed or empty data envelope', async () => {
+        it('throws status 500 ApiError when auth endpoint returns null or non-object payload', async () => {
             server.use(
                 http.post('/api/room/join', () => {
-                    return HttpResponse.json({ message: 'OK', data: null }, { status: 200 });
+                    return HttpResponse.json(null, { status: 200 });
                 })
             );
 
@@ -484,20 +489,16 @@ describe('api service', () => {
         });
 
         it.each([
-            ['missing message', { data: { token: 'tok', roomId: 'r1', playerName: 'Alice' } }],
-            ['empty message', { message: '', data: { token: 'tok', roomId: 'r1', playerName: 'Alice' } }],
-            ['whitespace message', { message: '   ', data: { token: 'tok', roomId: 'r1', playerName: 'Alice' } }],
-            ['missing token', { message: 'ok', data: { roomId: 'r1', playerName: 'Alice' } }],
-            ['empty token', { message: 'ok', data: { token: '', roomId: 'r1', playerName: 'Alice' } }],
-            ['whitespace token', { message: 'ok', data: { token: '   ', roomId: 'r1', playerName: 'Alice' } }],
-            ['missing roomId', { message: 'ok', data: { token: 'tok', playerName: 'Alice' } }],
-            ['empty roomId', { message: 'ok', data: { token: 'tok', roomId: '', playerName: 'Alice' } }],
-            ['whitespace roomId', { message: 'ok', data: { token: 'tok', roomId: '  ', playerName: 'Alice' } }],
-            ['missing playerName', { message: 'ok', data: { token: 'tok', roomId: 'r1' } }],
-            ['empty playerName', { message: 'ok', data: { token: 'tok', roomId: 'r1', playerName: '' } }],
-            ['whitespace playerName', { message: 'ok', data: { token: 'tok', roomId: 'r1', playerName: '   ' } }],
-            ['array data', { message: 'ok', data: ['tok', 'r1', 'Alice'] }],
-            ['array response', [{ message: 'ok', data: { token: 'tok', roomId: 'r1', playerName: 'Alice' } }]],
+            ['missing token', { roomId: 'r1', playerName: 'Alice' }],
+            ['empty token', { token: '', roomId: 'r1', playerName: 'Alice' }],
+            ['whitespace token', { token: '   ', roomId: 'r1', playerName: 'Alice' }],
+            ['missing roomId', { token: 'tok', playerName: 'Alice' }],
+            ['empty roomId', { token: 'tok', roomId: '', playerName: 'Alice' }],
+            ['whitespace roomId', { token: 'tok', roomId: '  ', playerName: 'Alice' }],
+            ['missing playerName', { token: 'tok', roomId: 'r1' }],
+            ['empty playerName', { token: 'tok', roomId: 'r1', playerName: '' }],
+            ['whitespace playerName', { token: 'tok', roomId: 'r1', playerName: '   ' }],
+            ['array response', [{ token: 'tok', roomId: 'r1', playerName: 'Alice' }]],
         ])('throws status 500 HttpError with ERROR_MALFORMED_AUTH when auth response has %s', async (_desc, invalidPayload) => {
             server.use(
                 http.post('/api/room/join', () => {
@@ -665,12 +666,9 @@ describe('api service', () => {
                 http.post('/api/room/create', async ({ request }) => {
                     capturedBody = (await request.json()) as Record<string, unknown>;
                     return HttpResponse.json({
-                        message: 'Room created successfully',
-                        data: {
-                            token: 'mock-jwt-token',
-                            roomId: 'ABCD',
-                            playerName: 'Alice',
-                        },
+                        token: 'mock-jwt-token',
+                        roomId: 'ABCD',
+                        playerName: 'Alice',
                     });
                 })
             );
@@ -696,12 +694,9 @@ describe('api service', () => {
                 http.post('/api/room/create', async ({ request }) => {
                     capturedBody = (await request.json()) as Record<string, unknown>;
                     return HttpResponse.json({
-                        message: 'Room created successfully',
-                        data: {
-                            token: 'mock-jwt-token',
-                            roomId: 'ABCD',
-                            playerName: 'Alice',
-                        },
+                        token: 'mock-jwt-token',
+                        roomId: 'ABCD',
+                        playerName: 'Alice',
                     });
                 })
             );
@@ -726,12 +721,9 @@ describe('api service', () => {
                 http.post('/api/room/join', async ({ request }) => {
                     capturedBody = (await request.json()) as Record<string, unknown>;
                     return HttpResponse.json({
-                        message: 'Successfully joined room',
-                        data: {
-                            token: 'mock-jwt-token',
-                            roomId: 'Room99',
-                            playerName: 'Bob',
-                        },
+                        token: 'mock-jwt-token',
+                        roomId: 'Room99',
+                        playerName: 'Bob',
                     });
                 })
             );
@@ -753,12 +745,9 @@ describe('api service', () => {
                 http.post('/api/room/join', async ({ request }) => {
                     capturedBody = (await request.json()) as Record<string, unknown>;
                     return HttpResponse.json({
-                        message: 'Successfully joined room',
-                        data: {
-                            token: 'mock-jwt-token',
-                            roomId: 'Room99',
-                            playerName: 'Bob',
-                        },
+                        token: 'mock-jwt-token',
+                        roomId: 'Room99',
+                        playerName: 'Bob',
                     });
                 })
             );
@@ -799,23 +788,26 @@ describe('api service', () => {
         const validToken = createJwt({ exp: Math.floor(Date.now() / 1000) + 3600 });
 
         describe('getReview', () => {
-            it('returns decoded GameEndResult on HTTP 200', async () => {
+            it('returns decoded completed PublicGameStateResponse on HTTP 200', async () => {
                 server.use(
                     http.get('/api/game/:gameId/review', () => {
-                        return HttpResponse.json({
+                        return HttpResponse.json(createValidGameState({
                             gameId: 'game-100',
-                            winner: 'Alice',
-                            winnerChips: 3000,
-                            isForfeit: false,
-                            message: 'Alice won with Full House',
-                        });
+                            phase: 'SHOWDOWN',
+                            gameEnd: {
+                                winner: 'Alice',
+                                winnerChips: 3000,
+                                isForfeit: false,
+                                message: 'Alice won with Full House',
+                            },
+                        }));
                     })
                 );
 
                 const result = await pokerApi.getReview('game-100', validToken);
-                expect(result).toEqual({
-                    gameId: 'game-100',
-                    winnerName: 'Alice',
+                expect(result.gameId).toBe('game-100');
+                expect(result.gameEnd).toEqual({
+                    winner: 'Alice',
                     winnerChips: 3000,
                     isForfeit: false,
                     message: 'Alice won with Full House',
@@ -902,32 +894,29 @@ describe('api service', () => {
         });
 
         describe('claimWin', () => {
-            it('returns decoded ApiResponse<GameEndResult> on HTTP 200', async () => {
+            it('returns decoded completed PublicGameStateResponse on HTTP 200', async () => {
                 server.use(
                     http.post('/api/game/:gameId/claim-win', () => {
-                        return HttpResponse.json({
-                            message: 'Win claimed successfully',
-                            data: {
-                                gameId: 'game-100',
+                        return HttpResponse.json(createValidGameState({
+                            gameId: 'game-100',
+                            phase: 'SHOWDOWN',
+                            gameEnd: {
                                 winner: 'Alice',
                                 winnerChips: 2500,
                                 isForfeit: true,
                                 message: 'Alice claimed win by disconnect',
                             },
-                        });
+                        }));
                     })
                 );
 
                 const response = await pokerApi.claimWin('game-100', validToken);
-                expect(response).toEqual({
-                    message: 'Win claimed successfully',
-                    data: {
-                        gameId: 'game-100',
-                        winnerName: 'Alice',
-                        winnerChips: 2500,
-                        isForfeit: true,
-                        message: 'Alice claimed win by disconnect',
-                    },
+                expect(response.gameId).toBe('game-100');
+                expect(response.gameEnd).toEqual({
+                    winner: 'Alice',
+                    winnerChips: 2500,
+                    isForfeit: true,
+                    message: 'Alice claimed win by disconnect',
                 });
             });
 
@@ -935,8 +924,8 @@ describe('api service', () => {
                 server.use(
                     http.post('/api/game/:gameId/claim-win', () => {
                         return HttpResponse.json(
-                            { message: 'Claim win is not available' },
-                            { status: 403 }
+                            { detail: 'Claim win is not available' },
+                            { status: 403, headers: { 'Content-Type': 'application/problem+json' } }
                         );
                     })
                 );
@@ -947,12 +936,11 @@ describe('api service', () => {
                 });
             });
 
-            it('throws MalformedResponseError when data envelope is malformed', async () => {
+            it('throws MalformedResponseError when completed gameEnd payload is missing or malformed', async () => {
                 server.use(
                     http.post('/api/game/:gameId/claim-win', () => {
                         return HttpResponse.json({
-                            message: 'Success',
-                            data: { invalid: 'game-end' },
+                            invalid: 'game-end',
                         });
                     })
                 );

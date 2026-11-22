@@ -11,7 +11,6 @@ describe('GameSession Lobby Inactivity Lifecycle & Enforcement', () => {
         roomId: 'room-lobby-inactivity',
         playerName: 'Hero',
         token: 'token-hero',
-        message: 'Success',
     };
 
     function createSession(clock = new TestClock(1000), initialRoom?: RoomState) {
@@ -89,17 +88,14 @@ describe('GameSession Lobby Inactivity Lifecycle & Enforcement', () => {
         // A new player joins, extending the deadline back to 30 minutes from now
         const freshDeadline = clock.now() + 30 * 60_000;
         transport.simulateMessage(`/room/${auth.roomId}`, {
-            message: 'PLAYER_JOINED',
-            data: {
-                roomId: auth.roomId,
-                roomName: 'Lobby-1',
-                players: [
-                    { name: auth.playerName, isHost: true },
-                    { name: 'Bob', isHost: false },
-                ],
-                inactivityDeadlineEpochMs: freshDeadline,
-                serverTimeEpochMs: clock.now(),
-            },
+            roomId: auth.roomId,
+            roomName: 'Lobby-1',
+            players: [
+                { name: auth.playerName, isHost: true },
+                { name: 'Bob', isHost: false },
+            ],
+            inactivityDeadlineEpochMs: freshDeadline,
+            serverTimeEpochMs: clock.now(),
         });
 
         // Warning should be dismissed immediately
@@ -126,32 +122,28 @@ describe('GameSession Lobby Inactivity Lifecycle & Enforcement', () => {
 
         // Host starts game
         transport.simulateMessage(`/room/${auth.roomId}`, {
-            message: 'GAME_STARTED',
-            data: {
-                roomId: auth.roomId,
-                roomName: 'Lobby-1',
-                players: [{ name: auth.playerName, isHost: true }],
-                gameStarted: true,
-                inactivityDeadlineEpochMs: null,
-            },
+            roomId: auth.roomId,
+            roomName: 'Lobby-1',
+            players: [{ name: auth.playerName, isHost: true }],
+            gameStarted: true,
+            inactivityDeadlineEpochMs: null,
         });
 
         expect(session.getSnapshot().isLobbyInactivityWarningActive).toBe(false);
         expect(session.getSnapshot().roomState?.gameStarted).toBe(true);
     });
 
-    it('closes lobby with LOBBY_INACTIVE_CLOSED when ROOM_CLOSED arrives with reason INACTIVITY', () => {
+    it('closes lobby with LOBBY_INACTIVE_CLOSED when closedReason is INACTIVITY', () => {
         const clock = new TestClock(1000);
         const { session, transport, onLeave } = createSession(clock);
         session.connect();
         transport.simulateStatus('connected');
 
         transport.simulateMessage(`/room/${auth.roomId}`, {
-            message: 'ROOM_CLOSED',
-            data: {
-                roomId: auth.roomId,
-                reason: 'INACTIVITY',
-            },
+            roomId: auth.roomId,
+            roomName: 'Lobby-1',
+            players: [],
+            closedReason: 'INACTIVITY',
         });
 
         expect(session.getSnapshot().isRedirecting).toBe(true);
@@ -165,17 +157,17 @@ describe('GameSession Lobby Inactivity Lifecycle & Enforcement', () => {
         expect(onLeave).toHaveBeenCalledWith(auth.token);
     });
 
-    it('defaults to HOST_LEFT when ROOM_CLOSED arrives without INACTIVITY reason', () => {
+    it('defaults to HOST_LEFT when closedReason is not INACTIVITY', () => {
         const clock = new TestClock(1000);
         const { session, transport, onLeave } = createSession(clock);
         session.connect();
         transport.simulateStatus('connected');
 
         transport.simulateMessage(`/room/${auth.roomId}`, {
-            message: 'ROOM_CLOSED',
-            data: {
-                roomId: auth.roomId,
-            },
+            roomId: auth.roomId,
+            roomName: 'Lobby-1',
+            players: [],
+            closedReason: 'HOST_LEFT',
         });
 
         expect(session.getSnapshot().isRedirecting).toBe(true);

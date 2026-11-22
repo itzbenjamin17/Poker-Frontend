@@ -233,7 +233,7 @@ Theme tokens are defined in [`src/index.css`](src/index.css) using Tailwind CSS 
 
 ### REST Endpoints
 
-Commands (`POST`) return `ApiResponse<T>` (`{ message, data }`), whereas queries (`GET`) return the resource DTO directly:
+REST endpoints return resource DTOs directly (`TokenResponse`, `RoomDataResponse`, `PublicGameStateResponse`, `PrivatePlayerState`) or `204 No Content` for `/start-game` and `/leave`, with RFC 9457 `ProblemDetail` (`application/problem+json`) on HTTP errors:
 
 | Method | Endpoint | Purpose |
 | ------ | -------- | ------- |
@@ -250,9 +250,9 @@ Commands (`POST`) return `ApiResponse<T>` (`{ message, data }`), whereas queries
 ### WebSocket Channels (STOMP over `/ws`)
 
 - **Subscribe:**
-  - `/room/{roomId}` — Lobby membership, host changes, and game-start events
-  - `/game/{gameId}` — Public game state snapshots, action notifications, and game-end events
-  - `/user/queue/private` — Authenticated player's private hole cards and action errors
+  - `/room/{roomId}` — `RoomDataResponse` snapshots for lobby membership, host changes, game start, and room closure (`closedReason`)
+  - `/game/{gameId}` — `PublicGameStateResponse` snapshots for live play, showdowns, auto-advance, and match completion (`gameEnd`)
+  - `/user/queue/private` — `PrivatePlayerState` hole cards and `PlayerFeedbackResponse` (`ACTION_ERROR` / `PLAYER_NOTIFICATION`)
 - **Publish:**
   - `/app/{gameId}/action` — Send player betting action (`FOLD`, `CHECK`, `CALL`, `RAISE`, `ALL_IN`)
   - `/app/{gameId}/ready` — Mark ready for the next hand

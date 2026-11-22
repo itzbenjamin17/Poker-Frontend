@@ -38,7 +38,7 @@ test.describe('Layout Screenshots 3 to 10 players', () => {
                     token: authToken,
                     roomId: id,
                     playerName: 'Host',
-                    message: 'Success', playerId: 'p-1',
+                    playerId: 'p-1',
                 }));
             }, { authToken: token, id: roomId });
 
@@ -68,9 +68,6 @@ test.describe('Layout Screenshots 3 to 10 players', () => {
                 buyIn: 1000,
                 smallBlind: 10,
                 bigBlind: 20,
-                createdAt: '2026-01-01T00:00:00.000Z',
-                hostName: 'Host',
-                currentPlayers: numPlayers,
                 canStartGame: false,
                 players: generatePlayers(numPlayers).map(p => ({ name: p.name, isHost: p.id === 'p-1' })),
                 gameStarted: true,

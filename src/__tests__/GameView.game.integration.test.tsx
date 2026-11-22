@@ -282,10 +282,15 @@ describe('GameView - Game Table Integration', () => {
     await MockStompClient.waitForSubscription('/room/ROOM123')
 
     await act(async () => {
-      MockStompClient.simulateMessage('/room/ROOM123', {
-        message: 'ROOM_CLOSED',
-        data: { roomId: 'ROOM123' },
-      })
+      MockStompClient.simulateMessage('/room/ROOM123', createValidRoomData({
+        roomId: 'ROOM123',
+        roomName: 'Poker Table',
+        players: [
+          { name: 'TestPlayer', isHost: false },
+          { name: 'Opponent', isHost: true },
+        ],
+        closedReason: 'HOST_LEFT',
+      }))
     })
 
     expect(await screen.findByText(/Host left the lobby\. Returning to main lobby\.\.\./i)).toBeInTheDocument()

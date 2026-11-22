@@ -30,8 +30,9 @@ describe('Lobby Component Password Fields', () => {
             http.post('/api/room/create', async () => {
                 await new Promise<void>((resolve) => { resolveCreate = resolve; });
                 return HttpResponse.json({
-                    message: 'Room created successfully',
-                    data: { token: 'mock-jwt', playerName: 'Host', roomId: 'ABCD' },
+                    token: 'mock-jwt',
+                    playerName: 'Host',
+                    roomId: 'ABCD',
                 });
             })
         );
@@ -66,8 +67,9 @@ describe('Lobby Component Password Fields', () => {
             http.post('/api/room/join', async () => {
                 await new Promise<void>((resolve) => { resolveJoin = resolve; });
                 return HttpResponse.json({
-                    message: 'Successfully joined room',
-                    data: { token: 'mock-jwt', playerName: 'Player', roomId: 'ABCD' },
+                    token: 'mock-jwt',
+                    playerName: 'Player',
+                    roomId: 'ABCD',
                 });
             })
         );
@@ -104,8 +106,9 @@ describe('Lobby Component Password Fields', () => {
             http.post('/api/room/create', async ({ request }) => {
                 submittedPayload = (await request.json()) as Record<string, unknown>;
                 return HttpResponse.json({
-                    message: 'Room created successfully',
-                    data: { token: 'mock-jwt', playerName: 'Host', roomId: 'ABCD' },
+                    token: 'mock-jwt',
+                    playerName: 'Host',
+                    roomId: 'ABCD',
                 });
             })
         );
@@ -137,8 +140,9 @@ describe('Lobby Component Password Fields', () => {
             http.post('/api/room/create', async ({ request }) => {
                 submittedPayload = (await request.json()) as Record<string, unknown>;
                 return HttpResponse.json({
-                    message: 'Room created successfully',
-                    data: { token: 'mock-jwt', playerName: 'Host', roomId: 'ABCD' },
+                    token: 'mock-jwt',
+                    playerName: 'Host',
+                    roomId: 'ABCD',
                 });
             })
         );
@@ -167,8 +171,9 @@ describe('Lobby Component Password Fields', () => {
             http.post('/api/room/join', async ({ request }) => {
                 submittedPayload = (await request.json()) as Record<string, unknown>;
                 return HttpResponse.json({
-                    message: 'Successfully joined room',
-                    data: { token: 'mock-jwt', playerName: 'Player', roomId: 'Room 1' },
+                    token: 'mock-jwt',
+                    playerName: 'Player',
+                    roomId: 'Room 1',
                 });
             })
         );
@@ -200,8 +205,9 @@ describe('Lobby Component Password Fields', () => {
             http.post('/api/room/join', async ({ request }) => {
                 submittedPayload = (await request.json()) as Record<string, unknown>;
                 return HttpResponse.json({
-                    message: 'Successfully joined room',
-                    data: { token: 'mock-jwt', playerName: 'Player', roomId: 'Room 1' },
+                    token: 'mock-jwt',
+                    playerName: 'Player',
+                    roomId: 'Room 1',
                 });
             })
         );
@@ -225,7 +231,7 @@ describe('Lobby Component Password Fields', () => {
         server.use(
             http.post('/api/room/join', () => {
                 return HttpResponse.json(
-                    { message: 'Incorrect room password' },
+                    { detail: 'Incorrect room password' },
                     { status: 403 }
                 );
             })

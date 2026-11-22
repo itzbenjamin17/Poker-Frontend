@@ -3,13 +3,14 @@ import { describe, expect, it, vi } from 'vitest';
 import {
     decodeGameStatePayload,
     decodePublicGameState,
+    decodeCompletedGameState,
     decodePrivatePlayerState,
+    decodeRoomDataResponse,
     validatePrivatePlayerIdentity,
-    decodeGameEndResult,
     isGameStatePayload,
-    isGameEndPayload,
+    isPlayerNotificationPayload,
     isPrivateStatePayload,
-    isRoomUpdatePayload,
+    isRoomDataPayload,
     getErrorStatusCode,
     normalizeErrorMessage,
     isAuthResponse,
@@ -27,6 +28,7 @@ describe('lib/payloads - Type Guards and Normalizers', () => {
             expect(isGameStatePayload(createValidGameState({
                 legalActions: [], minimumBetAmount: null, minimumRaiseAmount: 60,
                 winningsPerPlayer: null, handSettled: true, carryOverAmount: 10,
+                gameEnd: null,
             }))).toBe(true);
             expect(isGameStatePayload(createValidGameState({ minimumRaiseAmount: Number.MAX_SAFE_INTEGER + 1 }))).toBe(false);
         });
@@ -220,38 +222,20 @@ describe('lib/payloads - Type Guards and Normalizers', () => {
         });
     });
 
-    describe('isGameEndPayload', () => {
-        it('returns true for valid GAME_END payloads', () => {
-            const payload = {
-                type: 'GAME_END',
-                winner: 'Alice',
-                winnerChips: 2000,
-                isForfeit: false,
-                message: 'Alice won with Royal Flush',
-                gameId: 'game-1',
-            };
-            expect(isGameEndPayload(payload)).toBe(true);
+    describe('isPlayerNotificationPayload', () => {
+        it('returns true for valid PLAYER_NOTIFICATION payloads', () => {
+            expect(isPlayerNotificationPayload({
+                type: 'PLAYER_NOTIFICATION',
+                message: 'Check or bet to stay in the hand.',
+            })).toBe(true);
         });
 
-        it('returns false for non-matching type or non-objects', () => {
-            expect(isGameEndPayload({ type: 'ROUND_END' })).toBe(false);
-            expect(isGameEndPayload(null)).toBe(false);
-            expect(isGameEndPayload('GAME_END')).toBe(false);
-        });
-
-        it('returns false when property types are invalid', () => {
-            expect(
-                isGameEndPayload({
-                    type: 'GAME_END',
-                    winnerChips: 'not-a-number',
-                })
-            ).toBe(false);
-            expect(
-                isGameEndPayload({
-                    type: 'GAME_END',
-                    isForfeit: 'not-a-boolean',
-                })
-            ).toBe(false);
+        it('returns false for non-matching types, blank messages, or non-objects', () => {
+            expect(isPlayerNotificationPayload({ type: 'ROUND_END', message: 'Done' })).toBe(false);
+            expect(isPlayerNotificationPayload({ type: 'PLAYER_NOTIFICATION', message: '   ' })).toBe(false);
+            expect(isPlayerNotificationPayload({ type: 'PLAYER_NOTIFICATION', message: 123 })).toBe(false);
+            expect(isPlayerNotificationPayload(null)).toBe(false);
+            expect(isPlayerNotificationPayload('PLAYER_NOTIFICATION')).toBe(false);
         });
     });
 
@@ -278,69 +262,53 @@ describe('lib/payloads - Type Guards and Normalizers', () => {
         });
     });
 
-    describe('isRoomUpdatePayload', () => {
-        it('returns true for valid ROOM_CLOSED and PLAYER_JOINED payloads', () => {
-            expect(isRoomUpdatePayload({ message: 'ROOM_CLOSED' })).toBe(true);
-            expect(isRoomUpdatePayload({ message: 'ROOM_CLOSED', data: { roomId: 'room-1' } })).toBe(true);
-            expect(isRoomUpdatePayload({ message: 'ROOM_CLOSED', data: { roomId: 'room-1', reason: 'INACTIVITY' } })).toBe(true);
-            expect(
-                isRoomUpdatePayload({
-                    message: 'PLAYER_JOINED',
-                    data: {
-                        roomId: 'room-1',
-                        roomName: 'Table 1',
-                        players: [{ name: 'Alice', isHost: true }],
-                        inactivityDeadlineEpochMs: 1700000000000,
-                        serverTimeEpochMs: 1699998200000,
-                    },
-                })
-            ).toBe(true);
+    describe('isRoomDataPayload and decodeRoomDataResponse', () => {
+        it('returns true for valid open and closed RoomDataResponse payloads', () => {
+            const openRoom = {
+                roomId: 'room-1',
+                roomName: 'High Stakes',
+                players: [
+                    { name: 'Alice', isHost: true },
+                    { name: 'Bob', isHost: false },
+                ],
+                maxPlayers: 6,
+                buyIn: 1000,
+                smallBlind: 10,
+                bigBlind: 20,
+                canStartGame: true,
+                gameStarted: false,
+                inactivityDeadlineEpochMs: 1700000000000,
+                serverTimeEpochMs: 1699998200000,
+            };
+            expect(isRoomDataPayload(openRoom)).toBe(true);
+            expect(decodeRoomDataResponse(openRoom)).toEqual(openRoom);
+
+            const closedHostLeft = { ...openRoom, closedReason: 'HOST_LEFT' };
+            expect(isRoomDataPayload(closedHostLeft)).toBe(true);
+            expect(decodeRoomDataResponse(closedHostLeft)?.closedReason).toBe('HOST_LEFT');
+
+            const closedInactive = { ...openRoom, closedReason: 'INACTIVITY', canStartGame: false };
+            expect(isRoomDataPayload(closedInactive)).toBe(true);
+            expect(decodeRoomDataResponse(closedInactive)?.closedReason).toBe('INACTIVITY');
+
+            expect(isRoomDataPayload({
+                roomId: 'room-1',
+                roomName: 'Table 1',
+                players: [{ name: 'Alice', isHost: true }],
+                closedReason: null,
+            })).toBe(true);
         });
 
-        it('returns false for malformed room update payloads', () => {
-            expect(isRoomUpdatePayload(null)).toBe(false);
-            expect(isRoomUpdatePayload({ message: 'UNKNOWN_EVENT', data: {} })).toBe(false);
-            expect(isRoomUpdatePayload({ message: 'PLAYER_JOINED', data: null })).toBe(false);
-            expect(isRoomUpdatePayload({ message: 'PLAYER_JOINED', data: { players: 'bad' } })).toBe(false);
-            expect(isRoomUpdatePayload({ message: 'PLAYER_JOINED', data: { roomName: 123, players: [] } })).toBe(false);
-            expect(isRoomUpdatePayload({ message: 'PLAYER_JOINED', data: { players: [{ name: 123 }] } })).toBe(false);
-            expect(isRoomUpdatePayload({ message: 'GAME_STARTED', data: null })).toBe(false);
-            expect(isRoomUpdatePayload({ message: 'GAME_STARTED', data: { gameId: 123 } })).toBe(false);
-            expect(isRoomUpdatePayload({ message: 'GAME_STARTED', data: { players: 'not-an-array' } })).toBe(false);
-        });
-
-        it('validates canonical GAME_STARTED payload with RoomDataResponse shape', () => {
-            expect(
-                isRoomUpdatePayload({
-                    message: 'GAME_STARTED',
-                    data: {
-                        roomId: 'room-1',
-                        roomName: 'High Stakes',
-                        players: [
-                            { name: 'Alice', isHost: true },
-                            { name: 'Bob', isHost: false },
-                        ],
-                        maxPlayers: 6,
-                        buyIn: 1000,
-                        smallBlind: 10,
-                        bigBlind: 20,
-                        canStartGame: false,
-                        gameStarted: true,
-                    },
-                })
-            ).toBe(true);
-        });
-
-        it('validates legacy GAME_STARTED payload with { gameId, message? } shape', () => {
-            expect(
-                isRoomUpdatePayload({
-                    message: 'GAME_STARTED',
-                    data: {
-                        gameId: 'room-1',
-                        message: 'Game started! Redirecting to game...',
-                    },
-                })
-            ).toBe(true);
+        it('returns false for malformed RoomDataResponse payloads', () => {
+            expect(isRoomDataPayload(null)).toBe(false);
+            expect(decodeRoomDataResponse(null)).toBeNull();
+            expect(isRoomDataPayload({ roomName: 'Table 1', players: [] })).toBe(false);
+            expect(isRoomDataPayload({ roomId: 'room-1', roomName: 123, players: [] })).toBe(false);
+            expect(isRoomDataPayload({ roomId: 'room-1', roomName: 'Table 1', players: 'bad' })).toBe(false);
+            expect(isRoomDataPayload({ roomId: 'room-1', roomName: 'Table 1', players: [{ name: 123, isHost: true }] })).toBe(false);
+            expect(isRoomDataPayload({ roomId: 'room-1', roomName: 'Table 1', players: [], maxPlayers: 1 })).toBe(false);
+            expect(isRoomDataPayload({ roomId: 'room-1', roomName: 'Table 1', players: [], closedReason: 123 })).toBe(false);
+            expect(decodeRoomDataResponse({ roomId: 'room-1', roomName: 'Table 1', players: [], inactivityDeadlineEpochMs: -1 })).toBeNull();
         });
     });
 
@@ -499,12 +467,11 @@ describe('lib/payloads - Type Guards and Normalizers', () => {
     });
 
     describe('isAuthResponse', () => {
-        it('returns true for a valid AuthResponse object with all non-blank string fields', () => {
+        it('returns true for a valid TokenResponse object with all non-blank string fields', () => {
             const valid = {
                 token: 'mock.jwt.token',
                 roomId: 'room-123',
                 playerName: 'Alice',
-                message: 'Room created successfully',
             };
             expect(isAuthResponse(valid)).toBe(true);
         });
@@ -517,30 +484,27 @@ describe('lib/payloads - Type Guards and Normalizers', () => {
             expect(isAuthResponse(true)).toBe(false);
             expect(isAuthResponse([])).toBe(false);
             expect(isAuthResponse([
-                { token: 't', roomId: 'r', playerName: 'p', message: 'm' },
+                { token: 't', roomId: 'r', playerName: 'p' },
             ])).toBe(false);
         });
 
         it('returns false if any required field is missing or not a string', () => {
-            expect(isAuthResponse({ roomId: 'r', playerName: 'p', message: 'm' })).toBe(false);
-            expect(isAuthResponse({ token: 123, roomId: 'r', playerName: 'p', message: 'm' })).toBe(false);
-            expect(isAuthResponse({ token: 't', playerName: 'p', message: 'm' })).toBe(false);
-            expect(isAuthResponse({ token: 't', roomId: null, playerName: 'p', message: 'm' })).toBe(false);
-            expect(isAuthResponse({ token: 't', roomId: 'r', message: 'm' })).toBe(false);
-            expect(isAuthResponse({ token: 't', roomId: 'r', playerName: undefined, message: 'm' })).toBe(false);
-            expect(isAuthResponse({ token: 't', roomId: 'r', playerName: 'p' })).toBe(false);
-            expect(isAuthResponse({ token: 't', roomId: 'r', playerName: 'p', message: 42 })).toBe(false);
+            expect(isAuthResponse({ roomId: 'r', playerName: 'p' })).toBe(false);
+            expect(isAuthResponse({ token: 123, roomId: 'r', playerName: 'p' })).toBe(false);
+            expect(isAuthResponse({ token: 't', playerName: 'p' })).toBe(false);
+            expect(isAuthResponse({ token: 't', roomId: null, playerName: 'p' })).toBe(false);
+            expect(isAuthResponse({ token: 't', roomId: 'r' })).toBe(false);
+            expect(isAuthResponse({ token: 't', roomId: 'r', playerName: undefined })).toBe(false);
+            expect(isAuthResponse({ token: 't', roomId: 'r', playerName: 42 })).toBe(false);
         });
 
         it('returns false if any field is empty or whitespace-only', () => {
-            expect(isAuthResponse({ token: '', roomId: 'r', playerName: 'p', message: 'm' })).toBe(false);
-            expect(isAuthResponse({ token: '   ', roomId: 'r', playerName: 'p', message: 'm' })).toBe(false);
-            expect(isAuthResponse({ token: 't', roomId: '', playerName: 'p', message: 'm' })).toBe(false);
-            expect(isAuthResponse({ token: 't', roomId: '  \t  ', playerName: 'p', message: 'm' })).toBe(false);
-            expect(isAuthResponse({ token: 't', roomId: 'r', playerName: '', message: 'm' })).toBe(false);
-            expect(isAuthResponse({ token: 't', roomId: 'r', playerName: '   ', message: 'm' })).toBe(false);
-            expect(isAuthResponse({ token: 't', roomId: 'r', playerName: 'p', message: '' })).toBe(false);
-            expect(isAuthResponse({ token: 't', roomId: 'r', playerName: 'p', message: ' \n ' })).toBe(false);
+            expect(isAuthResponse({ token: '', roomId: 'r', playerName: 'p' })).toBe(false);
+            expect(isAuthResponse({ token: '   ', roomId: 'r', playerName: 'p' })).toBe(false);
+            expect(isAuthResponse({ token: 't', roomId: '', playerName: 'p' })).toBe(false);
+            expect(isAuthResponse({ token: 't', roomId: '  \t  ', playerName: 'p' })).toBe(false);
+            expect(isAuthResponse({ token: 't', roomId: 'r', playerName: '' })).toBe(false);
+            expect(isAuthResponse({ token: 't', roomId: 'r', playerName: '   ' })).toBe(false);
         });
 
         it('does not mutate or trim the original input object fields', () => {
@@ -548,13 +512,11 @@ describe('lib/payloads - Type Guards and Normalizers', () => {
                 token: '  token-with-spaces  ',
                 roomId: '  room-456  ',
                 playerName: '  Bob  ',
-                message: '  Welcome!  ',
             };
             expect(isAuthResponse(raw)).toBe(true);
             expect(raw.token).toBe('  token-with-spaces  ');
             expect(raw.roomId).toBe('  room-456  ');
             expect(raw.playerName).toBe('  Bob  ');
-            expect(raw.message).toBe('  Welcome!  ');
         });
     });
 
@@ -649,7 +611,7 @@ describe('lib/payloads - Type Guards and Normalizers', () => {
         });
     });
 
-    describe('decodeGameEndResult and decodePublicGameState', () => {
+    describe('decodeCompletedGameState and decodePublicGameState', () => {
         it('decodes public game state via decodePublicGameState', () => {
             const valid = createValidGameState({ pot: 100 });
             const decoded = decodePublicGameState(valid);
@@ -657,123 +619,122 @@ describe('lib/payloads - Type Guards and Normalizers', () => {
             expect(decoded?.pot).toBe(100);
         });
 
-        it('decodes valid terminal result with full fields', () => {
-            const payload = {
+        it('decodes valid completed game state with embedded gameEnd', () => {
+            const payload = createValidGameState({
                 gameId: 'game-123',
-                winnerName: 'Alice',
-                winnerChips: 2000,
-                isForfeit: false,
-                message: 'Alice won with a flush',
-            };
-            const result = decodeGameEndResult(payload);
-            expect(result).toEqual({
-                gameId: 'game-123',
-                winnerName: 'Alice',
+                pot: 500,
+                phase: 'SHOWDOWN',
+                gameEnd: {
+                    winner: 'Alice',
+                    winnerChips: 2000,
+                    isForfeit: false,
+                    message: 'Alice won with a flush',
+                },
+            });
+            const result = decodeCompletedGameState(payload);
+            expect(result?.gameId).toBe('game-123');
+            expect(result?.pot).toBe(500);
+            expect(result?.gameEnd).toEqual({
+                winner: 'Alice',
                 winnerChips: 2000,
                 isForfeit: false,
                 message: 'Alice won with a flush',
             });
         });
 
-        it('accepts backend wire property "winner" as fallback for "winnerName"', () => {
-            const payload = {
+        it('accepts null winner and abandoned gameEnd metadata and strips winnerChips on abandoned games', () => {
+            const abandonedPayload = createValidGameState({
                 gameId: 'game-123',
-                winner: 'Alice',
-                winnerChips: 2000,
-                isForfeit: false,
-                message: 'Alice won',
-            };
-            const result = decodeGameEndResult(payload);
-            expect(result?.winnerName).toBe('Alice');
-        });
-
-        it('accepts null winnerName', () => {
-            const payload = {
-                gameId: 'game-123',
-                winnerName: null,
-                isForfeit: true,
-                message: 'Game abandoned',
-            };
-            const result = decodeGameEndResult(payload);
+                gameEnd: {
+                    winner: null,
+                    winnerChips: 1500,
+                    isForfeit: false,
+                    abandoned: true,
+                    reason: 'INACTIVITY',
+                    message: 'Game abandoned',
+                },
+            });
+            const result = decodeCompletedGameState(abandonedPayload);
             expect(result).not.toBeNull();
-            expect(result?.winnerName).toBeNull();
+            expect(result?.gameEnd?.winner).toBeNull();
+            expect(result?.gameEnd?.abandoned).toBe(true);
+            expect(result?.gameEnd?.reason).toBe('INACTIVITY');
+            expect(result?.gameEnd?.winnerChips).toBeUndefined();
         });
 
-        it('accepts omitted optional winnerChips', () => {
-            const payload = {
+        it('accepts omitted optional winnerChips and nullable winner', () => {
+            const payload = createValidGameState({
                 gameId: 'game-123',
-                winnerName: 'Bob',
-                isForfeit: false,
-                message: 'Bob won',
-            };
-            const result = decodeGameEndResult(payload);
-            expect(result).not.toBeNull();
-            expect(result?.winnerChips).toBeUndefined();
+                gameEnd: {
+                    winner: 'Bob',
+                    isForfeit: false,
+                    message: 'Bob won',
+                },
+            });
+            const result = decodeCompletedGameState(payload);
+            expect(result?.gameEnd?.winner).toBe('Bob');
+            expect(result?.gameEnd?.winnerChips).toBeUndefined();
+
+            const nullWinner = decodeCompletedGameState(createValidGameState({
+                gameId: 'game-123',
+                gameEnd: {
+                    winner: null,
+                    isForfeit: true,
+                    message: 'Draw or undecided winner',
+                },
+            }));
+            expect(nullWinner?.gameEnd?.winner).toBeNull();
         });
 
-        it('decodes and validates matching finalState when present', () => {
-            const finalState = createValidGameState({ gameId: 'game-123', pot: 500 });
-            const payload = {
-                gameId: 'game-123',
-                winnerName: 'Alice',
-                winnerChips: 1500,
-                isForfeit: false,
-                message: 'Alice won',
-                finalState,
-            };
-            const result = decodeGameEndResult(payload);
-            expect(result).not.toBeNull();
-            expect(result?.finalState?.gameId).toBe('game-123');
-            expect(result?.finalState?.pot).toBe(500);
+        it('rejects payload when gameEnd is missing or null', () => {
+            expect(decodeCompletedGameState(createValidGameState({ gameId: 'game-123' }))).toBeNull();
+            expect(decodeCompletedGameState(createValidGameState({ gameId: 'game-123', gameEnd: null }))).toBeNull();
         });
 
-        it('rejects terminal payload when finalState gameId does not match terminal gameId', () => {
-            const finalState = createValidGameState({ gameId: 'different-game-id' });
+        it('rejects completed payload when top-level public game state fails decoding', () => {
             const payload = {
-                gameId: 'game-123',
-                winnerName: 'Alice',
-                isForfeit: false,
-                message: 'Alice won',
-                finalState,
+                pot: -100, // Corrupted money
+                gameEnd: {
+                    winner: 'Alice',
+                    isForfeit: false,
+                    message: 'Alice won',
+                },
             };
-            expect(decodeGameEndResult(payload)).toBeNull();
-        });
-
-        it('rejects terminal payload when finalState fails decoding', () => {
-            const payload = {
-                gameId: 'game-123',
-                winnerName: 'Alice',
-                isForfeit: false,
-                message: 'Alice won',
-                finalState: { pot: -100 }, // Corrupted money
-            };
-            expect(decodeGameEndResult(payload)).toBeNull();
+            expect(decodeCompletedGameState(payload)).toBeNull();
         });
 
         it.each<[string, unknown, string | undefined]>([
-            ['negative winnerChips', { gameId: 'g1', winnerName: 'A', winnerChips: -1, isForfeit: false, message: 'm' }, undefined],
-            ['float winnerChips', { gameId: 'g1', winnerName: 'A', winnerChips: 1.5, isForfeit: false, message: 'm' }, undefined],
-            ['string winnerChips', { gameId: 'g1', winnerName: 'A', winnerChips: '500', isForfeit: false, message: 'm' }, undefined],
-            ['empty gameId', { gameId: '', winnerName: 'A', isForfeit: false, message: 'm' }, undefined],
-            ['missing gameId without fallback', { winnerName: 'A', isForfeit: false, message: 'm' }, undefined],
-            ['mismatched expectedGameId', { gameId: 'g1', winnerName: 'A', isForfeit: false, message: 'm' }, 'g2'],
-            ['non-boolean isForfeit', { gameId: 'g1', winnerName: 'A', isForfeit: 'true', message: 'm' }, undefined],
-            ['empty message', { gameId: 'g1', winnerName: 'A', isForfeit: false, message: '   ' }, undefined],
-            ['non-string message', { gameId: 'g1', winnerName: 'A', isForfeit: false, message: 123 }, undefined],
-            ['invalid winnerName type', { gameId: 'g1', winnerName: 123, isForfeit: false, message: 'm' }, undefined],
+            ['negative winnerChips', createValidGameState({ gameId: 'g1', gameEnd: { winner: 'A', winnerChips: -1, isForfeit: false, message: 'm' } }), undefined],
+            ['float winnerChips', createValidGameState({ gameId: 'g1', gameEnd: { winner: 'A', winnerChips: 1.5, isForfeit: false, message: 'm' } }), undefined],
+            ['string winnerChips', createValidGameState({ gameId: 'g1', gameEnd: { winner: 'A', winnerChips: '500', isForfeit: false, message: 'm' } }), undefined],
+            ['empty gameId', createValidGameState({ gameId: '   ', gameEnd: { winner: 'A', isForfeit: false, message: 'm' } }), undefined],
+            ['empty gameId with expectedGameId', createValidGameState({ gameId: '', gameEnd: { winner: 'A', isForfeit: false, message: 'm' } }), 'g1'],
+            ['missing gameId without fallback', createValidGameState({ gameId: undefined, gameEnd: { winner: 'A', isForfeit: false, message: 'm' } }), undefined],
+            ['mismatched expectedGameId', createValidGameState({ gameId: 'g1', gameEnd: { winner: 'A', isForfeit: false, message: 'm' } }), 'g2'],
+            ['non-boolean isForfeit', createValidGameState({ gameId: 'g1', gameEnd: { winner: 'A', isForfeit: 'true', message: 'm' } }), undefined],
+            ['non-boolean isForfeit when reason is INACTIVITY', createValidGameState({ gameId: 'g1', gameEnd: { winner: null, isForfeit: 'false', reason: 'INACTIVITY', message: 'm' } }), undefined],
+            ['non-boolean abandoned', createValidGameState({ gameId: 'g1', gameEnd: { winner: null, isForfeit: false, abandoned: 'true', message: 'm' } }), undefined],
+            ['non-string/non-null winner when abandoned is true', createValidGameState({ gameId: 'g1', gameEnd: { winner: 123, isForfeit: false, abandoned: true, message: 'm' } }), undefined],
+            ['empty message', createValidGameState({ gameId: 'g1', gameEnd: { winner: 'A', isForfeit: false, message: '   ' } }), undefined],
+            ['non-string message', createValidGameState({ gameId: 'g1', gameEnd: { winner: 'A', isForfeit: false, message: 123 } }), undefined],
+            ['empty winner string', createValidGameState({ gameId: 'g1', gameEnd: { winner: '   ', isForfeit: false, message: 'm' } }), undefined],
+            ['invalid winner type', createValidGameState({ gameId: 'g1', gameEnd: { winner: 123, isForfeit: false, message: 'm' } }), undefined],
             ['null input', null, undefined],
-        ])('rejects malformed terminal data: %s', (_desc, payload, expectedGameId) => {
-            expect(decodeGameEndResult(payload, expectedGameId)).toBeNull();
+        ])('rejects malformed completed game state: %s', (_desc, payload, expectedGameId) => {
+            expect(decodeCompletedGameState(payload, expectedGameId)).toBeNull();
         });
 
-        it('uses fallbackGameId when gameId is omitted from payload', () => {
-            const payload = {
-                winnerName: 'Alice',
-                winnerChips: 500,
-                isForfeit: false,
-                message: 'Alice won',
-            };
-            const result = decodeGameEndResult(payload, 'fallback-room');
+        it('uses expectedGameId fallback when gameId is omitted from payload', () => {
+            const payload = createValidGameState({
+                gameId: undefined,
+                gameEnd: {
+                    winner: 'Alice',
+                    winnerChips: 500,
+                    isForfeit: false,
+                    message: 'Alice won',
+                },
+            });
+            const result = decodeCompletedGameState(payload, 'fallback-room');
             expect(result).not.toBeNull();
             expect(result?.gameId).toBe('fallback-room');
         });

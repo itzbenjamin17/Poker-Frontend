@@ -12,7 +12,6 @@ describe('GameSession Lifecycle Ownership & Attachment Epochs', () => {
         roomId: 'room-lifecycle',
         playerName: 'Hero',
         token: 'token-hero',
-        message: 'Success',
     };
 
     function createSession(clock = new TestClock(1000)) {

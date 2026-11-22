@@ -10,7 +10,8 @@ import {
     type AuthIdentity,
     type PersistedGameEndEnvelope,
 } from '../gameEndStorage';
-import type { GameEndResult } from '../../types';
+import type { PublicGameStateResponse } from '../../types';
+import { createValidGameState, createValidPlayer } from '../../test/fixtures';
 
 describe('gameEndStorage', () => {
     const authA: AuthIdentity = {
@@ -25,13 +26,20 @@ describe('gameEndStorage', () => {
         token: 'token-bob-secret',
     };
 
-    const validResult: GameEndResult = {
+    const validResult: PublicGameStateResponse = createValidGameState({
         gameId: 'room-123',
-        winnerName: 'Alice',
-        winnerChips: 500,
-        isForfeit: false,
-        message: 'Alice won the tournament!',
-    };
+        phase: 'SHOWDOWN',
+        players: [
+            createValidPlayer({ id: 'p-1', name: 'Alice', chips: 500, isWinner: true, chipsWon: 500 }),
+        ],
+        winners: ['Alice'],
+        gameEnd: {
+            winner: 'Alice',
+            winnerChips: 500,
+            isForfeit: false,
+            message: 'Alice won the tournament!',
+        },
+    });
 
     beforeEach(() => {
         localStorage.clear();
@@ -50,7 +58,7 @@ describe('gameEndStorage', () => {
         expect(raw).not.toBeNull();
         const envelope = JSON.parse(raw!) as PersistedGameEndEnvelope;
         expect(envelope).toEqual({
-            version: 1,
+            version: 2,
             roomId: authA.roomId,
             playerName: authA.playerName,
             token: authA.token,
@@ -91,7 +99,7 @@ describe('gameEndStorage', () => {
 
     it('rejects loading when result.gameId does not match auth.roomId and purges invalid envelope', () => {
         const corruptedResultEnvelope: PersistedGameEndEnvelope = {
-            version: 1,
+            version: 2,
             roomId: authA.roomId,
             playerName: authA.playerName,
             token: authA.token,
@@ -106,9 +114,27 @@ describe('gameEndStorage', () => {
         expect(sessionStorage.getItem('poker-game-end:room-123')).toBeNull();
     });
 
-    it('rejects and purges unversioned raw-result entries from sessionStorage without throwing', () => {
-        // Raw unversioned GameEndResult in sessionStorage
+    it('rejects and purges unversioned and legacy v1 entries from sessionStorage without throwing', () => {
+        // Raw unversioned result in sessionStorage
         sessionStorage.setItem('poker-game-end:room-123', JSON.stringify(validResult));
+
+        expect(loadPersistedGameEnd(authA)).toBeNull();
+        expect(sessionStorage.getItem('poker-game-end:room-123')).toBeNull();
+
+        // Legacy v1 envelope in sessionStorage
+        sessionStorage.setItem('poker-game-end:room-123', JSON.stringify({
+            version: 1,
+            roomId: authA.roomId,
+            playerName: authA.playerName,
+            token: authA.token,
+            result: {
+                gameId: 'room-123',
+                winnerName: 'Alice',
+                winnerChips: 500,
+                isForfeit: false,
+                message: 'Alice won the tournament!',
+            },
+        }));
 
         expect(loadPersistedGameEnd(authA)).toBeNull();
         expect(sessionStorage.getItem('poker-game-end:room-123')).toBeNull();
@@ -129,20 +155,27 @@ describe('gameEndStorage', () => {
         expect(loadPersistedGameEnd(authA)).toBeNull();
         expect(sessionStorage.getItem('poker-game-end:room-123')).toBeNull();
 
-        sessionStorage.setItem('poker-game-end:room-123', JSON.stringify({ version: 1, bad: 'shape' }));
+        sessionStorage.setItem('poker-game-end:room-123', JSON.stringify({ version: 2, bad: 'shape' }));
         expect(loadPersistedGameEnd(authA)).toBeNull();
         expect(sessionStorage.getItem('poker-game-end:room-123')).toBeNull();
     });
 
     it('protects User B from a stale write by User A for the same room', () => {
         // User B has a saved review in room-123
-        const resultB: GameEndResult = {
+        const resultB: PublicGameStateResponse = createValidGameState({
             gameId: 'room-123',
-            winnerName: 'Bob',
-            winnerChips: 1000,
-            isForfeit: true,
-            message: 'Bob won by forfeit!',
-        };
+            phase: 'SHOWDOWN',
+            players: [
+                createValidPlayer({ id: 'p-2', name: 'Bob', chips: 1000, isWinner: true, chipsWon: 1000 }),
+            ],
+            winners: ['Bob'],
+            gameEnd: {
+                winner: 'Bob',
+                winnerChips: 1000,
+                isForfeit: true,
+                message: 'Bob won by forfeit!',
+            },
+        });
         savePersistedGameEnd(authB, resultB);
 
         // Stale User A attempts to write to room-123
@@ -153,7 +186,7 @@ describe('gameEndStorage', () => {
         const envelope = JSON.parse(raw!) as PersistedGameEndEnvelope;
         expect(envelope.playerName).toBe('Bob');
         expect(envelope.token).toBe('token-bob-secret');
-        expect(envelope.result.winnerName).toBe('Bob');
+        expect(envelope.result.gameEnd?.winner).toBe('Bob');
     });
 
     it('protects User B from a stale clear/save(null) by User A for the same room', () => {
@@ -252,11 +285,22 @@ describe('gameEndStorage', () => {
             expect(sessionStorage.getItem('poker-game-end:room-123')).toBeNull();
         });
 
-        it('loads unadorned legacy review entries when no auth credentials are provided', () => {
+        it('rejects and purges unversioned and v1 entries even when no auth credentials are provided', () => {
             sessionStorage.setItem('poker-game-end:room-123', JSON.stringify(validResult));
 
-            const loaded = loadGameEndResult('room-123');
-            expect(loaded).toEqual(validResult);
+            expect(loadGameEndResult('room-123')).toBeNull();
+            expect(sessionStorage.getItem('poker-game-end:room-123')).toBeNull();
+
+            sessionStorage.setItem('poker-game-end:room-123', JSON.stringify({
+                version: 1,
+                roomId: 'room-123',
+                playerName: 'Alice',
+                token: 'token-alice-secret',
+                result: { gameId: 'room-123', winnerName: 'Alice', isForfeit: false, message: 'Won' },
+            }));
+
+            expect(loadGameEndResult('room-123')).toBeNull();
+            expect(sessionStorage.getItem('poker-game-end:room-123')).toBeNull();
         });
 
         it('clears review state when identity matches', () => {
@@ -299,21 +343,23 @@ describe('gameEndStorage', () => {
         });
 
         it('persists and restores abandonment envelope without declaring a winner', () => {
-            const abandonmentResult: GameEndResult = {
+            const abandonmentResult: PublicGameStateResponse = createValidGameState({
                 gameId: 'room-123',
-                winnerName: null,
-                isForfeit: false,
-                abandoned: true,
-                reason: 'INACTIVITY',
-                message: 'Game abandoned due to inactivity.',
-            };
+                gameEnd: {
+                    winner: null,
+                    isForfeit: false,
+                    abandoned: true,
+                    reason: 'INACTIVITY',
+                    message: 'Game abandoned due to inactivity.',
+                },
+            });
 
             savePersistedGameEnd(authA, abandonmentResult);
             const loaded = loadPersistedGameEnd(authA);
             expect(loaded).not.toBeNull();
-            expect(loaded?.abandoned).toBe(true);
-            expect(loaded?.reason).toBe('INACTIVITY');
-            expect(loaded?.winnerName).toBeNull();
+            expect(loaded?.gameEnd?.abandoned).toBe(true);
+            expect(loaded?.gameEnd?.reason).toBe('INACTIVITY');
+            expect(loaded?.gameEnd?.winner).toBeNull();
         });
     });
 });

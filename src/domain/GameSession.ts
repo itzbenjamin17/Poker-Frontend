@@ -1,23 +1,23 @@
 import type {
     AuthResponse,
-    GameEndResult,
     GameState,
     IncomingGameStatePayload,
     IncomingPrivateStatePayload,
     PokerAction,
+    PublicGameStateResponse,
     RoomState,
-    RoomUpdate,
     SessionSnapshot,
     WsStatus,
 } from '../types';
 import {
     getErrorStatusCode,
+    decodeCompletedGameState,
     decodeGameStatePayload,
-    decodeGameEndResult,
     decodePrivatePlayerState,
-    isGameEndPayload,
+    decodeRoomDataResponse,
     isActionErrorPayload,
-    isRoomUpdatePayload,
+    isPlayerNotificationPayload,
+    mapRoomDataToRoomState,
     normalizeErrorMessage,
 } from '../lib/payloads';
 import {
@@ -59,7 +59,7 @@ export interface GameSessionOptions {
     clock?: Clock;
     initialRoomState?: RoomState | null;
     initialGameState?: GameState | null;
-    initialGameEndResult?: GameEndResult | null;
+    initialGameEndResult?: PublicGameStateResponse | null;
     onLeave?: (originatingToken?: string) => void;
     pokerApi?: typeof pokerApi;
 }
@@ -136,7 +136,7 @@ export class GameSession {
         const isGameOver = Boolean(options.initialGameEndResult);
         this.gameStarted = Boolean(initialRoom.gameStarted);
 
-        const initialGameState = options.initialGameState ?? options.initialGameEndResult?.finalState ?? null;
+        const initialGameState = options.initialGameState ?? options.initialGameEndResult ?? null;
         let initialHeroId: string | null = null;
         if (initialGameState?.players && options.auth.playerName) {
             const hero = initialGameState.players.find((p) => p.name === options.auth.playerName);
@@ -565,11 +565,7 @@ export class GameSession {
                 return;
             }
 
-            if (parsed?.type === 'PLAYER_NOTIFICATION' && typeof parsed.message === 'string') {
-                const targetPlayer = typeof parsed.playerName === 'string' ? parsed.playerName.trim() : typeof parsed.recipient === 'string' ? parsed.recipient.trim() : null;
-                if (targetPlayer && targetPlayer !== this.auth.playerName) {
-                    return;
-                }
+            if (isPlayerNotificationPayload(parsed)) {
                 this.setNotification(normalizeErrorMessage(parsed.message));
                 return;
             }
@@ -700,129 +696,76 @@ export class GameSession {
         if (!this.attached || this.isDisposed) return;
         try {
             const parsed: unknown = JSON.parse(body);
-            if (!isRoomUpdatePayload(parsed)) {
+            const room = decodeRoomDataResponse(parsed);
+            if (!room) {
                 logger.warn('Ignoring invalid room update payload:', body);
                 return;
             }
-            const update: RoomUpdate = parsed;
+            if (room.roomId && room.roomId !== this.auth.roomId) return;
+            if (this.isRedirecting || this.snapshot.isGameOver) return;
 
-            if (update.message === 'ROOM_CLOSED') {
+            if (room.closedReason) {
                 this.clearLobbyInactivityTimer();
                 this.clearGameInactivityTimer();
-                const isInactive = Boolean(update.data && 'reason' in update.data && update.data.reason === 'INACTIVITY');
+                const isInactive = room.closedReason === 'INACTIVITY';
                 const redirectMsg = isInactive ? LOBBY_INACTIVE_CLOSED : HOST_LEFT;
                 this.scheduleRedirect(redirectMsg, { clearRoom: true });
                 return;
             }
 
-            if (this.isRedirecting || this.snapshot.isGameOver) return;
-
-            if (update.message === 'GAME_STARTED') {
-                const data = update.data;
-                if (!data) return;
-
-                if ('players' in data && Array.isArray(data.players)) {
-                    if (data.roomId && data.roomId !== this.auth.roomId) return;
-                    const heroStillInRoom = data.players.some((p) => p.name === this.auth.playerName);
-                    if (!heroStillInRoom) {
-                        if (this.isLeavingPending) return;
-                        this.scheduleRedirect(SESSION_SEAT_GONE);
-                        return;
-                    }
-
-                    this.markGameStarted();
-                    this.roomRevision += 1;
-                    this.updateSnapshot((prev) => ({
-                        roomState: {
-                            roomId: data.roomId ?? prev.roomState?.roomId ?? this.auth.roomId,
-                            roomName: data.roomName ?? prev.roomState?.roomName,
-                            players: data.players,
-                            maxPlayers: data.maxPlayers ?? prev.roomState?.maxPlayers,
-                            buyIn: data.buyIn ?? prev.roomState?.buyIn,
-                            smallBlind: data.smallBlind ?? prev.roomState?.smallBlind,
-                            bigBlind: data.bigBlind ?? prev.roomState?.bigBlind,
-                            canStartGame: data.canStartGame ?? false,
-                            gameStarted: true,
-                            inactivityDeadlineEpochMs:
-                                typeof data.inactivityDeadlineEpochMs === 'number'
-                                    ? data.inactivityDeadlineEpochMs
-                                    : prev.roomState?.inactivityDeadlineEpochMs,
-                            serverTimeEpochMs:
-                                typeof data.serverTimeEpochMs === 'number'
-                                    ? data.serverTimeEpochMs
-                                    : prev.roomState?.serverTimeEpochMs,
-                        },
-                    }));
-                    this.updateGameInactivity(this.snapshot.gameState, this.snapshot.roomState);
-                    void this.synchronizeSession({ resetBudget: true });
+            const heroStillInRoom = room.players.some((p) => p.name === this.auth.playerName);
+            if (!heroStillInRoom) {
+                if (this.isLeavingPending) {
                     return;
                 }
-
-                if ('gameId' in data && typeof data.gameId === 'string') {
-                    if (data.gameId !== this.auth.roomId) return;
-                    this.markGameStarted();
-                    this.roomRevision += 1;
-                    void this.synchronizeSession({ resetBudget: true });
-                    return;
-                }
-
+                const previousState = this.snapshot.gameState;
+                const hadActiveTurn =
+                    previousState?.currentPlayerName === this.auth.playerName &&
+                    typeof previousState?.turnDeadlineEpochMs === 'number';
+                const now = typeof room.serverTimeEpochMs === 'number'
+                    ? room.serverTimeEpochMs
+                    : this.displayNow();
+                const turnExpired = hadActiveTurn && now >= (previousState!.turnDeadlineEpochMs as number);
+                this.scheduleRedirect(turnExpired ? SESSION_SEAT_TIMED_OUT : SESSION_SEAT_GONE);
                 return;
             }
 
-            if (
-                update.message === 'ROOM_CREATED' ||
-                update.message === 'PLAYER_JOINED' ||
-                update.message === 'PLAYER_LEFT'
-            ) {
-                const heroStillInRoom = update.data.players.some((p) => p.name === this.auth.playerName);
-                if (!heroStillInRoom) {
-                    if (this.isLeavingPending) {
-                        return;
-                    }
-                    const previousState = this.snapshot.gameState;
-                    const hadActiveTurn =
-                        previousState?.currentPlayerName === this.auth.playerName &&
-                        typeof previousState?.turnDeadlineEpochMs === 'number';
-                    const now = typeof update.data.serverTimeEpochMs === 'number'
-                        ? update.data.serverTimeEpochMs
-                        : this.displayNow();
-                    const turnExpired = hadActiveTurn && now >= (previousState!.turnDeadlineEpochMs as number);
-                    this.scheduleRedirect(turnExpired ? SESSION_SEAT_TIMED_OUT : SESSION_SEAT_GONE);
-                    return;
-                }
+            const wasStarted = this.isStarted();
+            const gameStarted = wasStarted || Boolean(room.gameStarted);
+            if (gameStarted) {
+                this.markGameStarted();
+            }
 
-                this.roomRevision += 1;
-                const gameStarted = this.isStarted() || Boolean(update.data.gameStarted);
-                if (gameStarted) {
-                    this.markGameStarted();
+            this.roomRevision += 1;
+            const mapped = mapRoomDataToRoomState(room, this.auth.roomId);
+            this.updateSnapshot((prev) => ({
+                roomState: {
+                    ...mapped,
+                    roomId: room.roomId ?? prev.roomState?.roomId ?? this.auth.roomId,
+                    roomName: room.roomName ?? prev.roomState?.roomName,
+                    maxPlayers: room.maxPlayers ?? prev.roomState?.maxPlayers,
+                    buyIn: room.buyIn ?? prev.roomState?.buyIn,
+                    smallBlind: room.smallBlind ?? prev.roomState?.smallBlind,
+                    bigBlind: room.bigBlind ?? prev.roomState?.bigBlind,
+                    canStartGame: gameStarted ? false : (room.canStartGame ?? prev.roomState?.canStartGame),
+                    gameStarted,
+                    inactivityDeadlineEpochMs:
+                        room.inactivityDeadlineEpochMs !== undefined
+                            ? room.inactivityDeadlineEpochMs
+                            : prev.roomState?.inactivityDeadlineEpochMs,
+                    serverTimeEpochMs:
+                        room.serverTimeEpochMs !== undefined
+                            ? room.serverTimeEpochMs
+                            : prev.roomState?.serverTimeEpochMs,
+                },
+            }));
+            if (gameStarted) {
+                this.updateGameInactivity(this.snapshot.gameState, this.snapshot.roomState);
+                if (!wasStarted) {
+                    void this.synchronizeSession({ resetBudget: true });
                 }
-
-                this.updateSnapshot((prev) => ({
-                    roomState: {
-                        roomId: update.data.roomId ?? prev.roomState?.roomId ?? this.auth.roomId,
-                        roomName: update.data.roomName ?? prev.roomState?.roomName,
-                        players: update.data.players,
-                        maxPlayers: update.data.maxPlayers ?? prev.roomState?.maxPlayers,
-                        buyIn: update.data.buyIn ?? prev.roomState?.buyIn,
-                        smallBlind: update.data.smallBlind ?? prev.roomState?.smallBlind,
-                        bigBlind: update.data.bigBlind ?? prev.roomState?.bigBlind,
-                        canStartGame: update.data.canStartGame ?? prev.roomState?.canStartGame,
-                        gameStarted,
-                        inactivityDeadlineEpochMs:
-                            update.data.inactivityDeadlineEpochMs !== undefined
-                                ? update.data.inactivityDeadlineEpochMs
-                                : prev.roomState?.inactivityDeadlineEpochMs,
-                        serverTimeEpochMs:
-                            update.data.serverTimeEpochMs !== undefined
-                                ? update.data.serverTimeEpochMs
-                                : prev.roomState?.serverTimeEpochMs,
-                    },
-                }));
-                if (gameStarted) {
-                    this.updateGameInactivity(this.snapshot.gameState, this.snapshot.roomState);
-                } else {
-                    this.updateLobbyInactivity(this.snapshot.roomState);
-                }
+            } else {
+                this.updateLobbyInactivity(this.snapshot.roomState);
             }
         } catch (err) {
             logger.warn('Ignoring malformed room update payload:', body, err);
@@ -839,49 +782,27 @@ export class GameSession {
             return;
         }
 
-        if (!parsed || typeof parsed !== 'object') {
-            decodeGameStatePayload(parsed, 'WebSocket game state');
-            return;
-        }
-        const p = parsed as Record<string, unknown>;
+        const isTerminalFrame =
+            parsed !== null &&
+            typeof parsed === 'object' &&
+            !Array.isArray(parsed) &&
+            (parsed as Record<string, unknown>).gameEnd != null;
 
-        const messageType = typeof p.type === 'string' ? p.type : null;
-        const messageText = typeof p.message === 'string' ? p.message : null;
-
-        if (messageType === 'GAME_END' || isGameEndPayload(parsed)) {
-            const decoded = decodeGameEndResult(parsed, this.auth.roomId);
-            if (!decoded) {
+        if (isTerminalFrame) {
+            const completed = decodeCompletedGameState(parsed, this.auth.roomId, 'WebSocket game state');
+            if (!completed) {
                 logger.warn('Rejected terminal STOMP payload:', parsed);
                 void this.synchronizeSession();
                 return;
             }
-            this.installTerminalResult(decoded);
-            return;
-        }
-
-        if (
-            messageType === 'PLAYER_NOTIFICATION' ||
-            messageType === 'AUTO_ADVANCE_START' ||
-            messageType === 'AUTO_ADVANCE_COMPLETE'
-        ) {
-            if (messageType === 'PLAYER_NOTIFICATION') {
-                const targetPlayer = typeof p.playerName === 'string' ? p.playerName.trim() : typeof p.recipient === 'string' ? p.recipient.trim() : null;
-                if (targetPlayer && targetPlayer !== this.auth.playerName) {
-                    return;
-                }
-            }
-            const cleanNotification = messageText?.trim();
-            if (cleanNotification) {
-                this.setNotification(cleanNotification);
-            }
+            if (this.snapshot.isGameOver) return;
+            this.installTerminalResult(completed);
             return;
         }
 
         const gamePayload = decodeGameStatePayload(parsed, 'WebSocket game state');
         if (!gamePayload) return;
-
         if (this.snapshot.isGameOver) return;
-
         this.applyGameState(gamePayload, this.clock.now());
     }
 
@@ -1455,7 +1376,7 @@ export class GameSession {
 
         try {
             const raw = await this.api.getReview(targetGameId, this.auth.token, controller.signal);
-            const review = decodeGameEndResult(raw, targetGameId);
+            const review = decodeCompletedGameState(raw, targetGameId);
             if (!review) throw new Error('Malformed game review response');
             if (generation !== this.claimRecoveryGeneration || controller.signal.aborted || this.isDisposed || !this.hasLifecyclePermission()) return;
             this.installTerminalResult(review);
@@ -1523,8 +1444,8 @@ export class GameSession {
         this.claimRecoveryController = controller;
         this.updateSnapshot(() => ({ claimPending: true, recoveryFailed: false, isRecovering: false }));
         try {
-            const response = await this.api.claimWin(targetGameId, this.auth.token, controller.signal);
-            const result = decodeGameEndResult(response?.data, targetGameId);
+            const raw = await this.api.claimWin(targetGameId, this.auth.token, controller.signal);
+            const result = decodeCompletedGameState(raw, targetGameId);
             if (!result) throw new Error('Malformed claim response');
             if (generation !== this.claimRecoveryGeneration || controller.signal.aborted) return;
             if (!this.isDisposed && this.hasLifecyclePermission()) {
@@ -1732,7 +1653,7 @@ export class GameSession {
         }
     }
 
-    public installTerminalResult(result: GameEndResult): void {
+    public installTerminalResult(result: PublicGameStateResponse): void {
         if (this.snapshot.isGameOver || !this.attached || this.isDisposed) return;
 
         this.clearRecoveryTimer();
@@ -1743,35 +1664,34 @@ export class GameSession {
         this.clearNotificationTimer();
         this.recoveryRetryAttempt = 0;
 
-        let nextGameState = this.snapshot.gameState;
-        if (result.finalState) {
-            const fs = result.finalState;
-            if (fs.phase === 'SHOWDOWN' && fs.pot === 0 && this.snapshot.gameState && this.snapshot.gameState.pot > 0) {
-                nextGameState = {
-                    ...fs,
-                    pot: this.snapshot.gameState.pot,
-                    pots: this.snapshot.gameState.pots,
-                };
-            } else {
-                nextGameState = fs;
-            }
+        let nextGameState: GameState = result;
+        if (result.phase === 'SHOWDOWN' && result.pot === 0 && this.snapshot.gameState && this.snapshot.gameState.pot > 0) {
+            nextGameState = {
+                ...result,
+                pot: this.snapshot.gameState.pot,
+                pots: this.snapshot.gameState.pots,
+            };
         }
 
-        const stateForWinner = nextGameState ?? this.snapshot.gameState;
-        const winnerName = result.winnerName;
+        const end = result.gameEnd;
+        const winnerName = end?.winner ?? null;
         const fallbackWinnerChips = winnerName
-            ? stateForWinner?.players.find((p) => p.name === winnerName)?.chips
+            ? nextGameState.players.find((p) => p.name === winnerName)?.chips
             : undefined;
         const winnerChips =
-            typeof result.winnerChips === 'number' && result.winnerChips > 0
-                ? result.winnerChips
-                : (fallbackWinnerChips ?? result.winnerChips);
+            end && typeof end.winnerChips === 'number' && end.winnerChips > 0
+                ? end.winnerChips
+                : (fallbackWinnerChips ?? end?.winnerChips);
 
-        const terminalResult: GameEndResult = {
-            ...result,
-            winnerChips,
-            finalState: nextGameState ?? undefined,
-        };
+        const terminalResult: PublicGameStateResponse = end
+            ? {
+                ...nextGameState,
+                gameEnd: {
+                    ...end,
+                    ...(winnerChips !== undefined ? { winnerChips } : {}),
+                },
+            }
+            : nextGameState;
 
         this.cancelRecovery();
         this.setGameEndResult(terminalResult);
@@ -1792,7 +1712,7 @@ export class GameSession {
         return Math.min(MAX_RETRY_DELAY_MS, expDelay + jitter);
     }
 
-    public setGameEndResult(result: GameEndResult | null): void {
+    public setGameEndResult(result: PublicGameStateResponse | null): void {
         if (!this.attached || this.isDisposed) return;
         if (result !== null) {
             this.cancelActionLocks();
@@ -1802,16 +1722,15 @@ export class GameSession {
             this.isRedirecting = false;
         }
         let nextGameState = this.snapshot.gameState;
-        if (result?.finalState) {
-            const fs = result.finalState;
-            if (fs.phase === 'SHOWDOWN' && fs.pot === 0 && this.snapshot.gameState && this.snapshot.gameState.pot > 0) {
+        if (result) {
+            if (result.phase === 'SHOWDOWN' && result.pot === 0 && this.snapshot.gameState && this.snapshot.gameState.pot > 0) {
                 nextGameState = {
-                    ...fs,
+                    ...result,
                     pot: this.snapshot.gameState.pot,
                     pots: this.snapshot.gameState.pots,
                 };
             } else {
-                nextGameState = fs;
+                nextGameState = result;
             }
         }
         this.clearShowdownTimers();

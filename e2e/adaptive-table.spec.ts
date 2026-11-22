@@ -198,7 +198,6 @@ test.describe('Adaptive table-first foundation', () => {
         token: authToken,
         roomId: 'ROOM123',
         playerName: 'Host',
-        message: 'Session restored',
         playerId: 'p-1',
       }));
     }, { authToken: token });
@@ -300,7 +299,6 @@ test.describe('Adaptive table-first foundation', () => {
         token: authToken,
         roomId: 'ROOM123',
         playerName: 'Host',
-        message: 'Session restored',
         playerId: 'p-1',
       }));
     }, { authToken: token });
@@ -378,7 +376,6 @@ test.describe('Adaptive table-first foundation', () => {
         token: authToken,
         roomId: 'ROOM123',
         playerName: 'Host',
-        message: 'Session restored',
         playerId: 'p-1',
       }));
     }, { authToken: token });

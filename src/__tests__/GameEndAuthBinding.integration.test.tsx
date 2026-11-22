@@ -13,12 +13,12 @@ import {
     retireDifferentlyOwnedGameEnd,
     clearPersistedGameEnd,
 } from '../services/gameEndStorage';
-import type { AuthResponse, GameEndResult } from '../types';
+import type { AuthResponse, PublicGameStateResponse } from '../types';
 
 describe('GameEnd Auth Binding & Offline Review Integration', () => {
     let authA: AuthResponse;
     let authB: AuthResponse;
-    let terminalResultA: GameEndResult;
+    let terminalResultA: PublicGameStateResponse;
 
     beforeEach(() => {
         vi.clearAllMocks();
@@ -40,23 +40,22 @@ describe('GameEnd Auth Binding & Offline Review Integration', () => {
             token: createMockJwt(),
         };
 
-        terminalResultA = {
+        terminalResultA = createValidGameState({
             gameId: 'ROOM-100',
-            winnerName: 'Alice',
-            winnerChips: 5000,
-            isForfeit: false,
-            message: 'Alice won the game!',
-            finalState: createValidGameState({
-                gameId: 'ROOM-100',
-                phase: 'SHOWDOWN',
-                pot: 1000,
-                communityCards: ['AH', 'KH', 'QH', 'JH', '10H'],
-                players: [
-                    { id: 'p-1', name: 'Alice', chips: 5000, currentBet: 0, status: 'ACTIVE', hasFolded: false, isWinner: true },
-                    { id: 'p-2', name: 'Bob', chips: 0, currentBet: 0, status: 'ACTIVE', hasFolded: false },
-                ],
-            }),
-        };
+            phase: 'SHOWDOWN',
+            pot: 1000,
+            communityCards: ['AH', 'KH', 'QH', 'JH', '10H'],
+            players: [
+                { id: 'p-1', name: 'Alice', chips: 5000, currentBet: 0, status: 'ACTIVE', hasFolded: false, isWinner: true },
+                { id: 'p-2', name: 'Bob', chips: 0, currentBet: 0, status: 'ACTIVE', hasFolded: false },
+            ],
+            gameEnd: {
+                winner: 'Alice',
+                winnerChips: 5000,
+                isForfeit: false,
+                message: 'Alice won the game!',
+            },
+        });
 
         // Standard active table handlers for fallback hydration
         server.use(
@@ -174,7 +173,7 @@ describe('GameEnd Auth Binding & Offline Review Integration', () => {
 
     it('rejects terminal review when envelope has mismatched result ID, purges it, and hydrates normally', async () => {
         sessionStorage.setItem('poker-game-end:ROOM-100', JSON.stringify({
-            version: 1,
+            version: 2,
             roomId: 'ROOM-100',
             playerName: 'Alice',
             token: authA.token,
@@ -203,13 +202,17 @@ describe('GameEnd Auth Binding & Offline Review Integration', () => {
 
     it("preserves B's envelope when stale A resolves deferred leave or cache write", () => {
         // Bob has an active cached review in ROOM-100
-        const terminalResultB: GameEndResult = {
+        const terminalResultB: PublicGameStateResponse = createValidGameState({
             gameId: 'ROOM-100',
-            winnerName: 'Bob',
-            winnerChips: 3000,
-            isForfeit: true,
-            message: 'Bob won by forfeit!',
-        };
+            phase: 'SHOWDOWN',
+            players: [{ id: 'p-2', name: 'Bob', chips: 3000 }],
+            gameEnd: {
+                winner: 'Bob',
+                winnerChips: 3000,
+                isForfeit: true,
+                message: 'Bob won by forfeit!',
+            },
+        });
         savePersistedGameEnd(authB, terminalResultB);
 
         // Stale A attempts to write a new terminal result or clear
@@ -260,12 +263,9 @@ describe('GameEnd Auth Binding & Offline Review Integration', () => {
         expect(await screen.findByLabelText('Total Pot')).toBeInTheDocument();
         expect(loadPersistedGameEnd(authA)).toBeNull();
 
-        // Server sends GAME_END broadcast for Alice
+        // Server sends completed game state broadcast for Alice
         act(() => {
-            MockStompClient.simulateMessage('/game/ROOM-100', {
-                type: 'GAME_END',
-                ...terminalResultA,
-            });
+            MockStompClient.simulateMessage('/game/ROOM-100', terminalResultA);
         });
 
         // Game transitions to review view
@@ -275,11 +275,11 @@ describe('GameEnd Auth Binding & Offline Review Integration', () => {
         const persisted = loadPersistedGameEnd(authA);
         expect(persisted).not.toBeNull();
         expect(persisted?.gameId).toBe('ROOM-100');
-        expect(persisted?.winnerName).toBe('Alice');
+        expect(persisted?.gameEnd?.winner).toBe('Alice');
 
-        // Verify the raw envelope in sessionStorage has version 1 and auth fields
+        // Verify the raw envelope in sessionStorage has version 2 and auth fields
         const rawEnvelope = JSON.parse(sessionStorage.getItem('poker-game-end:ROOM-100')!);
-        expect(rawEnvelope.version).toBe(1);
+        expect(rawEnvelope.version).toBe(2);
         expect(rawEnvelope.roomId).toBe(authA.roomId);
         expect(rawEnvelope.playerName).toBe(authA.playerName);
         expect(rawEnvelope.token).toBe(authA.token);
@@ -298,13 +298,17 @@ describe('GameEnd Auth Binding & Offline Review Integration', () => {
             ...authB,
             roomId: 'ROOM-200',
         };
-        const terminalResultBOther: GameEndResult = {
+        const terminalResultBOther: PublicGameStateResponse = createValidGameState({
             gameId: 'ROOM-200',
-            winnerName: 'Bob',
-            winnerChips: 3500,
-            isForfeit: false,
-            message: 'Bob won in room 200!',
-        };
+            phase: 'SHOWDOWN',
+            players: [{ id: 'p-2', name: 'Bob', chips: 3500 }],
+            gameEnd: {
+                winner: 'Bob',
+                winnerChips: 3500,
+                isForfeit: false,
+                message: 'Bob won in room 200!',
+            },
+        });
         savePersistedGameEnd(authBOther, terminalResultBOther);
 
         server.use(
@@ -336,13 +340,17 @@ describe('GameEnd Auth Binding & Offline Review Integration', () => {
         savePersistedGameEnd(authA, terminalResultA);
 
         const authBOther: AuthResponse = { ...authB, roomId: 'ROOM-200' };
-        savePersistedGameEnd(authBOther, {
+        savePersistedGameEnd(authBOther, createValidGameState({
             gameId: 'ROOM-200',
-            winnerName: 'Bob',
-            winnerChips: 3500,
-            isForfeit: false,
-            message: 'Bob won!',
-        });
+            phase: 'SHOWDOWN',
+            players: [{ id: 'p-2', name: 'Bob', chips: 3500 }],
+            gameEnd: {
+                winner: 'Bob',
+                winnerChips: 3500,
+                isForfeit: false,
+                message: 'Bob won!',
+            },
+        }));
 
         server.use(
             http.get('/api/room/ROOM-100', () => new HttpResponse(null, { status: 404 })),
@@ -364,6 +372,6 @@ describe('GameEnd Auth Binding & Offline Review Integration', () => {
         });
 
         // B's cached review in ROOM-200 remains intact
-        expect(loadPersistedGameEnd(authBOther)?.winnerName).toBe('Bob');
+        expect(loadPersistedGameEnd(authBOther)?.gameEnd?.winner).toBe('Bob');
     });
 });

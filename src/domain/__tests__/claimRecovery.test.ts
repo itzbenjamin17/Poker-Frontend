@@ -4,7 +4,7 @@ import { TestClock } from '../clock';
 import { InMemoryTransportAdapter } from '../../services/transport';
 import { pokerApi } from '../../services/api';
 import { createMockJwt, createValidGameState } from '../../test/fixtures';
-import type { GameEndResult } from '../../types';
+import type { PublicGameStateResponse } from '../../types';
 import { SESSION_SEAT_GONE } from '../../constants/strings';
 
 const sessions: GameSession[] = [];
@@ -16,13 +16,20 @@ function deferred<T>() {
 }
 
 function setup() {
-    const auth = { token: createMockJwt(), roomId: 'claim-room', playerName: 'Hero', message: '' };
+    const auth = { token: createMockJwt(), roomId: 'claim-room', playerName: 'Hero' };
     const transport = new InMemoryTransportAdapter();
     const clock = new TestClock(1000);
-    const result: GameEndResult = {
-        gameId: auth.roomId, winnerName: auth.playerName, winnerChips: 1000,
-        isForfeit: true, message: 'Hero wins!',
-    };
+    const result: PublicGameStateResponse = createValidGameState({
+        gameId: auth.roomId,
+        phase: 'SHOWDOWN',
+        players: [{ id: 'hero-id', name: auth.playerName, chips: 1000 }],
+        gameEnd: {
+            winner: auth.playerName,
+            winnerChips: 1000,
+            isForfeit: true,
+            message: 'Hero wins!',
+        },
+    });
     const api = {
         ...pokerApi,
         claimWin: vi.fn<typeof pokerApi.claimWin>().mockRejectedValue(new TypeError('Claim response lost')),
@@ -89,35 +96,47 @@ describe('claim review recovery ownership', () => {
         expect(api.getPublicGameState).not.toHaveBeenCalled();
         expect(api.getRoomData).not.toHaveBeenCalled();
         expect(session.getSnapshot()).toMatchObject({
-            isGameOver: true, claimPending: false, recoveryFailed: false, gameEndResult: { message: result.message },
+            isGameOver: true,
+            claimPending: false,
+            recoveryFailed: false,
+            gameEndResult: { gameEnd: { message: result.gameEnd!.message } },
         });
     });
 
-    it('lets GAME_END win over a deferred HTTP review and aborts the losing request', async () => {
+    it('lets terminal game state frame win over a deferred HTTP review and aborts the losing request', async () => {
         const { api, auth, session, transport, result } = setup();
-        const pending = deferred<GameEndResult>();
+        const pending = deferred<PublicGameStateResponse>();
         api.getReview.mockReturnValue(pending.promise);
         const claiming = session.claimWin(auth.roomId);
         await flush();
         const signal = api.getReview.mock.calls[0][2] as AbortSignal | undefined;
 
-        transport.simulateMessage('/game/claim-room', {
-            type: 'GAME_END', gameId: auth.roomId, winner: auth.playerName,
-            winnerChips: 1000, isForfeit: true, message: 'Socket terminal result',
-        });
+        transport.simulateMessage('/game/claim-room', createValidGameState({
+            gameId: auth.roomId,
+            handNumber: 1,
+            stateRevision: 2,
+            phase: 'SHOWDOWN',
+            players: [{ id: 'hero-id', name: auth.playerName, chips: 1000 }],
+            gameEnd: {
+                winner: auth.playerName,
+                winnerChips: 1000,
+                isForfeit: true,
+                message: 'Socket terminal result',
+            },
+        }));
         expect(signal?.aborted).toBe(true);
         const accepted = session.getSnapshot();
         pending.resolve(result);
         await claiming;
 
         expect(session.getSnapshot()).toBe(accepted);
-        expect(session.getSnapshot().gameEndResult?.message).toBe('Socket terminal result');
+        expect(session.getSnapshot().gameEndResult?.gameEnd?.message).toBe('Socket terminal result');
         expect(session.hasPendingRecoveryTimer()).toBe(false);
     });
 
     it('aborts a deferred review on disposal and ignores a late success that disregards abort', async () => {
         const { api, auth, session, result } = setup();
-        const pending = deferred<GameEndResult>();
+        const pending = deferred<PublicGameStateResponse>();
         api.getReview.mockReturnValue(pending.promise);
         const claiming = session.claimWin(auth.roomId);
         await flush();
@@ -134,7 +153,7 @@ describe('claim review recovery ownership', () => {
 
     it('invalidates an old review during leave and restarts review with a fresh budget when leave fails', async () => {
         const { api, auth, clock, session, result } = setup();
-        const pending = deferred<GameEndResult>();
+        const pending = deferred<PublicGameStateResponse>();
         api.getReview.mockReturnValueOnce(pending.promise);
         const claiming = session.claimWin(auth.roomId);
         await flush();
@@ -156,7 +175,7 @@ describe('claim review recovery ownership', () => {
 
     it('invalidates a pending claim POST when leave starts, even if leave subsequently fails', async () => {
         const { api, auth, session, result } = setup();
-        const pending = deferred<{ message: string; data: GameEndResult }>();
+        const pending = deferred<PublicGameStateResponse>();
         api.claimWin.mockReturnValue(pending.promise);
         const claiming = session.claimWin(auth.roomId);
         const signal = api.claimWin.mock.calls[0][2];
@@ -165,7 +184,7 @@ describe('claim review recovery ownership', () => {
         session.setPendingLeave(false);
         await flush();
         expect(api.getReview).toHaveBeenCalledOnce();
-        pending.resolve({ message: 'Late original response', data: result });
+        pending.resolve(result);
         await claiming;
 
         expect(session.getSnapshot().isGameOver).toBe(false);
@@ -211,17 +230,17 @@ describe('claim review recovery ownership', () => {
         const setGameEndResultSpy = vi.spyOn(session, 'setGameEndResult');
         const installTerminalResultSpy = vi.spyOn(session, 'installTerminalResult');
 
-        api.claimWin.mockResolvedValueOnce({
-            message: 'Win claimed successfully',
-            data: result,
-        });
+        api.claimWin.mockResolvedValueOnce(result);
 
         await session.claimWin(auth.roomId);
 
         expect(api.claimWin).toHaveBeenCalledWith(auth.roomId, auth.token, expect.any(AbortSignal));
         expect(installTerminalResultSpy).toHaveBeenCalledWith(result);
         expect(setGameEndResultSpy).toHaveBeenCalledTimes(1);
-        expect(setGameEndResultSpy).toHaveBeenCalledWith(expect.objectContaining(result));
+        expect(setGameEndResultSpy).toHaveBeenCalledWith(expect.objectContaining({
+            gameId: auth.roomId,
+            gameEnd: result.gameEnd,
+        }));
         expect(api.getReview).not.toHaveBeenCalled();
 
         const snapshot = session.getSnapshot();
@@ -230,13 +249,15 @@ describe('claim review recovery ownership', () => {
         expect(snapshot.isRecovering).toBe(false);
         expect(snapshot.gameEndResult).toMatchObject({
             gameId: auth.roomId,
-            winnerName: auth.playerName,
-            isForfeit: true,
-            message: 'Hero wins!',
+            gameEnd: {
+                winner: auth.playerName,
+                isForfeit: true,
+                message: 'Hero wins!',
+            },
         });
     });
 
-    it('preserves fallback-enriched winnerChips and finalState from installTerminalResult on claimWin', async () => {
+    it('preserves fallback-enriched winnerChips and pot from installTerminalResult on claimWin', async () => {
         const { api, auth, session } = setup();
         session.applyGameState(createValidGameState({
             gameId: auth.roomId,
@@ -248,33 +269,29 @@ describe('claim review recovery ownership', () => {
             players: [{ id: 'hero-id', name: auth.playerName, chips: 1400 }],
         }));
 
-        api.claimWin.mockResolvedValueOnce({
-            message: 'Win claimed successfully',
-            data: {
-                gameId: auth.roomId,
-                winnerName: auth.playerName,
+        api.claimWin.mockResolvedValueOnce(createValidGameState({
+            gameId: auth.roomId,
+            handNumber: 2,
+            stateRevision: 4,
+            phase: 'SHOWDOWN',
+            pot: 0,
+            pots: [],
+            players: [{ id: 'hero-id', name: auth.playerName, chips: 1400 }],
+            gameEnd: {
+                winner: auth.playerName,
                 winnerChips: 0,
                 isForfeit: true,
                 message: 'Hero wins by forfeit!',
-                finalState: createValidGameState({
-                    gameId: auth.roomId,
-                    handNumber: 2,
-                    stateRevision: 4,
-                    phase: 'SHOWDOWN',
-                    pot: 0,
-                    pots: [],
-                    players: [{ id: 'hero-id', name: auth.playerName, chips: 1400 }],
-                }),
             },
-        });
+        }));
 
         await session.claimWin(auth.roomId);
 
         const snapshot = session.getSnapshot();
         expect(snapshot.isGameOver).toBe(true);
-        expect(snapshot.gameEndResult?.winnerChips).toBe(1400);
-        expect(snapshot.gameEndResult?.finalState?.pot).toBe(400);
-        expect(snapshot.gameEndResult?.finalState?.pots).toEqual([400]);
+        expect(snapshot.gameEndResult?.gameEnd?.winnerChips).toBe(1400);
+        expect(snapshot.gameEndResult?.pot).toBe(400);
+        expect(snapshot.gameEndResult?.pots).toEqual([400]);
     });
 
     it('recovers terminal game review from getReview when public state polling encounters HTTP 404', async () => {
@@ -295,8 +312,10 @@ describe('claim review recovery ownership', () => {
         expect(snapshot.isGameOver).toBe(true);
         expect(snapshot.gameEndResult).toMatchObject({
             gameId: auth.roomId,
-            winnerName: auth.playerName,
-            message: 'Hero wins!',
+            gameEnd: {
+                winner: auth.playerName,
+                message: 'Hero wins!',
+            },
         });
         expect(session.hasPendingRecoveryTimer()).toBe(false);
     });

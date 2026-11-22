@@ -3,8 +3,9 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { GameProvider } from '../GameProvider';
 import { useGameContext } from '../GameContext';
-import type { IncomingGameStatePayload, RoomState, WsStatus } from '../../types';
+import type { IncomingGameStatePayload, PublicGameStateResponse, RoomState, WsStatus } from '../../types';
 import { savePersistedGameEnd } from '../../services/gameEndStorage';
+import { createValidGameState } from '../../test/fixtures';
 import '@testing-library/jest-dom';
 
 function TestConsumer() {
@@ -204,12 +205,17 @@ describe('GameProvider and useGameContext', () => {
         const { GameReviewView } = await import('../../components/GameReviewView');
         const user = userEvent.setup();
 
-        savePersistedGameEnd(auth, {
+        const reviewSnapshot: PublicGameStateResponse = createValidGameState({
             gameId: auth.roomId,
-            winnerName: 'Player1',
-            isForfeit: false,
-            message: 'Player1 wins!',
+            phase: 'SHOWDOWN',
+            players: [{ id: 'p-1', name: 'Player1', chips: 1000 }],
+            gameEnd: {
+                winner: 'Player1',
+                isForfeit: false,
+                message: 'Player1 wins!',
+            },
         });
+        savePersistedGameEnd(auth, reviewSnapshot);
 
         function ReviewConsumer() {
             const ctx = useGameContext();
@@ -217,7 +223,6 @@ describe('GameProvider and useGameContext', () => {
             return (
                 <GameReviewView
                     gameEndResult={ctx.gameEndResult}
-                    gameState={ctx.gameState}
                     onLeave={() => {
                         void dispatch({ type: 'LEAVE_REVIEW' });
                     }}

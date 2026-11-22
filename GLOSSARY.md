@@ -35,15 +35,15 @@ A gameplay move chosen by the player whose turn it is: `FOLD`, `CHECK`, `CALL`, 
 
 ## Post-Match Review & Local Storage
 
-**GameReviewView (`GameEndResult`)**:
-The end-of-game screen (`GameReviewView`) and final match data (`GameEndResult`) showing the winner, final standings, and final board after the match finishes.
+**GameReviewView (`PublicGameStateResponse` with `gameEnd`)**:
+The end-of-game screen (`GameReviewView`) and completed public game snapshot (`PublicGameStateResponse` with non-null `gameEnd`) showing the winner, final standings, and final board after the match finishes.
 
 **PersistedGameEndEnvelope (`gameEndStorage`)**:
-The wrapper saved in the browser tab's `sessionStorage` (`poker-game-end:<roomId>`) that pairs the final `GameEndResult` with the player's `roomId`, `playerName`, and `token` so the end-of-game screen still works after a page refresh even if the server has already deleted the finished room.
+The version-2 wrapper saved in the browser tab's `sessionStorage` (`poker-game-end:<roomId>`) that pairs the completed `PublicGameStateResponse` (`gameEnd` populated) with the player's `roomId`, `playerName`, and `token` so the end-of-game screen still works after a page refresh even if the server has already deleted the finished room.
 
 ## Validation, Errors & Logging
 
-**payloads (`decodePublicGameState`, `decodePrivatePlayerState`, `decodeRoomUpdate`)**:
+**payloads (`decodePublicGameState`, `decodeCompletedGameState`, `decodePrivatePlayerState`, `decodeRoomDataResponse`)**:
 Runtime validation functions in `src/lib/payloads.ts` that check every incoming REST response and WebSocket message to make sure its fields have the expected types before the app uses them.
 
 **normalizeErrorMessage**:

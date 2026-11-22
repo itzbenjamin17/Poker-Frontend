@@ -92,7 +92,6 @@ describe('CreateRoomForm', () => {
 
         await waitFor(() => {
             expect(mockOnAuth).toHaveBeenCalledWith({
-                message: 'Room created successfully',
                 token: expect.any(String),
                 roomId: 'ABCD',
                 playerName: 'CardShark',
@@ -106,7 +105,7 @@ describe('CreateRoomForm', () => {
         const user = userEvent.setup();
         server.use(
             http.post('/api/room/create', () => {
-                return HttpResponse.json({ message: 'Room already exists' }, { status: 400 });
+                return HttpResponse.json({ detail: 'Room already exists' }, { status: 400 });
             })
         );
 
@@ -164,12 +163,9 @@ describe('CreateRoomForm', () => {
             http.post('/api/room/create', async ({ request }) => {
                 capturedWireBody = (await request.json()) as Record<string, unknown>;
                 return HttpResponse.json({
-                    message: 'Room created successfully',
-                    data: {
-                        token: 'mock-token',
-                        roomId: 'ROOM_PW',
-                        playerName: 'HostUser',
-                    },
+                    token: 'mock-token',
+                    roomId: 'ROOM_PW',
+                    playerName: 'HostUser',
                 });
             })
         );
@@ -218,12 +214,9 @@ describe('CreateRoomForm', () => {
             http.post('/api/room/create', async ({ request }) => {
                 capturedWireBody = (await request.json()) as Record<string, unknown>;
                 return HttpResponse.json({
-                    message: 'Room created successfully',
-                    data: {
-                        token: 'mock-token',
-                        roomId: 'ROOM_NOPW',
-                        playerName: 'HostUser',
-                    },
+                    token: 'mock-token',
+                    roomId: 'ROOM_NOPW',
+                    playerName: 'HostUser',
                 });
             })
         );

@@ -18,7 +18,6 @@ describe('useLobbyRequest', () => {
         token: 'valid.token.jwt',
         roomId: 'room-1',
         playerName: 'Alice',
-        message: 'Success',
     };
 
     it('invokes onAuth on successful request and locks during transition', async () => {
@@ -122,7 +121,6 @@ describe('useLobbyRequest', () => {
             token: 'valid-token',
             roomId: 'room-1',
             playerName: '',
-            message: 'ok',
         } as unknown as AuthResponse;
 
         await act(async () => {

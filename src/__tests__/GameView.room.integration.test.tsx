@@ -54,17 +54,20 @@ describe('GameView - Room Lobby Integration', () => {
 
     // Simulate another player joining via STOMP using await act(async () => ...)
     await act(async () => {
-      MockStompClient.simulateMessage('/room/ROOM123', {
-        message: 'PLAYER_JOINED',
-        data: {
-          player: 'GuestPlayer',
-          players: [
-            { name: 'HostPlayer', isHost: true },
-            { name: 'GuestPlayer', isHost: false }
-          ],
-          canStartGame: true
-        }
-      })
+      MockStompClient.simulateMessage('/room/ROOM123', createValidRoomData({
+        roomId: 'ROOM123',
+        roomName: 'High Stakes',
+        players: [
+          { name: 'HostPlayer', isHost: true },
+          { name: 'GuestPlayer', isHost: false }
+        ],
+        maxPlayers: 6,
+        smallBlind: 50,
+        bigBlind: 100,
+        buyIn: 5000,
+        canStartGame: true,
+        gameStarted: false
+      }))
     })
 
     // Verify UI updated within player list layout
@@ -97,11 +100,13 @@ describe('GameView - Room Lobby Integration', () => {
       // Ensure STOMP is connected and subscribed before sending messages
       await MockStompClient.waitForSubscription('/room/ROOM123')
 
-      // Simulate ROOM_CLOSED using await act(async () => ...)
+      // Simulate closed room frame using await act(async () => ...)
       await act(async () => {
-        MockStompClient.simulateMessage('/room/ROOM123', {
-          message: 'ROOM_CLOSED'
-        })
+        MockStompClient.simulateMessage('/room/ROOM123', createValidRoomData({
+          roomId: 'ROOM123',
+          players: [{ name: 'HostPlayer', isHost: true }],
+          closedReason: 'HOST_LEFT'
+        }))
       })
 
       await waitFor(() => expect(screen.getByText(/Host left the lobby/i)).toBeInTheDocument())

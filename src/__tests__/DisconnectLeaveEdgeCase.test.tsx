@@ -29,7 +29,6 @@ describe('Disconnect & Leave Edge Cases', () => {
         token: 'test-token',
         roomId: 'ROOM123',
         playerName: 'P1',
-        message: 'Success',
     };
 
     const initialGameState: GameState = {
@@ -67,9 +66,6 @@ describe('Disconnect & Leave Edge Cases', () => {
             bigBlind: 20,
             canStartGame: true,
             gameStarted: true,
-            createdAt: '2026-10-12T00:00:00Z',
-            hostName: 'P1',
-            currentPlayers: 2,
         });
         vi.mocked(pokerApi.getPublicGameState).mockResolvedValue(initialGameState);
         vi.mocked(pokerApi.getPrivatePlayerState).mockResolvedValue({ playerId: 'p-1', handNumber: 0, holeCards: ['2c', '4h'] });
@@ -117,8 +113,14 @@ describe('Disconnect & Leave Edge Cases', () => {
         await confirmLeave();
 
         transport.simulateMessage('/game/ROOM123', {
-            type: 'GAME_END', gameId: 'ROOM123', winner: 'P1', winnerChips: 1050,
-            isForfeit: true, message: 'P1 wins by forfeit!', finalState: initialGameState,
+            ...initialGameState,
+            phase: 'SHOWDOWN',
+            pot: 0,
+            currentPlayerName: null,
+            currentPlayerId: null,
+            winners: ['P1'],
+            handSettled: true,
+            gameEnd: { winner: 'P1', winnerChips: 1050, isForfeit: true, message: 'P1 wins by forfeit!' },
         });
 
         // Keep the table visible while the explicit departure is still pending.
@@ -168,8 +170,14 @@ describe('Disconnect & Leave Edge Cases', () => {
         await confirmLeave();
         await act(async () => {
             transport.simulateMessage('/game/ROOM123', {
-                type: 'GAME_END', gameId: 'ROOM123', winner: 'P1', winnerChips: 1050,
-                isForfeit: true, message: 'P1 wins by forfeit!', finalState: initialGameState,
+                ...initialGameState,
+                phase: 'SHOWDOWN',
+                pot: 0,
+                currentPlayerName: null,
+                currentPlayerId: null,
+                winners: ['P1'],
+                handSettled: true,
+                gameEnd: { winner: 'P1', winnerChips: 1050, isForfeit: true, message: 'P1 wins by forfeit!' },
             });
             resolveLeave();
             await Promise.resolve();

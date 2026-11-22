@@ -134,12 +134,9 @@ describe('Lobby Integration', () => {
       http.post('/api/room/create', async ({ request }) => {
         submittedPayload = (await request.json()) as Record<string, unknown>
         return HttpResponse.json({
-          message: 'Room created successfully',
-          data: {
-            token: 'mock-jwt-token',
-            playerName: String(submittedPayload.playerName),
-            roomId: 'ABCD',
-          },
+          token: 'mock-jwt-token',
+          playerName: String(submittedPayload.playerName),
+          roomId: 'ABCD',
         })
       })
     )
@@ -195,12 +192,9 @@ describe('Lobby Integration', () => {
           resolveJoin = resolve
         })
         return HttpResponse.json({
-          message: 'Successfully joined room',
-          data: {
-            token: 'mock-jwt-token',
-            playerName,
-            roomId: roomName,
-          },
+          token: 'mock-jwt-token',
+          playerName,
+          roomId: roomName,
         })
       })
     )
@@ -234,8 +228,9 @@ describe('Lobby Integration', () => {
         const body = await request.json() as { playerName: string }
         await new Promise<void>((resolve) => { resolveCreate = resolve })
         return HttpResponse.json({
-          message: 'Room created successfully',
-          data: { token: 'mock-jwt-token', playerName: body.playerName, roomId: 'ABCD' },
+          token: 'mock-jwt-token',
+          playerName: body.playerName,
+          roomId: 'ABCD',
         })
       }),
     )
@@ -262,8 +257,9 @@ describe('Lobby Integration', () => {
         requestSignal = request.signal
         await new Promise<void>((resolve) => { resolveJoin = resolve })
         return HttpResponse.json({
-          message: 'Successfully joined room',
-          data: { token: 'mock-jwt-token', playerName: 'Joiner', roomId: 'POKER123' },
+          token: 'mock-jwt-token',
+          playerName: 'Joiner',
+          roomId: 'POKER123',
         })
       }),
     )
@@ -295,8 +291,9 @@ describe('Lobby Integration', () => {
           )
         }
         return HttpResponse.json({
-          message: 'Successfully joined room',
-          data: { token: 'mock-jwt-token', playerName: 'RetryUser', roomId: 'RETRY123' },
+          token: 'mock-jwt-token',
+          playerName: 'RetryUser',
+          roomId: 'RETRY123',
         })
       })
     )
