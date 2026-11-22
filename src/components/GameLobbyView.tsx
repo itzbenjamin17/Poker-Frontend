@@ -169,19 +169,19 @@ export function GameLobbyView({
                         {roomState.players?.map((p, i) => (
                             <li key={i}>
                                 <Card className="p-6">
-                                    <div className="flex justify-between items-center">
-                                        <div className="flex items-center gap-2">
-                                            <h3 className="font-headline font-bold text-xl">{p.name}</h3>
+                                    <div className="flex justify-between items-center gap-3">
+                                        <div className="flex min-w-0 items-center gap-2">
+                                            <h3 className="min-w-0 truncate font-headline font-bold text-xl" title={p.name}>{p.name}</h3>
                                             {p.isHost && (
                                                 <Crown
                                                     role="img"
                                                     aria-label={LABEL_HOST}
-                                                    className="w-4 h-4 text-gold-secondary"
+                                                    className="w-4 h-4 shrink-0 text-gold-secondary"
                                                 />
                                             )}
                                         </div>
                                         <div
-                                            className={cn('w-3 h-3 rounded-full', p.isHost ? 'bg-gold-secondary' : 'bg-emerald-primary')}
+                                            className={cn('w-3 h-3 shrink-0 rounded-full', p.isHost ? 'bg-gold-secondary' : 'bg-emerald-primary')}
                                             aria-hidden="true"
                                         />
                                     </div>
@@ -191,7 +191,7 @@ export function GameLobbyView({
                         {((roomState.maxPlayers || 6) - (roomState.players?.length || 0)) > 0 && (
                             <li className="md:col-span-2">
                                 <div className="border border-white/5 rounded-xl p-6 flex items-center justify-center border-dashed">
-                                    <p className="text-zinc-500 text-sm uppercase tracking-widest font-semibold">
+                                    <p className="text-zinc-400 text-sm uppercase tracking-widest font-semibold">
                                         {roomState.players?.length || 0} / {roomState.maxPlayers || 6} Players Joined
                                     </p>
                                 </div>
@@ -208,15 +208,15 @@ export function GameLobbyView({
                             </h3>
                             <div className="space-y-4 text-sm">
                                 <div className="flex justify-between">
-                                    <span className="text-zinc-500 uppercase text-[0.625rem] font-bold">{LABEL_BLINDS}</span>
+                                    <span className="text-zinc-400 uppercase text-[0.625rem] font-bold">{LABEL_BLINDS}</span>
                                     <span className="text-emerald-primary font-bold">{blindsLabel}</span>
                                 </div>
                                 <div className="flex justify-between">
-                                    <span className="text-zinc-500 uppercase text-[0.625rem] font-bold">{LABEL_MIN_BUYIN}</span>
+                                    <span className="text-zinc-400 uppercase text-[0.625rem] font-bold">{LABEL_MIN_BUYIN}</span>
                                     <span className="text-emerald-primary font-bold">{buyInLabel}</span>
                                 </div>
                                 <div className="flex justify-between">
-                                    <span className="text-zinc-500 uppercase text-[0.625rem] font-bold">{LABEL_TURN_TIME}</span>
+                                    <span className="text-zinc-400 uppercase text-[0.625rem] font-bold">{LABEL_TURN_TIME}</span>
                                     <span className="text-emerald-primary font-bold">{LABEL_TURN_TIME_VALUE}</span>
                                 </div>
                                 <p className="text-[0.6875rem] text-zinc-400">
@@ -224,17 +224,17 @@ export function GameLobbyView({
                                 </p>
                                 <div className="border-t border-white/5 pt-3">
                                     <div className="flex justify-between">
-                                        <span className="text-zinc-500 uppercase text-[0.625rem] font-bold">{LABEL_INACTIVITY_LIMIT}</span>
+                                        <span className="text-zinc-400 uppercase text-[0.625rem] font-bold">{LABEL_INACTIVITY_LIMIT}</span>
                                         <span className="text-emerald-primary font-bold">{VALUE_INACTIVITY_LIMIT}</span>
                                     </div>
-                                    <p className="text-zinc-500 text-xs mt-1">{LOBBY_TIMING_RULE_DESC}</p>
+                                    <p className="text-zinc-400 text-xs mt-1">{LOBBY_TIMING_RULE_DESC}</p>
                                 </div>
                                 <div className="border-t border-white/5 pt-3">
                                     <div className="flex justify-between">
-                                        <span className="text-zinc-500 uppercase text-[0.625rem] font-bold">{LABEL_GAME_INACTIVITY_LIMIT}</span>
+                                        <span className="text-zinc-400 uppercase text-[0.625rem] font-bold">{LABEL_GAME_INACTIVITY_LIMIT}</span>
                                         <span className="text-emerald-primary font-bold">{VALUE_GAME_INACTIVITY_LIMIT}</span>
                                     </div>
-                                    <p className="text-zinc-500 text-xs mt-1">{GAME_TIMING_RULE_DESC}</p>
+                                    <p className="text-zinc-400 text-xs mt-1">{GAME_TIMING_RULE_DESC}</p>
                                 </div>
                             </div>
                         </Card>
@@ -262,7 +262,7 @@ export function GameLobbyView({
                         ) : (
                             <div className="border border-white/5 rounded-xl p-6 flex flex-col items-center justify-center border-dashed gap-3">
                                 <div className="w-6 h-6 border-2 border-emerald-primary border-t-transparent rounded-full animate-spin" aria-hidden="true" />
-                                <p className="text-zinc-500 text-xs uppercase tracking-widest text-center">
+                                <p className="text-zinc-400 text-xs uppercase tracking-widest text-center">
                                     {LABEL_WAITING_HOST}
                                 </p>
                             </div>

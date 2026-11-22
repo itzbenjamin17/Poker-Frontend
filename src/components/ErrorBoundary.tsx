@@ -49,7 +49,7 @@ export class ErrorBoundary extends React.Component<Props, State> {
                     <div className="glass-card rounded-2xl p-10 max-w-md w-full text-center space-y-6">
                         <div className="text-5xl">♠</div>
                         <h1 className="font-headline text-2xl font-bold text-white">{ERROR_BOUNDARY_HEADING}</h1>
-                        <p className="text-zinc-500 text-sm">
+                        <p className="text-zinc-400 text-sm">
                             {ERROR_BOUNDARY_MESSAGE}
                         </p>
                         <div className="flex flex-wrap gap-3 justify-center">

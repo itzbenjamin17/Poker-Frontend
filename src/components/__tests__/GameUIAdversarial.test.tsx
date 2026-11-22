@@ -207,8 +207,8 @@ describe('GameUI Adversarial & Stress Testing', () => {
 
         test('CardUI renders all four suits and ranks correctly', () => {
             const suits = [
-                { card: 'AH', expectedName: 'Ace of Hearts', symbol: '♥', color: 'text-red-500' },
-                { card: 'KD', expectedName: 'King of Diamonds', symbol: '♦', color: 'text-red-500' },
+                { card: 'AH', expectedName: 'Ace of Hearts', symbol: '♥', color: 'text-red-600' },
+                { card: 'KD', expectedName: 'King of Diamonds', symbol: '♦', color: 'text-red-600' },
                 { card: 'QC', expectedName: 'Queen of Clubs', symbol: '♣', color: 'text-zinc-800' },
                 { card: 'JS', expectedName: 'Jack of Spades', symbol: '♠', color: 'text-zinc-800' },
                 { card: 'TS', expectedName: 'Ten of Spades', symbol: '♠', display: '10' },

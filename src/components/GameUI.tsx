@@ -17,8 +17,8 @@ import type { AvatarSize, CardSize } from '../lib/tableGeometry';
 import type { Player, TableTier } from '../types';
 
 const SUITS: Record<string, { icon: string; color: string; name: string }> = {
-    'H': { icon: '♥', color: 'text-red-500', name: 'Hearts' },
-    'D': { icon: '♦', color: 'text-red-500', name: 'Diamonds' },
+    'H': { icon: '♥', color: 'text-red-600', name: 'Hearts' },
+    'D': { icon: '♦', color: 'text-red-600', name: 'Diamonds' },
     'C': { icon: '♣', color: 'text-zinc-800', name: 'Clubs' },
     'S': { icon: '♠', color: 'text-zinc-800', name: 'Spades' },
 };
@@ -141,7 +141,7 @@ export const CardUI: React.FC<CardUIProps> = ({
                     {glyphs}
                     <div className={cn('leading-none', suit.color)} style={{ fontSize: `${centreFont}px` }}>{suit.icon}</div>
                     <div className={cn('font-bold rotate-180 leading-none', alignRight ? 'self-start' : 'self-end', suit.color)} style={{ fontSize: `${index.rankFontPx}px` }}>{displayValue}</div>
-                    <div className={cn('absolute inset-0 flex items-center justify-center opacity-5 pointer-events-none text-4xl leading-none', suit.color)} style={{ fontSize: `${Math.round(s * 40)}px` }}>
+                    <div aria-hidden="true" className={cn('absolute inset-0 flex items-center justify-center opacity-5 pointer-events-none text-4xl leading-none', suit.color)} style={{ fontSize: `${Math.round(s * 40)}px` }}>
                         {suit.icon}
                     </div>
                 </>
@@ -165,7 +165,7 @@ export const CardUI: React.FC<CardUIProps> = ({
                 <div data-testid="card-rank" className={cn('font-bold self-start leading-none', suit.color)} style={{ fontSize: `${Math.round(s * 12)}px` }}>{displayValue}</div>
                 <div data-testid="card-suit" className={cn('leading-none', suit.color)} style={{ fontSize: `${Math.round(s * 20)}px` }}>{suit.icon}</div>
                 <div className={cn('font-bold self-end rotate-180 leading-none', suit.color)} style={{ fontSize: `${Math.round(s * 12)}px` }}>{displayValue}</div>
-                <div className={cn('absolute inset-0 flex items-center justify-center opacity-5 pointer-events-none text-4xl leading-none', suit.color)} style={{ fontSize: `${Math.round(s * 40)}px` }}>
+                <div aria-hidden="true" className={cn('absolute inset-0 flex items-center justify-center opacity-5 pointer-events-none text-4xl leading-none', suit.color)} style={{ fontSize: `${Math.round(s * 40)}px` }}>
                     {suit.icon}
                 </div>
             </>
@@ -281,7 +281,7 @@ export function PlayerAvatar({
                 <span
                     className={cn(
                         'font-headline font-bold',
-                        isWinner ? 'text-gold-secondary' : 'text-emerald-primary/40'
+                        isWinner ? 'text-gold-secondary' : 'text-emerald-primary/70'
                     )}
                     style={{ fontSize: `${fontPx(BASE_INITIALS_FONT[size], textScale)}px` }}
                 >

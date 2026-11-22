@@ -64,7 +64,7 @@ export function CreateRoomForm({ onAuth, onError, isSubmitting, loading = false,
                 <div className="flex justify-between items-start mb-8">
                     <div>
                         <h2 className="font-headline text-3xl font-bold text-white mb-2">{CREATE_TABLE_HEADING}</h2>
-                        <p className="text-zinc-500 text-sm">{CREATE_TABLE_SUBTITLE}</p>
+                        <p className="text-zinc-400 text-sm">{CREATE_TABLE_SUBTITLE}</p>
                     </div>
                     <Rocket aria-hidden="true" className="text-emerald-primary/20 w-10 h-10" />
                 </div>
@@ -124,12 +124,12 @@ export function CreateRoomForm({ onAuth, onError, isSubmitting, loading = false,
                     />
                     <div className="space-y-3">
                         <div className="flex items-baseline justify-between">
-                            <label htmlFor="max-players" className="block font-headline text-[0.625rem] font-bold tracking-widest text-zinc-500 uppercase">
+                            <label htmlFor="max-players" className="block font-headline text-[0.625rem] font-bold tracking-widest text-zinc-400 uppercase">
                                 Max Players
                             </label>
                             <span className="font-headline text-lg font-bold text-emerald-primary tabular-nums">
                                 {createData.maxPlayers}
-                                <span className="text-zinc-500 text-xs font-body font-normal ml-1">/ {VALIDATION.maxPlayers.max}</span>
+                                <span className="text-zinc-400 text-xs font-body font-normal ml-1">/ {VALIDATION.maxPlayers.max}</span>
                             </span>
                         </div>
                         <input
@@ -147,7 +147,7 @@ export function CreateRoomForm({ onAuth, onError, isSubmitting, loading = false,
                             className="range-slider w-full"
                             style={rangeSliderStyle(createData.maxPlayers, VALIDATION.maxPlayers.min, VALIDATION.maxPlayers.max)}
                         />
-                        <div className="flex justify-between text-[0.625rem] text-zinc-600 font-headline select-none">
+                        <div className="flex justify-between text-[0.625rem] text-zinc-400 font-headline select-none">
                             {Array.from({ length: VALIDATION.maxPlayers.max - VALIDATION.maxPlayers.min + 1 }, (_, i) => (
                                 <span key={i + VALIDATION.maxPlayers.min}>{i + VALIDATION.maxPlayers.min}</span>
                             ))}

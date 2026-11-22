@@ -59,7 +59,7 @@ export function JoinRoomForm({ onAuth, onError, isSubmitting, loading = false, d
                 <div className="flex justify-between items-start mb-8">
                     <div>
                         <h2 className="font-headline text-3xl font-bold text-white mb-2">{JOIN_TABLE_HEADING}</h2>
-                        <p className="text-zinc-500 text-sm">{JOIN_TABLE_SUBTITLE}</p>
+                        <p className="text-zinc-400 text-sm">{JOIN_TABLE_SUBTITLE}</p>
                     </div>
                     <Key aria-hidden="true" className="text-gold-secondary/20 w-10 h-10" />
                 </div>

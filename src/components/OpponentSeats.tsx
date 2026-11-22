@@ -325,26 +325,26 @@ export function OpponentSeats({
                                     style={{ gap: `${Math.round(spacing * 8)}px`, fontSize: `${panelFont}px` }}
                                 >
                                     <div className="col-span-2">
-                                        <dt className="text-zinc-500">{LABEL_PLAYER}</dt>
+                                        <dt className="text-zinc-400">{LABEL_PLAYER}</dt>
                                         <dd style={ddStyle} className="font-bold text-white break-words normal-case">{p.name}</dd>
                                     </div>
                                     <div>
-                                        <dt className="text-zinc-500">Stack</dt>
+                                        <dt className="text-zinc-400">Stack</dt>
                                         <dd style={ddStyle} className="font-bold text-gold-secondary">{p.chips.toLocaleString()}</dd>
                                     </div>
                                     <div>
-                                        <dt className="text-zinc-500">Status</dt>
+                                        <dt className="text-zinc-400">Status</dt>
                                         <dd style={ddStyle} className="font-bold text-zinc-200">{p.status.replace(/_/g, ' ')}</dd>
                                     </div>
                                     {p.currentBet > 0 && (
                                         <div className="col-span-2">
-                                            <dt className="text-zinc-500">Current bet</dt>
+                                            <dt className="text-zinc-400">Current bet</dt>
                                             <dd style={ddStyle} className="font-bold text-emerald-primary">Bet {p.currentBet.toLocaleString()}</dd>
                                         </div>
                                     )}
                                     {handRankFull && (
                                         <div className="col-span-2">
-                                            <dt className="text-zinc-500">Hand</dt>
+                                            <dt className="text-zinc-400">Hand</dt>
                                             <dd style={ddStyle} className="font-bold text-emerald-primary">{handRankFull}</dd>
                                             {/* The seat's card group carries this as a hover title and screen reader description; here touch users can read it too. */}
                                             {playsTheBoard && (
@@ -354,7 +354,7 @@ export function OpponentSeats({
                                     )}
                                     {blindText && (
                                         <div className="col-span-2">
-                                            <dt className="text-zinc-500">Position</dt>
+                                            <dt className="text-zinc-400">Position</dt>
                                             <dd style={ddStyle} className="font-bold text-zinc-200">{blindText}</dd>
                                         </div>
                                     )}

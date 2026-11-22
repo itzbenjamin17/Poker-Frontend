@@ -18,7 +18,7 @@ export const Button = ({
         primary: 'bg-gold-secondary text-surface font-headline font-extrabold shadow-[0_12px_24px_rgba(252,192,37,0.2)] hover:shadow-gold-secondary/30 active:scale-95',
         secondary: 'bg-emerald-container text-surface font-headline font-bold shadow-lg hover:shadow-emerald-primary/10 active:scale-95',
         outline: 'border border-emerald-primary/20 text-emerald-primary hover:bg-emerald-primary/10 active:scale-95',
-        ghost: 'text-zinc-500 hover:text-emerald-primary active:scale-95',
+        ghost: 'text-zinc-400 hover:text-emerald-primary active:scale-95',
     };
 
     const sizes = {
@@ -62,7 +62,7 @@ export const Input = ({
             {label && (
                 <label
                     htmlFor={id}
-                    className="block font-headline text-[0.625rem] font-bold tracking-widest text-zinc-500 uppercase"
+                    className="block font-headline text-[0.625rem] font-bold tracking-widest text-zinc-400 uppercase"
                 >
                     {label}
                 </label>

@@ -87,7 +87,7 @@ export function GameReviewView({ gameEndResult, gameState, onLeave, leaveError, 
                                     </p>
                                 )}
                                 {isForfeit && (
-                                    <p className="text-sm font-semibold tracking-widest text-neutral-500 uppercase">
+                                    <p className="text-sm font-semibold tracking-widest text-neutral-400 uppercase">
                                         {REVIEW_FORFEIT_NOTE}
                                     </p>
                                 )}
@@ -98,7 +98,7 @@ export function GameReviewView({ gameEndResult, gameState, onLeave, leaveError, 
 
                 {/* Final Board */}
                 <div className="space-y-4">
-                    <h2 className="text-xs font-bold uppercase tracking-[0.2em] text-neutral-500 text-center">
+                    <h2 className="text-xs font-bold uppercase tracking-[0.2em] text-neutral-400 text-center">
                         {isAbandoned ? REVIEW_STOPPED_TABLE_LABEL : REVIEW_FINAL_BOARD_LABEL}
                     </h2>
                     <div className="flex justify-center">
@@ -111,7 +111,7 @@ export function GameReviewView({ gameEndResult, gameState, onLeave, leaveError, 
 
                 {/* Player Results List */}
                 <div className="space-y-4">
-                    <h2 className="text-xs font-bold uppercase tracking-[0.2em] text-neutral-500">
+                    <h2 className="text-xs font-bold uppercase tracking-[0.2em] text-neutral-400">
                         {isAbandoned ? REVIEW_STOPPED_CHIPS_LABEL : 'Final Standings'}
                     </h2>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
