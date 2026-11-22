@@ -13,7 +13,8 @@
     "test:all": "vitest run && npx playwright test",
     "layout:overlap": "npx playwright test -c playwright.layout.config.ts scripts/layout/layout-overlap.spec.ts",
     "layout:screenshots": "npx playwright test -c playwright.layout.config.ts scripts/layout/layout-screenshots.spec.ts",
-    "layout:all": "npx playwright test -c playwright.layout.config.ts"
+    "layout:all": "npx playwright test -c playwright.layout.config.ts",
+    "playtest": "npx playwright test -c playwright.playtest.config.ts"
   },
   "dependencies": {
     "@stomp/stompjs": "^7.3.0",

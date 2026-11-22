@@ -23,6 +23,7 @@ Use `npm ci` to install the lockfile dependencies. CI uses Node.js 22; see [the 
 | `npm run test:all` | Run Vitest once, then the standard Playwright suite. |
 | `npm run backend:e2e` | Invoke the sibling backend on port 8080 with `spring-boot:test-run` and `test,frontend-e2e` profiles using the Windows Maven wrapper. |
 | `npm run layout:overlap` / `npm run layout:screenshots` / `npm run layout:all` | Run optional layout diagnostics using the separate layout Playwright configuration. |
+| `npm run playtest` | Run the real-backend playtest suite in `scripts/playtest/`; it starts Vite and the backend with the short timers in `scripts/playtest/timings.ts`. |
 
 Scripts are defined in `package.json`; proxying and Vitest setup are in [vite.config.ts](../../vite.config.ts). The `backend:e2e` script matches Playwright's backend setup (`spring-boot:test-run` with `test,frontend-e2e` profiles on port 8080, so Playwright can reuse a locally started backend).
 
@@ -106,6 +107,7 @@ Preserve keyboard access, semantic labels, focus handling, reduced motion, and n
 - [playwright.config.ts](../../playwright.config.ts) runs Chromium specs in `e2e/` and starts Vite plus the sibling backend with `spring-boot:test-run` and the `test,frontend-e2e` profiles. Override `BACKEND_DIR` when the backend is elsewhere. Java 25, backend configuration, and installed Playwright Chromium are prerequisites even when individual specs mock traffic.
 - Mocked browser flows use [stompWsMock.ts](../../e2e/support/stompWsMock.ts) and Playwright `routeWebSocket`. Keep mocks at the transport boundary rather than add production test switches.
 - [playwright.layout.config.ts](../../playwright.layout.config.ts) runs `scripts/layout/` diagnostics with Vite only. These are separate from standard E2E and are not run by the normal CI workflow.
+- [playwright.playtest.config.ts](../../playwright.playtest.config.ts) runs the unmocked `scripts/playtest/` suite against a backend started with short timers (turns, grace, ready gate, lobby inactivity); its global setup refuses a backend on :8080 that has other timings. It is not part of CI. The `/playtest` Claude skill in `.claude/skills/playtest/` runs it, then the manual checks automation can't judge.
 - The `main` push/PR workflow runs lint, Vitest, standard Playwright with the companion backend, and the production build. Successful pushes to `main` then build/push Docker images.
 - ESLint includes accessibility and React rules but permits warning-level rules; `npm run lint` does not enforce zero warnings. A successful build/test run establishes only the checks actually executed, not a timing or universal layout guarantee.
 
