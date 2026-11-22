@@ -607,6 +607,35 @@ describe('useGameWebSocket', () => {
         expect(pokerApi.getPrivatePlayerState).toHaveBeenCalledTimes(3);
     });
 
+    it('drops a still-open socket as soon as the browser reports it is offline', async () => {
+        const inMemoryTransport = new InMemoryTransportAdapter();
+        const forceReconnect = vi.fn(() => inMemoryTransport.simulateStatus('reconnecting'));
+        Object.assign(inMemoryTransport, { forceReconnect });
+
+        renderHook(() => useGameWebSocket({ onSocketError, transport: inMemoryTransport }), {
+            wrapper: createWrapper(),
+        });
+        await act(async () => {
+            await Promise.resolve();
+        });
+        expect(inMemoryTransport.isConnected()).toBe(true);
+
+        await act(async () => {
+            window.dispatchEvent(new Event('offline'));
+            await Promise.resolve();
+        });
+
+        expect(forceReconnect).toHaveBeenCalledTimes(1);
+        expect(inMemoryTransport.isConnected()).toBe(false);
+
+        // A second offline event while already disconnected does not churn the socket.
+        await act(async () => {
+            window.dispatchEvent(new Event('offline'));
+            await Promise.resolve();
+        });
+        expect(forceReconnect).toHaveBeenCalledTimes(1);
+    });
+
     it('coalesces concurrent connected, online, and visibilitychange events into one in-flight recovery transaction', async () => {
         const inMemoryTransport = new InMemoryTransportAdapter();
         session.setRoomState({

@@ -19,7 +19,7 @@ export function RoomStage({ children, className }: RoomStageProps) {
             aria-label="Room stage"
             data-testid="room-stage"
             className={cn(
-                'relative flex-1 min-h-0 min-w-0 flex items-center justify-center overflow-hidden',
+                'relative isolate flex-1 min-h-0 min-w-0 flex items-center justify-center overflow-hidden',
                 className
             )}
         >

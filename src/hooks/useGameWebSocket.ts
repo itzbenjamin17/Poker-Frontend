@@ -14,7 +14,8 @@ export interface UseGameWebSocketOptions {
 
 /**
  * Manages the real-time communication lifecycle via GameSession and GameTransport:
- * connect/disconnect, wake-up/online reconnection, and deduplicated REST state recovery.
+ * connect/disconnect, wake-up/online reconnection, immediate offline detection,
+ * and deduplicated REST state recovery.
  */
 export function useGameWebSocket(options: UseGameWebSocketOptions = {}) {
     const {
@@ -115,8 +116,18 @@ export function useGameWebSocket(options: UseGameWebSocketOptions = {}) {
             startRecoveryWorkflow({ resetBudget: false });
         };
 
+        // A socket whose network vanished stays "open" until heartbeats time out (~30 s).
+        // Drop it immediately so the reconnect overlay reflects reality; 'online' reconnects.
+        const handleOffline = () => {
+            if (isCancelled() || !session.hasLifecyclePermission()) return;
+            if (!transport.isConnected?.()) return;
+            logger.log('Browser went offline. Dropping WebSocket...');
+            triggerReconnect();
+        };
+
         document.addEventListener('visibilitychange', handleWakeup);
         window.addEventListener('online', handleOnline);
+        window.addEventListener('offline', handleOffline);
 
         session.connect(options.transport);
 
@@ -124,6 +135,7 @@ export function useGameWebSocket(options: UseGameWebSocketOptions = {}) {
             disposed = true;
             document.removeEventListener('visibilitychange', handleWakeup);
             window.removeEventListener('online', handleOnline);
+            window.removeEventListener('offline', handleOffline);
             unsubConnect();
             unsubManualRetry();
             unsubSocketError?.();
