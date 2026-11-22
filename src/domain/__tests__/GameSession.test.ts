@@ -807,7 +807,59 @@ describe('GameSession Domain Store', () => {
         });
     });
 
+    describe('Forfeit reason', () => {
+        it("keeps the server's forfeit reason and the players who forfeited in the stored result", () => {
+            const { session } = createSession(new TestClock(10_000));
+            session.attach();
+            session.applyGameState(createValidGameState({
+                handNumber: 3,
+                currentPlayerName: 'Hero',
+                currentPlayerId: 'hero-id',
+                turnDeadlineEpochMs: 15_000,
+                players: [createValidPlayer({ name: 'Hero', id: 'hero-id' }), createValidPlayer({ name: 'Bob', id: 'bob-id' })],
+            }));
+
+            session.installTerminalResult({
+                ...createValidGameState({
+                    handNumber: 3,
+                    players: [createValidPlayer({ name: 'Hero', id: 'hero-id' }), createValidPlayer({ name: 'Bob', id: 'bob-id' })],
+                }),
+                gameId: auth.roomId,
+                gameEnd: {
+                    winner: 'Bob', winnerChips: 2000, isForfeit: true, reason: 'TURN_TIMEOUT', forfeitedPlayers: ['Hero'],
+                    message: 'Bob wins the game with 2000 chips!',
+                },
+            });
+
+            expect(session.getSnapshot().gameEndResult?.gameEnd).toMatchObject({ reason: 'TURN_TIMEOUT', forfeitedPlayers: ['Hero'] });
+        });
+    });
+
     describe('Action Locks & Disconnection / Error Cancellation', () => {
+        it('explains a move or ready status that could not be sent, and releases the controls', () => {
+            const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+            const { session, transport } = createSession(new TestClock(20_000));
+            try {
+                session.connect();
+                transport.simulateStatus('connected');
+                transport.simulateMessage('/game/room-123', createValidGameState({
+                    gameId: 'room-123',
+                    players: [createValidPlayer({ id: 'hero-id', name: 'Hero' })],
+                }));
+                vi.spyOn(transport, 'publish').mockImplementation(() => { throw new Error('socket closed'); });
+
+                session.playAction('CALL', 20);
+                expect(session.getSnapshot().notification).toBe("Couldn't send your move. Check your connection and try again.");
+                expect(session.getSnapshot().pendingActions.has('PLAY_ACTION')).toBe(false);
+
+                session.ready();
+                expect(session.getSnapshot().notification).toBe("Couldn't update your ready status. Check your connection and try again.");
+                expect(session.getSnapshot().pendingActions.has('READY')).toBe(false);
+            } finally {
+                error.mockRestore();
+            }
+        });
+
         it('refuses to queue actions when transport is disconnected', () => {
             const { session, transport } = createSession();
             // Not connected yet

@@ -65,14 +65,14 @@ describe('ActionPanel', () => {
         expect(screen.getByRole('slider', { name: /raise amount/i })).toHaveValue('60');
         expect(screen.getByText('60')).toBeInTheDocument();
     });
-    it('announces the raise slider value in the same formatted dollars it shows', async () => {
+    it('announces the raise slider value in the same formatted chips it shows', async () => {
         const user = userEvent.setup();
         renderActionPanel({
             gameState: { ...mockGameState, minimumRaiseAmount: 1500 },
             me: { ...mockMe, chips: 5000 },
         });
         await user.click(screen.getByRole('button', { name: /^raise$/i }));
-        expect(screen.getByRole('slider', { name: /raise amount/i })).toHaveAttribute('aria-valuetext', '$1,500');
+        expect(screen.getByRole('slider', { name: /raise amount/i })).toHaveAttribute('aria-valuetext', '1,500 chips');
     });
     it('submits the backend minimum in incremental chips after the call amount', async () => {
         const user = userEvent.setup();
@@ -296,17 +296,59 @@ describe('ActionPanel', () => {
 
         await user.click(screen.getByRole('button', { name: /^raise$/i }));
 
+        // Each preset names the total wager; the amount sent is what the hero adds to the 10 already in.
         await user.click(screen.getByRole('button', { name: /^3bb$/i }));
-        expect(onRaiseChange).toHaveBeenCalledWith('70');
+        expect(onRaiseChange).toHaveBeenCalledWith('50'); // raise to 60 = 3 big blinds
 
         await user.click(screen.getByRole('button', { name: /^1\/2 pot$/i }));
-        expect(onRaiseChange).toHaveBeenCalledWith('60');
+        expect(onRaiseChange).toHaveBeenCalledWith('65'); // raise to 20 + (100 + 10 call) / 2 = 75
 
         await user.click(screen.getByRole('button', { name: /^pot$/i }));
-        expect(onRaiseChange).toHaveBeenCalledWith('110');
+        expect(onRaiseChange).toHaveBeenCalledWith('120'); // raise to 20 + (100 + 10 call) = 130
 
         await user.click(screen.getByRole('button', { name: /^max$/i }));
         expect(onRaiseChange).toHaveBeenCalledWith('1000');
+    });
+
+    it('sizes pre-flop raise presets from the small blind as raises to 3 big blinds and to a pot-sized total', async () => {
+        const user = userEvent.setup();
+        const onRaiseChange = vi.fn();
+        // Blinds 10/20: the small blind faces a 10 call into a 30 pot.
+        renderActionPanel({
+            gameState: { ...mockGameState, currentBet: 20, pot: 30, legalActions: ['FOLD', 'CALL', 'RAISE'] },
+            me: { ...mockMe, chips: 990, currentBet: 10 },
+            onRaiseChange,
+            bigBlind: 20,
+        });
+
+        await user.click(screen.getByRole('button', { name: /^raise$/i }));
+
+        await user.click(screen.getByRole('button', { name: /^3bb$/i }));
+        expect(onRaiseChange).toHaveBeenLastCalledWith('50'); // raise to 60
+        await user.click(screen.getByRole('button', { name: /^1\/2 pot$/i }));
+        expect(onRaiseChange).toHaveBeenLastCalledWith('30'); // raise to 40
+        await user.click(screen.getByRole('button', { name: /^pot$/i }));
+        expect(onRaiseChange).toHaveBeenLastCalledWith('50'); // raise to 60: 20 + (30 pot + 10 call)
+    });
+
+    it('keeps post-flop bet presets as fractions of the pot', async () => {
+        const user = userEvent.setup();
+        const onRaiseChange = vi.fn();
+        renderActionPanel({
+            gameState: { ...mockGameState, phase: 'FLOP', currentBet: 0, pot: 100, legalActions: ['CHECK', 'BET'] },
+            me: { ...mockMe, chips: 1000, currentBet: 0 },
+            onRaiseChange,
+            bigBlind: 20,
+        });
+
+        await user.click(screen.getByRole('button', { name: /^bet$/i }));
+
+        await user.click(screen.getByRole('button', { name: /^3bb$/i }));
+        expect(onRaiseChange).toHaveBeenLastCalledWith('60');
+        await user.click(screen.getByRole('button', { name: /^1\/2 pot$/i }));
+        expect(onRaiseChange).toHaveBeenLastCalledWith('50');
+        await user.click(screen.getByRole('button', { name: /^pot$/i }));
+        expect(onRaiseChange).toHaveBeenLastCalledWith('100');
     });
 
     it('uses a minimum raise amount of 30 for a 20 blind, 20 table bet, and 10 committed chips', async () => {
@@ -483,7 +525,7 @@ describe('ActionPanel', () => {
 
         // Adjusting the amount calls onRaiseChange (which clears raiseError in parent) and re-enables submission
         await user.click(screen.getByRole('button', { name: '3BB' }));
-        expect(onRaiseChange).toHaveBeenCalledWith('70');
+        expect(onRaiseChange).toHaveBeenCalledWith('50');
 
         rerender(
             <ActionPanel

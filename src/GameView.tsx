@@ -94,6 +94,7 @@ function GameViewInner() {
         return (
             <GameReviewView
                 gameEndResult={gameEndResult}
+                playerName={auth.playerName}
                 leaveError={leaveError ?? notification}
                 onRetryLeave={handleLeaveRequest}
                 onLeave={() => dispatcher.dispatch({ type: 'LEAVE_REVIEW' })}
@@ -168,7 +169,7 @@ function GameViewInner() {
             header={
                 <RoomHeader
                     roomName={roomState?.roomName}
-                    playerCount={gameState.players.length}
+                    playerCount={gameState.players.filter((player) => player.status !== 'OUT').length}
                     wsStatus={wsStatus}
                     onLeave={handleLeaveRequest}
                 />

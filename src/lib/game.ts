@@ -15,11 +15,14 @@ export function normalizeCardCode(value: string): string | null {
     return normalized.startsWith('10') ? `T${normalized.slice(2)}` : normalized;
 }
 
+// Ranks are spelled out so a label shown in capitals ("ONE PAIR (EIGHTS)") never reads like a card code ("8S").
 const rankNames: Record<string, string> = {
-    '2': '2', '3': '3', '4': '4', '5': '5', '6': '6', '7': '7', '8': '8', '9': '9', 'T': '10', 'J': 'Jack', 'Q': 'Queen', 'K': 'King', 'A': 'Ace'
+    '2': 'Two', '3': 'Three', '4': 'Four', '5': 'Five', '6': 'Six', '7': 'Seven', '8': 'Eight', '9': 'Nine',
+    'T': 'Ten', 'J': 'Jack', 'Q': 'Queen', 'K': 'King', 'A': 'Ace'
 };
 const rankPlurals: Record<string, string> = {
-    '2': '2s', '3': '3s', '4': '4s', '5': '5s', '6': '6s', '7': '7s', '8': '8s', '9': '9s', 'T': '10s', 'J': 'Jacks', 'Q': 'Queens', 'K': 'Kings', 'A': 'Aces'
+    '2': 'Twos', '3': 'Threes', '4': 'Fours', '5': 'Fives', '6': 'Sixes', '7': 'Sevens', '8': 'Eights', '9': 'Nines',
+    'T': 'Tens', 'J': 'Jacks', 'Q': 'Queens', 'K': 'Kings', 'A': 'Aces'
 };
 const suitNames: Record<string, string> = {
     'H': 'Hearts', 'D': 'Diamonds', 'C': 'Clubs', 'S': 'Spades'

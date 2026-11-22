@@ -42,7 +42,7 @@ describe('GameView - Room Lobby Integration', () => {
     await waitFor(() => {
       expect(screen.getByText(/GAME LOBBY/i)).toBeInTheDocument()
       expect(screen.getAllByText(/High Stakes/i).length).toBeGreaterThan(0)
-      expect(screen.getByText(/\$50 \/ \$100/i)).toBeInTheDocument()
+      expect(screen.getByText(/50 \/ 100 chips/i)).toBeInTheDocument()
     })
 
     // Verify Start Game button's "before" state is disabled

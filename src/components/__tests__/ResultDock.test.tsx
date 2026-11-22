@@ -55,6 +55,17 @@ describe('ResultDock', () => {
         expect(screen.queryByText(/tie|equally/i)).not.toBeInTheDocument();
     });
 
+    it('says everyone folded when the winner took the pot uncontested', () => {
+        render(<ResultDock showdownResult={{
+            ...showdownState,
+            players: showdownState.players.map((player) => player.name === 'Villain'
+                ? { ...player, status: 'FOLDED' as const, hasFolded: true }
+                : { ...player, chipsWon: 400 }),
+        }} />);
+        expect(screen.getByText('Hero won — everyone folded')).toBeInTheDocument();
+        expect(screen.queryByText(/forfeit/i)).not.toBeInTheDocument();
+    });
+
     it('renders an explicitly settled void hand and its carry-over', () => {
         render(<ResultDock showdownResult={{
             ...showdownState,
@@ -94,7 +105,7 @@ describe('ResultDock', () => {
         );
 
         expect(screen.queryByRole('button', { name: /^ready$/i })).not.toBeInTheDocument();
-        expect(screen.queryByRole('button', { name: /unready/i })).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: /cancel ready/i })).not.toBeInTheDocument();
 
         rerender(
             <ResultDock
@@ -107,7 +118,7 @@ describe('ResultDock', () => {
         );
 
         expect(screen.queryByRole('button', { name: /^ready$/i })).not.toBeInTheDocument();
-        expect(screen.queryByRole('button', { name: /unready/i })).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: /cancel ready/i })).not.toBeInTheDocument();
     });
 
     it('disables the Ready and Unready buttons while isActionPending is true', () => {
@@ -139,7 +150,7 @@ describe('ResultDock', () => {
             />,
         );
 
-        expect(screen.getByRole('button', { name: /unready/i })).toBeDisabled();
+        expect(screen.getByRole('button', { name: /cancel ready/i })).toBeDisabled();
     });
 
     it('displays the ready countdown and ready player count when isReadyCountdownActive is true', () => {

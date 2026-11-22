@@ -291,7 +291,7 @@ describe('GameTableView', () => {
                 readyCountdownDeadlineEpochMs: 112000,
             };
             const { unmount } = render(<GameTableView {...defaultProps} gameState={showdownState} nowMs={100000} />);
-            const unready = screen.getByRole('button', { name: /^unready$/i });
+            const unready = screen.getByRole('button', { name: /^cancel ready$/i });
             expect(unready).toBeEnabled();
             await user.click(unready);
             expect(defaultProps.onUnready).toHaveBeenCalledTimes(1);
@@ -299,7 +299,7 @@ describe('GameTableView', () => {
 
             unmount();
             render(<GameTableView {...defaultProps} gameState={showdownState} nowMs={100000} isActionPending />);
-            expect(screen.getByRole('button', { name: /^unready$/i })).toBeDisabled();
+            expect(screen.getByRole('button', { name: /^cancel ready$/i })).toBeDisabled();
         });
 
         it('shows the authoritative waiting-for-players gate in the SHOWDOWN fallback', () => {
@@ -311,6 +311,73 @@ describe('GameTableView', () => {
             };
             render(<GameTableView {...defaultProps} gameState={waitingState} showdownResult={null} />);
             expect(screen.getByText('Hand complete — waiting for players')).toBeInTheDocument();
+        });
+    });
+
+    describe('Busted players', () => {
+        const bustedPlayer: Player = { ...opponentPlayer, id: 'p-3', name: 'Busted', chips: 0, status: 'OUT' };
+
+        it('does not draw a seat for an opponent who is out of chips', () => {
+            render(<GameTableView {...defaultProps} gameState={{ ...mockGameState, players: [defaultPlayer, opponentPlayer, bustedPlayer] }} />);
+
+            expect(screen.getByRole('group', { name: /villain seat/i })).toBeInTheDocument();
+            expect(screen.queryByRole('group', { name: /busted seat/i })).not.toBeInTheDocument();
+        });
+
+        it("tells a busted hero they're out and lets them leave without the abandon-seat warning", async () => {
+            const user = userEvent.setup();
+            const onLeaveGame = vi.fn();
+            render(
+                <GameTableView
+                    {...defaultProps}
+                    onLeaveGame={onLeaveGame}
+                    gameState={{
+                        ...mockGameState,
+                        currentPlayerId: 'p-2',
+                        currentPlayerName: 'Villain',
+                        players: [{ ...defaultPlayer, chips: 0, status: 'OUT' }, opponentPlayer, { ...bustedPlayer, name: 'Third', status: 'ACTIVE', chips: 500 }],
+                    }}
+                />,
+            );
+
+            const dock = screen.getByRole('region', { name: /action dock/i });
+            expect(within(dock).getByText("You're out of chips")).toBeInTheDocument();
+            expect(within(dock).queryByText(/waiting for villain/i)).not.toBeInTheDocument();
+            await user.click(within(dock).getByRole('button', { name: /leave table/i }));
+            expect(onLeaveGame).toHaveBeenCalledTimes(1);
+            expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+        });
+    });
+
+    describe('Dealer button', () => {
+        it('shows the dealer button on the seat the server marks as dealer', () => {
+            const third: Player = { ...opponentPlayer, id: 'p-3', name: 'Third' };
+            render(
+                <GameTableView
+                    {...defaultProps}
+                    gameState={{
+                        ...mockGameState,
+                        players: [{ ...defaultPlayer, isDealer: true }, { ...opponentPlayer, isSmallBlind: true }, { ...third, isBigBlind: true }],
+                    }}
+                />,
+            );
+
+            const heroSeat = screen.getByRole('group', { name: /hero hero seat/i });
+            expect(within(heroSeat).getByTestId('seat-dealer-button')).toHaveAccessibleName('Dealer');
+            expect(within(screen.getByRole('group', { name: /villain seat/i })).queryByTestId('seat-dealer-button')).not.toBeInTheDocument();
+            expect(within(screen.getByRole('group', { name: /third seat/i })).queryByTestId('seat-dealer-button')).not.toBeInTheDocument();
+        });
+    });
+
+    describe('Table inactivity warning', () => {
+        it('sits above the table stage instead of over the seats', () => {
+            render(<GameTableView {...defaultProps} hasShellHeader isGameInactivityWarningActive />);
+
+            const warning = screen.getByText('Table Inactivity Warning').closest('[role="status"]')!;
+            const stage = screen.getByTestId('room-stage');
+            expect(stage).not.toContainElement(warning as HTMLElement);
+            expect(warning.compareDocumentPosition(stage) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+            expect(warning).not.toHaveClass('absolute');
         });
     });
 

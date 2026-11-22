@@ -75,9 +75,20 @@ describe('lib/game - formatHandRank', () => {
         expect(formatHandRank('')).toBeNull();
     });
 
-    it('formats full house with 10s correctly', () => {
-        expect(formatHandRank('FULL_HOUSE', ['10H', '10D', '10C', '9S', '9D'])).toBe('Full House (10s full of 9s)');
-        expect(formatHandRank('FULL_HOUSE', ['9H', '9D', '9C', '10S', '10D'])).toBe('Full House (9s full of 10s)');
+    it('formats full house with tens in words', () => {
+        expect(formatHandRank('FULL_HOUSE', ['10H', '10D', '10C', '9S', '9D'])).toBe('Full House (Tens full of Nines)');
+        expect(formatHandRank('FULL_HOUSE', ['9H', '9D', '9C', '10S', '10D'])).toBe('Full House (Nines full of Tens)');
+    });
+
+    it('spells every rank as a word, so upper-cased labels never read like a card code', () => {
+        expect(formatHandRank('ONE_PAIR', ['8S', '8H', 'JD', '6C', '2S'])).toBe('One Pair (Eights)');
+        expect(formatHandRank('TWO_PAIR', ['5S', '5H', '4D', '4C', 'KS'])).toBe('Two Pair (Fives & Fours)');
+        expect(formatHandRank('THREE_OF_A_KIND', ['6S', '6H', '6D', 'KC', '2S'])).toBe('Three of a Kind (Sixes)');
+        expect(formatHandRank('FOUR_OF_A_KIND', ['2S', '2H', '2D', '2C', 'AS'])).toBe('Four of a Kind (Twos)');
+        expect(formatHandRank('HIGH_CARD', ['8S', '7H', '5D', '3C', '2S'])).toBe('Eight High');
+        expect(formatHandRank('STRAIGHT', ['10S', '9H', '8D', '7C', '6S'])).toBe('Straight (Ten High)');
+        expect(formatHandRank('STRAIGHT', ['5S', '4H', '3D', '2C', 'AS'])).toBe('Straight (Five High)');
+        expect(formatHandRank('ONE_PAIR', ['8S', '8H', 'JD', '6C', '2S'])!.toUpperCase()).toBe('ONE PAIR (EIGHTS)');
     });
 
     it('formats lowercase suits and ranks accurately for pairs and flushes', () => {
@@ -85,7 +96,7 @@ describe('lib/game - formatHandRank', () => {
         expect(formatHandRank('TWO_PAIR', ['Ah', 'Ad', 'Ks', 'Kd', 'Qc'])).toBe('Two Pair (Aces & Kings)');
         expect(formatHandRank('FLUSH', ['Ah', 'Kh', '9h', '5h', '2h'])).toBe('Flush, Hearts');
         expect(formatHandRank('ROYAL_FLUSH', ['Ah', 'Kh', 'Qh', 'Jh', '10h'])).toBe('Royal Flush, Hearts');
-        expect(formatHandRank('STRAIGHT_FLUSH', ['9d', '8d', '7d', '6d', '5d'])).toBe('Straight Flush (9 High, Diamonds)');
+        expect(formatHandRank('STRAIGHT_FLUSH', ['9d', '8d', '7d', '6d', '5d'])).toBe('Straight Flush (Nine High, Diamonds)');
     });
 });
 

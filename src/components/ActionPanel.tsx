@@ -8,10 +8,11 @@ import {
     BTN_FOLD, BTN_CHECK, BTN_CALL_PREFIX, BTN_ALL_IN_PREFIX,
     BTN_BET, BTN_RAISE, ARIA_RAISE_AMOUNT,
     WAITING_RECONNECT_PREFIX, WAITING_RECONNECT_SUFFIX,
-    READY_PROMPT, BTN_READY, LABEL_PLAYERS_READY_SUFFIX,
+    READY_PROMPT, BTN_READY, BTN_UNREADY, LABEL_PLAYERS_READY_SUFFIX,
     RAISE_VALIDATION_WHOLE_NUMBER, RAISE_VALIDATION_POSITIVE, RAISE_VALIDATION_MAX,
     formatBetMinError, formatRaiseMinError, formatAvailableChipsError,
     LABEL_TURN_WARNING_SR, LABEL_TURN_WARNING_BADGE,
+    LABEL_CHIPS, formatChips, STATUS_DEALING_REMAINING,
 } from '../constants/strings';
 import type { ActionError, GameState, Player, PokerAction, ReadyGateState } from '../types';
 
@@ -178,8 +179,15 @@ export function ActionPanel({
         : Math.max(0, (gameState.currentBet || 0) - (me?.currentBet ?? 0)) + minBetAmount);
     const availableChips = me?.chips ?? 0;
     const callAmount = Math.max(0, (gameState.currentBet || 0) - (me?.currentBet ?? 0));
-    const presetOffset = actionType === 'RAISE' ? callAmount : 0;
     const clamp = (val: number) => Math.min(availableChips, Math.max(minRaiseAmount, val));
+    // Presets name a total wager ("raise to"); the slider and the action amount are the chips added on top of
+    // the hero's current bet. A pot-sized raise is the call plus the pot as it stands after that call.
+    const myCurrentBet = me?.currentBet ?? 0;
+    const potAfterCall = (gameState.pot || 0) + callAmount;
+    const presetAmount = (raiseTo: number) => clamp(raiseTo - myCurrentBet);
+    const threeBigBlindsPreset = presetAmount(bigBlind * 3);
+    const halfPotPreset = presetAmount((gameState.currentBet || 0) + Math.floor(potAfterCall / 2));
+    const potPreset = presetAmount((gameState.currentBet || 0) + potAfterCall);
 
     const defaultRaiseAmount = availableChips > 0 ? Math.min(minRaiseAmount, availableChips) : minRaiseAmount;
     const rawRaise = raiseAmount.trim();
@@ -296,7 +304,7 @@ export function ActionPanel({
                                         <Button
                                             variant="outline"
                                             size="xs"
-                                            onClick={() => handleRaiseChange(String(clamp(presetOffset + bigBlind * 3)))}
+                                            onClick={() => handleRaiseChange(String(threeBigBlindsPreset))}
                                             disabled={isControlsDisabled}
                                         >
                                             3BB
@@ -304,7 +312,7 @@ export function ActionPanel({
                                         <Button
                                             variant="outline"
                                             size="xs"
-                                            onClick={() => handleRaiseChange(String(clamp(presetOffset + Math.floor((gameState.pot || 0) / 2))))}
+                                            onClick={() => handleRaiseChange(String(halfPotPreset))}
                                             disabled={isControlsDisabled}
                                         >
                                             1/2 POT
@@ -312,7 +320,7 @@ export function ActionPanel({
                                         <Button
                                             variant="outline"
                                             size="xs"
-                                            onClick={() => handleRaiseChange(String(clamp(presetOffset + (gameState.pot || 0))))}
+                                            onClick={() => handleRaiseChange(String(potPreset))}
                                             disabled={isControlsDisabled}
                                         >
                                             POT
@@ -336,9 +344,9 @@ export function ActionPanel({
                                                 : 'border-white/10 bg-black/30 focus-within:border-white/25',
                                         )}
                                     >
-                                        <span className="text-zinc-400 text-xs font-bold">$</span>
                                         <span className="text-white tabular-nums text-xs sm:text-sm font-bold min-w-[3rem]">
                                             {parsedRaiseAmount.toLocaleString()}
+                                            <span className="ml-1 text-zinc-400 text-[0.625rem] font-bold uppercase">{LABEL_CHIPS}</span>
                                         </span>
                                         {/* eslint-disable jsx-a11y/no-autofocus */}
                                         <input
@@ -346,7 +354,7 @@ export function ActionPanel({
                                             aria-label={ARIA_RAISE_AMOUNT}
                                             aria-describedby={activeRaiseError ? 'raise-amount-error' : undefined}
                                             aria-invalid={hasError}
-                                            aria-valuetext={`$${parsedRaiseAmount.toLocaleString()}`}
+                                            aria-valuetext={formatChips(parsedRaiseAmount)}
                                             className="range-slider range-slider-compact range-slider-gold w-24 sm:w-32 md:w-36"
                                             style={rangeSliderStyle(parsedRaiseAmount, defaultRaiseAmount, Math.max(defaultRaiseAmount, availableChips))}
                                             value={parsedRaiseAmount}
@@ -515,7 +523,7 @@ export function ActionPanel({
                                     onClick={isControlsDisabled ? undefined : (amReadyForNextHand ? onUnready : onReady)}
                                     disabled={isControlsDisabled}
                                 >
-                                    {amReadyForNextHand ? 'Unready' : BTN_READY}
+                                    {amReadyForNextHand ? BTN_UNREADY : BTN_READY}
                                 </Button>
                             </div>
                         )}
@@ -533,7 +541,7 @@ export function ActionPanel({
                     >
                         <p className="text-xs font-headline font-bold uppercase tracking-[0.16em] text-amber-200">
                             {isAutoAdvancing
-                                ? (gameState.autoAdvanceMessage || 'Auto-advancing...')
+                                ? (gameState.autoAdvanceMessage || STATUS_DEALING_REMAINING)
                                 : gameState.phase === 'SHOWDOWN'
                                 ? readyGateState === 'WAITING_FOR_PLAYERS'
                                     ? 'Hand complete — waiting for players'
@@ -547,7 +555,8 @@ export function ActionPanel({
                 <p
                     id="raise-amount-error"
                     role="alert"
-                    className="absolute bottom-0 left-1/2 w-[calc(100%-1rem)] min-w-0 -translate-x-1/2 overflow-hidden text-ellipsis whitespace-nowrap text-center text-[0.625rem] font-bold text-red-400"
+                    title={displayedError}
+                    className="absolute bottom-0.5 left-1/2 w-[calc(100%-1rem)] min-w-0 -translate-x-1/2 overflow-hidden text-ellipsis whitespace-nowrap text-center text-xs font-semibold text-red-300"
                 >
                     {displayedError}
                 </p>

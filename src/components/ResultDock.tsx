@@ -5,7 +5,7 @@ import {
     SHOWDOWN_ROUND_RESULT,
     SHOWDOWN_PROCESSING,
     SHOWDOWN_HAND_COMPLETE, SHOWDOWN_CARRY_OVER, SHOWDOWN_MULTIPLE_WINNERS,
-    SHOWDOWN_FORFEIT_SUFFIX, SHOWDOWN_WIN_SUFFIX,
+    SHOWDOWN_EVERYONE_FOLDED_SUFFIX, SHOWDOWN_WIN_SUFFIX,
     SHOWDOWN_WON_WITH_PREFIX,
     ARIA_ROUND_RESULT,
     BTN_LEAVE_TABLE,
@@ -64,7 +64,7 @@ export function ResultDock({
         ? `${SHOWDOWN_MULTIPLE_WINNERS} ${winners.join(', ')}`
         : winners.length === 1
             ? isUncontested
-                ? `${winners[0]}${SHOWDOWN_FORFEIT_SUFFIX}`
+                ? `${winners[0]}${SHOWDOWN_EVERYONE_FOLDED_SUFFIX}`
                 : `${winners[0]}${SHOWDOWN_WIN_SUFFIX}`
             : SHOWDOWN_PROCESSING;
     const individualAwards = winners

@@ -122,7 +122,7 @@ const player = shape({
     status: member(['ACTIVE', 'FOLDED', 'OUT', 'ALL_IN', 'DISCONNECTED']),
     hasFolded: boolean, disconnectDeadlineEpochMs: optional(nonnegative),
     isReadyForNextHand: optional(boolean), isSmallBlind: optional(boolean),
-    isBigBlind: optional(boolean), isAllIn: optional(boolean),
+    isBigBlind: optional(boolean), isDealer: optional(boolean), isAllIn: optional(boolean),
     isCurrentPlayer: optional(boolean), holeCards: optional(list(card, 2)),
     handRank: optional(text), bestHand: optional(list(card, 5)),
     isWinner: optional(boolean), chipsWon: optional(nonnegative),
@@ -136,6 +136,12 @@ const gameEndSchema = rule('valid GameEnd object', value => {
     if (value.winnerChips !== undefined && value.winnerChips !== null && !nonnegative(value.winnerChips)) return false;
     if (value.abandoned !== undefined && value.abandoned !== null && typeof value.abandoned !== 'boolean') return false;
     if (value.reason !== undefined && value.reason !== null && typeof value.reason !== 'string') return false;
+    if (value.forfeitedPlayers !== undefined && value.forfeitedPlayers !== null && (
+        !Array.isArray(value.forfeitedPlayers)
+        || !value.forfeitedPlayers.every((name) => typeof name === 'string' && name.trim().length > 0)
+    )) {
+        return false;
+    }
     if (typeof value.winner === 'string' && value.winner.trim().length === 0) {
         return false;
     }
@@ -205,7 +211,7 @@ export function decodeGameStatePayload(value: unknown, source?: GameSnapshotSour
     decoded.players = value.players.map(p => isObject(p) ? {
         ...omitNulls(p, [
         'disconnectDeadlineEpochMs', 'isReadyForNextHand', 'isSmallBlind',
-        'isBigBlind', 'isAllIn', 'isCurrentPlayer', 'holeCards', 'handRank',
+        'isBigBlind', 'isDealer', 'isAllIn', 'isCurrentPlayer', 'holeCards', 'handRank',
         'bestHand', 'isWinner', 'chipsWon',
         ]),
         ...(Array.isArray(p.holeCards) ? { holeCards: p.holeCards.map(normalizeCard) } : {}),
@@ -223,6 +229,7 @@ export function decodeGameStatePayload(value: unknown, source?: GameSnapshotSour
             end.isForfeit = false;
         }
         end.message = (end.message as string).trim();
+        if (end.forfeitedPlayers === null) delete end.forfeitedPlayers;
         decoded.gameEnd = end;
     }
     return decoded as IncomingGameStatePayload;

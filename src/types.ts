@@ -19,6 +19,7 @@ export interface Player {
     hasFolded: boolean;
     isSmallBlind?: boolean;
     isBigBlind?: boolean;
+    isDealer?: boolean;
     isAllIn?: boolean;
     isCurrentPlayer?: boolean;
     holeCards?: string[];
@@ -33,7 +34,10 @@ export interface GameEnd {
     winnerChips?: number;
     isForfeit: boolean;
     abandoned?: boolean;
+    /** `INACTIVITY` for an abandoned game; for a forfeit win `TURN_TIMEOUT`, `PLAYER_LEFT` or `DISCONNECTED`. */
     reason?: string | null;
+    /** For a forfeit win with a known reason: the players who forfeited, in seat order. */
+    forfeitedPlayers?: string[];
     message: string;
 }
 

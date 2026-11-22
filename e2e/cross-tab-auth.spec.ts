@@ -53,6 +53,6 @@ test.describe('Tab-local authentication', () => {
     const reviewRegion = guestPage.getByRole('region', { name: /game review/i });
     await expect(reviewRegion).toBeVisible({ timeout: 15000 });
     await expect(reviewRegion).toContainText(/GuestBob wins!/i);
-    await expect(reviewRegion).toContainText(/won by forfeit/i);
+    await expect(reviewRegion).toContainText(/left the table/i);
   });
 });

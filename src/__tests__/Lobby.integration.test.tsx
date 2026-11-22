@@ -305,7 +305,7 @@ describe('Lobby Integration', () => {
     await user.click(within(quickJoinRegion).getByRole('button', { name: /join game/i }))
 
     const alert = await screen.findByRole('alert')
-    expect(alert).toHaveTextContent('Technical difficulties.')
+    expect(alert).toHaveTextContent('Something went wrong on our end. Please try again.')
     expect(alert.textContent).not.toContain('<!DOCTYPE')
     expect(alert.textContent).not.toContain('<html>')
 

@@ -342,8 +342,25 @@ export function PlayerAvatar({
                 <span className="font-bold text-gold-secondary leading-none" style={{ fontSize: `${fontPx(size === 'sm' ? 8 : 9, textScale)}px` }}>{player.chips.toLocaleString()}</span>
             </div>
 
-            {/* Action Indicator */}
-            {isCurrent && !isDisconnected && !isWinner && (
+            {player.isDealer && (
+                <div
+                    data-testid="seat-dealer-button"
+                    role="img"
+                    aria-label="Dealer"
+                    className="absolute rounded-full bg-white text-surface border border-zinc-300 shadow-md flex items-center justify-center leading-none"
+                    style={{
+                        left: `-${scale * 6}px`,
+                        bottom: `${scale * 6}px`,
+                        width: `${Math.max(14, scale * 18)}px`,
+                        height: `${Math.max(14, scale * 18)}px`,
+                    }}
+                >
+                    <span aria-hidden="true" className="font-headline font-extrabold leading-none" style={{ fontSize: `${fontPx(9, textScale)}px` }}>D</span>
+                </div>
+            )}
+
+            {/* Action Indicator: the countdown badge takes this corner while a turn timer runs. */}
+            {isCurrent && !isDisconnected && !isWinner && typeof turnSecondsRemaining !== 'number' && (
                 <div
                     data-testid="seat-turn-indicator"
                     className="absolute bg-emerald-primary rounded-full animate-pulse motion-reduce:animate-none shadow-[0_0_10px_rgba(170,234,208,0.5)]"
@@ -365,17 +382,17 @@ export function PlayerAvatar({
                         'absolute border shadow-md flex items-center justify-center whitespace-nowrap leading-none font-headline font-bold z-30',
                         turnSecondsRemaining <= 10
                             ? 'bg-amber-500 text-surface border-amber-300 animate-pulse motion-reduce:animate-none'
-                            : 'bg-surface-higher/90 text-emerald-primary border-emerald-primary/40'
+                            : 'bg-surface-highest text-emerald-primary border-emerald-primary/60'
                     )}
                     style={{
-                        top: `-${scale * 8}px`,
-                        right: `-${scale * 8}px`,
-                        paddingLeft: `${scale * 5}px`,
-                        paddingRight: `${scale * 5}px`,
-                        paddingTop: `${Math.max(1, Math.round(scale * 1.5))}px`,
-                        paddingBottom: `${Math.max(1, Math.round(scale * 1.5))}px`,
+                        top: `-${scale * 10}px`,
+                        right: `-${scale * 12}px`,
+                        paddingLeft: `${scale * 6}px`,
+                        paddingRight: `${scale * 6}px`,
+                        paddingTop: `${Math.max(2, Math.round(scale * 2.5))}px`,
+                        paddingBottom: `${Math.max(2, Math.round(scale * 2.5))}px`,
                         borderRadius: `${scale * 999}px`,
-                        fontSize: `${fontPx(8, textScale)}px`,
+                        fontSize: `${fontPx(9, textScale)}px`,
                     }}
                 >
                     <span>{turnSecondsRemaining}s</span>

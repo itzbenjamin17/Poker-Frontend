@@ -138,7 +138,7 @@ describe('GameView - Collapsed Round Summary Integration', () => {
         });
 
         const summary = await screen.findByRole('region', { name: /round result/i });
-        expect(within(summary).getByText(/testplayer won by forfeit/i)).toBeInTheDocument();
+        expect(within(summary).getByText(/testplayer won — everyone folded/i)).toBeInTheDocument();
         expect(within(summary).queryByText(/won with/i)).not.toBeInTheDocument();
     });
 
@@ -164,7 +164,7 @@ describe('GameView - Collapsed Round Summary Integration', () => {
         });
 
         const summary = await screen.findByRole('region', { name: /round result/i });
-        expect(within(summary).getByText(/testplayer won by forfeit/i)).toBeInTheDocument();
+        expect(within(summary).getByText(/testplayer won — everyone folded/i)).toBeInTheDocument();
         expect(within(summary).queryByText(/won with/i)).not.toBeInTheDocument();
     });
 

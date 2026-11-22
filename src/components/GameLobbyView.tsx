@@ -7,7 +7,7 @@ import { NotificationBanner, type NotificationControls } from './NotificationBan
 import {
     GAME_LOBBY_LABEL,
     BTN_START_GAME, BTN_STARTING_GAME, LABEL_WAITING_HOST,
-    LABEL_BLINDS, LABEL_MIN_BUYIN,
+    LABEL_BLINDS, LABEL_BUYIN, formatChips,
     LABEL_TURN_TIME, LABEL_TURN_TIME_VALUE, LABEL_TURN_TIME_EXPLANATION,
     LABEL_TABLE_RULES, LABEL_HOST, ERROR_COPY_ROOM_CODE, COPY_ROOM_CODE_SUCCESS, ARIA_COPY_ROOM_CODE,
     LABEL_INACTIVITY_LIMIT, VALUE_INACTIVITY_LIMIT, LOBBY_TIMING_RULE_DESC,
@@ -95,11 +95,11 @@ export function GameLobbyView({
 
     const blindsLabel =
         typeof roomState.smallBlind === 'number' && typeof roomState.bigBlind === 'number'
-            ? `$${roomState.smallBlind.toLocaleString()} / $${roomState.bigBlind.toLocaleString()}`
+            ? `${roomState.smallBlind.toLocaleString()} / ${formatChips(roomState.bigBlind)}`
             : 'Waiting...';
     const buyInLabel =
         typeof roomState.buyIn === 'number'
-            ? `$${roomState.buyIn.toLocaleString()}`
+            ? formatChips(roomState.buyIn)
             : 'Waiting...';
 
     const effectivePlayerName = playerName ?? auth?.playerName;
@@ -212,7 +212,7 @@ export function GameLobbyView({
                                     <span className="text-emerald-primary font-bold">{blindsLabel}</span>
                                 </div>
                                 <div className="flex justify-between">
-                                    <span className="text-zinc-400 uppercase text-[0.625rem] font-bold">{LABEL_MIN_BUYIN}</span>
+                                    <span className="text-zinc-400 uppercase text-[0.625rem] font-bold">{LABEL_BUYIN}</span>
                                     <span className="text-emerald-primary font-bold">{buyInLabel}</span>
                                 </div>
                                 <div className="flex justify-between">

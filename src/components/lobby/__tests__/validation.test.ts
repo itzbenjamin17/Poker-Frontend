@@ -51,7 +51,7 @@ describe('validateCreate', () => {
         expect(validateCreate({ ...validConfig, bigBlind: '' }))
             .toBe(`Big blind must be between ${VALIDATION.bigBlind.min} and ${VALIDATION.bigBlind.max.toLocaleString()}.`);
         expect(validateCreate({ ...validConfig, buyIn: '' }))
-            .toBe(`Buy-in must be between $${VALIDATION.buyIn.min} and $${VALIDATION.buyIn.max.toLocaleString()}.`);
+            .toBe(`Buy-in must be between ${VALIDATION.buyIn.min.toLocaleString()} and ${VALIDATION.buyIn.max.toLocaleString()} chips.`);
     });
 
     test('rejects empty or whitespace-only room name', () => {
@@ -108,9 +108,9 @@ describe('validateCreate', () => {
 
     test('rejects buy-in below minimum or above maximum', () => {
         expect(validateCreate({ ...validConfig, buyIn: 10 }))
-            .toBe(`Buy-in must be between $${VALIDATION.buyIn.min} and $${VALIDATION.buyIn.max.toLocaleString()}.`);
+            .toBe(`Buy-in must be between ${VALIDATION.buyIn.min.toLocaleString()} and ${VALIDATION.buyIn.max.toLocaleString()} chips.`);
         expect(validateCreate({ ...validConfig, buyIn: 2_000_000 }))
-            .toBe(`Buy-in must be between $${VALIDATION.buyIn.min} and $${VALIDATION.buyIn.max.toLocaleString()}.`);
+            .toBe(`Buy-in must be between ${VALIDATION.buyIn.min.toLocaleString()} and ${VALIDATION.buyIn.max.toLocaleString()} chips.`);
     });
 
     test.each([1, 11, 2.5, 'invalid'])('rejects invalid maxPlayers value %j', (maxPlayers) => {

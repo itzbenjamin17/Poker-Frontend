@@ -22,6 +22,8 @@ import {
 } from '../lib/payloads';
 import {
     HOST_LEFT,
+    ERROR_SEND_ACTION_FAILED,
+    ERROR_SEND_READY_FAILED,
     LOBBY_INACTIVE_CLOSED,
     ERROR_INITIAL_TABLE_LOAD,
     SESSION_EXPIRED,
@@ -1802,7 +1804,7 @@ export class GameSession {
         } catch (err) {
             this.releaseActionLock('PLAY_ACTION');
             logger.error('Failed to publish PLAY_ACTION:', err);
-            this.setNotification('System malfunction');
+            this.setNotification(ERROR_SEND_ACTION_FAILED);
         }
     }
 
@@ -1824,7 +1826,7 @@ export class GameSession {
         } catch (err) {
             this.releaseActionLock('READY');
             logger.error('Failed to publish READY:', err);
-            this.setNotification('System malfunction');
+            this.setNotification(ERROR_SEND_READY_FAILED);
         }
     }
 
@@ -1846,7 +1848,7 @@ export class GameSession {
         } catch (err) {
             this.releaseActionLock('UNREADY');
             logger.error('Failed to publish UNREADY:', err);
-            this.setNotification('System malfunction');
+            this.setNotification(ERROR_SEND_READY_FAILED);
         }
     }
 

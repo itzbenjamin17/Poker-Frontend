@@ -15,6 +15,7 @@ import {
     BTN_LEAVE_TABLE, BTN_CLAIM_WIN, BTN_CLAIMING,
     BTN_CONFIRM_LEAVE, BTN_CANCEL_LEAVE, CONFIRM_LEAVE_TABLE_TITLE, CONFIRM_LEAVE_TABLE_MESSAGE,
     TABLE_INACTIVITY_WARNING_TITLE, TABLE_INACTIVITY_WARNING_MESSAGE,
+    BUSTED_TITLE, BUSTED_MESSAGE,
 } from '../constants/strings';
 
 export interface GameTableViewProps {
@@ -139,9 +140,11 @@ export function GameTableView({
         if (myIndex < 0 && effectivePlayerName) {
             myIndex = players.findIndex((p) => p.name === effectivePlayerName);
         }
-        return myIndex <= 0
+        const rotated = myIndex <= 0
             ? players
             : [...players.slice(myIndex), ...players.slice(0, myIndex)];
+        // Busted opponents stay on the server roster (for the final standings) but no longer have a seat.
+        return rotated.filter((player, index) => player.status !== 'OUT' || (index === 0 && myIndex >= 0));
     }, [players, resolvedHeroId, effectivePlayerName]);
 
     const readyEligiblePlayers = useMemo(
@@ -155,6 +158,7 @@ export function GameTableView({
 
     const isMyTurn = Boolean(resolvedHeroId && gameState.currentPlayerId === resolvedHeroId);
     const isSelfDisconnected = me?.status === 'DISCONNECTED';
+    const isBusted = me?.status === 'OUT';
     const isReadyCountdownActive = Boolean(gameState.isReadyCountdownActive && gameState.readyGateState !== 'WAITING_FOR_PLAYERS');
     const currentTurnPlayer = players.find((p) => p.id === gameState.currentPlayerId)
         ?? players.find((p) => p.name === gameState.currentPlayerName);
@@ -197,20 +201,6 @@ export function GameTableView({
         >
             <NotificationBanner notification={notification} sequence={notificationSequence} {...notificationControls} />
 
-            {effectiveIsGameInactivityWarningActive && (
-                <div
-                    role="status"
-                    aria-live="polite"
-                    className="absolute top-16 md:top-20 inset-x-4 md:inset-x-auto md:left-1/2 md:-translate-x-1/2 z-40 max-w-lg p-3 rounded-xl border border-amber-500/30 bg-amber-500/10 text-amber-200 flex items-center gap-3 text-sm backdrop-blur-sm shadow-lg pointer-events-none"
-                >
-                    <AlertTriangle aria-hidden="true" className="w-5 h-5 shrink-0 text-amber-400" />
-                    <div className="flex-1">
-                        <p className="font-semibold text-xs md:text-sm">{TABLE_INACTIVITY_WARNING_TITLE}</p>
-                        <p className="text-zinc-300 text-[0.6875rem] md:text-xs mt-0.5">{TABLE_INACTIVITY_WARNING_MESSAGE}</p>
-                    </div>
-                </div>
-            )}
-
             {showStandaloneOverlay && (
                 <ReconnectOverlay
                     role="alert"
@@ -248,6 +238,22 @@ export function GameTableView({
 
             {/* WebSocket connection status badge */}
             {!hasShellHeader && <WsStatusBadge status={wsStatus} />}
+
+            {/* In the layout flow, so the table re-fits below it rather than being covered by it. */}
+            {effectiveIsGameInactivityWarningActive && (
+                <div
+                    role="status"
+                    aria-live="polite"
+                    className="shrink-0 mx-auto mt-2 short:mt-1 w-[calc(100%-2rem)] max-w-2xl px-3 py-1.5 rounded-xl border border-amber-500/30 bg-amber-500/10 text-amber-200 flex items-center gap-2.5"
+                >
+                    <AlertTriangle aria-hidden="true" className="w-4 h-4 shrink-0 text-amber-400" />
+                    <p className="flex-1 min-w-0 text-[0.6875rem] md:text-xs leading-snug">
+                        <span className="font-semibold text-amber-200">{TABLE_INACTIVITY_WARNING_TITLE}</span>
+                        <span className="sr-only">: </span>
+                        <span className="ml-2 text-zinc-300">{TABLE_INACTIVITY_WARNING_MESSAGE}</span>
+                    </p>
+                </div>
+            )}
 
             {/* Table Area */}
             <RoomStage>
@@ -303,6 +309,8 @@ export function GameTableView({
                         onUnready={onUnready}
                         isMobileLandscape={isMobileLandscape}
                     />
+                ) : isBusted ? (
+                    <BustedDock onLeave={onLeaveGame} isMobileLandscape={isMobileLandscape} />
                 ) : (
                     <ActionPanel
                         gameState={gameState}
@@ -336,6 +344,35 @@ export function GameTableView({
                 )}
             </RoomDock>
         </main>
+    );
+}
+
+// ─── Busted Dock ──────────────────────────────────────────────────────────────
+
+/** Replaces the action dock once the hero has no chips: the server no longer deals them in. */
+function BustedDock({ onLeave, isMobileLandscape }: { onLeave: () => void; isMobileLandscape: boolean }) {
+    return (
+        <section
+            aria-label="Action dock"
+            style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 8px)' }}
+            className={cn(
+                'flex h-full w-full min-w-0 items-center justify-center gap-4 border-t border-white/5 bg-surface-high',
+                isMobileLandscape ? 'px-3 py-1' : 'px-4 py-2 md:px-6',
+            )}
+        >
+            <div role="status" className="min-w-0 text-left">
+                <p className="font-headline font-bold text-white text-sm md:text-base">{BUSTED_TITLE}</p>
+                <p className="text-zinc-400 text-xs">{BUSTED_MESSAGE}</p>
+            </div>
+            <Button
+                variant="outline"
+                size={isMobileLandscape ? 'xs' : 'sm'}
+                onClick={onLeave}
+                className="shrink-0 border-red-500/50 text-red-400 hover:bg-red-500/10"
+            >
+                {BTN_LEAVE_TABLE}
+            </Button>
+        </section>
     );
 }
 

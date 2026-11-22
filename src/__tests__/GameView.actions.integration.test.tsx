@@ -383,7 +383,7 @@ describe('GameView - Actions & Flows Integration', () => {
         const gameOverTitle = await screen.findByRole('heading', { name: /game over/i });
         expect(gameOverTitle).toBeInTheDocument();
         expect(screen.getByText(/TestPlayer wins!/i)).toBeInTheDocument();
-        expect(screen.getByText(/Collected 2000 chips/i)).toBeInTheDocument();
+        expect(screen.getByText(/Finished with 2,000 chips/i)).toBeInTheDocument();
 
         // Check if player standings are rendered (GameReviewView feature)
         expect(screen.getByText('Opponent')).toBeInTheDocument();

@@ -543,14 +543,14 @@ describe('PlayerPod external label, short seat label and bounded status', () => 
     it('shows the short category with the full text as title when a ladder tier is given, and the full text for the hero', () => {
         const { rerender } = render(<PlayerPod player={makePlayer()} scale={1} {...threeKind} handRankTier="standard" />);
         expect(screen.getByTestId('seat-hand-rank')).toHaveTextContent('3 OF A KIND');
-        expect(screen.getByTestId('seat-hand-rank')).toHaveAttribute('title', 'Three of a Kind (9s)');
+        expect(screen.getByTestId('seat-hand-rank')).toHaveAttribute('title', 'Three of a Kind (Nines)');
 
         rerender(<PlayerPod player={makePlayer()} scale={1} {...threeKind} handRankTier="compact" />);
         expect(screen.getByTestId('seat-hand-rank')).toHaveTextContent('TRIPS');
-        expect(screen.getByTestId('seat-hand-rank')).toHaveAttribute('title', 'Three of a Kind (9s)');
+        expect(screen.getByTestId('seat-hand-rank')).toHaveAttribute('title', 'Three of a Kind (Nines)');
 
         rerender(<PlayerPod player={makePlayer()} scale={1} {...threeKind} />);
-        expect(screen.getByTestId('seat-hand-rank')).toHaveTextContent('Three of a Kind (9s)');
+        expect(screen.getByTestId('seat-hand-rank')).toHaveTextContent('Three of a Kind (Nines)');
         expect(screen.getByTestId('seat-hand-rank')).not.toHaveAttribute('title');
     });
 
@@ -740,7 +740,7 @@ describe('OpponentSeats card fan and label row', () => {
         );
         const label = screen.getByTestId('seat-hand-rank');
         expect(label).toHaveTextContent('3 OF A KIND');
-        expect(label).toHaveAttribute('title', 'Three of a Kind (9s)');
+        expect(label).toHaveAttribute('title', 'Three of a Kind (Nines)');
         expect(label.parentElement!.className).toContain('top-full');
     });
 

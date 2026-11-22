@@ -50,8 +50,8 @@ describe('GameLobbyView', () => {
 
         expect(screen.getByRole('region', { name: /game lobby/i })).toBeInTheDocument();
         expect(screen.getByText('HighRollers')).toBeInTheDocument();
-        expect(screen.getByText('$10 / $20')).toBeInTheDocument();
-        expect(screen.getByText('$1,000')).toBeInTheDocument();
+        expect(screen.getByText('10 / 20 chips')).toBeInTheDocument();
+        expect(screen.getByText('1,000 chips')).toBeInTheDocument();
         expect(screen.getByText('HostPlayer')).toBeInTheDocument();
         expect(screen.getByText('GuestPlayer')).toBeInTheDocument();
         expect(screen.getByLabelText('HOST')).toBeInTheDocument();

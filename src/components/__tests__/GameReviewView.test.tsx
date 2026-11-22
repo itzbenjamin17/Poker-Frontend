@@ -61,7 +61,7 @@ describe('GameReviewView', () => {
 
         expect(screen.getByRole('region', { name: /game review/i })).toBeInTheDocument();
         expect(screen.getByText(/WinnerPlayer wins!/i)).toBeInTheDocument();
-        expect(screen.getByText(/Collected 5000 chips/i)).toBeInTheDocument();
+        expect(screen.getByText(/Finished with 5,000 chips/i)).toBeInTheDocument();
         
         // Check final standings
         expect(screen.getByText('WinnerPlayer')).toBeInTheDocument();
@@ -89,6 +89,49 @@ describe('GameReviewView', () => {
         );
 
         expect(screen.getByText(/Won by forfeit/i)).toBeInTheDocument();
+    });
+
+    describe('forfeit reason from the server', () => {
+        const forfeitedBy = (reason: string | undefined, forfeitedPlayers: string[] | undefined): PublicGameStateResponse => ({
+            ...mockGameState,
+            gameId: 'ROOM1',
+            gameEnd: {
+                winner: 'WinnerPlayer',
+                winnerChips: 5000,
+                isForfeit: true,
+                reason,
+                forfeitedPlayers,
+                message: 'WinnerPlayer wins the game with 5000 chips!',
+            },
+        });
+
+        it.each([
+            ['TURN_TIMEOUT', 'You ran out of time on your turn.', 'LoserPlayer ran out of time on their turn.'],
+            ['PLAYER_LEFT', 'You left the table.', 'LoserPlayer left the table.'],
+            ['DISCONNECTED', "You lost connection and didn't return in time.", "LoserPlayer lost connection and didn't return in time."],
+        ])('%s: tells the forfeiting player and the winner what happened', (reason, toForfeiter, toWinner) => {
+            const result = forfeitedBy(reason, ['LoserPlayer']);
+            const { unmount } = render(<GameReviewView gameEndResult={result} playerName="LoserPlayer" onLeave={mockOnLeave} />);
+            expect(screen.getByText(toForfeiter)).toBeInTheDocument();
+            expect(screen.queryByText(/won by forfeit/i)).not.toBeInTheDocument();
+            unmount();
+
+            render(<GameReviewView gameEndResult={result} playerName="WinnerPlayer" onLeave={mockOnLeave} />);
+            expect(screen.getByText(toWinner)).toBeInTheDocument();
+        });
+
+        it('names several players who forfeited together', () => {
+            render(<GameReviewView gameEndResult={forfeitedBy('DISCONNECTED', ['Ben', 'Cal', 'Dee'])} playerName="WinnerPlayer" onLeave={mockOnLeave} />);
+            expect(screen.getByText("Ben, Cal and Dee lost connection and didn't return in time.")).toBeInTheDocument();
+        });
+
+        it('falls back to the generic forfeit note when the reason is missing or unknown', () => {
+            const { unmount } = render(<GameReviewView gameEndResult={forfeitedBy(undefined, undefined)} playerName="WinnerPlayer" onLeave={mockOnLeave} />);
+            expect(screen.getByText('(Won by forfeit)')).toBeInTheDocument();
+            unmount();
+            render(<GameReviewView gameEndResult={forfeitedBy('SOMETHING_NEW', ['LoserPlayer'])} playerName="WinnerPlayer" onLeave={mockOnLeave} />);
+            expect(screen.getByText('(Won by forfeit)')).toBeInTheDocument();
+        });
     });
 
     it('does not render Action dock or Leave Table button', () => {

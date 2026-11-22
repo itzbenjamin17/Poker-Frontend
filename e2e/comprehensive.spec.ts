@@ -189,7 +189,7 @@ test.describe('Comprehensive Poker Scenarios', () => {
         const hostReadyBtn = hostPage.getByRole('button', { name: /^ready$/i });
         await expect(hostReadyBtn).toBeVisible({ timeout: 15000 });
         await hostReadyBtn.click();
-        await expect(hostPage.getByRole('button', { name: /unready/i })).toBeVisible();
+        await expect(hostPage.getByRole('button', { name: /cancel ready/i })).toBeVisible();
 
         const guestReadyBtn = guestPage.getByRole('button', { name: /^ready$/i });
         await expect(guestReadyBtn).toBeVisible();
@@ -212,7 +212,7 @@ test.describe('Comprehensive Poker Scenarios', () => {
         await expect(reviewRegion).toBeVisible({ timeout: 15000 });
         await expect(reviewRegion).toContainText(/game over/i);
         await expect(reviewRegion).toContainText(/host wins!/i);
-        await expect(reviewRegion).toContainText(/won by forfeit/i);
+        await expect(reviewRegion).toContainText(/left the table/i);
 
         // Review Refresh Persistence: Reload hostPage while on the review screen, and verify reviewRegion
         // is restored from the tab-local sessionStorage envelope
@@ -220,7 +220,7 @@ test.describe('Comprehensive Poker Scenarios', () => {
         await expect(reviewRegion).toBeVisible({ timeout: 15000 });
         await expect(reviewRegion).toContainText(/game over/i);
         await expect(reviewRegion).toContainText(/host wins!/i);
-        await expect(reviewRegion).toContainText(/won by forfeit/i);
+        await expect(reviewRegion).toContainText(/left the table/i);
 
         // Click LEAVE on the review screen and verify hostPage returns to the main lobby
         await reviewRegion.getByRole('button', { name: /^leave$/i }).click();

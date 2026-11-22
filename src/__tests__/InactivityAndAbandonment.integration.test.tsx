@@ -71,7 +71,7 @@ function expectAbandonmentReview() {
     expect(within(review).getByRole('heading', { name: 'Chips when play stopped' })).toBeVisible();
     expect(within(review).getByText('990 chips')).toBeVisible();
     expect(within(review).getByText('980 chips')).toBeVisible();
-    expect(within(review).queryByText(/wins!|WINNER|Collected|Final Standings/)).not.toBeInTheDocument();
+    expect(within(review).queryByText(/wins!|WINNER|Finished with|Final Standings/)).not.toBeInTheDocument();
     expect(review.querySelector('.lucide-trophy')).toBeNull();
     // Public snapshots omit unrevealed holeCards ("??" is not a valid wire card).
     // Only the three community cards may appear, including after local recovery.
@@ -220,7 +220,7 @@ describe('Inactivity and abandonment UI integration (checks 12–24)', () => {
         render(<GameView auth={auth} />);
         await connected(true);
         warning(TABLE_INACTIVITY_WARNING_TITLE);
-        fireEvent.click(screen.getByRole('button', { name: wasReady ? /unready/i : /^ready$/i }));
+        fireEvent.click(screen.getByRole('button', { name: wasReady ? /cancel ready/i : /^ready$/i }));
         expect(publish).toHaveBeenCalledWith(expect.objectContaining({ destination: `/app/${auth.roomId}/${wasReady ? 'unready' : 'ready'}` }));
         warning(TABLE_INACTIVITY_WARNING_TITLE);
         state.game = { ...state.game, inactivityDeadlineEpochMs: Date.now() + 900_000,
@@ -228,7 +228,7 @@ describe('Inactivity and abandonment UI integration (checks 12–24)', () => {
         };
         await frame(gameTopic, { ...state.game, serverTimeEpochMs: Date.now() });
         expect(screen.queryByText(TABLE_INACTIVITY_WARNING_TITLE)).not.toBeInTheDocument();
-        expect(screen.getByRole('button', { name: wasReady ? /^ready$/i : /unready/i })).toBeEnabled();
+        expect(screen.getByRole('button', { name: wasReady ? /^ready$/i : /cancel ready/i })).toBeEnabled();
     });
 
     it('18, 24: a late action error releases the controls without extending inactivity', async () => {

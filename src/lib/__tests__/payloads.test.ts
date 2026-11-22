@@ -213,6 +213,31 @@ describe('lib/payloads - Type Guards and Normalizers', () => {
             expect(isGameStatePayload(createValidGameState({ players: [createValidPlayer()] }))).toBe(true);
         });
 
+        it('decodes the server dealer flag and rejects a non-boolean one', () => {
+            const dealt = decodeGameStatePayload(createValidGameState({
+                players: [createValidPlayer({ id: 'a', name: 'Ann', isDealer: true }), createValidPlayer({ id: 'b', name: 'Ben', isDealer: false })],
+            }));
+            expect(dealt?.players.map((p) => p.isDealer)).toEqual([true, false]);
+
+            const bad = createValidGameState({ players: [createValidPlayer({ id: 'a', name: 'Ann' })] });
+            (bad.players[0] as unknown as Record<string, unknown>).isDealer = 'yes';
+            expect(decodeGameStatePayload(bad)).toBeNull();
+        });
+
+        it('decodes a forfeit reason with the players who forfeited, and rejects malformed names', () => {
+            const forfeit = (forfeitedPlayers: unknown) => ({
+                ...createValidGameState({ gameId: 'room-1' }),
+                gameId: 'room-1',
+                gameEnd: { winner: 'Ann', winnerChips: 2000, isForfeit: true, reason: 'TURN_TIMEOUT', forfeitedPlayers, message: 'Ann wins the game with 2000 chips!' },
+            });
+
+            const decoded = decodeCompletedGameState(forfeit(['Ben']), 'room-1');
+            expect(decoded?.gameEnd).toMatchObject({ reason: 'TURN_TIMEOUT', forfeitedPlayers: ['Ben'] });
+            expect(decodeCompletedGameState(forfeit('Ben'), 'room-1')).toBeNull();
+            expect(decodeCompletedGameState(forfeit(['']), 'room-1')).toBeNull();
+            expect(decodeCompletedGameState(forfeit(null), 'room-1')?.gameEnd?.forfeitedPlayers).toBeUndefined();
+        });
+
         it('decodes stateRevision when provided and rejects negative stateRevision', () => {
             const valid = decodeGameStatePayload(createValidGameState({ stateRevision: 42 }));
             expect(valid?.stateRevision).toBe(42);

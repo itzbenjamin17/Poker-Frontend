@@ -6,6 +6,11 @@
 // ─── App / Nav ────────────────────────────────────────────────────────────────
 export const APP_NAME = 'POKER';
 
+// ─── Chips ────────────────────────────────────────────────────────────────────
+export const LABEL_CHIPS = 'chips';
+/** Formats a chip amount for display and screen readers, e.g. "1,500 chips". */
+export const formatChips = (amount: number) => `${amount.toLocaleString()} ${LABEL_CHIPS}`;
+
 // ─── Auth / Session ───────────────────────────────────────────────────────────
 export const AUTH_KEY = 'poker-auth';
 export const SESSION_RESTORING = 'Restoring your seat...';
@@ -94,10 +99,11 @@ export const BTN_START_GAME = 'START GAME';
 export const BTN_STARTING_GAME = 'STARTING...';
 export const LABEL_WAITING_HOST = 'Waiting for host to start...';
 export const LABEL_BLINDS = 'Blinds';
-export const LABEL_MIN_BUYIN = 'Min Buy-in';
+/** Every player starts with exactly this stack; there is no amount to choose when joining. */
+export const LABEL_BUYIN = 'Buy-in';
 export const LABEL_TURN_TIME = 'Turn Time';
 export const LABEL_TURN_TIME_VALUE = '60s';
-export const LABEL_TURN_TIME_EXPLANATION = 'Each player has 60 seconds to act. Expired turns result in removal from the table';
+export const LABEL_TURN_TIME_EXPLANATION = 'Each player has 60 seconds to act. Expired turns result in removal from the table.';
 export const LABEL_TURN_WARNING_SR = 'Warning: 10 seconds or less remaining to act.';
 export const LABEL_TURN_WARNING_BADGE = (seconds: number) => `⚠️ ${seconds}s left`;
 export const LABEL_TABLE_RULES = 'Table Rules';
@@ -136,8 +142,12 @@ export const LABEL_UNCALLED = 'Uncalled';
 // ─── Ready Countdown ─────────────────────────────────────────────────────────
 export const READY_PROMPT = 'Round complete. Confirm READY to continue.';
 export const BTN_READY = 'READY';
-export const BTN_UNREADY = 'WAITING... (UNREADY)';
+export const BTN_UNREADY = 'CANCEL READY';
 export const LABEL_PLAYERS_READY_SUFFIX = 'players ready';
+
+// ─── Busted ───────────────────────────────────────────────────────────────────
+export const BUSTED_TITLE = "You're out of chips";
+export const BUSTED_MESSAGE = 'The game carries on without you. Watch the rest or leave the table.';
 
 // ─── Showdown ─────────────────────────────────────────────────────────────────
 export const SHOWDOWN_ROUND_RESULT = 'Round Result';
@@ -145,7 +155,8 @@ export const SHOWDOWN_PROCESSING = 'Processing results...';
 export const SHOWDOWN_HAND_COMPLETE = 'Hand complete';
 export const SHOWDOWN_CARRY_OVER = 'chips carry over';
 export const SHOWDOWN_MULTIPLE_WINNERS = 'Contested pots awarded to';
-export const SHOWDOWN_FORFEIT_SUFFIX = ' won by forfeit!';
+/** Result line when every other player folded, e.g. "Ann won — everyone folded". */
+export const SHOWDOWN_EVERYONE_FOLDED_SUFFIX = ' won — everyone folded';
 export const SHOWDOWN_WIN_SUFFIX = ' won!';
 export const SHOWDOWN_WON_WITH_PREFIX = 'Won with ';
 export const ARIA_ROUND_RESULT = 'Round Result';
@@ -173,13 +184,16 @@ export const formatRoomNameMaxError = (max: number) => `Room name must be at mos
 export const formatPlayerAliasMaxError = (max: number) => `Alias must be at most ${max} characters.`;
 export const formatSmallBlindRangeError = (min: number, max: number) => `Small blind must be between ${min} and ${max.toLocaleString()}.`;
 export const formatBigBlindRangeError = (min: number, max: number) => `Big blind must be between ${min} and ${max.toLocaleString()}.`;
-export const formatBuyInRangeError = (min: number, max: number) => `Buy-in must be between $${min} and $${max.toLocaleString()}.`;
+export const formatBuyInRangeError = (min: number, max: number) => `Buy-in must be between ${min.toLocaleString()} and ${formatChips(max)}.`;
 
 // ─── Error normalizer fallbacks ───────────────────────────────────────────────
 export const ERROR_INVALID_FORMAT = 'Invalid request format. Please try again.';
-export const ERROR_TECHNICAL = 'Technical difficulties.';
+export const ERROR_TECHNICAL = 'Something went wrong on our end. Please try again.';
+export const STATUS_DEALING_REMAINING = 'Dealing the remaining cards...';
 export const ERROR_SYSTEM = 'A system error occurred. Please try again.';
 export const ERROR_REQUEST_TIMEOUT = 'Request timed out. Please try again.';
+export const ERROR_SEND_ACTION_FAILED = "Couldn't send your move. Check your connection and try again.";
+export const ERROR_SEND_READY_FAILED = "Couldn't update your ready status. Check your connection and try again.";
 export const ERROR_MALFORMED_AUTH = 'Malformed authentication response from server.';
 
 // ─── Waiting / Reconnect ─────────────────────────────────────────────────────
@@ -194,6 +208,22 @@ export const CARD_PLACEHOLDER_RIVER = 'RIVER';
 export const BTN_LEAVE_REVIEW = 'LEAVE';
 export const REVIEW_TITLE = 'GAME OVER';
 export const REVIEW_FORFEIT_NOTE = '(Won by forfeit)';
+export const formatReviewFinalStack = (chips: number) => `Finished with ${formatChips(chips)}`;
+/** Why a forfeit win happened, by the server's reason code: told to the player who forfeited. */
+export const REVIEW_FORFEIT_BY_YOU: Record<string, string> = {
+    TURN_TIMEOUT: 'You ran out of time on your turn.',
+    PLAYER_LEFT: 'You left the table.',
+    DISCONNECTED: "You lost connection and didn't return in time.",
+};
+/** Why a forfeit win happened, by the server's reason code: told to everyone else; `names` is already joined. */
+export const REVIEW_FORFEIT_BY_OTHERS: Record<string, (names: string) => string> = {
+    TURN_TIMEOUT: (names) => `${names} ran out of time on their turn.`,
+    PLAYER_LEFT: (names) => `${names} left the table.`,
+    DISCONNECTED: (names) => `${names} lost connection and didn't return in time.`,
+};
+/** Joins names as "Ben", "Ben and Cal", "Ben, Cal and Dee". */
+export const formatNameList = (names: readonly string[]) =>
+    names.length <= 1 ? (names[0] ?? '') : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
 export const REVIEW_FINAL_BOARD_LABEL = 'Final Community Board';
 export const REVIEW_ABANDONED_TITLE = 'GAME ABANDONED';
 export const REVIEW_ABANDONED_REASON = 'Closed due to inactivity';

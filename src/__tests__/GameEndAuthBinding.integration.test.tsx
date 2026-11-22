@@ -115,7 +115,7 @@ describe('GameEnd Auth Binding & Offline Review Integration', () => {
         const gameOverHeading = await screen.findByRole('heading', { name: /game over/i });
         expect(gameOverHeading).toBeInTheDocument();
         expect(screen.getByText(/Alice wins!/i)).toBeInTheDocument();
-        expect(screen.getByText(/Collected 5000 chips/i)).toBeInTheDocument();
+        expect(screen.getByText(/Finished with 5,000 chips/i)).toBeInTheDocument();
 
         // Check community cards from finalState
         expect(screen.getByTestId('board-card-0')).toBeInTheDocument();

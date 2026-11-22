@@ -12,17 +12,31 @@ import {
     REVIEW_ABANDONED_REASON,
     REVIEW_STOPPED_CHIPS_LABEL,
     REVIEW_STOPPED_TABLE_LABEL,
+    REVIEW_FORFEIT_BY_YOU,
+    REVIEW_FORFEIT_BY_OTHERS,
+    formatNameList,
+    formatReviewFinalStack,
 } from '../constants/strings';
 import type { PublicGameStateResponse } from '../types';
 
 export interface GameReviewViewProps {
     gameEndResult: PublicGameStateResponse | null;
+    /** The viewing player, so a timeout note can address them directly. */
+    playerName?: string | null;
     onLeave: () => void;
     leaveError?: string | null;
     onRetryLeave?: () => void;
 }
 
-export function GameReviewView({ gameEndResult, onLeave, leaveError, onRetryLeave }: GameReviewViewProps) {
+/** The sentence explaining a forfeit win, or null when the server gave no reason this client knows. */
+function forfeitReasonText(reason: string | null | undefined, forfeitedPlayers: string[] | undefined, viewer?: string | null): string | null {
+    if (!reason || !forfeitedPlayers?.length) return null;
+    if (viewer && forfeitedPlayers.includes(viewer)) return REVIEW_FORFEIT_BY_YOU[reason] ?? null;
+    const describe = REVIEW_FORFEIT_BY_OTHERS[reason];
+    return describe ? describe(formatNameList(forfeitedPlayers)) : null;
+}
+
+export function GameReviewView({ gameEndResult, playerName, onLeave, leaveError, onRetryLeave }: GameReviewViewProps) {
     if (!gameEndResult || !gameEndResult.gameEnd) return null;
 
     const end = gameEndResult.gameEnd;
@@ -30,6 +44,8 @@ export function GameReviewView({ gameEndResult, onLeave, leaveError, onRetryLeav
     const winnerName = isAbandoned ? null : end.winner;
     const isForfeit = isAbandoned ? false : end.isForfeit;
     const winnerChips = isAbandoned ? undefined : end.winnerChips;
+    const forfeitReason = forfeitReasonText(end.reason, end.forfeitedPlayers, playerName);
+    const forfeitNote = forfeitReason ?? REVIEW_FORFEIT_NOTE;
 
     const sourcePlayers = gameEndResult.players ?? [];
     const sortedPlayers = isAbandoned
@@ -82,13 +98,19 @@ export function GameReviewView({ gameEndResult, onLeave, leaveError, onRetryLeav
                                 </p>
                                 {winnerChips !== undefined && (
                                     <p className="text-xl text-neutral-400">
-                                        Collected {winnerChips} chips
+                                        {formatReviewFinalStack(winnerChips)}
                                     </p>
                                 )}
                                 {isForfeit && (
-                                    <p className="text-sm font-semibold tracking-widest text-neutral-400 uppercase">
-                                        {REVIEW_FORFEIT_NOTE}
-                                    </p>
+                                    forfeitReason ? (
+                                        <p className="text-base font-semibold text-amber-300">
+                                            {forfeitNote}
+                                        </p>
+                                    ) : (
+                                        <p className="text-sm font-semibold tracking-widest text-neutral-400 uppercase">
+                                            {forfeitNote}
+                                        </p>
+                                    )
                                 )}
                             </>
                         )}
