@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Coins, ChevronRight, ChevronLeft } from 'lucide-react';
-import { LABEL_MAIN_POT, LABEL_SIDE_POT_PREFIX, LABEL_UNCALLED } from '../constants/strings';
+import { LABEL_MAIN_POT, LABEL_POT_WON, LABEL_SIDE_POT_PREFIX, LABEL_UNCALLED } from '../constants/strings';
 import { fontPx } from '../lib/tableGeometry';
 
 export interface TablePotsProps {
@@ -88,7 +88,9 @@ export function TablePots({
         setViewingSidePots(false);
     }
     const isViewingSidePots = viewingSidePots && hasMultiplePots;
-    
+    // At showdown the pot has already been paid out; keep the amount but say it was won.
+    const isPaidOut = phase === 'SHOWDOWN';
+
     // Base sizes that will be multiplied by scale
     const baseIconSize = 12;
     const baseFontSize = 15;
@@ -137,6 +139,11 @@ export function TablePots({
                             {hasMultiplePots && (
                                 <span className="text-white/90 font-bold uppercase tracking-widest" style={{ fontSize: `${fontPx(baseSmallFontSize, textScale)}px` }}>
                                     {LABEL_MAIN_POT}
+                                </span>
+                            )}
+                            {isPaidOut && (
+                                <span className="text-gold-secondary font-bold uppercase tracking-widest" style={{ fontSize: `${fontPx(baseSmallFontSize, textScale)}px` }}>
+                                    {LABEL_POT_WON}
                                 </span>
                             )}
                             <span 

@@ -128,6 +128,8 @@ export const BTN_RAISE = 'Raise';
 export const ARIA_RAISE_AMOUNT = 'Raise amount';
 
 export const LABEL_MAIN_POT = 'Main Pot';
+/** Tag on the pot chip at showdown: the amount has already been paid to the winner(s). */
+export const LABEL_POT_WON = 'Won';
 export const LABEL_SIDE_POT_PREFIX = 'Side Pot';
 export const LABEL_UNCALLED = 'Uncalled';
 

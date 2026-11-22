@@ -2,10 +2,22 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 import { TablePots, PotBreakdown, CompactPotDetails } from '../TablePots';
-import { LABEL_MAIN_POT, LABEL_SIDE_POT_PREFIX, LABEL_UNCALLED } from '../../constants/strings';
+import { LABEL_MAIN_POT, LABEL_POT_WON, LABEL_SIDE_POT_PREFIX, LABEL_UNCALLED } from '../../constants/strings';
 import '@testing-library/jest-dom';
 
 describe('TablePots', () => {
+    it('tags the pot as won at showdown, once it has been paid out', () => {
+        const { rerender } = render(
+            <TablePots displayedPot={40} mainPot={40} sidePots={[]} uncalledAmount={0} phase="RIVER" />
+        );
+        expect(screen.getByLabelText('Total Pot')).not.toHaveTextContent(LABEL_POT_WON);
+
+        rerender(
+            <TablePots displayedPot={40} mainPot={40} sidePots={[]} uncalledAmount={0} phase="SHOWDOWN" />
+        );
+        expect(screen.getByLabelText('Total Pot')).toHaveTextContent(`${LABEL_POT_WON}40`);
+    });
+
     it('single main pot renders total formatted correctly and phase without underscores', () => {
         render(
             <TablePots
