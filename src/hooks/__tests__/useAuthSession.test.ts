@@ -69,14 +69,14 @@ describe('useAuthSession', () => {
         expect(localStorage.getItem('poker-auth')).toBeNull();
     });
 
-    it('clears storage and returns null auth when storage has invalid shape', async () => {
-        localStorage.setItem('poker-auth', JSON.stringify({ token: '', roomId: 'room-1' }));
-
-        const { useAuthSession } = await import('../useAuthSession');
-        const { result } = renderHook(() => useAuthSession());
-
-        expect(result.current.auth).toBeNull();
-        expect(localStorage.getItem('poker-auth')).toBeNull();
+    it('clears storage and returns null auth when storage has invalid shape', async () => {
+        localStorage.setItem('poker-auth', JSON.stringify({ token: '', roomId: 'room-1' }));
+
+        const { useAuthSession } = await import('../useAuthSession');
+        const { result } = renderHook(() => useAuthSession());
+
+        expect(result.current.auth).toBeNull();
+        expect(localStorage.getItem('poker-auth')).toBeNull();
     });
 
     it('clears storage and returns null auth when stored auth has empty or whitespace playerName', async () => {
@@ -467,6 +467,60 @@ describe('useAuthSession', () => {
             expect(result.current.auth).toEqual(validAuth);
             expect(result.current.getCurrentAuth()).toEqual(validAuth);
             expect(JSON.parse(sessionStorage.getItem('poker-auth')!)).toEqual(validAuth);
+        });
+    });
+
+    describe('recent seats for rejoining from a new tab', () => {
+        const seat = (playerName: string, id: string) => ({
+            token: createJwt({ exp: Math.floor(Date.now() / 1000) + 3600, id }),
+            roomId: 'room-1',
+            playerName,
+        });
+        const rememberedSeats = () => JSON.parse(localStorage.getItem('poker-recent-seats') ?? '{"seats":[]}').seats;
+
+        it('remembers a seat when the tab logs in, without logging other tabs in', async () => {
+            const ann = seat('Ann', 'ann');
+            const { useAuthSession } = await import('../useAuthSession');
+            const { result } = renderHook(() => useAuthSession());
+
+            act(() => result.current.setAuth(ann));
+
+            expect(rememberedSeats()).toEqual([ann]);
+            expect(localStorage.getItem('poker-auth')).toBeNull();
+        });
+
+        it('remembers the seat a refreshed tab restores', async () => {
+            const ann = seat('Ann', 'ann');
+            sessionStorage.setItem('poker-auth', JSON.stringify(ann));
+            const { useAuthSession } = await import('../useAuthSession');
+
+            renderHook(() => useAuthSession());
+
+            expect(rememberedSeats()).toEqual([ann]);
+        });
+
+        it('forgets the seat when the tab leaves it or loses it, keeping other seats', async () => {
+            const ann = seat('Ann', 'ann');
+            const ben = seat('Ben', 'ben');
+            const { useAuthSession } = await import('../useAuthSession');
+            const { result } = renderHook(() => useAuthSession());
+            act(() => result.current.setAuth(ben));
+            act(() => result.current.setAuth(ann));
+
+            act(() => result.current.clearAuth(ann.token));
+
+            expect(rememberedSeats()).toEqual([ben]);
+        });
+
+        it('keeps the seat when a stale token cleanup is ignored', async () => {
+            const ann = seat('Ann', 'ann');
+            const { useAuthSession } = await import('../useAuthSession');
+            const { result } = renderHook(() => useAuthSession());
+            act(() => result.current.setAuth(ann));
+
+            act(() => result.current.clearAuth(seat('Ann', 'stale').token));
+
+            expect(rememberedSeats()).toEqual([ann]);
         });
     });
 });

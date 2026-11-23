@@ -55,18 +55,18 @@ test.describe('Lobby and Room Lifecycle', () => {
     const joinRegion = guestPage.getByRole('region', { name: /quick join/i });
     await joinRegion.getByLabel(/room name/i).fill(roomName);
     await joinRegion.getByLabel(/player alias/i).fill(guestName);
-    await guestPage.getByRole('button', { name: /join game/i }).click();
+    await guestPage.getByRole('button', { name: /^join game$/i }).click();
 
     await expect(guestPage.getByRole('alert')).toBeVisible();
-    await expect(guestPage.getByRole('button', { name: /join game/i })).toBeVisible();
+    await expect(guestPage.getByRole('button', { name: /^join game$/i })).toBeVisible();
 
     // Guest attempts to join with wrong password
     await joinRegion.getByLabel(/password/i).fill('WrongPass');
-    await guestPage.getByRole('button', { name: /join game/i }).click();
+    await guestPage.getByRole('button', { name: /^join game$/i }).click();
 
     // Verify guest sees error alert and stays on join form
     await expect(guestPage.getByRole('alert')).toBeVisible();
-    await expect(guestPage.getByRole('button', { name: /join game/i })).toBeVisible();
+    await expect(guestPage.getByRole('button', { name: /^join game$/i })).toBeVisible();
 
     // Guest joins with matching password
     await joinRoom(guestPage, roomName, guestName, { password });

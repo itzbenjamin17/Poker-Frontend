@@ -129,7 +129,7 @@ export async function fillJoinForm(page: Page, roomName: string, playerName: str
 
 export async function joinRoomUI(page: Page, roomName: string, playerName: string, password?: string): Promise<void> {
     await fillJoinForm(page, roomName, playerName, password);
-    await page.getByRole('button', { name: /join game/i }).click();
+    await page.getByRole('button', { name: /^join game$/i }).click();
     await expectRoomLobby(page);
 }
 

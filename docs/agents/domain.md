@@ -23,7 +23,8 @@ Single-context repo:
 │   ├── 0003-tab-scoped-authentication-via-session-storage.md
 │   ├── 0004-monotonic-attempt-revision-and-abort-guard.md
 │   ├── 0006-parametric-elliptical-seating-geometry.md
-│   └── 0007-versioned-offline-envelope-storage-for-post-game-review.md
+│   ├── 0007-versioned-offline-envelope-storage-for-post-game-review.md
+│   └── 0008-recent-seats-rejoin-via-local-storage.md
 └── src/
 ```
 

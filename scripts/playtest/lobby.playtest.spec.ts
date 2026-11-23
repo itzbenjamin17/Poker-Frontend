@@ -1,3 +1,4 @@
+import path from 'path';
 import {
     test, expect, confirmLeave, expectMainLobby, expectRoomLobby, fillCreateForm, fillJoinForm, joinRoomUI,
     startGame, stateOf, uniqueRoom, type Page,
@@ -64,9 +65,9 @@ test.describe('Lobby forms', () => {
     test('join rejects a blank room name and HTML in the alias without calling the server', async ({ page }) => {
         const joins = countRequests(page, '/api/room/join');
         await fillJoinForm(page, '  ', 'Tester');
-        await submitAndExpectAlert(page, /join game/i, 'Room name is required.');
+        await submitAndExpectAlert(page, /^join game$/i, 'Room name is required.');
         await fillJoinForm(page, 'Some Room', '<i>me</i>');
-        await submitAndExpectAlert(page, /join game/i, 'Player alias cannot contain HTML tags.');
+        await submitAndExpectAlert(page, /^join game$/i, 'Player alias cannot contain HTML tags.');
         expect(joins()).toBe(0);
     });
 });
@@ -79,18 +80,18 @@ test.describe('Lobby rules', () => {
         await fillCreateForm(outsider, t.roomName, 'Zed');
         await submitAndExpectAlert(outsider, /create game/i, /already taken/i);
         await fillJoinForm(outsider, t.roomName, 'ann');
-        await submitAndExpectAlert(outsider, /join game/i, /player name already taken/i);
+        await submitAndExpectAlert(outsider, /^join game$/i, /player name already taken/i);
         await fillJoinForm(outsider, uniqueRoom('missing'), 'Zed');
-        await submitAndExpectAlert(outsider, /join game/i, /not found|may not exist/i);
+        await submitAndExpectAlert(outsider, /^join game$/i, /not found|may not exist/i);
 
         await joinRoomUI(await t.context('Ann').newPage(), t.roomName, 'Cal');
         await fillJoinForm(outsider, t.roomName, 'Dee');
-        await submitAndExpectAlert(outsider, /join game/i, /room is full/i);
+        await submitAndExpectAlert(outsider, /^join game$/i, /room is full/i);
 
         await t.page('Ann').getByRole('button', { name: /start game/i }).click();
         await expect(t.page('Ann').getByLabel(/total pot|main pot/i).first()).toBeVisible();
         await fillJoinForm(outsider, t.roomName, 'Eve');
-        await submitAndExpectAlert(outsider, /join game/i, /already started/i);
+        await submitAndExpectAlert(outsider, /^join game$/i, /already started/i);
     });
 
     test('names are trimmed: a padded room name and alias can be joined by their trimmed form', async ({ page }) => {
@@ -135,7 +136,8 @@ test.describe('Lobby rules', () => {
         await expect(start).toBeDisabled();
     });
 
-    test('copy room code puts the room name on the clipboard, and a clipboard failure says so', async ({ tables }) => {
+    test('copy room code puts the room name on the clipboard, and a clipboard failure says so', async ({ tables, browserName }) => {
+        test.skip(browserName === 'webkit', 'WebKit has no clipboard permissions for Playwright to grant');
         const t = await tables(['Ann']);
         const ann = t.page('Ann');
         await t.context('Ann').grantPermissions(['clipboard-read', 'clipboard-write'], { origin: 'http://localhost:5173' });
@@ -187,5 +189,31 @@ test('a started game cannot be joined even by a returning name', async ({ tables
     await startGame(t);
     const page = await t.context('Ann').newPage();
     await fillJoinForm(page, t.roomName, 'Ben');
-    await submitAndExpectAlert(page, /join game/i, /already started/i);
+    await submitAndExpectAlert(page, /^join game$/i, /already started/i);
+});
+
+test('closing every tab and opening a new one offers to rejoin each held seat, and resumes the one clicked', async ({ tables }, testInfo) => {
+    const t = await tables(['Ann', 'Ben']);
+    const context = t.context('Ann');
+    await t.page('Ann').close();
+    await t.page('Ben').close();
+
+    const fresh = await context.newPage();
+    await fresh.goto('/');
+    const seats = fresh.getByRole('region', { name: /your seats/i });
+    await expect(seats.getByRole('button', { name: `Rejoin ${t.roomName} as Ann` })).toBeVisible();
+    await expect(seats.getByRole('button', { name: `Rejoin ${t.roomName} as Ben` })).toBeVisible();
+    await fresh.screenshot({ path: path.join(testInfo.project.outputDir, 'screens', `rejoin-panel-${testInfo.project.name}.png`), scale: 'css' });
+
+    await seats.getByRole('button', { name: `Rejoin ${t.roomName} as Ben` }).click();
+    await expectRoomLobby(fresh);
+    expect((await fresh.evaluate(() => JSON.parse(sessionStorage.getItem('poker-auth') ?? 'null')))?.playerName).toBe('Ben');
+
+    // Leaving gives the seat up, so a later tab offers only Ann. (Ben leaves: the host leaving would close the room.)
+    await confirmLeave(fresh);
+    await expectMainLobby(fresh);
+    const later = await context.newPage();
+    await later.goto('/');
+    await expect(later.getByRole('button', { name: `Rejoin ${t.roomName} as Ann` })).toBeVisible();
+    await expect(later.getByRole('button', { name: /as Ben$/ })).toHaveCount(0);
 });

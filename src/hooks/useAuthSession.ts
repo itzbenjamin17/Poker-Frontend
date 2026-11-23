@@ -4,6 +4,7 @@ import { isJwtValid } from '../services/api';
 import { AUTH_KEY } from '../constants/strings';
 import type { AuthResponse } from '../types';
 import { isAuthResponse } from '../lib/payloads';
+import { forgetSeat, rememberSeat } from '../services/recentSeats';
 
 function safeGetStorageItem(key: string): string | null {
     try {
@@ -70,6 +71,11 @@ export function useAuthSession() {
     const [authExpired, setAuthExpired] = useState(false);
     const authRef = useRef(auth);
 
+    // Record a session restored from tab storage outside the render/initializer phase.
+    useEffect(() => {
+        if (authRef.current) rememberSeat(authRef.current);
+    }, []);
+
     const setAuth = useCallback((data: AuthResponse) => {
         if (!isAuthResponse(data)) {
             logger.warn('Invalid auth shape passed to setAuth — ignoring');
@@ -79,6 +85,7 @@ export function useAuthSession() {
         authRef.current = data;
         setAuthState(data);
         safeSetStorageItem(AUTH_KEY, JSON.stringify(data));
+        rememberSeat(data);
     }, []);
 
     const clearAuth = useCallback((expectedToken?: string) => {
@@ -94,6 +101,8 @@ export function useAuthSession() {
                 }
             }
         }
+        // The tab left this seat or lost it, so no other tab should offer to rejoin it.
+        if (authRef.current) forgetSeat(authRef.current.token);
         authRef.current = null;
         safeRemoveStorageItem(AUTH_KEY);
         setAuthState(null);

@@ -59,7 +59,7 @@ export const test = baseTest.extend<{
       if (options?.password !== undefined) {
         await joinRegion.getByLabel(/password/i).fill(options.password);
       }
-      await pageArg.getByRole('button', { name: /join game/i }).click();
+      await pageArg.getByRole('button', { name: /^join game$/i }).click();
       await expectGameLobbyOrThrowAlert(pageArg);
     });
   },

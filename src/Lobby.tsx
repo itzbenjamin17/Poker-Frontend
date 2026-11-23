@@ -8,6 +8,7 @@ import {
 } from './constants/strings';
 import { CreateRoomForm } from './components/lobby/CreateRoomForm';
 import { JoinRoomForm } from './components/lobby/JoinRoomForm';
+import { RejoinSeats } from './components/lobby/RejoinSeats';
 
 export default function Lobby({
     onAuth,
@@ -46,6 +47,9 @@ export default function Lobby({
                     </motion.div>
                 )}
             </AnimatePresence>
+
+            {/* First, so a phone in landscape sees its held seats without scrolling past the hero. */}
+            <RejoinSeats onAuth={onAuth} disabled={isCreating || isJoining} />
 
             <motion.div
                 initial={{ opacity: 0, y: 20 }}

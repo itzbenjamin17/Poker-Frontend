@@ -1,5 +1,7 @@
 # 0003: Tab-Scoped Authentication via sessionStorage
 
+**Status:** Amended by [ADR-0008](0008-recent-seats-rejoin-via-local-storage.md) (2026-11-22) — active sessions stay tab-local in `sessionStorage`; opt-in recent-seat tokens also persist in `localStorage` under `poker-recent-seats` so closed tabs do not strand seats.
+
 Reviewed against the frontend implementation on 2026-11-10.
 
 Active room login credentials (`AuthSession`: `roomId`, `playerName`, and JWT `token`) are saved in the browser tab's `sessionStorage` rather than `localStorage`. Because `sessionStorage` is isolated per tab, a player or developer can open multiple tabs to join as different players or sit at different rooms without one tab overwriting another tab's login.
