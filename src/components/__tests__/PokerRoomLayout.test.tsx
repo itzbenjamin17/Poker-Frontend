@@ -8,6 +8,8 @@ import {
     MIN_MOBILE_HEIGHT,
 } from '../PokerRoomLayout';
 import { RoomHeader } from '../RoomHeader';
+import { LoadingView } from '../LoadingView';
+import { GameLobbyView } from '../GameLobbyView';
 import '@testing-library/jest-dom';
 
 describe('PokerRoomLayout', () => {
@@ -117,13 +119,13 @@ describe('PokerRoomLayout', () => {
         expect(screen.getByText('Table Content')).toBeInTheDocument();
     });
 
-    it('exports MIN_MOBILE_HEIGHT as 320', () => {
-        expect(MIN_MOBILE_HEIGHT).toBe(320);
+    it('exports MIN_MOBILE_HEIGHT as 265', () => {
+        expect(MIN_MOBILE_HEIGHT).toBe(265);
     });
 
-    it('gates sub-667x320 mobile landscape viewports (e.g. 650x300 or 667x319) and allows 667x320+', () => {
+    it('gates sub-667x265 mobile landscape viewports (e.g. 650x265 or 667x264) and allows 667x265+', () => {
         window.innerWidth = 650;
-        window.innerHeight = 300;
+        window.innerHeight = 265;
 
         render(
             <PokerRoomLayout
@@ -137,7 +139,16 @@ describe('PokerRoomLayout', () => {
 
         act(() => {
             window.innerWidth = 667;
-            window.innerHeight = 320;
+            window.innerHeight = 264;
+            window.dispatchEvent(new Event('resize'));
+        });
+
+        expect(screen.getByTestId('rotate-prompt')).toBeInTheDocument();
+        expect(screen.queryByText('Table Content')).not.toBeInTheDocument();
+
+        act(() => {
+            window.innerWidth = 667;
+            window.innerHeight = 265;
             window.dispatchEvent(new Event('resize'));
         });
 
@@ -145,9 +156,9 @@ describe('PokerRoomLayout', () => {
         expect(screen.getByText('Table Content')).toBeInTheDocument();
     });
 
-    it('does NOT display RotatePrompt for mobile landscape viewports between 320px and 375px in height (F7-2)', () => {
-        // Standard mobile devices with browser chrome (e.g. 320px, 340px, 360px) must not be locked out
-        const testHeights = [320, 340, 360, 375];
+    it('does NOT display RotatePrompt for mobile landscape viewports from 265px to 375px in height', () => {
+        // Phones with browser bars showing, down to an iPhone mini in Safari with the tab bar (~265px), use the side rail.
+        const testHeights = [265, 280, 320, 340, 375];
 
         for (const height of testHeights) {
             window.innerWidth = 667;
@@ -166,8 +177,8 @@ describe('PokerRoomLayout', () => {
         }
     });
 
-    it('displays RotatePrompt for landscape viewports below 320px in height (F7-2)', () => {
-        const subFloorHeights = [319, 300, 240];
+    it('displays RotatePrompt for landscape viewports below 265px in height', () => {
+        const subFloorHeights = [264, 250, 240];
 
         for (const height of subFloorHeights) {
             window.innerWidth = 667;
@@ -329,5 +340,63 @@ describe('PokerRoomLayout', () => {
 
         expect(screen.queryByText('Reconnecting / restoring table…')).not.toBeInTheDocument();
         expect(screen.queryByRole('button', { name: 'Retry connection' })).not.toBeInTheDocument();
+    });
+
+    it('renders GameLobbyView and LoadingView cleanly inside PokerRoomLayout at the 667x265 mobile floor', () => {
+        window.innerWidth = 667;
+        window.innerHeight = 265;
+
+        const { unmount } = render(
+            <PokerRoomLayout
+                header={<RoomHeader roomName="Friday" playerCount={2} wsStatus="connected" onLeave={vi.fn()} />}
+                wsStatus="connected"
+            >
+                <RoomStage>
+                    <GameLobbyView
+                        roomState={{
+                            roomId: 'room-1',
+                            roomName: 'Friday',
+                            maxPlayers: 6,
+                            buyIn: 1000,
+                            smallBlind: 10,
+                            bigBlind: 20,
+                            canStartGame: true,
+                            players: [{ name: 'Ann', isHost: true }, { name: 'Ben', isHost: false }],
+                            gameStarted: false,
+                        }}
+                        playerName="Ann"
+                        onStartGame={vi.fn()}
+                    />
+                </RoomStage>
+            </PokerRoomLayout>
+        );
+
+        expect(screen.queryByTestId('rotate-prompt')).not.toBeInTheDocument();
+        expect(screen.getByRole('region', { name: 'Game lobby' })).toHaveClass('overflow-y-auto');
+        expect(screen.getByRole('button', { name: /start game/i })).toBeInTheDocument();
+        unmount();
+
+        render(
+            <PokerRoomLayout
+                header={<RoomHeader roomName="Friday" playerCount={2} wsStatus="connected" onLeave={vi.fn()} />}
+                wsStatus="connected"
+                showReconnectOverlay={false}
+            >
+                <RoomStage>
+                    <LoadingView
+                        status="Connecting..."
+                        error={true}
+                        errorMessage="Disconnected"
+                        onRetry={vi.fn()}
+                        onLeave={vi.fn()}
+                    />
+                </RoomStage>
+            </PokerRoomLayout>
+        );
+
+        expect(screen.queryByTestId('rotate-prompt')).not.toBeInTheDocument();
+        expect(screen.getByTestId('loading-view')).toHaveClass('overflow-y-auto');
+        expect(screen.getByRole('button', { name: /retry/i })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /return to lobby/i })).toBeInTheDocument();
     });
 });

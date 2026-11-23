@@ -11,10 +11,13 @@ interface LoadingViewProps {
 
 export function LoadingView({ status, onRetry, onLeave, error = false, errorMessage }: LoadingViewProps) {
     return (
-        <div className="flex items-center justify-center h-full w-full">
-            <div className="flex flex-col items-center gap-6">
+        <div
+            data-testid="loading-view"
+            className="flex h-full max-h-full w-full overflow-y-auto px-4 py-4 short:py-2"
+        >
+            <div className="m-auto flex flex-col items-center gap-6 short:gap-3">
                 {!error && <div
-                    className="w-12 h-12 border-4 border-emerald-primary border-t-transparent rounded-full animate-spin"
+                    className="w-12 h-12 short:w-8 short:h-8 border-4 border-emerald-primary border-t-transparent rounded-full animate-spin"
                     aria-hidden="true"
                 />}
                 <p role={error ? 'alert' : 'status'} className="font-headline text-xs tracking-widest uppercase text-emerald-primary text-center max-w-xs px-4">

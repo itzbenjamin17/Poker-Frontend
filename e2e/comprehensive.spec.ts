@@ -47,7 +47,7 @@ test.describe('Comprehensive Poker Scenarios', () => {
         // Phase change to Flop!
         // Pot is now $60 ($20 from each player).
         await expect(pages[0].getByLabel(/total pot/i)).toContainText('60');
-        await expect(pages[0].getByText('FLOP')).toBeVisible();
+        await expect(pages[0].locator('[data-testid^="board-card-"]')).toHaveCount(3);
     });
 
     test('Scenario 2: Uncontested Win', async ({ page, context, createRoom, joinRoom }) => {
@@ -136,7 +136,7 @@ test.describe('Comprehensive Poker Scenarios', () => {
         await hostCheckBtn.click(); // Host checks
 
         // Flop
-        await expect(hostPage.getByText('FLOP')).toBeVisible();
+        await expect(hostPage.locator('[data-testid^="board-card-"]')).toHaveCount(3);
         
         // Post-flop, BB (Host) acts first
         await expect(hostPage.getByRole('button', { name: /check/i })).toBeVisible();
@@ -146,7 +146,7 @@ test.describe('Comprehensive Poker Scenarios', () => {
         await guestPage.getByRole('button', { name: /check/i }).click();
 
         // Turn
-        await expect(hostPage.getByText('TURN', { exact: true })).toBeVisible();
+        await expect(hostPage.locator('[data-testid^="board-card-"]')).toHaveCount(4);
 
         await expect(hostPage.getByRole('button', { name: /check/i })).toBeVisible();
         await hostPage.getByRole('button', { name: /check/i }).click();
@@ -155,7 +155,7 @@ test.describe('Comprehensive Poker Scenarios', () => {
         await guestPage.getByRole('button', { name: /check/i }).click();
 
         // River
-        await expect(hostPage.getByText('RIVER', { exact: true })).toBeVisible();
+        await expect(hostPage.locator('[data-testid^="board-card-"]')).toHaveCount(5);
 
         await expect(hostPage.getByRole('button', { name: /check/i })).toBeVisible();
         await hostPage.getByRole('button', { name: /check/i }).click();

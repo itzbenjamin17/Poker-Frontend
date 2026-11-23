@@ -57,7 +57,7 @@ export function ConfirmDialog({
             aria-labelledby={titleId}
             aria-describedby={messageId}
             onClose={handleClose}
-            className="m-auto w-[calc(100%-2rem)] max-w-sm rounded-2xl border border-white/10 bg-surface-high p-6 text-white shadow-2xl backdrop:bg-black/60 backdrop:backdrop-blur-sm"
+            className="pointer-events-auto m-auto w-[calc(100%-2rem)] max-w-sm rounded-2xl border border-white/10 bg-surface-high p-6 text-white shadow-2xl backdrop:bg-black/60 backdrop:backdrop-blur-sm"
         >
             <h2 id={titleId} className="font-headline text-xl font-bold">{title}</h2>
             <p id={messageId} className="mt-2 text-sm text-zinc-300">{message}</p>

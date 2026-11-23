@@ -27,8 +27,6 @@ export function BoardCluster({
     // Many side pots: shrink the pot row (boxes and fonts) so the board stays centred and compact.
     const potShrink = sidePots.length > 2 ? 0.75 : 1;
     const potRegionHeight =
-        fontPx(8, tableScale.text) +
-        tableScale.spacing * 6 +
         Math.max(fontPx(15, tableScale.text), tableScale.spacing * 12) +
         tableScale.spacing * 10 + 4;
     return (

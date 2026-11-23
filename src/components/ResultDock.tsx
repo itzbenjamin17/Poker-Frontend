@@ -28,6 +28,8 @@ interface ResultDockProps {
     onUnready?: () => void;
     isMobileLandscape?: boolean;
     onLeaveGame?: () => void;
+    /** 'corner' places a compact result pill in the bottom-right dead corner on short landscape screens. */
+    layout?: 'dock' | 'corner';
 }
 
 export function ResultDock({
@@ -44,8 +46,10 @@ export function ResultDock({
     onUnready,
     isMobileLandscape,
     onLeaveGame,
+    layout = 'dock',
 }: ResultDockProps) {
     if (!showdownResult) return null;
+    const isCorner = layout === 'corner';
 
     const winners = showdownResult.winners ?? [];
     const winningPlayer = showdownResult.players.find((player) => winners.includes(player.name));
@@ -79,22 +83,98 @@ export function ResultDock({
     const waitingForPlayers = readyGateState === 'WAITING_FOR_PLAYERS'
         || (isReadyCountdownActive && readyCountdownSecondsRemaining <= 0);
 
+    if (isCorner) {
+        return (
+            <section
+                aria-label={ARIA_ROUND_RESULT}
+                data-layout="corner"
+                data-testid="corner-dock"
+                className="pointer-events-auto absolute right-1.5 bottom-1.5 z-20 flex max-w-[216px] min-[710px]:max-w-[240px] flex-col gap-1 rounded-xl border border-white/10 bg-surface-high/95 px-2 py-1.5 shadow-lg backdrop-blur-md"
+            >
+                <div className="min-w-0">
+                    <div className="truncate text-[0.6875rem] leading-tight">
+                        <span className="font-bold text-white">{outcomeText}</span>
+                        {handText ? (
+                            <span className="text-zinc-400">
+                                <span className="sr-only">, </span>
+                                {SHOWDOWN_WON_WITH_PREFIX}<span className="text-zinc-300 font-semibold">{handText}</span>
+                            </span>
+                        ) : null}
+                    </div>
+                    {individualAwards.length > 0 && (
+                        <div className="truncate text-[0.625rem] leading-tight text-zinc-300" aria-label="Contested awards">
+                            {individualAwards.map(({ name, amount }) => `${name}: +${amount.toLocaleString()} chips`).join(' · ')}
+                        </div>
+                    )}
+                    {/* Single winner's hand is already shown above; keep explicit list for split pots. */}
+                    {winnerHands.length > 0 && !handText && (
+                        <div className="truncate text-[0.625rem] leading-tight text-zinc-400" aria-label="Winning hands">
+                            {winnerHands.map(({ name, hand }) => `${name}: ${hand}`).join(' · ')}
+                        </div>
+                    )}
+                </div>
+
+                {(countdownVisible || waitingForPlayers) && (
+                    <div className="flex items-center justify-between gap-1.5">
+                        {countdownVisible && (
+                            <div className="flex items-center gap-1 text-[0.625rem] shrink-0">
+                                <span className="text-white font-headline font-bold tabular-nums">
+                                    {readyCountdownSecondsRemaining}s
+                                </span>
+                                {readyEligibleCount > 0 && (
+                                    <span className="text-zinc-400 text-[0.5625rem] uppercase tracking-wider">
+                                        ({readyCount}/{readyEligibleCount})
+                                    </span>
+                                )}
+                            </div>
+                        )}
+                        {countdownVisible && isReadyEligible && (
+                            isReady ? (
+                                <Button
+                                    variant="secondary"
+                                    size="xs"
+                                    onClick={onUnready}
+                                    disabled={isActionPending}
+                                    className="bg-white/10 text-white/70 hover:bg-white/20 border-white/10"
+                                >
+                                    {BTN_UNREADY}
+                                </Button>
+                            ) : (
+                                <Button
+                                    variant="primary"
+                                    size="xs"
+                                    onClick={onReady}
+                                    disabled={isActionPending}
+                                >
+                                    {BTN_READY}
+                                </Button>
+                            )
+                        )}
+                        {waitingForPlayers && (
+                            <span className="text-zinc-300 text-[0.625rem]">Waiting for players</span>
+                        )}
+                    </div>
+                )}
+            </section>
+        );
+    }
+
     return (
         <section
             aria-label={ARIA_ROUND_RESULT}
-            className="flex h-full w-full min-w-0 flex-col items-center border-t border-white/5 bg-surface-high relative"
+            className="flex h-full w-full min-w-0 flex-col items-center relative border-t border-white/5 bg-surface-high"
         >
             <div className="flex w-full h-full items-center justify-between px-4 py-2 md:px-6 short:py-1">
                 <div className="flex-1 min-w-0 mr-4">
                     <div className="text-[0.625rem] font-headline font-extrabold uppercase tracking-[0.15em] text-emerald-primary mb-0.5">
                         {SHOWDOWN_ROUND_RESULT}
                     </div>
-                    <div className="flex items-baseline gap-2 truncate">
+                    <div className="flex gap-2 items-baseline truncate">
                         <span className="font-bold text-white text-sm md:text-base truncate">
                             {outcomeText}
                         </span>
                         {handText ? (
-                            <span className="text-sm text-zinc-400 truncate">
+                            <span className="text-zinc-400 text-sm truncate">
                                 <span className="sr-only">, </span>
                                 {SHOWDOWN_WON_WITH_PREFIX}<span className="text-zinc-300 font-semibold">{handText}</span>
                             </span>
@@ -112,7 +192,7 @@ export function ResultDock({
                     )}
                 </div>
 
-                <div className="flex items-center gap-2 shrink-0">
+                <div className="flex gap-2 shrink-0 items-center">
                     {countdownVisible && (
                         <div className="flex items-center gap-1.5 text-xs">
                             <span className="text-white font-headline font-bold tabular-nums">

@@ -82,7 +82,8 @@ Current measured-container sizing and parametric seating are implemented in `Liv
 - Opponents are ordered relative to the hero and placed along a continuous ellipse. The fit uses shared seat footprints and a containment guard. Keep rendered seat metrics and geometry calculations aligned.
 - The hero stays at `(50%, 86%)`. Avatar centers anchor seats; subordinate labels/cards must not displace those anchors.
 - Cards have compact faces and minimum sizes. Rank/status disclosure depends on felt and board clearances; hidden visual details retain accessible or expanded-seat equivalents.
-- Current viewport gates are portrait minimum 600×800; landscape below 1024px width minimum 667×320; desktop at least 1024px wide requires 600px height. These gates use window dimensions separately from measured table geometry.
+- Current viewport gates are portrait minimum 600×800; landscape below 1024px width minimum 667×265; desktop at least 1024px wide requires 600px height. These gates use window dimensions separately from measured table geometry.
+- Landscape windows under 500px tall (phones) use the corner-chrome layout (`useOrientationGating().isCornerChrome`): `GameView` passes the room header to `GameTableView` as `cornerHeader`, splitting room info + street (`corner-phase`) into the top-left dead corner and Leave into the top-right dead corner while compact action/result controls sit in the bottom-right dead corner (and the Bet/Raise picker splits presets to bottom-left and the full-width slider + Cancel/Submit to bottom-right, keeping `HeroSeat` and all opponents unblocked). The board has no phase pill; the bar layout names the street on the left of the action dock (`dock-phase`). During a reconnect `PokerRoomLayout` leaves the content live (`cornerChrome`) and `GameTableView` freezes all table content outside `cornerHeader` via `RoomShellContext`, so Leave stays usable.
 
 ## Styling And Development Conventions
 

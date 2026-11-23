@@ -22,7 +22,7 @@ import { setupStompWebSocketMock } from '../../e2e/support/stompWsMock';
  *   (prefix: showdown for main, else the scenario name)
  */
 
-const viewports = [
+const viewports: { name: string; width: number; height: number }[] = [
     { name: 'iPhone14Landscape', width: 844, height: 390 },
     { name: 'Tablet', width: 1024, height: 768 },
     { name: 'Laptop', width: 1366, height: 768 },
@@ -31,6 +31,11 @@ const viewports = [
     { name: 'Desktop_MinHeight', width: 1024, height: 600 },
     { name: 'DesktopWide_MinHeight', width: 1920, height: 600 },
     { name: 'Portrait_MinWidth', width: 600, height: 800 },
+    // Real landscape browser windows (corner-chrome layout): Safari's normal bars, then with its tab bar showing.
+    { name: 'iPhone14_Safari', width: 750, height: 340 },
+    { name: 'iPhone14_SafariTabBar', width: 750, height: 280 },
+    { name: 'iPhoneMini_SafariTabBar', width: 712, height: 265 },
+    { name: 'iPhoneSE_Safari', width: 667, height: 325 },
 ];
 
 const MIN_FONT_PX = 8;
@@ -387,7 +392,6 @@ async function measureInPage(): Promise<Measurement> {
         const potParts: [string, string][] = [
             ['pot', 'table-pot'],
             ['side-pot-chip', 'side-pot-chip'],
-            ['phase', 'pot-phase'],
         ];
         for (const [part, testId] of potParts) {
             const el = q(document, testId)[0];
@@ -396,11 +400,25 @@ async function measureInPage(): Promise<Measurement> {
             }
         }
 
-        // Chrome
+        // Chrome (in corner-chrome mode, measure the painted corner pills rather than the transparent span wrapper)
         const header = q(document, 'room-header')[0];
-        if (header && isPainted(header, 0.5)) push('header', 'header', rectOf(header.getBoundingClientRect()), null, false);
+        if (header?.dataset.layout === 'corner') {
+            const info = q(header, 'corner-room-info')[0];
+            if (info && isPainted(info, 0.5)) push('header', 'room-info', rectOf(info.getBoundingClientRect()), null, false);
+            const leave = q(header, 'corner-leave')[0];
+            if (leave && isPainted(leave, 0.5)) push('header', 'leave', rectOf(leave.getBoundingClientRect()), null, false);
+        } else if (header && isPainted(header, 0.5)) {
+            push('header', 'header', rectOf(header.getBoundingClientRect()), null, false);
+        }
         const dock = q(document, 'room-dock')[0];
-        if (dock && isPainted(dock, 0.5)) push('dock', 'dock', rectOf(dock.getBoundingClientRect()), null, false);
+        if (dock && isPainted(dock, 0.5)) {
+            push('dock', 'dock', rectOf(dock.getBoundingClientRect()), null, false);
+        } else {
+            for (const testId of ['corner-dock', 'corner-raise-presets', 'corner-raise-controls']) {
+                const el = q(document, testId)[0];
+                if (el && isPainted(el, 0.5)) push('dock', testId, rectOf(el.getBoundingClientRect()), null, false);
+            }
+        }
 
         const table = q(document, 'table-surface')[0];
         const stage = q(document, 'room-stage')[0];

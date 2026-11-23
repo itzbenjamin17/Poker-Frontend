@@ -170,4 +170,26 @@ describe('ResultDock', () => {
         expect(screen.getByText(/12s/i)).toBeInTheDocument();
         expect(screen.getByText(/1\/2/i)).toBeInTheDocument();
     });
+
+    describe('corner-chrome layout', () => {
+        it("names a single winner's hand once rather than repeating it", () => {
+            render(<ResultDock showdownResult={showdownState} layout="corner" />);
+
+            expect(screen.getByTestId('corner-dock')).toBeInTheDocument();
+            expect(screen.getByText(/hero won/i)).toBeInTheDocument();
+            expect(screen.getAllByText(/two pair/i)).toHaveLength(1);
+            expect(screen.queryByLabelText('Winning hands')).not.toBeInTheDocument();
+        });
+
+        it("still lists every winner's hand in a split pot", () => {
+            const split: GameState = {
+                ...showdownState,
+                winners: ['Hero', 'Villain'],
+                players: showdownState.players.map(player => ({ ...player, isWinner: true, handRank: 'TWO_PAIR' })),
+            };
+            render(<ResultDock showdownResult={split} layout="corner" />);
+
+            expect(screen.getByLabelText('Winning hands')).toHaveTextContent(/hero: two pair/i);
+        });
+    });
 });

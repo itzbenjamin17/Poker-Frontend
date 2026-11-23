@@ -72,7 +72,7 @@ describe('getDensity', () => {
         expect(getDensity(7)).toBe(0.8);
         expect(getDensity(8)).toBe(0.78);
         expect(getDensity(9)).toBe(0.76);
-        expect(getDensity(10)).toBe(0.7);
+        expect(getDensity(10)).toBe(0.62);
     });
 });
 

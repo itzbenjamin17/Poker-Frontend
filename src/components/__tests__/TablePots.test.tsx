@@ -18,7 +18,7 @@ describe('TablePots', () => {
         expect(screen.getByLabelText('Total Pot')).toHaveTextContent(`${LABEL_POT_WON}40`);
     });
 
-    it('single main pot renders total formatted correctly and phase without underscores', () => {
+    it('single main pot renders the total formatted correctly', () => {
         render(
             <TablePots
                 displayedPot={1500}
@@ -32,7 +32,7 @@ describe('TablePots', () => {
         const potContainer = screen.getByLabelText('Total Pot');
         expect(potContainer).toBeInTheDocument();
         expect(screen.getByText('1,500')).toBeInTheDocument();
-        expect(screen.getByText('PRE FLOP')).toBeInTheDocument();
+        expect(screen.queryByText('PRE FLOP')).not.toBeInTheDocument();
     });
 
     it('multi-pot scenario displays main pot as prominent pot and updates aria label', () => {
@@ -49,7 +49,6 @@ describe('TablePots', () => {
         const potContainer = screen.getByLabelText(LABEL_MAIN_POT);
         expect(potContainer).toBeInTheDocument();
         expect(screen.getByText('2,000')).toBeInTheDocument();
-        expect(screen.getByText('RIVER')).toBeInTheDocument();
     });
 
     it('resets side-pot view back to main pot when a new hand starts with a single pot', async () => {
@@ -88,51 +87,13 @@ describe('TablePots', () => {
         expect(screen.queryByRole('button', { name: /hide pot details/i })).not.toBeInTheDocument();
     });
 
-    it('enforces accessible high-contrast badge pill styling for pot phase to satisfy WCAG AA (F7-3)', () => {
-        render(
-            <TablePots
-                displayedPot={2000}
-                mainPot={2000}
-                sidePots={[]}
-                uncalledAmount={0}
-                phase="FLOP"
-            />
-        );
-
-        const phaseBadge = screen.getByTestId('pot-phase');
-        expect(phaseBadge).toBeInTheDocument();
-        expect(phaseBadge).toHaveTextContent('FLOP');
-
-        // Verify high-contrast dark semi-opaque pill badge backing and white text
-        expect(phaseBadge).toHaveClass('bg-black/60');
-        expect(phaseBadge).toHaveClass('border-white/10');
-        expect(phaseBadge).toHaveClass('text-white');
-        expect(phaseBadge).toHaveClass('font-bold');
-        expect(phaseBadge).toHaveClass('rounded-full');
-
-        // Regression guard: must NOT use the low-contrast green text (1.16:1 failure against #6fad95)
-        expect(phaseBadge).not.toHaveClass('text-emerald-primary/60');
-    });
-
-    it('enforces accessible styling across all poker betting phases (PRE_FLOP, FLOP, TURN, RIVER)', () => {
-        const phases = ['PRE_FLOP', 'FLOP', 'TURN', 'RIVER'];
-
-        for (const phase of phases) {
+    it('shows no phase pill above the pot on any street', () => {
+        for (const phase of ['PRE_FLOP', 'FLOP', 'TURN', 'RIVER', 'SHOWDOWN']) {
             const { unmount } = render(
-                <TablePots
-                    displayedPot={1000}
-                    mainPot={1000}
-                    sidePots={[]}
-                    uncalledAmount={0}
-                    phase={phase}
-                />
+                <TablePots displayedPot={1000} mainPot={1000} sidePots={[]} uncalledAmount={0} phase={phase} />
             );
-
-            const phaseBadge = screen.getByTestId('pot-phase');
-            expect(phaseBadge).toHaveClass('bg-black/60');
-            expect(phaseBadge).toHaveClass('text-white');
-            expect(phaseBadge).toHaveClass('rounded-full');
-            expect(phaseBadge).toHaveTextContent(phase.replace(/_/g, ' '));
+            expect(screen.queryByTestId('pot-phase')).not.toBeInTheDocument();
+            expect(screen.queryByText(phase.replace(/_/g, ' '))).not.toBeInTheDocument();
             unmount();
         }
     });
@@ -186,7 +147,6 @@ describe('TablePots', () => {
         const uncalledChip = uncalledLabel.closest('div');
         expect(uncalledChip).toHaveClass('bg-black/60');
         expect(uncalledChip).toHaveClass('rounded-full');
-        expect(screen.getByTestId('pot-phase')).toHaveClass('motion-reduce:animate-none');
         expect(sidePotChip).toHaveClass('motion-reduce:animate-none');
         expect(uncalledChip).toHaveClass('motion-reduce:animate-none');
     });

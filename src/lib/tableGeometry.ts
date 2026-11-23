@@ -104,7 +104,7 @@ export function getTableTier(tableWidth: number): TableTier {
  * felt margin and the board all fit (D1). Never above 1 and never increasing with the player count.
  */
 export function getDensity(playerCount: number): number {
-    if (playerCount >= 10) return 0.7;
+    if (playerCount >= 10) return 0.62;
     if (playerCount >= 9) return 0.76;
     if (playerCount >= 8) return 0.78;
     if (playerCount >= 7) return 0.8;
@@ -980,19 +980,17 @@ export function minHeroMargin(table: TableDimensions, scale: TableScale, tier: T
 
 /**
  * Estimated height of the central BoardCluster above its vertical midpoint (50%).
- * BoardCluster contains TablePots (phase + pot + gaps) and CommunityCardsArea.
+ * BoardCluster contains TablePots (pot + gaps) and CommunityCardsArea.
  */
 export function getBoardClusterHalfHeight(scale: TableScale): number {
     const sp = scale.spacing;
     const st = scale.text;
     const sc = scale.overall;
-    const phaseH = fontPx(8, st) * 1.5;
     const potH = fontPx(15, st) + 2 * (5 * sp);
-    const gapPhasePot = 6 * sp;
     const gapPotsCards = 8 * sp;
     const cardsH = 64 * sc;
     const sidePotExtra = 8 * sp;
-    const totalH = phaseH + gapPhasePot + potH + gapPotsCards + cardsH + sidePotExtra;
+    const totalH = potH + gapPotsCards + cardsH + sidePotExtra;
     return totalH / 2;
 }
 

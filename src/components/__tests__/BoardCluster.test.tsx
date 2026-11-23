@@ -48,38 +48,8 @@ describe('BoardCluster', () => {
         expect(screen.getByTestId('table-pot')).toBeInTheDocument();
     });
 
-    it('enforces accessible high-contrast badge pill styling for pot phase inside board cluster (F7-3)', () => {
-        render(
-            <BoardCluster
-                gameState={{ ...baseGameState, phase: 'FLOP' }}
-                displayedPot={2000}
-                mainPot={2000}
-                sidePots={[]}
-                uncalledAmount={0}
-                tableScale={mockScale}
-            />
-        );
-
-        const potContainer = screen.getByTestId('board-cluster-pot-container');
-        const phaseBadge = within(potContainer).getByTestId('pot-phase');
-
-        expect(phaseBadge).toBeInTheDocument();
-        expect(phaseBadge).toHaveTextContent('FLOP');
-
-        // High contrast backing and text satisfying WCAG AA (>= 4.5:1) over felt (#6fad95)
-        expect(phaseBadge).toHaveClass('bg-black/60');
-        expect(phaseBadge).toHaveClass('border-white/10');
-        expect(phaseBadge).toHaveClass('text-white');
-        expect(phaseBadge).toHaveClass('font-bold');
-        expect(phaseBadge).toHaveClass('rounded-full');
-
-        // Regression guard: must NOT use the old low-contrast 1.16:1 failure styling
-        expect(phaseBadge).not.toHaveClass('text-emerald-primary/60');
-    });
-
-    it('enforces accessible contrast styling across all poker betting phases in board cluster', () => {
+    it('shows no phase pill on any street', () => {
         const phases: GamePhase[] = ['PRE_FLOP', 'FLOP', 'TURN', 'RIVER', 'SHOWDOWN'];
-
         for (const phase of phases) {
             const { unmount } = render(
                 <BoardCluster
@@ -91,17 +61,7 @@ describe('BoardCluster', () => {
                     tableScale={mockScale}
                 />
             );
-
-            const potContainer = screen.getByTestId('board-cluster-pot-container');
-            const phaseBadge = within(potContainer).getByTestId('pot-phase');
-
-            expect(phaseBadge).toHaveClass('bg-black/60');
-            expect(phaseBadge).toHaveClass('border-white/10');
-            expect(phaseBadge).toHaveClass('text-white');
-            expect(phaseBadge).toHaveClass('rounded-full');
-            expect(phaseBadge).toHaveTextContent(phase.replace(/_/g, ' '));
-            expect(phaseBadge).not.toHaveClass('text-emerald-primary/60');
-
+            expect(screen.queryByTestId('pot-phase')).not.toBeInTheDocument();
             unmount();
         }
     });
@@ -176,8 +136,8 @@ describe('BoardCluster', () => {
             />
         );
 
-        const normalPotPhase = within(normalContainer).getByTestId('pot-phase');
-        const normalFontSize = normalPotPhase.style.fontSize;
+        const normalPot = within(normalContainer).getByTestId('table-pot');
+        const normalPadding = normalPot.style.padding;
         unmount();
 
         const { container: shrinkContainer } = render(
@@ -191,17 +151,16 @@ describe('BoardCluster', () => {
             />
         );
 
-        const shrinkPotPhase = within(shrinkContainer).getByTestId('pot-phase');
+        const shrinkPot = within(shrinkContainer).getByTestId('table-pot');
         const shrinkPotContainer = within(shrinkContainer).getByTestId('board-cluster-pot-container');
 
         // High contrast styling remains intact even under potShrink
-        expect(shrinkPotPhase).toHaveClass('bg-black/60');
-        expect(shrinkPotPhase).toHaveClass('text-white');
+        expect(shrinkPot).toHaveClass('bg-black/60');
+        expect(shrinkPot).toHaveClass('rounded-full');
         expect(shrinkPotContainer).toBeInTheDocument();
 
-        // Font size scales with potShrink (8 * 0.75 = 6 clamped or scaled)
-        expect(shrinkPotPhase.style.fontSize).toBeDefined();
-        expect(normalFontSize).toBeDefined();
+        // The pot shrinks (padding scales by 0.75) once there are more than two side pots.
+        expect(shrinkPot.style.padding).not.toBe(normalPadding);
     });
 
     it('verifies contrast ratio mathematics against felt center (#6fad95)', () => {

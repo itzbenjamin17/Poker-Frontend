@@ -663,4 +663,85 @@ describe('ActionPanel', () => {
         );
         expect(screen.getByTestId('turn-warning')).toHaveTextContent(/5s left/i);
     });
+
+    describe('corner-chrome layout (B1-A)', () => {
+        it('renders compact turn controls in the bottom-right corner without duplicating the street label', () => {
+            renderActionPanel({ layout: 'corner' });
+
+            expect(screen.queryByTestId('dock-phase')).not.toBeInTheDocument();
+            expect(screen.getByTestId('corner-dock')).toBeInTheDocument();
+            expect(screen.getByRole('button', { name: /^fold$/i })).toBeInTheDocument();
+            expect(screen.getByRole('button', { name: /^call 10$/i })).toBeInTheDocument();
+            expect(screen.getByRole('button', { name: /^raise$/i })).toBeInTheDocument();
+        });
+
+        it('splits presets to bottom-left and full-width slider + submit to bottom-right when raising', async () => {
+            const user = userEvent.setup();
+            const { onAction } = renderActionPanel({ layout: 'corner' });
+
+            await user.click(screen.getByRole('button', { name: /^raise$/i }));
+            expect(screen.getByTestId('corner-raise-presets')).toBeInTheDocument();
+            expect(screen.getByTestId('corner-raise-controls')).toBeInTheDocument();
+
+            await user.click(screen.getByRole('button', { name: 'POT' }));
+            await user.click(screen.getByRole('button', { name: /^raise /i }));
+
+            expect(onAction).toHaveBeenCalledWith('RAISE', expect.any(Number));
+        });
+
+        it('closes the corner raise picker on Escape and returns focus to Raise', async () => {
+            const user = userEvent.setup();
+            renderActionPanel({ layout: 'corner' });
+
+            await user.click(screen.getByRole('button', { name: /^raise$/i }));
+            expect(screen.getByTestId('corner-raise-controls')).toBeInTheDocument();
+
+            await user.keyboard('{Escape}');
+            expect(screen.queryByTestId('corner-raise-controls')).not.toBeInTheDocument();
+            expect(screen.getByRole('button', { name: /^raise$/i })).toHaveFocus();
+        });
+
+        it('wraps a rejection message cleanly in the corner dock instead of clipping to one line', () => {
+            const message = "You can't check: there's 20 to call. Call, raise or fold.";
+            renderActionPanel({
+                layout: 'corner',
+                actionError: { type: 'ACTION_ERROR', code: 'CHECK_NOT_AVAILABLE', action: 'CHECK', message },
+            });
+
+            const alert = screen.getByRole('alert');
+            expect(alert).toHaveTextContent(message);
+            expect(alert).not.toHaveClass('whitespace-nowrap');
+            expect(alert).toHaveClass('line-clamp-3');
+            expect(alert).toHaveAttribute('title', message);
+        });
+
+        it('highlights urgent turns with an inset amber ring in the corner dock', () => {
+            renderActionPanel({ layout: 'corner', turnSecondsRemaining: 5 });
+
+            const dock = screen.getByTestId('corner-dock');
+            expect(dock).toHaveClass('ring-2', 'ring-inset', 'ring-amber-400/80');
+            expect(dock).not.toHaveClass('border-amber-400/80');
+        });
+    });
+
+    describe('street label and contrast (F7-3)', () => {
+        const phases = ['PRE_FLOP', 'FLOP', 'TURN', 'RIVER', 'SHOWDOWN'] as const;
+
+        it('shows a high-contrast street label on the left of the action dock across all phases', () => {
+            for (const phase of phases) {
+                const { unmount } = renderActionPanel({
+                    layout: 'dock',
+                    gameState: { ...mockGameState, phase },
+                });
+
+                const dock = screen.getByRole('region', { name: 'Action dock' });
+                const label = screen.getByTestId('dock-phase');
+                expect(dock.firstElementChild).toBe(label);
+                expect(label).toHaveTextContent(phase.replace(/_/g, ' '));
+                expect(label).toHaveClass('bg-black/50', 'border-white/10', 'text-zinc-200', 'font-bold');
+                expect(label).not.toHaveClass('text-emerald-primary/60');
+                unmount();
+            }
+        });
+    });
 });

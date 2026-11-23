@@ -109,28 +109,28 @@ export function GameLobbyView({
         <div
             role="region"
             aria-label="Game lobby"
-            className="w-full max-w-5xl p-4 sm:p-8 overflow-y-auto max-h-full"
+            className="w-full max-w-5xl p-4 sm:p-8 short:p-3 overflow-y-auto max-h-full"
         >
             <NotificationBanner notification={notification} {...notificationControls} />
 
             <div className="w-full">
-                <div className="mb-8">
+                <div className="mb-8 short:mb-3">
                     <span className="text-emerald-primary text-[0.625rem] font-bold tracking-[0.3em] uppercase">
                         {GAME_LOBBY_LABEL}
                     </span>
-                    <h1 className="text-5xl font-headline font-bold mt-2 flex items-center flex-wrap gap-4">
+                    <h1 className="text-5xl short:text-2xl font-headline font-bold mt-2 short:mt-1 flex items-center flex-wrap gap-4 short:gap-2">
                         <span className="text-white">GAME LOBBY </span>
                         <span className="relative inline-flex">
                             {/* The visible room code is part of the name, prefixed with the action for screen readers. */}
-                            <button type="button" className="flex items-center gap-4 bg-white/5 px-6 py-2 rounded-2xl cursor-pointer hover:bg-white/10 transition-colors group" onClick={handleCopyCode}>
+                            <button type="button" className="flex items-center gap-4 short:gap-2 bg-white/5 px-6 py-2 short:px-3 short:py-1 rounded-2xl cursor-pointer hover:bg-white/10 transition-colors group" onClick={handleCopyCode}>
                                 <span className="sr-only">{ARIA_COPY_ROOM_CODE} </span>
                                 <span className="text-emerald-primary/80 group-hover:text-emerald-primary transition-colors">
                                     {roomState.roomName || ''}
                                 </span>
                                 {copyState === 'copied' ? (
-                                    <Check aria-hidden="true" className="w-6 h-6 text-emerald-primary ml-2" />
+                                    <Check aria-hidden="true" className="w-6 h-6 short:w-4 short:h-4 text-emerald-primary ml-2 short:ml-1" />
                                 ) : (
-                                    <Copy aria-hidden="true" className="w-6 h-6 text-emerald-primary/40 group-hover:text-emerald-primary/80 transition-colors ml-2" />
+                                    <Copy aria-hidden="true" className="w-6 h-6 short:w-4 short:h-4 text-emerald-primary/40 group-hover:text-emerald-primary/80 transition-colors ml-2 short:ml-1" />
                                 )}
                             </button>
                             {/* Outside the button: a button's children are presentational, so a live region inside it is not reliably announced. */}
@@ -163,7 +163,7 @@ export function GameLobbyView({
                     </div>
                 )}
 
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 short:gap-4">
                     {/* Player list */}
                     <ul className="lg:col-span-2 grid grid-cols-1 md:grid-cols-2 self-start gap-4 list-none m-0 p-0">
                         {roomState.players?.map((p, i) => (

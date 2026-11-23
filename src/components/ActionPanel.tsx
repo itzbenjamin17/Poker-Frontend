@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
-import type { ComponentProps, ComponentType, RefAttributes } from 'react';
+import type { ComponentProps, ComponentType, KeyboardEvent as ReactKeyboardEvent, RefAttributes } from 'react';
 import { motion, AnimatePresence, useReducedMotion } from 'motion/react';
 import { cn } from '../lib/cn';
 import { rangeSliderStyle } from '../lib/rangeSlider';
@@ -50,6 +50,8 @@ interface ActionPanelProps {
     bigBlind?: number;
     onLeaveGame?: () => void;
     turnSecondsRemaining?: number;
+    /** 'corner' places compact controls in the bottom dead corners outside the oval felt on short landscape screens. */
+    layout?: 'dock' | 'corner';
 }
 
 export function ActionPanel({
@@ -81,7 +83,9 @@ export function ActionPanel({
     bigBlind = 50,
     onLeaveGame,
     turnSecondsRemaining,
+    layout = 'dock',
 }: ActionPanelProps) {
+    const isCorner = layout === 'corner';
     const prefersReducedMotion = useReducedMotion();
     const restoreAmountTriggerFocus = useRef(false);
     const amountTriggerRef = (node: HTMLButtonElement | null) => {
@@ -95,7 +99,7 @@ export function ActionPanel({
         actionError?.action === 'BET' || actionError?.action === 'RAISE' ? actionError.action : null,
     );
     const [pendingAction, setPendingAction] = useState<PokerAction | null>(null);
-    const controlButtonSize: 'xs' | 'sm' | 'md' = isMobileLandscape ? 'xs' : isCompactTable ? 'sm' : 'md';
+    const controlButtonSize: 'xs' | 'sm' | 'md' = isCorner || isMobileLandscape ? 'xs' : isCompactTable ? 'sm' : 'md';
 
     const raiseAmount = controlledRaiseAmount ?? internalRaiseAmount;
     const handleRaiseChange = (val: string) => {
@@ -248,6 +252,15 @@ export function ActionPanel({
     const isRaising = showControls && canBetOrRaise && amountAction === actionType;
     const isUrgentTurn = showControls && typeof turnSecondsRemaining === 'number' && turnSecondsRemaining <= 10;
 
+    // Scoped to the dock container (not window) so inert freeze and modal <dialog> Escape work naturally.
+    const handleRaiseKeyDown = (event: ReactKeyboardEvent<HTMLElement>) => {
+        if (!isRaising || event.key !== 'Escape' || event.defaultPrevented) return;
+        event.preventDefault();
+        restoreAmountTriggerFocus.current = true;
+        setAmountAction(null);
+        handleRaiseChange('');
+    };
+
     const sectionMotion = prefersReducedMotion
         ? { initial: false as const, animate: { opacity: 1 }, exit: { opacity: 1 }, transition: { duration: 0 } }
         : { initial: { opacity: 0 }, animate: { opacity: 1 }, exit: { opacity: 0 }, transition: { duration: 0.2, ease: 'easeOut' as const } };
@@ -255,19 +268,266 @@ export function ActionPanel({
         ? { initial: false as const, animate: { opacity: 1 }, exit: { opacity: 1 }, transition: { duration: 0 } }
         : { initial: { opacity: 0 }, animate: { opacity: 1 }, exit: { opacity: 0 }, transition: { duration: 0.18, ease: 'easeOut' as const } };
 
+    const urgentCornerRing = isUrgentTurn && 'ring-2 ring-inset ring-amber-400/80 shadow-[inset_0_0_20px_rgba(245,158,11,0.25)]';
+    const turnWarningNode = isUrgentTurn && (
+        <div
+            data-testid="turn-warning"
+            className={cn(
+                'flex items-center justify-center gap-1.5 font-headline font-bold text-amber-300 uppercase tracking-wider',
+                isCorner ? 'text-[0.625rem]' : 'text-xs',
+            )}
+        >
+            <span className="sr-only" role="alert" aria-live="polite">
+                {LABEL_TURN_WARNING_SR}
+            </span>
+            <span aria-hidden="true">{LABEL_TURN_WARNING_BADGE(turnSecondsRemaining)}</span>
+        </div>
+    );
+
+    if (isCorner) {
+        // B1-A: Split bottom-corner Raise picker keeps HeroSeat and all opponents 100% unblocked.
+        if (isRaising) {
+            return (
+                <motion.section
+                    role="region"
+                    aria-label="Action dock"
+                    data-is-active-turn={isMyTurn}
+                    data-layout="corner"
+                    onKeyDown={handleRaiseKeyDown}
+                    {...sectionMotion}
+                    className="pointer-events-none absolute inset-x-0 bottom-0 z-20"
+                >
+                    <div
+                        data-testid="corner-raise-presets"
+                        className="pointer-events-auto absolute bottom-1.5 left-1.5 flex items-center gap-1 rounded-xl border border-white/10 bg-surface-high/95 px-1.5 py-1 shadow-lg backdrop-blur-md"
+                    >
+                        <Button variant="outline" size="xs" onClick={() => handleRaiseChange(String(threeBigBlindsPreset))} disabled={isControlsDisabled}>
+                            3BB
+                        </Button>
+                        <Button variant="outline" size="xs" aria-label="1/2 POT" onClick={() => handleRaiseChange(String(halfPotPreset))} disabled={isControlsDisabled}>
+                            1/2
+                        </Button>
+                        <Button variant="outline" size="xs" onClick={() => handleRaiseChange(String(potPreset))} disabled={isControlsDisabled}>
+                            POT
+                        </Button>
+                        <Button variant="outline" size="xs" onClick={() => handleRaiseChange(String(clamp(availableChips)))} disabled={isControlsDisabled}>
+                            MAX
+                        </Button>
+                    </div>
+
+                    <div
+                        id="amount-action-controls"
+                        data-testid="corner-raise-controls"
+                        className={cn(
+                            'pointer-events-auto absolute right-1.5 bottom-1.5 flex w-[204px] min-[710px]:w-[232px] flex-col gap-1 rounded-xl border border-white/10 bg-surface-high/95 px-2 py-1 shadow-lg backdrop-blur-md transition-all duration-200',
+                            urgentCornerRing,
+                        )}
+                    >
+                        {turnWarningNode}
+                        {/* eslint-disable jsx-a11y/no-autofocus */}
+                        <input
+                            type="range"
+                            aria-label={ARIA_RAISE_AMOUNT}
+                            aria-describedby={activeRaiseError ? 'raise-amount-error' : undefined}
+                            aria-invalid={hasError}
+                            aria-valuetext={formatChips(parsedRaiseAmount)}
+                            className="range-slider range-slider-compact range-slider-gold w-full [--slider-block-size:1rem]"
+                            style={rangeSliderStyle(parsedRaiseAmount, defaultRaiseAmount, Math.max(defaultRaiseAmount, availableChips))}
+                            value={parsedRaiseAmount}
+                            onChange={e => handleRaiseChange(e.target.value)}
+                            min={defaultRaiseAmount}
+                            max={Math.max(defaultRaiseAmount, availableChips)}
+                            step={1}
+                            autoFocus
+                            disabled={isControlsDisabled}
+                        />
+                        {/* eslint-enable jsx-a11y/no-autofocus */}
+                        <div className="flex items-center justify-between gap-1.5">
+                            <Button
+                                variant="ghost"
+                                size="xs"
+                                className="px-1.5 py-0.5"
+                                onClick={() => {
+                                    restoreAmountTriggerFocus.current = true;
+                                    setAmountAction(null);
+                                    handleRaiseChange('');
+                                }}
+                                disabled={isActionPending}
+                            >
+                                Cancel
+                            </Button>
+                            <button
+                                type="button"
+                                disabled={!canSubmitRaise || isControlsDisabled}
+                                onClick={() => {
+                                    if (!canSubmitRaise || isControlsDisabled) return;
+                                    handleAction(actionType, parsedRaiseAmount);
+                                }}
+                                className={cn(
+                                    'select-none rounded-md px-2.5 py-0.5 font-headline text-[0.625rem] font-extrabold uppercase tracking-wider tabular-nums transition-all duration-150',
+                                    canSubmitRaise && !isControlsDisabled
+                                        ? 'cursor-pointer bg-gold-secondary text-surface hover:brightness-110 active:brightness-95'
+                                        : 'cursor-not-allowed bg-white/5 text-zinc-600',
+                                )}
+                            >
+                                {activePendingAction === actionType
+                                    ? 'Submitting...'
+                                    : `${actionType === 'BET' ? BTN_BET : BTN_RAISE} ${parsedRaiseAmount.toLocaleString()}`}
+                            </button>
+                        </div>
+                        {displayedError && (
+                            <p
+                                id="raise-amount-error"
+                                role="alert"
+                                title={displayedError}
+                                className="min-w-0 text-[0.625rem] font-semibold leading-tight text-red-300 line-clamp-2"
+                            >
+                                {displayedError}
+                            </p>
+                        )}
+                    </div>
+                </motion.section>
+            );
+        }
+
+        return (
+            <motion.section
+                role="region"
+                aria-label="Action dock"
+                data-is-active-turn={isMyTurn}
+                data-layout="corner"
+                data-testid="corner-dock"
+                {...sectionMotion}
+                className={cn(
+                    'pointer-events-auto absolute right-1.5 bottom-1.5 z-20 flex max-w-[232px] min-[710px]:max-w-[260px] flex-col items-end gap-1 rounded-xl border border-white/10 bg-surface-high/95 px-2 py-1.5 shadow-lg backdrop-blur-md transition-all duration-200',
+                    urgentCornerRing,
+                )}
+            >
+                {showControls ? (
+                    <>
+                        {turnWarningNode}
+                        <div className="flex flex-wrap items-center justify-end gap-1">
+                            {legalActions.has('FOLD') && (
+                                <Button variant="outline" size="xs" onClick={() => handleAction('FOLD')} disabled={isControlsDisabled}>
+                                    {activePendingAction === 'FOLD' ? 'Submitting...' : BTN_FOLD}
+                                </Button>
+                            )}
+                            {canCheck ? (
+                                <Button variant="primary" size="xs" onClick={() => handleAction('CHECK')} disabled={isControlsDisabled}>
+                                    {activePendingAction === 'CHECK' ? 'Submitting...' : BTN_CHECK}
+                                </Button>
+                            ) : canCall ? (
+                                <Button variant="primary" size="xs" onClick={() => handleAction('CALL')} disabled={isControlsDisabled}>
+                                    {activePendingAction === 'CALL' ? 'Submitting...' : `${BTN_CALL_PREFIX}${Math.min(callAmount, availableChips).toLocaleString()}`}
+                                </Button>
+                            ) : null}
+                            {legalActions.has('BET') && (
+                                <ButtonWithRef
+                                    variant="outline"
+                                    size="xs"
+                                    ref={amountTriggerRef}
+                                    aria-expanded="false"
+                                    aria-controls="amount-action-controls"
+                                    onClick={() => {
+                                        handleRaiseChange(raiseAmount);
+                                        setAmountAction('BET');
+                                    }}
+                                    disabled={isControlsDisabled}
+                                >
+                                    {BTN_BET}
+                                </ButtonWithRef>
+                            )}
+                            {legalActions.has('RAISE') && (
+                                <ButtonWithRef
+                                    variant="outline"
+                                    size="xs"
+                                    ref={amountTriggerRef}
+                                    aria-expanded="false"
+                                    aria-controls="amount-action-controls"
+                                    onClick={() => {
+                                        handleRaiseChange(raiseAmount);
+                                        setAmountAction('RAISE');
+                                    }}
+                                    disabled={isControlsDisabled}
+                                >
+                                    {BTN_RAISE}
+                                </ButtonWithRef>
+                            )}
+                            {canAllIn && (
+                                <Button variant="outline" size="xs" onClick={() => handleAction('ALL_IN')} disabled={isControlsDisabled}>
+                                    {activePendingAction === 'ALL_IN' ? 'Submitting...' : `${BTN_ALL_IN_PREFIX}${availableChips.toLocaleString()}`}
+                                </Button>
+                            )}
+                        </div>
+                    </>
+                ) : isEffectivelyReadyCountdownActive ? (
+                    <div className="flex flex-col items-end gap-1 text-right">
+                        <div className="flex items-center gap-1.5 text-[0.625rem]">
+                            <span className="font-headline font-bold text-white tabular-nums">
+                                {readyCountdownSecondsRemaining}s
+                            </span>
+                            <span className="uppercase tracking-wider text-zinc-400">
+                                ({readyCount}/{readyEligibleCount} {LABEL_PLAYERS_READY_SUFFIX})
+                            </span>
+                        </div>
+                        {isReadyEligible && readyCountdownSecondsRemaining > 0 && (
+                            <Button
+                                variant={amReadyForNextHand ? 'secondary' : 'primary'}
+                                size="xs"
+                                onClick={isControlsDisabled ? undefined : (amReadyForNextHand ? onUnready : onReady)}
+                                disabled={isControlsDisabled}
+                            >
+                                {amReadyForNextHand ? BTN_UNREADY : BTN_READY}
+                            </Button>
+                        )}
+                    </div>
+                ) : (
+                    <div role="status" aria-live="polite" className="text-right">
+                        <p className="font-headline text-[0.625rem] font-bold uppercase tracking-[0.1em] text-amber-200 leading-tight">
+                            {isAutoAdvancing
+                                ? (gameState.autoAdvanceMessage || STATUS_DEALING_REMAINING)
+                                : gameState.phase === 'SHOWDOWN'
+                                ? readyGateState === 'WAITING_FOR_PLAYERS'
+                                    ? 'Hand complete — waiting for players'
+                                    : 'Hand complete — reviewing board'
+                                : turnStatus}
+                        </p>
+                    </div>
+                )}
+                {displayedError && (
+                    <p
+                        id="raise-amount-error"
+                        role="alert"
+                        title={displayedError}
+                        className="w-full text-right text-[0.625rem] font-semibold leading-snug text-red-300 line-clamp-3"
+                    >
+                        {displayedError}
+                    </p>
+                )}
+            </motion.section>
+        );
+    }
+
     return (
         <motion.section
             role="region"
             aria-label="Action dock"
             data-is-active-turn={isMyTurn}
+            onKeyDown={handleRaiseKeyDown}
             {...sectionMotion}
             style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 8px)' }}
             className={cn(
-                'flex h-full w-full min-w-0 items-center justify-center border-t border-white/5 bg-surface-high relative transition-all duration-200',
+                'flex h-full w-full min-w-0 items-center justify-center relative transition-all duration-200 border-t border-white/5 bg-surface-high',
                 isUrgentTurn && 'border-amber-400/80 shadow-[0_0_20px_rgba(245,158,11,0.25)] ring-1 ring-amber-400/50',
                 isMobileLandscape ? 'px-2 py-1' : isCompactTable ? 'px-3 py-1.5' : 'px-4 py-2 md:px-6',
             )}
         >
+            <p
+                data-testid="dock-phase"
+                className="shrink-0 mr-3 px-2.5 py-0.5 rounded-full bg-black/50 border border-white/10 font-headline font-bold uppercase tracking-[0.18em] text-[0.625rem] sm:text-xs text-zinc-200 whitespace-nowrap"
+            >
+                {gameState.phase.replace(/_/g, ' ')}
+            </p>
             <AnimatePresence mode="wait">
                 {showControls ? (
                     <motion.div
@@ -275,30 +535,20 @@ export function ActionPanel({
                         {...fadeMotion}
                         exit={{ opacity: 0, transition: { duration: 0 } }}
                         className={cn(
-                            'flex w-full flex-col items-center justify-center gap-1',
+                            'flex flex-1 min-w-0 flex-col items-center justify-center gap-1',
                             isMobileLandscape && 'pr-12',
                         )}
                     >
-                        {isUrgentTurn && (
-                            <div
-                                data-testid="turn-warning"
-                                className="flex items-center justify-center gap-1.5 text-xs font-headline font-bold text-amber-300 uppercase tracking-wider"
-                            >
-                                <span className="sr-only" role="alert" aria-live="polite">
-                                    {LABEL_TURN_WARNING_SR}
-                                </span>
-                                <span aria-hidden="true">{LABEL_TURN_WARNING_BADGE(turnSecondsRemaining)}</span>
-                            </div>
-                        )}
+                        {turnWarningNode}
                         {isRaising ? (
                             <div
                                 id="amount-action-controls"
                                 className={cn(
-                                    'flex w-full flex-col items-center justify-center gap-1.5 px-2 max-w-xl',
+                                    'flex w-full flex-col items-center justify-center max-w-xl px-2',
                                     isMobileLandscape ? 'gap-1' : 'gap-1.5',
                                 )}
                             >
-                                <div className="flex w-full flex-wrap sm:flex-nowrap items-center justify-center gap-2">
+                                <div className="flex w-full items-center justify-center gap-2 flex-wrap sm:flex-nowrap">
                                     {/* Presets */}
                                     <div className="flex items-center gap-1 shrink-0">
                                         <Button
@@ -410,7 +660,7 @@ export function ActionPanel({
                             </div>
                         ) : (
                             <div className={cn(
-                                'flex w-full flex-wrap items-center justify-center',
+                                'flex w-full items-center justify-center flex-wrap',
                                 isMobileLandscape ? 'gap-2' : 'gap-3 md:gap-4',
                             )}>
                                 {legalActions.has('FOLD') && (
@@ -476,7 +726,7 @@ export function ActionPanel({
                         key="ready-controls"
                         {...fadeMotion}
                         className={cn(
-                            "flex w-full flex-col items-center justify-center gap-1.5 text-center px-4",
+                            'flex flex-1 min-w-0 flex-col items-center justify-center gap-1.5 px-4 text-center',
                             isMobileLandscape && 'pr-12'
                         )}
                     >
@@ -535,11 +785,11 @@ export function ActionPanel({
                         aria-live="polite"
                         {...fadeMotion}
                         className={cn(
-                            "flex min-h-11 w-full items-center justify-center px-3 text-center",
+                            'flex min-h-11 flex-1 min-w-0 items-center justify-center px-3 text-center',
                             isMobileLandscape && 'pr-12'
                         )}
                     >
-                        <p className="text-xs font-headline font-bold uppercase tracking-[0.16em] text-amber-200">
+                        <p className="font-headline font-bold uppercase text-amber-200 text-xs tracking-[0.16em]">
                             {isAutoAdvancing
                                 ? (gameState.autoAdvanceMessage || STATUS_DEALING_REMAINING)
                                 : gameState.phase === 'SHOWDOWN'
@@ -556,7 +806,7 @@ export function ActionPanel({
                     id="raise-amount-error"
                     role="alert"
                     title={displayedError}
-                    className="absolute bottom-0.5 left-1/2 w-[calc(100%-1rem)] min-w-0 -translate-x-1/2 overflow-hidden text-ellipsis whitespace-nowrap text-center text-xs font-semibold text-red-300"
+                    className="min-w-0 text-xs font-semibold text-red-300 absolute bottom-0.5 left-1/2 w-[calc(100%-1rem)] -translate-x-1/2 overflow-hidden text-ellipsis whitespace-nowrap text-center"
                 >
                     {displayedError}
                 </p>

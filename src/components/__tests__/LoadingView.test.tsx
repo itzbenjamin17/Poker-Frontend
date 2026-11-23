@@ -34,4 +34,22 @@ describe('LoadingView', () => {
         await user.click(button);
         expect(onLeave).toHaveBeenCalledTimes(1);
     });
+
+    it('keeps error state and recovery actions scrollable and compact on short landscape viewports', () => {
+        render(
+            <LoadingView
+                status="Connection interrupted"
+                error={true}
+                errorMessage="Network unreachable"
+                onRetry={vi.fn()}
+                onLeave={vi.fn()}
+            />
+        );
+
+        const wrapper = screen.getByTestId('loading-view');
+        expect(wrapper).toHaveClass('overflow-y-auto', 'max-h-full', 'short:py-2');
+        expect(wrapper.firstElementChild).toHaveClass('m-auto', 'short:gap-3');
+        expect(screen.getByRole('button', { name: /retry/i })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /return to lobby/i })).toBeInTheDocument();
+    });
 });

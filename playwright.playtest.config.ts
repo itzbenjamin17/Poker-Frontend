@@ -27,6 +27,11 @@ export default defineConfig({
             name: 'chromium',
             use: { ...devices['Desktop Chrome'], viewport: { width: 1366, height: 768 } },
         },
+        {
+            // Safari on an iPhone 14 held sideways: 750x340 after the notch and browser bars.
+            name: 'iphone-14-landscape',
+            use: { ...devices['iPhone 14 landscape'] },
+        },
     ],
     webServer: [
         {

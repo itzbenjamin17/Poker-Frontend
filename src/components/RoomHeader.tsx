@@ -1,4 +1,5 @@
 import { useContext, useState } from 'react';
+import { Users } from 'lucide-react';
 import { Button } from './UI';
 import { cn } from '../lib/cn';
 import {
@@ -54,16 +55,19 @@ export function WsStatusBadge({ status }: { status: WsStatus }) {
  * the chip then becomes a toggle that expands to the full name, because hover
  * reveals nothing on touch and a `title` is unreachable from the keyboard.
  */
-function RoomNameChip({ name }: { name: string }) {
+function RoomNameChip({ name, compact = false }: { name: string; compact?: boolean }) {
     const [expanded, setExpanded] = useState(false);
     const { ref, truncated } = useIsTruncated<HTMLSpanElement>(name);
     // While expanded the text fits, so keep the toggle until it is collapsed again.
     const expandable = truncated || expanded;
 
     const chipClass = cn(
-        'min-w-0 text-zinc-400 text-xs font-mono bg-white/5 px-2 py-0.5 rounded border border-white/10',
+        'min-w-0 font-mono',
+        compact
+            ? 'text-zinc-300 text-[0.625rem]'
+            : 'text-zinc-400 text-xs bg-white/5 px-2 py-0.5 rounded border border-white/10',
         '[interpolate-size:allow-keywords] motion-safe:transition-[max-width] motion-safe:duration-300',
-        expanded ? 'max-w-max' : 'max-w-[120px] sm:max-w-[200px]',
+        expanded ? 'max-w-max' : compact ? 'max-w-[70px]' : 'max-w-[120px] sm:max-w-[200px]',
     );
     const text = <span ref={ref} className="block truncate">{name}</span>;
 
@@ -96,6 +100,10 @@ export interface RoomHeaderProps {
     confirmLeave?: boolean;
     confirmLeaveTitle?: string;
     confirmLeaveMessage?: string;
+    /** Current hand street, displayed inside the top-left corner pill when layout is 'corner'. */
+    phase?: string;
+    /** 'corner' splits room info (top-left) and Leave (top-right) into the dead corners outside the oval felt. */
+    layout?: 'bar' | 'corner';
     className?: string;
 }
 
@@ -109,6 +117,8 @@ export function RoomHeader({
     confirmLeave = true,
     confirmLeaveTitle = CONFIRM_LEAVE_TABLE_TITLE,
     confirmLeaveMessage = CONFIRM_LEAVE_TABLE_MESSAGE,
+    phase,
+    layout = 'bar',
     className,
 }: RoomHeaderProps) {
     const gameContext = useContext(GameContext);
@@ -127,6 +137,75 @@ export function RoomHeader({
             effectiveOnLeave();
         }
     };
+
+    const leaveDialog = confirmLeave && (
+        <ConfirmDialog
+            open={isConfirmingLeave}
+            title={confirmLeaveTitle}
+            message={confirmLeaveMessage}
+            confirmLabel={BTN_CONFIRM_LEAVE}
+            cancelLabel={BTN_CANCEL_LEAVE}
+            onConfirm={() => {
+                setIsConfirmingLeave(false);
+                effectiveOnLeave?.();
+            }}
+            onCancel={() => setIsConfirmingLeave(false)}
+        />
+    );
+
+    if (layout === 'corner') {
+        // Above the reconnect overlay (z-30) like the bar header, so Leave stays usable while reconnecting.
+        // pointer-events-none on the wrapper keeps the middle of the top edge open for the oval felt and top seats.
+        return (
+            <>
+                <header
+                    data-testid="room-header"
+                    data-layout="corner"
+                    role="banner"
+                    aria-label="Room Header"
+                    className={cn(
+                        'pointer-events-none absolute inset-x-0 top-0 z-40 flex items-start justify-between p-1',
+                        className,
+                    )}
+                >
+                    <div
+                        data-testid="corner-room-info"
+                        className="pointer-events-auto flex flex-wrap items-center gap-1 rounded-lg border border-white/10 bg-surface-high/90 px-1.5 py-0.5 backdrop-blur-md"
+                    >
+                        {effectiveRoomName && <RoomNameChip name={effectiveRoomName} compact />}
+                        {effectivePlayerCount !== undefined && (
+                            // An icon and the number fit in the corner pill; screen readers still hear "10 players".
+                            <span className="flex items-center gap-0.5 text-zinc-400 text-[0.625rem] font-bold">
+                                <Users aria-hidden="true" className="w-3 h-3" />
+                                {effectivePlayerCount}
+                                <span className="sr-only"> {effectivePlayerCount === 1 ? 'player' : 'players'}</span>
+                            </span>
+                        )}
+                        {phase && (
+                            <span
+                                data-testid="corner-phase"
+                                className="rounded bg-black/50 border border-white/10 px-1 py-0 font-headline text-[0.5rem] font-bold uppercase tracking-[0.12em] text-zinc-200"
+                            >
+                                {phase.replace(/_/g, ' ')}
+                            </span>
+                        )}
+                        <WsStatusBadge status={effectiveWsStatus} />
+                    </div>
+                    <div data-testid="corner-leave" className="pointer-events-auto shrink-0">
+                        <Button
+                            variant="outline"
+                            size="xs"
+                            onClick={handleLeave}
+                            className="border-red-500/50 bg-surface-high/90 text-red-400 hover:bg-red-500/10 backdrop-blur-md"
+                        >
+                            {BTN_LEAVE_TABLE}
+                        </Button>
+                    </div>
+                </header>
+                {leaveDialog}
+            </>
+        );
+    }
 
     return (
         <header
@@ -175,20 +254,7 @@ export function RoomHeader({
                 </Button>
             </div>
 
-            {confirmLeave && (
-                <ConfirmDialog
-                    open={isConfirmingLeave}
-                    title={confirmLeaveTitle}
-                    message={confirmLeaveMessage}
-                    confirmLabel={BTN_CONFIRM_LEAVE}
-                    cancelLabel={BTN_CANCEL_LEAVE}
-                    onConfirm={() => {
-                        setIsConfirmingLeave(false);
-                        effectiveOnLeave?.();
-                    }}
-                    onCancel={() => setIsConfirmingLeave(false)}
-                />
-            )}
+            {leaveDialog}
         </header>
     );
 }

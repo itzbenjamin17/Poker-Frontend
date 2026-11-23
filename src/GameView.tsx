@@ -10,7 +10,7 @@ import { LoadingView } from './components/LoadingView';
 import { GameLobbyView } from './components/GameLobbyView';
 import { GameTableView } from './components/GameTableView';
 import { GameReviewView } from './components/GameReviewView';
-import { PokerRoomLayout, RoomStage } from './components/PokerRoomLayout';
+import { PokerRoomLayout, RoomStage, useOrientationGating } from './components/PokerRoomLayout';
 import { RoomHeader } from './components/RoomHeader';
 import type { NotificationControls } from './components/NotificationBanner';
 import { CONFIRM_LEAVE_LOBBY_TITLE, CONFIRM_LEAVE_LOBBY_MESSAGE } from './constants/strings';
@@ -75,6 +75,7 @@ function GameViewInner() {
     // ── WebSocket & Dispatcher ──────────────────────────────────────────────────
     useGameWebSocket();
     const dispatcher = useGameDispatcher();
+    const { isCornerChrome } = useOrientationGating();
     const handleLeaveRequest = () => {
         void dispatcher.dispatch({ type: 'LEAVE_GAME' });
     };
@@ -164,16 +165,21 @@ function GameViewInner() {
     }
 
     // ── Active game table ───────────────────────────────────────────────────────
+    // Short landscape screens move room chrome into the dead corners outside the oval so the felt gets the full viewport.
+    const tableHeader = (
+        <RoomHeader
+            roomName={roomState?.roomName}
+            playerCount={gameState.players.filter((player) => player.status !== 'OUT').length}
+            wsStatus={wsStatus}
+            onLeave={handleLeaveRequest}
+            phase={isCornerChrome ? gameState.phase : undefined}
+            layout={isCornerChrome ? 'corner' : 'bar'}
+        />
+    );
     return (
         <PokerRoomLayout
-            header={
-                <RoomHeader
-                    roomName={roomState?.roomName}
-                    playerCount={gameState.players.filter((player) => player.status !== 'OUT').length}
-                    wsStatus={wsStatus}
-                    onLeave={handleLeaveRequest}
-                />
-            }
+            header={isCornerChrome ? undefined : tableHeader}
+            cornerChrome={isCornerChrome}
             wsStatus={wsStatus}
             onLeave={handleLeaveRequest}
         >
@@ -203,6 +209,7 @@ function GameViewInner() {
                 onClearRaiseError={() => dispatcher.clearError()}
                 isActionPending={dispatcher.isPending('PLAY_ACTION') || dispatcher.isPending('READY') || dispatcher.isPending('UNREADY') || dispatcher.isPending('START_GAME') || dispatcher.isPending('CLAIM_WIN') || dispatcher.isPending('LEAVE_GAME')}
                 hasShellHeader={true}
+                cornerHeader={isCornerChrome ? tableHeader : undefined}
             />
         </PokerRoomLayout>
     );

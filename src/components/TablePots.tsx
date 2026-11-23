@@ -101,15 +101,6 @@ export function TablePots({
 
     return (
         <div className="flex flex-col items-center" style={{ gap: `${scale * 6}px` }}>
-            {/* Phase Label */}
-            <span 
-                data-testid="pot-phase"
-                className="bg-black/60 border border-white/10 text-white font-bold uppercase tracking-[0.2em] px-2.5 py-0.5 rounded-full backdrop-blur-sm shadow-sm inline-flex items-center justify-center animate-in fade-in duration-500 motion-reduce:animate-none"
-                style={{ fontSize: `${fontPx(8, textScale)}px` }}
-            >
-                {phase.replace(/_/g, ' ')}
-            </span>
-
             {/* Pots Cluster */}
             <div 
                 role="region" 

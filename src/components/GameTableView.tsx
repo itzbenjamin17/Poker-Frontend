@@ -1,11 +1,11 @@
-import { useContext, useMemo, useState } from 'react';
+import { useContext, useMemo, useState, type ReactNode } from 'react';
 import { AlertTriangle } from 'lucide-react';
 import { cn } from '../lib/cn';
 import { Button } from './UI';
 import { ActionPanel } from './ActionPanel';
 import { ResultDock } from './ResultDock';
 import { NotificationBanner, type NotificationControls } from './NotificationBanner';
-import { ReconnectOverlay, RoomStage, RoomDock, useOrientationGating } from './PokerRoomLayout';
+import { ReconnectOverlay, RoomShellContext, RoomStage, RoomDock, useOrientationGating } from './PokerRoomLayout';
 import { LiveTableStage } from './LiveTableStage';
 import { GameContext } from '../context/GameContext';
 import { ConfirmDialog } from './ConfirmDialog';
@@ -54,6 +54,11 @@ export interface GameTableViewProps {
     onClearRaiseError?: () => void;
     isActionPending?: boolean;
     hasShellHeader?: boolean;
+    /**
+     * The room header split into the top corners outside the oval felt on short landscape screens.
+     * Passing this switches GameTableView to the full-bleed corner-chrome layout.
+     */
+    cornerHeader?: ReactNode;
 }
 
 export function GameTableView({
@@ -89,10 +94,14 @@ export function GameTableView({
     onClearRaiseError,
     isActionPending = false,
     hasShellHeader = false,
+    cornerHeader,
 }: GameTableViewProps) {
     const gameContext = useContext(GameContext);
+    const { isContentFrozen } = useContext(RoomShellContext);
     const [isConfirmingLeave, setIsConfirmingLeave] = useState(false);
     const { isMobileLandscape: detectedMobileLandscape, isCompactViewport } = useOrientationGating();
+    const useCornerChrome = Boolean(cornerHeader);
+    const dockLayout = useCornerChrome ? 'corner' : 'dock';
     const isMobileLandscape = propIsMobileLandscape ?? detectedMobileLandscape;
     const isCompactTable = propIsCompactTable ?? isCompactViewport;
     const effectiveIsRecovering = isRecovering ?? gameContext?.isRecovering ?? false;
@@ -190,6 +199,92 @@ export function GameTableView({
         ? Math.max(0, Math.ceil((gameState.turnDeadlineEpochMs - nowMs) / 1000))
         : undefined;
 
+    const stage = (
+        <RoomStage>
+            <LiveTableStage
+                nowMs={nowMs}
+                gameState={gameState}
+                orderedPlayers={orderedPlayers}
+                myPlayerId={resolvedHeroId}
+                showdown={showdown}
+                privateState={privateState}
+                turnDeadlineEpochMs={isTurnCountdownActive ? gameState.turnDeadlineEpochMs : undefined}
+            />
+
+            {/* Claim Win Button: bottom-left dead corner; shifted up slightly in corner-chrome mode to clear Raise presets. */}
+            {canClaimWin && (
+                <div
+                    data-testid="claim-win-container"
+                    className={cn(
+                        'absolute left-[8px] z-20',
+                        useCornerChrome ? 'bottom-12' : 'bottom-[8px]',
+                    )}
+                >
+                    <Button
+                        variant="primary"
+                        size="sm"
+                        onClick={onClaimWin}
+                        disabled={claimPending}
+                        className="shadow-[0_0_24px_rgba(170,234,208,0.35)]"
+                    >
+                        {claimPending ? BTN_CLAIMING : BTN_CLAIM_WIN}
+                    </Button>
+                </div>
+            )}
+        </RoomStage>
+    );
+
+    const dock = gameState.phase === 'SHOWDOWN' && showdownResult ? (
+        <ResultDock
+            showdownResult={showdownResult}
+            isReady={amReadyForNextHand}
+            isReadyEligible={isReadyEligible}
+            isActionPending={isActionPending}
+            isReadyCountdownActive={isReadyCountdownActive}
+            readyGateState={gameState.readyGateState}
+            readyCountdownSecondsRemaining={readyCountdownSecondsRemaining}
+            readyCount={readyCount}
+            readyEligibleCount={readyEligibleCount}
+            onReady={onReady}
+            onUnready={onUnready}
+            isMobileLandscape={isMobileLandscape}
+            layout={dockLayout}
+        />
+    ) : isBusted ? (
+        <BustedDock onLeave={onLeaveGame} isMobileLandscape={isMobileLandscape} layout={dockLayout} />
+    ) : (
+        <ActionPanel
+            gameState={gameState}
+            me={me}
+            isMyTurn={isMyTurn}
+            isSelfDisconnected={isSelfDisconnected}
+            isReadyCountdownActive={isReadyCountdownActive && readyCountdownSecondsRemaining > 0}
+            readyGateState={gameState.readyGateState}
+            currentTurnPlayerName={currentTurnPlayer?.name}
+            reconnectingPlayerName={reconnectingPlayerName}
+            isMobileLandscape={isMobileLandscape}
+            isCompactTable={isCompactTable}
+            raiseAmount={raiseAmount}
+            raiseError={raiseError}
+            actionError={actionError}
+            onRaiseChange={onRaiseChange}
+            onClearRaiseError={onClearRaiseError}
+            onAction={onAction}
+            isActionPending={isActionPending}
+            readyCountdownSecondsRemaining={readyCountdownSecondsRemaining}
+            readyCount={readyCount}
+            readyEligibleCount={readyEligibleCount}
+            readyEligiblePlayers={readyEligiblePlayers}
+            isReadyEligible={isReadyEligible}
+            amReadyForNextHand={amReadyForNextHand}
+            onReady={onReady}
+            onUnready={onUnready}
+            bigBlind={roomState.bigBlind ?? 50}
+            turnSecondsRemaining={turnSecondsRemaining}
+            layout={dockLayout}
+        />
+    );
+
     return (
         <main
             aria-label="Live poker table"
@@ -199,7 +294,9 @@ export function GameTableView({
                 hasShellHeader ? 'flex-1 min-h-0 min-w-0' : 'h-dvh min-h-[600px]',
             )}
         >
-            <NotificationBanner notification={notification} sequence={notificationSequence} {...notificationControls} />
+            <div inert={useCornerChrome && isContentFrozen}>
+                <NotificationBanner notification={notification} sequence={notificationSequence} {...notificationControls} />
+            </div>
 
             {showStandaloneOverlay && (
                 <ReconnectOverlay
@@ -244,8 +341,9 @@ export function GameTableView({
                 <div
                     role="status"
                     aria-live="polite"
+                    inert={useCornerChrome && isContentFrozen}
                     className="shrink-0 mx-auto mt-2 short:mt-1 w-[calc(100%-2rem)] max-w-2xl px-3 py-1.5 rounded-xl border border-amber-500/30 bg-amber-500/10 text-amber-200 flex items-center gap-2.5"
-                >
+        >
                     <AlertTriangle aria-hidden="true" className="w-4 h-4 shrink-0 text-amber-400" />
                     <p className="flex-1 min-w-0 text-[0.6875rem] md:text-xs leading-snug">
                         <span className="font-semibold text-amber-200">{TABLE_INACTIVITY_WARNING_TITLE}</span>
@@ -255,94 +353,31 @@ export function GameTableView({
                 </div>
             )}
 
-            {/* Table Area */}
-            <RoomStage>
-                <LiveTableStage
-                    nowMs={nowMs}
-                    gameState={gameState}
-                    orderedPlayers={orderedPlayers}
-                    myPlayerId={resolvedHeroId}
-                    showdown={showdown}
-                    privateState={privateState}
-                    turnDeadlineEpochMs={isTurnCountdownActive ? gameState.turnDeadlineEpochMs : undefined}
-                />
-
-                {/* Claim Win Button: Place inside RoomStage at bottom-left with 8px inset */}
-                {canClaimWin && (
-                    <div
-                        data-testid="claim-win-container"
-                        className="absolute left-[8px] bottom-[8px] z-30"
-                    >
-                        <Button
-                            variant="primary"
-                            size="sm"
-                            onClick={onClaimWin}
-                            disabled={claimPending}
-                            className="shadow-[0_0_24px_rgba(170,234,208,0.35)]"
-                        >
-                            {claimPending ? BTN_CLAIMING : BTN_CLAIM_WIN}
-                        </Button>
+            {useCornerChrome ? (
+                <div data-testid="corner-chrome-layout" className="relative flex flex-1 min-h-0 min-w-0 flex-col">
+                    {/* Corner header (room info + Leave) stays above the reconnect overlay (z-40) and outside inert. */}
+                    {cornerHeader}
+                    {/* Full-bleed stage and corner dock isolate below ReconnectOverlay (z-30) and freeze together. */}
+                    <div inert={isContentFrozen} className="relative isolate flex flex-1 min-h-0 min-w-0 flex-col">
+                        {stage}
+                        {dock}
                     </div>
-                )}
-            </RoomStage>
-
-            {/* Stable action slot - the table keeps the same height as turns change */}
-            <RoomDock
-                data-is-compact={isCompactTable}
-                data-phase={gameState.phase}
-                className={cn(
-                    isMobileLandscape ? 'h-16' : isCompactTable ? 'h-24' : 'h-28',
-                )}
-            >
-                {gameState.phase === 'SHOWDOWN' && showdownResult ? (
-                    <ResultDock
-                        showdownResult={showdownResult}
-                        isReady={amReadyForNextHand}
-                        isReadyEligible={isReadyEligible}
-                        isActionPending={isActionPending}
-                        isReadyCountdownActive={isReadyCountdownActive}
-                        readyGateState={gameState.readyGateState}
-                        readyCountdownSecondsRemaining={readyCountdownSecondsRemaining}
-                        readyCount={readyCount}
-                        readyEligibleCount={readyEligibleCount}
-                        onReady={onReady}
-                        onUnready={onUnready}
-                        isMobileLandscape={isMobileLandscape}
-                    />
-                ) : isBusted ? (
-                    <BustedDock onLeave={onLeaveGame} isMobileLandscape={isMobileLandscape} />
-                ) : (
-                    <ActionPanel
-                        gameState={gameState}
-                        me={me}
-                        isMyTurn={isMyTurn}
-                        isSelfDisconnected={isSelfDisconnected}
-                        isReadyCountdownActive={isReadyCountdownActive && readyCountdownSecondsRemaining > 0}
-                        readyGateState={gameState.readyGateState}
-                        currentTurnPlayerName={currentTurnPlayer?.name}
-                        reconnectingPlayerName={reconnectingPlayerName}
-                        isMobileLandscape={isMobileLandscape}
-                        isCompactTable={isCompactTable}
-                        raiseAmount={raiseAmount}
-                        raiseError={raiseError}
-                        actionError={actionError}
-                        onRaiseChange={onRaiseChange}
-                        onClearRaiseError={onClearRaiseError}
-                        onAction={onAction}
-                        isActionPending={isActionPending}
-                        readyCountdownSecondsRemaining={readyCountdownSecondsRemaining}
-                        readyCount={readyCount}
-                        readyEligibleCount={readyEligibleCount}
-                        readyEligiblePlayers={readyEligiblePlayers}
-                        isReadyEligible={isReadyEligible}
-                        amReadyForNextHand={amReadyForNextHand}
-                        onReady={onReady}
-                        onUnready={onUnready}
-                        bigBlind={roomState.bigBlind ?? 50}
-                        turnSecondsRemaining={turnSecondsRemaining}
-                    />
-                )}
-            </RoomDock>
+                </div>
+            ) : (
+                <>
+                    {stage}
+                    {/* Stable action slot - the table keeps the same height as turns change */}
+                    <RoomDock
+                        data-is-compact={isCompactTable}
+                        data-phase={gameState.phase}
+                        className={cn(
+                            isMobileLandscape ? 'h-16' : isCompactTable ? 'h-24' : 'h-28',
+                        )}
+                    >
+                        {dock}
+                    </RoomDock>
+                </>
+            )}
         </main>
     );
 }
@@ -350,7 +385,34 @@ export function GameTableView({
 // ─── Busted Dock ──────────────────────────────────────────────────────────────
 
 /** Replaces the action dock once the hero has no chips: the server no longer deals them in. */
-function BustedDock({ onLeave, isMobileLandscape }: { onLeave: () => void; isMobileLandscape: boolean }) {
+function BustedDock({ onLeave, isMobileLandscape, layout = 'dock' }: {
+    onLeave: () => void;
+    isMobileLandscape: boolean;
+    layout?: 'dock' | 'corner';
+}) {
+    const isCorner = layout === 'corner';
+    if (isCorner) {
+        return (
+            <section
+                aria-label="Action dock"
+                data-testid="corner-dock"
+                className="pointer-events-auto absolute right-1.5 bottom-1.5 z-20 flex items-center gap-2 rounded-xl border border-white/10 bg-surface-high/95 px-2.5 py-1.5 shadow-lg backdrop-blur-md"
+            >
+                <div role="status" className="min-w-0 text-left">
+                    <p className="font-headline font-bold text-white text-xs leading-tight">{BUSTED_TITLE}</p>
+                    <p className="text-zinc-400 text-[0.625rem] leading-tight">{BUSTED_MESSAGE}</p>
+                </div>
+                <Button
+                    variant="outline"
+                    size="xs"
+                    onClick={onLeave}
+                    className="shrink-0 border-red-500/50 text-red-400 hover:bg-red-500/10"
+                >
+                    {BTN_LEAVE_TABLE}
+                </Button>
+            </section>
+        );
+    }
     return (
         <section
             aria-label="Action dock"

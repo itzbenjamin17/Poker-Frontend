@@ -180,4 +180,48 @@ describe('RoomHeader', () => {
         expect(screen.getByText('3 players')).toBeInTheDocument();
         expect(screen.getByText(/reconnecting/i)).toBeInTheDocument();
     });
+
+    describe('corner-chrome layout', () => {
+        it('shows the player count as an icon and number that reads as "N players" in the top-left corner', () => {
+            render(<RoomHeader layout="corner" roomName="Friday Game" playerCount={10} wsStatus="connected" onLeave={vi.fn()} />);
+
+            const header = screen.getByRole('banner', { name: 'Room Header' });
+            expect(header).toHaveTextContent('10 players');
+            expect(within(screen.getByTestId('corner-room-info')).getByText('Friday Game')).toBeInTheDocument();
+            expect(within(screen.getByTestId('corner-leave')).getByRole('button', { name: /leave table/i })).toBeInTheDocument();
+        });
+
+        it('renders a high-contrast street pill in the top-left corner across all phases (F7-3)', () => {
+            for (const phase of ['PRE_FLOP', 'FLOP', 'TURN', 'RIVER', 'SHOWDOWN']) {
+                const { unmount } = render(
+                    <RoomHeader layout="corner" roomName="Friday Game" playerCount={6} phase={phase} wsStatus="connected" onLeave={vi.fn()} />,
+                );
+                const pill = screen.getByTestId('corner-phase');
+                expect(pill).toHaveTextContent(phase.replace(/_/g, ' '));
+                expect(pill).toHaveClass('bg-black/50', 'border-white/10', 'text-zinc-200', 'font-bold');
+                expect(pill).not.toHaveClass('text-emerald-primary/60');
+                unmount();
+            }
+        });
+
+        it('asks before leaving, with the confirmation dialog outside the pointer-events-none corner wrapper', async () => {
+            const user = userEvent.setup();
+            const onLeave = vi.fn();
+            render(<RoomHeader layout="corner" roomName="Friday Game" playerCount={10} wsStatus="connected" onLeave={onLeave} />);
+
+            await user.click(screen.getByRole('button', { name: /leave table/i }));
+            expect(onLeave).not.toHaveBeenCalled();
+            const dialog = screen.getByRole('dialog');
+            expect(dialog).toHaveClass('pointer-events-auto');
+            expect(screen.getByRole('banner', { name: 'Room Header' })).not.toContainElement(dialog);
+            await user.click(within(dialog).getByRole('button', { name: 'Leave' }));
+            expect(onLeave).toHaveBeenCalledTimes(1);
+        });
+
+        it('shows the connection status when it is not connected', () => {
+            render(<RoomHeader layout="corner" roomName="Friday Game" playerCount={10} wsStatus="reconnecting" onLeave={vi.fn()} />);
+
+            expect(screen.getByRole('status', { name: /connection status: reconnecting/i })).toBeInTheDocument();
+        });
+    });
 });

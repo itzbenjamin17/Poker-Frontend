@@ -274,4 +274,18 @@ describe('GameLobbyView', () => {
         expect(screen.queryByRole('status', { name: LOBBY_INACTIVITY_WARNING_TITLE })).not.toBeInTheDocument();
         expect(screen.queryByText(LOBBY_INACTIVITY_WARNING_TITLE)).not.toBeInTheDocument();
     });
+
+    it('stays scrollable and compacts heading spacing on short viewports', () => {
+        render(
+            <GameLobbyView
+                roomState={baseRoomState}
+                playerName="HostPlayer"
+                onStartGame={mockOnStartGame}
+            />
+        );
+
+        const lobby = screen.getByRole('region', { name: 'Game lobby' });
+        expect(lobby).toHaveClass('overflow-y-auto', 'max-h-full', 'short:p-3');
+        expect(screen.getByRole('heading', { level: 1 })).toHaveClass('short:text-2xl');
+    });
 });

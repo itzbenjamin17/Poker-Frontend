@@ -2,6 +2,7 @@ import { render, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import userEvent from '@testing-library/user-event';
 import { GameTableView } from '../GameTableView';
+import { RoomShellContext } from '../PokerRoomLayout';
 import { WAITING_RECONNECT_PREFIX, WAITING_RECONNECT_SUFFIX } from '../../constants/strings';
 import type { GameState, RoomState, Player } from '../../types';
 import '@testing-library/jest-dom';
@@ -410,6 +411,67 @@ describe('GameTableView', () => {
             expect(villainSeat).toHaveAttribute('data-seat-index', '1');
             expect(villainSeat).toHaveAttribute('data-is-active-turn', 'false');
             expect(villainSeat).toHaveAttribute('data-is-winner', 'false');
+        });
+    });
+
+    describe('corner chrome on short landscape screens', () => {
+        const cornerHeader = <header aria-label="Room Header">Friday Game</header>;
+
+        beforeEach(() => {
+            window.innerWidth = 750;
+            window.innerHeight = 280;
+        });
+
+        it('overlays the header and action dock in the dead corners instead of a bar under the table', () => {
+            render(<GameTableView {...defaultProps} hasShellHeader cornerHeader={cornerHeader} />);
+
+            const layout = screen.getByTestId('corner-chrome-layout');
+            expect(within(layout).getByRole('banner', { name: 'Room Header' })).toBeInTheDocument();
+            expect(within(layout).getByRole('region', { name: /action dock/i })).toBeInTheDocument();
+            expect(screen.queryByRole('region', { name: /room dock/i })).not.toBeInTheDocument();
+            expect(screen.queryByTestId('pot-phase')).not.toBeInTheDocument();
+        });
+
+        it('keeps the bar layout when the shell has no corner header to give, and names the street in the dock', () => {
+            render(<GameTableView {...defaultProps} hasShellHeader />);
+
+            expect(screen.queryByTestId('corner-chrome-layout')).not.toBeInTheDocument();
+            expect(screen.getByRole('region', { name: /room dock/i })).toBeInTheDocument();
+            expect(screen.getByTestId('dock-phase')).toHaveTextContent('FLOP');
+            expect(screen.queryByTestId('pot-phase')).not.toBeInTheDocument();
+        });
+
+        it('follows cornerHeader as the single layout switch regardless of window height', () => {
+            window.innerWidth = 1024;
+            window.innerHeight = 768;
+            render(<GameTableView {...defaultProps} hasShellHeader cornerHeader={cornerHeader} />);
+
+            expect(screen.getByTestId('corner-chrome-layout')).toBeInTheDocument();
+        });
+
+        it('freezes the table, action dock, notification banner, and inactivity warning while reconnecting, but not the header with Leave', () => {
+            render(
+                <RoomShellContext.Provider value={{ isContentFrozen: true }}>
+                    <GameTableView
+                        {...defaultProps}
+                        hasShellHeader
+                        cornerHeader={cornerHeader}
+                        notification="Player joined"
+                        notificationControls={{ onDismiss: vi.fn() }}
+                        isGameInactivityWarningActive={true}
+                    />
+                </RoomShellContext.Provider>,
+            );
+
+            const dock = screen.getByRole('region', { name: /action dock/i });
+            const frozenWrapper = dock.closest('[inert]');
+            expect(frozenWrapper).not.toBeNull();
+            expect(frozenWrapper).toHaveClass('isolate');
+            expect(dock).toHaveClass('z-20');
+            expect(screen.getByTestId('live-table-stage').closest('[inert]')).toBe(frozenWrapper);
+            expect(screen.getByText('Player joined').closest('[inert]')).not.toBeNull();
+            expect(screen.getByText(/table inactivity warning/i).closest('[inert]')).not.toBeNull();
+            expect(screen.getByRole('banner', { name: 'Room Header' }).closest('[inert]')).toBeNull();
         });
     });
 });

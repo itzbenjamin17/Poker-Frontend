@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useContext } from 'react';
+import React, { createContext, useState, useEffect, useContext } from 'react';
 import { cn } from '../lib/cn';
 import { Button } from './UI';
 import { RotatePrompt } from './RotatePrompt';
@@ -50,7 +50,9 @@ export const MIN_PORTRAIT_WIDTH = 600;
 export const MIN_PORTRAIT_HEIGHT = 800;
 export const MIN_DESKTOP_HEIGHT = 600; // Increased pragmatically
 export const MIN_MOBILE_WIDTH = 667; // Increased pragmatically (iPhone SE landscape floor)
-export const MIN_MOBILE_HEIGHT = 320; // Lowered from 375 to 320 to accommodate mobile landscape viewports with browser chrome (F7-2)
+// Short landscape screens use corner chrome, giving the table the full viewport. 265px fits a 10-seat table
+// down to an iPhone 12/13 mini in Safari with the tab bar showing (about 712x265).
+export const MIN_MOBILE_HEIGHT = 265;
 
 // eslint-disable-next-line react-refresh/only-export-components
 export function useOrientationGating() {
@@ -88,6 +90,8 @@ export function useOrientationGating() {
 
     const isGated = isGatedPortrait || isGatedDesktopHeight || isGatedMobile;
     const isMobileLandscape = !isPortrait && dimensions.height < 500;
+    // Phones in landscape have limited height and width: chrome moves into the corners outside the oval felt.
+    const isCornerChrome = isMobileLandscape;
     const isCompactViewport = dimensions.width < 960 || dimensions.height < 640;
 
     return {
@@ -96,9 +100,17 @@ export function useOrientationGating() {
         isBelowWidth: isGatedPortrait,
         isGated,
         isMobileLandscape,
+        isCornerChrome,
         isCompactViewport,
     };
 }
+
+/**
+ * Whether the reconnect overlay is up. In the corner-chrome layout the shell does not freeze its whole content,
+ * because the corner header (with Leave) must stay usable; the table view freezes everything else instead.
+ */
+// eslint-disable-next-line react-refresh/only-export-components
+export const RoomShellContext = createContext<{ isContentFrozen: boolean }>({ isContentFrozen: false });
 
 export interface PokerRoomLayoutProps {
     header?: React.ReactNode;
@@ -113,6 +125,8 @@ export interface PokerRoomLayoutProps {
     showReconnectOverlay?: boolean;
     isCompact?: boolean;
     forceOrientation?: 'portrait' | 'landscape';
+    /** The content overlays its own corner header and freezes its own non-header parts during a reconnect. */
+    cornerChrome?: boolean;
     className?: string;
     onLeave?: () => void;
 }
@@ -170,6 +184,7 @@ export function PokerRoomLayout({
     onRetryConnection,
     showReconnectOverlay = true,
     forceOrientation,
+    cornerChrome = false,
     className,
     onLeave,
 }: PokerRoomLayoutProps) {
@@ -221,16 +236,18 @@ export function PokerRoomLayout({
             {/* Region 2 & 3: Flexible Stage Region & Bounded Dock Region */}
             <div
                 className="flex flex-1 min-h-0 min-w-0 flex-col"
-                inert={shouldShowOverlay}
+                inert={shouldShowOverlay && !cornerChrome}
             >
-                {stage || dock ? (
-                    <>
-                        {stage}
-                        {dock}
-                    </>
-                ) : (
-                    children
-                )}
+                <RoomShellContext.Provider value={{ isContentFrozen: shouldShowOverlay }}>
+                    {stage || dock ? (
+                        <>
+                            {stage}
+                            {dock}
+                        </>
+                    ) : (
+                        children
+                    )}
+                </RoomShellContext.Provider>
             </div>
         </div>
     );

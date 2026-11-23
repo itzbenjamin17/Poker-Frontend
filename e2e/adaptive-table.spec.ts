@@ -8,6 +8,22 @@ const eligibleViewports = [
   { width: 1440, height: 900 },
 ] as const;
 
+/**
+ * The action dock never covers the hero seat: below it in the bar layout, or in the bottom-right dead corner
+ * in the corner-chrome layout that landscape windows under 500px tall use.
+ */
+function expectDockClearOfHero(
+  heroBox: { x: number; y: number; width: number; height: number },
+  dockBox: { x: number; y: number; width: number; height: number },
+  viewport: { width: number; height: number },
+) {
+  if (viewport.height < 500 && viewport.width > viewport.height) {
+    expect(heroBox.x + heroBox.width).toBeLessThanOrEqual(dockBox.x + 1);
+  } else {
+    expect(heroBox.y + heroBox.height).toBeLessThanOrEqual(dockBox.y + 1);
+  }
+}
+
 function expectInside(
   inner: { x: number; y: number; width: number; height: number },
   outer: { x: number; y: number; width: number; height: number },
@@ -77,7 +93,7 @@ async function expectAdaptiveTable(page: Page, viewportWidth: number) {
   expectInside(heroBox!, tableBox!);
   expectInside(foldBox!, viewportBox);
   expectNoOverlap(potBox!, heroBox!);
-  expect(heroBox!.y + heroBox!.height).toBeLessThanOrEqual(dockBox!.y + 1);
+  expectDockClearOfHero(heroBox!, dockBox!, viewport!);
   expect(foldBox!.y).toBeGreaterThanOrEqual(dockBox!.y - 1);
   expect(raiseBox!.y).toBeGreaterThanOrEqual(dockBox!.y - 1);
 
@@ -86,8 +102,18 @@ async function expectAdaptiveTable(page: Page, viewportWidth: number) {
   await expect(raiseAmount).toBeVisible();
   const raiseAmountBox = await raiseAmount.boundingBox();
   expect(raiseAmountBox).not.toBeNull();
-  expectInside(raiseAmountBox!, dockBox!);
-  expect(heroBox!.y + heroBox!.height).toBeLessThanOrEqual(dockBox!.y + 1);
+  if (viewport!.height < 500 && viewport!.width > viewport!.height) {
+    const raiseControlsBox = await page.getByTestId('corner-raise-controls').boundingBox();
+    const raisePresetsBox = await page.getByTestId('corner-raise-presets').boundingBox();
+    expect(raiseControlsBox).not.toBeNull();
+    expect(raisePresetsBox).not.toBeNull();
+    expectInside(raiseAmountBox!, raiseControlsBox!);
+    expectNoOverlap(heroBox!, raiseControlsBox!);
+    expectNoOverlap(heroBox!, raisePresetsBox!);
+  } else {
+    expectInside(raiseAmountBox!, dockBox!);
+    expectDockClearOfHero(heroBox!, dockBox!, viewport!);
+  }
   await page.getByRole('button', { name: /cancel/i }).click();
 
   const communityCardBoxes = await Promise.all((await communityCards.all()).map(c => c.boundingBox()));
@@ -271,14 +297,23 @@ test.describe('Adaptive table-first foundation', () => {
         lineHeight: Number.parseFloat(getComputedStyle(element).lineHeight),
         height: element.getBoundingClientRect().height,
       }));
-      expect(fit.height).toBeLessThanOrEqual(fit.lineHeight + 1);
-      if (viewport.width === 844) expect(fit.scrollWidth).toBeGreaterThan(fit.clientWidth);
-      else expect(fit.scrollWidth).toBeLessThanOrEqual(fit.clientWidth);
-      for (const [after, initial] of [
-        [await dock.boundingBox(), before.dock],
+      if (viewport.height < 500) {
+        // Corner chrome: the message wraps over at most two lines inside the compact raise panel.
+        const clamp = await alert.evaluate((element) => ({ scrollHeight: element.scrollHeight, clientHeight: element.clientHeight }));
+        expect(fit.height).toBeLessThanOrEqual(fit.lineHeight * 2 + 1);
+        expect(clamp.scrollHeight).toBeGreaterThan(clamp.clientHeight);
+      } else {
+        expect(fit.height).toBeLessThanOrEqual(fit.lineHeight + 1);
+        expect(fit.scrollWidth).toBeLessThanOrEqual(fit.clientWidth);
+      }
+      const stabilityTargets: Array<[{ x: number; y: number; width: number; height: number } | null, { x: number; y: number; width: number; height: number } | null]> = [
         [await table.boundingBox(), before.table],
         [await hero.boundingBox(), before.hero],
-      ]) {
+      ];
+      if (viewport.height >= 500) {
+        stabilityTargets.unshift([await dock.boundingBox(), before.dock]);
+      }
+      for (const [after, initial] of stabilityTargets) {
         expect(after).not.toBeNull();
         expect(initial).not.toBeNull();
         for (const key of ['x', 'y', 'width', 'height'] as const) {
@@ -361,7 +396,7 @@ test.describe('Adaptive table-first foundation', () => {
       expect(dockBox).not.toBeNull();
       expect(heroBox).not.toBeNull();
       expectInside(dockBox!, { x: 0, y: 0, width: viewport.width, height: viewport.height });
-      expect(heroBox!.y + heroBox!.height).toBeLessThanOrEqual(dockBox!.y + 1);
+      expectDockClearOfHero(heroBox!, dockBox!, viewport);
     }
   });
 
