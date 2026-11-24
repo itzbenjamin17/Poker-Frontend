@@ -233,4 +233,82 @@ describe('LiveTableStage', () => {
             querySelectorSpy.mockRestore();
         }
     });
+
+    it('displays settled winnings on the showdown pot pill when the server has zeroed pot after recovery', () => {
+        const settledShowdown: GameState = {
+            ...mockGameState,
+            phase: 'SHOWDOWN',
+            pot: 0,
+            pots: [],
+            uncalledAmount: 0,
+            handSettled: true,
+            winners: ['Hero'],
+            players: [
+                { ...defaultHero, isWinner: true, chipsWon: 50 },
+                { ...defaultOpponent, status: 'FOLDED', hasFolded: true, chipsWon: 0 },
+            ],
+        };
+
+        render(
+            <LiveTableStage
+                {...defaultProps}
+                gameState={settledShowdown}
+                orderedPlayers={settledShowdown.players}
+                showdown={settledShowdown}
+            />,
+        );
+
+        const pot = screen.getByTestId('table-pot');
+        expect(within(pot).getByText('Won')).toBeInTheDocument();
+        expect(within(pot).getByText('50')).toBeInTheDocument();
+    });
+
+    it('keeps side-pot mainPot breakdown intact at showdown while clamping uncontested fold-to-BB pot', () => {
+        const foldToBb: GameState = {
+            ...mockGameState,
+            phase: 'SHOWDOWN',
+            pot: 30,
+            pots: [30],
+            uncalledAmount: 0,
+            handSettled: true,
+            winners: ['Hero'],
+            players: [
+                { ...defaultHero, isWinner: true, chipsWon: 20 },
+                { ...defaultOpponent, status: 'FOLDED', hasFolded: true, chipsWon: 0 },
+            ],
+        };
+        const { unmount } = render(
+            <LiveTableStage
+                {...defaultProps}
+                gameState={foldToBb}
+                orderedPlayers={foldToBb.players}
+                showdown={foldToBb}
+            />,
+        );
+        expect(within(screen.getByTestId('table-pot')).getByText('20')).toBeInTheDocument();
+        unmount();
+
+        const multiPot: GameState = {
+            ...mockGameState,
+            phase: 'SHOWDOWN',
+            pot: 590,
+            pots: [570, 20],
+            uncalledAmount: 0,
+            handSettled: true,
+            winners: ['Hero', 'Villain'],
+            players: [
+                { ...defaultHero, isWinner: true, chipsWon: 570 },
+                { ...defaultOpponent, isWinner: true, chipsWon: 20 },
+            ],
+        };
+        render(
+            <LiveTableStage
+                {...defaultProps}
+                gameState={multiPot}
+                orderedPlayers={multiPot.players}
+                showdown={multiPot}
+            />,
+        );
+        expect(within(screen.getByTestId('table-pot')).getByText('570')).toBeInTheDocument();
+    });
 });
