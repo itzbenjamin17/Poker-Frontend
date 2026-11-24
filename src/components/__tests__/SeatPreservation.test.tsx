@@ -163,8 +163,10 @@ describe('opponent seat preservation', () => {
             if (blind.length) expect(blind[0], label).toHaveTextContent(spec.bigBlind ? 'BB' : 'SB');
             expect(screen.queryAllByTestId('seat-winner-crown'), label).toHaveLength(spec.winner ? 1 : 0);
             expect(screen.queryAllByTestId('seat-bet'), label).toHaveLength(spec.bet > 0 ? 1 : 0);
+            const hasActiveStatus = spec.status === 'DISCONNECTED' || spec.ready;
+            const hasPlayStateStatus = !hasActiveStatus && (spec.status === 'ALL_IN' || spec.status === 'FOLDED');
             expect(screen.queryAllByTestId('seat-status'), label).toHaveLength(
-                (spec.status === 'DISCONNECTED' ? 1 : 0) + (spec.ready ? 1 : 0),
+                (spec.status === 'DISCONNECTED' ? 1 : 0) + (spec.ready ? 1 : 0) + (hasPlayStateStatus ? 1 : 0),
             );
 
             // Exactly one hand-rank label whenever there is a displayable hand rank (it may be screen-reader only).

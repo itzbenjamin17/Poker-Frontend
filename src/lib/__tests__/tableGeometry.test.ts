@@ -68,7 +68,8 @@ describe('getTableTier', () => {
 
 describe('getDensity', () => {
     it('shrinks opponents on crowded tables', () => {
-        expect(getDensity(6)).toBe(1);
+        expect(getDensity(5)).toBe(1);
+        expect(getDensity(6)).toBe(0.9);
         expect(getDensity(7)).toBe(0.8);
         expect(getDensity(8)).toBe(0.78);
         expect(getDensity(9)).toBe(0.76);

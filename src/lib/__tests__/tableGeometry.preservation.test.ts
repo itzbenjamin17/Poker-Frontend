@@ -130,8 +130,8 @@ describe('getTableScale preservation', () => {
 });
 
 describe('getDensity preservation', () => {
-    it('is at most 1, is 1 up to 6 players, never increases with the player count and stays positive', () => {
-        for (let count = 1; count <= 6; count++) expect(getDensity(count), `count ${count}`).toBe(1);
+    it('is at most 1, is 1 up to 5 players, never increases with the player count and stays positive', () => {
+        for (let count = 1; count <= 5; count++) expect(getDensity(count), `count ${count}`).toBe(1);
         let previous = 1;
         for (let count = 2; count <= 14; count++) {
             const density = getDensity(count);

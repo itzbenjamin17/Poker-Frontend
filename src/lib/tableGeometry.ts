@@ -108,6 +108,7 @@ export function getDensity(playerCount: number): number {
     if (playerCount >= 9) return 0.76;
     if (playerCount >= 8) return 0.78;
     if (playerCount >= 7) return 0.8;
+    if (playerCount >= 6) return 0.9;
     return 1;
 }
 

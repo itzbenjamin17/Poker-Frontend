@@ -484,6 +484,8 @@ const formatDisconnectCountdown = (secondsRemaining: number) => {
 export function PlayerStatus({
     isDisconnected,
     isReady,
+    isAllIn = false,
+    isFolded = false,
     disconnectSecondsRemaining,
     textScale,
     maxWidthPx,
@@ -491,6 +493,8 @@ export function PlayerStatus({
 }: {
     isDisconnected: boolean;
     isReady: boolean;
+    isAllIn?: boolean;
+    isFolded?: boolean;
     disconnectSecondsRemaining?: number;
     textScale: number;
     /** Bounds the text width: it wraps (at most two lines) instead of growing with the countdown. */
@@ -528,6 +532,30 @@ export function PlayerStatus({
                     style={hidden ? undefined : { fontSize }}
                 >
                     READY
+                </p>
+            )}
+            {!isDisconnected && !isReady && isAllIn && (
+                <p
+                    data-testid="seat-status"
+                    className={cn(
+                        'font-bold text-gold-secondary uppercase tracking-wider',
+                        hidden && 'sr-only',
+                    )}
+                    style={hidden ? undefined : { fontSize }}
+                >
+                    ALL IN
+                </p>
+            )}
+            {!isDisconnected && !isReady && !isAllIn && isFolded && (
+                <p
+                    data-testid="seat-status"
+                    className={cn(
+                        'font-bold text-zinc-400 uppercase tracking-wider',
+                        hidden && 'sr-only',
+                    )}
+                    style={hidden ? undefined : { fontSize }}
+                >
+                    FOLDED
                 </p>
             )}
         </>
@@ -591,6 +619,8 @@ export const PlayerPod = ({
     handRankTier?: TableTier;
 }) => {
     const isDisconnected = player.status === 'DISCONNECTED';
+    const isAllIn = player.status === 'ALL_IN';
+    const isFolded = player.status === 'FOLDED';
     const diameter = avatarDiameter(size, scale);
 
     const handRankFormatted = formatHandRank(handRank, bestHand || player.bestHand);
@@ -600,7 +630,9 @@ export const PlayerPod = ({
         showHandRank ||
         player.currentBet > 0 ||
         isDisconnected ||
-        player.isReadyForNextHand
+        player.isReadyForNextHand ||
+        isAllIn ||
+        isFolded
     );
 
     return (
@@ -660,6 +692,8 @@ export const PlayerPod = ({
                         <PlayerStatus
                             isDisconnected={isDisconnected}
                             isReady={Boolean(player.isReadyForNextHand)}
+                            isAllIn={isAllIn}
+                            isFolded={isFolded}
                             disconnectSecondsRemaining={disconnectSecondsRemaining}
                             textScale={textScale}
                             maxWidthPx={statusMaxWidthPx(diameter / 2, fontPx(9, textScale))}

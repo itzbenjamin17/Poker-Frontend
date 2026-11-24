@@ -140,7 +140,8 @@ export function OpponentSeats({
                 // The hand label has priority: it is tested alone, while bet/status lines must fit as well.
                 const fitsLabel = seatHandRankFits(seat, effectiveTable, tableScale, labelTier, 0);
                 // The status text can wrap to two lines (see statusBoxSize), so it reserves two.
-                const extraLines = (p.currentBet > 0 ? 1 : 0) + (p.status === 'DISCONNECTED' || p.isReadyForNextHand ? 2 : 0);
+                const hasStatus = p.status === 'DISCONNECTED' || p.isReadyForNextHand || p.status === 'ALL_IN' || p.status === 'FOLDED';
+                const extraLines = (p.currentBet > 0 ? 1 : 0) + (hasStatus ? 2 : 0);
                 const fitsBoard = extraLines === 0 ? fitsLabel : seatHandRankFits(seat, effectiveTable, tableScale, labelTier, extraLines);
                 const statusFitsFelt = seatStatusFitsFelt(seat, effectiveTable, tableScale, labelTier);
                 const seatHideHandRank = hideHandRank || !fitsLabel;
