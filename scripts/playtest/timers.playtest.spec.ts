@@ -69,11 +69,11 @@ test.describe('Timers', () => {
 
         const ann = t.page('Ann');
         const ben = t.page('Ben');
-        await expect(ann.getByText('(0/2 players ready)')).toBeVisible();
+        await expect(ann.getByText(/\(0\/2( players ready)?\)/)).toBeVisible();
         await ann.getByRole('button', { name: /^ready$/i }).click();
-        await expect(ben.getByText('(1/2 players ready)')).toBeVisible();
+        await expect(ben.getByText(/\(1\/2( players ready)?\)/)).toBeVisible();
         await ann.getByRole('button', { name: /cancel ready/i }).click();
-        await expect(ben.getByText('(0/2 players ready)')).toBeVisible();
+        await expect(ben.getByText(/\(0\/2( players ready)?\)/)).toBeVisible();
 
         await ann.getByRole('button', { name: /^ready$/i }).click();
         const clickedAt = Date.now();

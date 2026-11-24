@@ -302,7 +302,8 @@ export async function act(page: Page, action: Action): Promise<GameState> {
         const amount = 'bet' in action ? action.bet : action.raise;
         await actionButton(page, kind).click();
         await page.getByLabel('Raise amount').fill(String(amount));
-        await actionButton(page, kind).click();
+        const confirmLabel = kind === 'BET' ? /^bet(\s+[\d,]+)?$/i : /^raise(\s+[\d,]+)?$/i;
+        await page.getByRole('button', { name: confirmLabel }).click();
     }
     let after: GameState | null = null;
     await expect.poll(async () => {
