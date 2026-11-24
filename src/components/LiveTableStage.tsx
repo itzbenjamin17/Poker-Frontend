@@ -71,9 +71,21 @@ export function LiveTableStage({
 
     const uncalledAmount = gameState.uncalledAmount ?? 0;
     const potBreakdown = getPotBreakdown(gameState);
-    const displayedPot = Math.max(0, gameState.pot - uncalledAmount);
-    const mainPot = potBreakdown[0] ?? gameState.pot;
+    const settledPlayers = showdown?.players?.some((p) => (p.chipsWon ?? 0) > 0)
+        ? showdown.players
+        : gameState.players;
+    const settledTotalWon = gameState.phase === 'SHOWDOWN'
+        ? settledPlayers.reduce((sum, p) => sum + (p.chipsWon ?? 0), 0)
+        : 0;
+    const rawDisplayedPot = Math.max(0, gameState.pot - uncalledAmount);
+    const displayedPot = settledTotalWon > 0 && settledTotalWon < rawDisplayedPot
+        ? settledTotalWon
+        : rawDisplayedPot;
+    const rawMainPot = potBreakdown[0] ?? gameState.pot;
     const sidePots = potBreakdown.slice(1);
+    const mainPot = sidePots.length === 0 && settledTotalWon > 0 && settledTotalWon < rawMainPot
+        ? settledTotalWon
+        : rawMainPot;
 
     return (
         <div

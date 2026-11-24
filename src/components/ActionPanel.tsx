@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ComponentProps, ComponentType, KeyboardEvent as ReactKeyboardEvent, RefAttributes } from 'react';
 import { motion, AnimatePresence, useReducedMotion } from 'motion/react';
 import { cn } from '../lib/cn';
@@ -88,6 +88,7 @@ export function ActionPanel({
     const isCorner = layout === 'corner';
     const prefersReducedMotion = useReducedMotion();
     const restoreAmountTriggerFocus = useRef(false);
+    const raiseSliderRef = useRef<HTMLInputElement>(null);
     const amountTriggerRef = (node: HTMLButtonElement | null) => {
         if (node && restoreAmountTriggerFocus.current) {
             restoreAmountTriggerFocus.current = false;
@@ -252,6 +253,12 @@ export function ActionPanel({
     const isRaising = showControls && canBetOrRaise && amountAction === actionType;
     const isUrgentTurn = showControls && typeof turnSecondsRemaining === 'number' && turnSecondsRemaining <= 10;
 
+    useEffect(() => {
+        if (isRaising) {
+            raiseSliderRef.current?.focus();
+        }
+    }, [isRaising]);
+
     // Scoped to the dock container (not window) so inert freeze and modal <dialog> Escape work naturally.
     const handleRaiseKeyDown = (event: ReactKeyboardEvent<HTMLElement>) => {
         if (!isRaising || event.key !== 'Escape' || event.defaultPrevented) return;
@@ -326,6 +333,7 @@ export function ActionPanel({
                         {turnWarningNode}
                         {/* eslint-disable jsx-a11y/no-autofocus */}
                         <input
+                            ref={raiseSliderRef}
                             type="range"
                             aria-label={ARIA_RAISE_AMOUNT}
                             aria-describedby={activeRaiseError ? 'raise-amount-error' : undefined}
@@ -399,25 +407,25 @@ export function ActionPanel({
                 data-testid="corner-dock"
                 {...sectionMotion}
                 className={cn(
-                    'pointer-events-auto absolute right-1.5 bottom-1.5 z-20 flex max-w-[232px] min-[710px]:max-w-[260px] flex-col items-end gap-1 rounded-xl border border-white/10 bg-surface-high/95 px-2 py-1.5 shadow-lg backdrop-blur-md transition-all duration-200',
+                    'pointer-events-auto absolute right-1.5 bottom-1.5 z-20 flex max-w-[208px] min-[710px]:max-w-[232px] flex-col items-end gap-1 rounded-xl border border-white/10 bg-surface-high/95 px-2 py-1.5 shadow-lg backdrop-blur-md transition-all duration-200',
                     urgentCornerRing,
                 )}
             >
                 {showControls ? (
                     <>
                         {turnWarningNode}
-                        <div className="flex flex-wrap items-center justify-end gap-1">
+                        <div className="flex w-full max-w-full flex-wrap items-center justify-end gap-1">
                             {legalActions.has('FOLD') && (
-                                <Button variant="outline" size="xs" onClick={() => handleAction('FOLD')} disabled={isControlsDisabled}>
+                                <Button variant="outline" size="xs" className="px-2" onClick={() => handleAction('FOLD')} disabled={isControlsDisabled}>
                                     {activePendingAction === 'FOLD' ? 'Submitting...' : BTN_FOLD}
                                 </Button>
                             )}
                             {canCheck ? (
-                                <Button variant="primary" size="xs" onClick={() => handleAction('CHECK')} disabled={isControlsDisabled}>
+                                <Button variant="primary" size="xs" className="px-2" onClick={() => handleAction('CHECK')} disabled={isControlsDisabled}>
                                     {activePendingAction === 'CHECK' ? 'Submitting...' : BTN_CHECK}
                                 </Button>
                             ) : canCall ? (
-                                <Button variant="primary" size="xs" onClick={() => handleAction('CALL')} disabled={isControlsDisabled}>
+                                <Button variant="primary" size="xs" className="px-2" onClick={() => handleAction('CALL')} disabled={isControlsDisabled}>
                                     {activePendingAction === 'CALL' ? 'Submitting...' : `${BTN_CALL_PREFIX}${Math.min(callAmount, availableChips).toLocaleString()}`}
                                 </Button>
                             ) : null}
@@ -425,6 +433,7 @@ export function ActionPanel({
                                 <ButtonWithRef
                                     variant="outline"
                                     size="xs"
+                                    className="px-2"
                                     ref={amountTriggerRef}
                                     aria-expanded="false"
                                     aria-controls="amount-action-controls"
@@ -441,6 +450,7 @@ export function ActionPanel({
                                 <ButtonWithRef
                                     variant="outline"
                                     size="xs"
+                                    className="px-2"
                                     ref={amountTriggerRef}
                                     aria-expanded="false"
                                     aria-controls="amount-action-controls"
@@ -454,7 +464,7 @@ export function ActionPanel({
                                 </ButtonWithRef>
                             )}
                             {canAllIn && (
-                                <Button variant="outline" size="xs" onClick={() => handleAction('ALL_IN')} disabled={isControlsDisabled}>
+                                <Button variant="outline" size="xs" className="px-2" onClick={() => handleAction('ALL_IN')} disabled={isControlsDisabled}>
                                     {activePendingAction === 'ALL_IN' ? 'Submitting...' : `${BTN_ALL_IN_PREFIX}${availableChips.toLocaleString()}`}
                                 </Button>
                             )}
@@ -600,6 +610,7 @@ export function ActionPanel({
                                         </span>
                                         {/* eslint-disable jsx-a11y/no-autofocus */}
                                         <input
+                                            ref={raiseSliderRef}
                                             type="range"
                                             aria-label={ARIA_RAISE_AMOUNT}
                                             aria-describedby={activeRaiseError ? 'raise-amount-error' : undefined}

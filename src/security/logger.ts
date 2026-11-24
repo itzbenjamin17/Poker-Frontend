@@ -17,12 +17,27 @@ function redactValue(value: unknown, seen = new WeakSet<object>()): unknown {
         return redactString(value);
     }
     if (value instanceof Error) {
-        return redactValue({
-            ...value,
-            name: value.name,
-            message: value.message,
-            stack: value.stack,
-        }, seen);
+        if (seen.has(value)) {
+            return '[Circular]';
+        }
+        seen.add(value);
+        const sanitized = new Error(redactString(value.message));
+        sanitized.name = value.name;
+        if (value.stack) {
+            sanitized.stack = redactString(value.stack);
+        }
+        const extra = sanitized as unknown as Record<string, unknown>;
+        for (const [key, val] of Object.entries(value as unknown as Record<string, unknown>)) {
+            if (key === 'name' || key === 'message' || key === 'stack') {
+                continue;
+            }
+            if (SENSITIVE_KEYS.has(key.toLowerCase())) {
+                extra[key] = '[REDACTED]';
+            } else {
+                extra[key] = redactValue(val, seen);
+            }
+        }
+        return sanitized;
     }
     if (!value || typeof value !== 'object') {
         return value;

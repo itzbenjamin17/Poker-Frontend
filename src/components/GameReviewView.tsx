@@ -16,6 +16,7 @@ import {
     REVIEW_FORFEIT_BY_OTHERS,
     formatNameList,
     formatReviewFinalStack,
+    formatChips,
 } from '../constants/strings';
 import type { PublicGameStateResponse } from '../types';
 
@@ -160,7 +161,7 @@ export function GameReviewView({ gameEndResult, playerName, onLeave, leaveError,
                                                 )}
                                             </div>
                                             <div className="text-sm text-neutral-400">
-                                                {player.chips} chips
+                                                {formatChips(player.chips)}
                                                 {formatHandRank(player.handRank, player.bestHand) && (
                                                     <span className="text-zinc-400 capitalize">
                                                         • {formatHandRank(player.handRank, player.bestHand)}
