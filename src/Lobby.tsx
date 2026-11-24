@@ -17,6 +17,7 @@ export default function Lobby({
 }) {
     const [isCreating, setIsCreating] = useState(false);
     const [isJoining, setIsJoining] = useState(false);
+    const [isRejoining, setIsRejoining] = useState(false);
     const [error, setErrorState] = useState<string | null>(null);
     const requestLock = useRef<AbortController | null>(null);
 
@@ -26,7 +27,7 @@ export default function Lobby({
 
     return (
         <MotionConfig reducedMotion="user">
-        <div className="min-h-dvh pt-24 pb-32 px-6 flex flex-col items-center justify-center">
+        <main className="min-h-dvh pt-6 md:pt-24 [@media(max-height:500px)]:pt-4 pb-16 md:pb-32 px-4 sm:px-6 flex flex-col items-center justify-center">
             <AnimatePresence>
                 {error && (
                     <motion.div
@@ -48,22 +49,28 @@ export default function Lobby({
                 )}
             </AnimatePresence>
 
-            {/* First, so a phone in landscape sees its held seats without scrolling past the hero. */}
-            <RejoinSeats onAuth={onAuth} disabled={isCreating || isJoining} />
-
             <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="w-full max-w-6xl mb-16"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                className="w-full max-w-6xl mb-10 md:mb-14 [@media(max-height:500px)]:mb-4"
             >
-                <span className="block text-gold-secondary font-headline text-[0.625rem] tracking-[0.2em] uppercase font-bold mb-4">
+                <span className="block text-gold-secondary font-headline text-[0.625rem] tracking-[0.2em] uppercase font-bold mb-2 md:mb-4 [@media(max-height:500px)]:hidden">
                     {LOBBY_HERO_SUBTITLE}
                 </span>
-                <h1 className="font-headline text-5xl md:text-7xl font-bold tracking-tighter leading-none text-white max-w-3xl">
-                    {LOBBY_HERO_TITLE_1} <br />
+                <h1 className="font-headline text-4xl sm:text-5xl md:text-7xl [@media(max-height:500px)]:text-2xl font-bold tracking-tighter leading-none text-white max-w-3xl">
+                    {LOBBY_HERO_TITLE_1}{' '}
+                    <br className="[@media(max-height:500px)]:hidden" />
                     <span className="text-emerald-primary/60">{LOBBY_HERO_TITLE_2}</span>
                 </h1>
             </motion.div>
+
+            <RejoinSeats
+                onAuth={onAuth}
+                onError={setError}
+                disabled={isCreating || isJoining}
+                setLoading={setIsRejoining}
+                requestLock={requestLock}
+            />
 
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 w-full max-w-6xl">
                 <motion.div
@@ -76,7 +83,7 @@ export default function Lobby({
                         onAuth={onAuth}
                         onError={setError}
                         isSubmitting={isCreating}
-                        disabled={isJoining}
+                        disabled={isJoining || isRejoining}
                         setLoading={setIsCreating}
                         requestLock={requestLock}
                     />
@@ -92,13 +99,13 @@ export default function Lobby({
                         onAuth={onAuth}
                         onError={setError}
                         isSubmitting={isJoining}
-                        disabled={isCreating}
+                        disabled={isCreating || isRejoining}
                         setLoading={setIsJoining}
                         requestLock={requestLock}
                     />
                 </motion.div>
             </div>
-        </div>
+        </main>
         </MotionConfig>
     );
 }

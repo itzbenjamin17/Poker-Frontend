@@ -6,6 +6,7 @@ import {
     decodeCompletedGameState,
     decodePrivatePlayerState,
     decodeRoomDataResponse,
+    mapRoomDataToRoomState,
     validatePrivatePlayerIdentity,
     isGameStatePayload,
     isPlayerNotificationPayload,
@@ -315,6 +316,12 @@ describe('lib/payloads - Type Guards and Normalizers', () => {
             const closedInactive = { ...openRoom, closedReason: 'INACTIVITY', canStartGame: false };
             expect(isRoomDataPayload(closedInactive)).toBe(true);
             expect(decodeRoomDataResponse(closedInactive)?.closedReason).toBe('INACTIVITY');
+
+            const finishedRoom = { ...openRoom, gameStarted: true, gameFinished: true };
+            expect(isRoomDataPayload(finishedRoom)).toBe(true);
+            const decodedFinished = decodeRoomDataResponse(finishedRoom);
+            expect(decodedFinished?.gameFinished).toBe(true);
+            expect(mapRoomDataToRoomState(decodedFinished!).gameFinished).toBe(true);
 
             expect(isRoomDataPayload({
                 roomId: 'room-1',

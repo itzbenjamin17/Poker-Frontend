@@ -1,9 +1,11 @@
 import { render, screen, waitFor, within, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, it, expect, vi } from 'vitest';
+import { beforeEach, describe, it, expect, vi } from 'vitest';
 import Lobby from '../../Lobby';
 import { server } from '../../test/mocks/server';
 import { http, HttpResponse } from 'msw';
+import { createMockJwt } from '../../test/fixtures';
+import { rememberSeat } from '../../services/recentSeats';
 import '@testing-library/jest-dom';
 
 describe('Lobby Component Password Fields', () => {
@@ -248,6 +250,77 @@ describe('Lobby Component Password Fields', () => {
 
         await waitFor(() => {
             expect(screen.getByRole('alert')).toHaveTextContent('Incorrect room password');
+        });
+    });
+
+    describe('Rejoin coordination', () => {
+        beforeEach(() => {
+            localStorage.clear();
+        });
+
+        it('disables Create and Quick Join forms while Rejoin click check is in flight and surfaces stale-room alert', async () => {
+            const user = userEvent.setup();
+            const seat = { token: createMockJwt(Math.floor(Date.now() / 1000) + 3600), roomId: 'room-1', playerName: 'Ann' };
+            rememberSeat(seat);
+            let checks = 0;
+            let resolveSecondCheck!: () => void;
+            server.use(
+                http.get('/api/room/:roomId', async ({ params }) => {
+                    checks += 1;
+                    if (checks === 1) {
+                        return HttpResponse.json({
+                            roomId: params.roomId, roomName: 'Friday Game', maxPlayers: 6, buyIn: 1000,
+                            smallBlind: 10, bigBlind: 20, players: [], canStartGame: false, gameStarted: false, gameFinished: false,
+                        });
+                    }
+                    await new Promise<void>(resolve => { resolveSecondCheck = resolve; });
+                    return HttpResponse.json({ detail: 'Room not found' }, { status: 404 });
+                })
+            );
+
+            render(<Lobby onAuth={vi.fn()} />);
+            const rejoinButton = await screen.findByRole('button', { name: /rejoin friday game as ann/i });
+            const createRegion = screen.getByRole('region', { name: /create table/i });
+            const joinRegion = screen.getByRole('region', { name: /quick join/i });
+
+            await user.click(rejoinButton);
+
+            await waitFor(() => {
+                expect(within(createRegion).getByRole('button', { name: /create game/i })).toBeDisabled();
+                expect(within(joinRegion).getByRole('button', { name: /join game/i })).toBeDisabled();
+                expect(rejoinButton).toBeDisabled();
+            });
+
+            resolveSecondCheck();
+
+            await waitFor(() => {
+                expect(screen.getByRole('alert')).toHaveTextContent('This room is no longer available.');
+                expect(within(createRegion).getByRole('button', { name: /create game/i })).toBeEnabled();
+                expect(within(joinRegion).getByRole('button', { name: /join game/i })).toBeEnabled();
+            });
+        });
+
+        it('renders lobby inside a main landmark with h1 before Your seats and form h2 headings', async () => {
+            const seat = { token: createMockJwt(Math.floor(Date.now() / 1000) + 3600), roomId: 'room-1', playerName: 'Ann' };
+            rememberSeat(seat);
+            server.use(
+                http.get('/api/room/:roomId', ({ params }) => HttpResponse.json({
+                    roomId: params.roomId, roomName: 'Friday Game', maxPlayers: 6, buyIn: 1000,
+                    smallBlind: 10, bigBlind: 20, players: [], canStartGame: false, gameStarted: false, gameFinished: false,
+                }))
+            );
+
+            render(<Lobby onAuth={vi.fn()} />);
+            await screen.findByRole('button', { name: /rejoin friday game as ann/i });
+
+            const main = screen.getByRole('main');
+            const headings = within(main).getAllByRole('heading');
+            expect(headings.map(h => `${h.tagName}:${h.textContent?.trim()}`)).toEqual([
+                expect.stringMatching(/^H1:PLAY POKER/),
+                'H2:Your seats',
+                'H2:Create Game',
+                'H2:Quick Join',
+            ]);
         });
     });
 });

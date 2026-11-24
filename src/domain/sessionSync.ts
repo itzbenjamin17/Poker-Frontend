@@ -69,7 +69,7 @@ export async function loadSessionData(deps: SessionSyncDeps): Promise<SyncResult
                 }
                 const status = getErrorStatusCode(err);
                 if (status === 403 || status === 404) {
-                    return handleReviewFallback(api, auth, status, signal);
+                    return handleReviewFallback(api, auth, status === 403 ? 'seat-gone' : 'room-gone', signal);
                 }
                 attemptController.abort();
                 throw err;
@@ -102,6 +102,9 @@ export async function loadSessionData(deps: SessionSyncDeps): Promise<SyncResult
                 throw new Error('Lobby sync without room state');
             }
             return { type: 'LOBBY', room: roomState };
+        }
+        if (roomData?.gameFinished) {
+            return handleReviewFallback(api, auth, 'room-gone', signal);
         }
 
         // 3. If started, fetch public and private state concurrently
@@ -140,7 +143,7 @@ export async function loadSessionData(deps: SessionSyncDeps): Promise<SyncResult
                     : (err as { status?: number })?.status ?? getErrorStatusCode(err);
 
             if (status === 403 || status === 404) {
-                return handleReviewFallback(api, auth, status, signal);
+                return handleReviewFallback(api, auth, status === 403 ? 'seat-gone' : 'room-gone', signal);
             }
 
             attemptController.abort();
@@ -201,14 +204,16 @@ export async function loadSessionData(deps: SessionSyncDeps): Promise<SyncResult
     }
 }
 
+type MissingSessionReason = 'seat-gone' | 'room-gone';
+
 async function handleReviewFallback(
     api: typeof pokerApi,
     auth: AuthResponse,
-    originalStatus: number,
+    missingReason: MissingSessionReason,
     signal: AbortSignal
 ): Promise<SyncResult> {
     if (typeof api.getReview !== 'function') {
-        if (originalStatus === 403) {
+        if (missingReason === 'seat-gone') {
             throw new HttpError(403, SESSION_SEAT_GONE);
         }
         throw new HttpError(404, SESSION_EXPIRED);
@@ -228,8 +233,8 @@ async function handleReviewFallback(
             throw new HttpError(403, SESSION_SEAT_GONE);
         }
         if (reviewStatus === 404 || reviewStatus === 409) {
-            // Review HTTP 409 or 404 -> Honor original failure: 403 means seat gone; 404 means session expired.
-            if (originalStatus === 403) {
+            // Review HTTP 409 or 404 -> Honor original failure: seat gone vs room gone.
+            if (missingReason === 'seat-gone') {
                 throw new HttpError(403, SESSION_SEAT_GONE);
             }
             throw new HttpError(404, SESSION_EXPIRED);

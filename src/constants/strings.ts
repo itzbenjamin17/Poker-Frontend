@@ -93,8 +93,12 @@ export const BTN_JOINING = 'JOINING...';
 export const REJOIN_HEADING = 'Your seats';
 export const REJOIN_SUBTITLE = 'Active seats from this browser — pick one to open it in this tab.';
 export const REJOIN_STATUS_IN_GAME = 'Game in progress';
+export const REJOIN_STATUS_FINISHED = 'Game over';
 export const REJOIN_STATUS_WAITING = 'Waiting to start';
 export const formatRejoinLabel = (roomName: string, playerName: string) => `Rejoin ${roomName} as ${playerName}`;
+export const ERROR_REJOIN_ROOM_GONE = 'This room is no longer available.';
+export const ERROR_REJOIN_SEAT_GONE = 'Your seat is no longer active.';
+export const ERROR_REJOIN_FALLBACK = 'Could not rejoin right now. Please try again.';
 
 export const ERROR_CREATE_FALLBACK = 'Failed to create room. Please check your connection.';
 export const ERROR_JOIN_FALLBACK = 'Failed to join room. Room may not exist or password is incorrect.';

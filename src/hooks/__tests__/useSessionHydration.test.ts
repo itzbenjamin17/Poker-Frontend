@@ -191,6 +191,24 @@ describe('useSessionHydration through the session coordinator', () => {
         expect(onLeave).not.toHaveBeenCalled();
     });
 
+    it('loads terminal review directly without calling /state or /private-state when room reports gameFinished', async () => {
+        const { api, auth, session, wrapper, onLeave } = setup(true);
+        api.getRoomData.mockResolvedValue(createValidRoomData({
+            roomId: auth.roomId, gameStarted: true, gameFinished: true,
+            players: [{ name: auth.playerName, isHost: true }],
+        }));
+        renderHook(() => useSessionHydration(), { wrapper });
+        await settle();
+
+        expect(api.getReview).toHaveBeenCalledOnce();
+        expect(api.getPublicGameState).not.toHaveBeenCalled();
+        expect(api.getPrivatePlayerState).not.toHaveBeenCalled();
+        expect(session.getSnapshot()).toMatchObject({
+            isGameOver: true, isHydrated: true, gameEndResult: { gameEnd: { winner: 'TestPlayer' } },
+        });
+        expect(onLeave).not.toHaveBeenCalled();
+    });
+
     it.each([
         [403, 404, SESSION_SEAT_GONE], [403, 409, SESSION_SEAT_GONE],
         [404, 404, SESSION_EXPIRED], [404, 409, SESSION_EXPIRED],

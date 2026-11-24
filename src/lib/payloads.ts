@@ -269,7 +269,7 @@ export function isRoomDataPayload(value: unknown): value is RoomDataResponse {
     return fields(value, {
         roomId: text, roomName: text, maxPlayers: optional(capacity),
         buyIn: optional(nonnegative), smallBlind: optional(nonnegative), bigBlind: optional(nonnegative),
-        canStartGame: optional(boolean), gameStarted: optional(boolean),
+        canStartGame: optional(boolean), gameStarted: optional(boolean), gameFinished: optional(boolean),
         players: list(roomPlayer, 10),
         inactivityDeadlineEpochMs: optional(nullable(nonnegative)),
         serverTimeEpochMs: optional(nullable(nonnegative)),
@@ -302,6 +302,7 @@ export function mapRoomDataToRoomState(
         bigBlind: roomData.bigBlind,
         canStartGame: roomData.canStartGame,
         gameStarted: roomData.gameStarted,
+        gameFinished: roomData.gameFinished,
         inactivityDeadlineEpochMs: roomData.inactivityDeadlineEpochMs,
         serverTimeEpochMs: roomData.serverTimeEpochMs,
         closedReason: roomData.closedReason ?? null,

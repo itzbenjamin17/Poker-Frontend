@@ -88,6 +88,7 @@ export interface RoomDataResponse {
     }[];
     canStartGame: boolean;
     gameStarted: boolean;
+    gameFinished?: boolean;
     inactivityDeadlineEpochMs?: number | null;
     serverTimeEpochMs?: number | null;
     closedReason?: string | null;
@@ -104,6 +105,7 @@ export interface RoomState {
     bigBlind?: number;
     canStartGame?: boolean;
     gameStarted?: boolean;
+    gameFinished?: boolean;
     inactivityDeadlineEpochMs?: number | null;
     serverTimeEpochMs?: number | null;
     closedReason?: string | null;

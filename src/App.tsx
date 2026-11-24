@@ -96,7 +96,7 @@ export default function App() {
             {!auth && (
                 <nav
                     aria-label="Main Navigation"
-                    className="fixed top-0 left-0 w-full z-50 hidden md:flex justify-between items-center px-8 py-6 bg-surface/80 backdrop-blur-xl border-b border-white/5"
+                    className="fixed top-0 left-0 w-full z-50 hidden md:flex [@media(max-height:500px)]:hidden justify-between items-center px-8 py-6 bg-surface/80 backdrop-blur-xl border-b border-white/5"
                 >
                     <div className="flex items-center gap-12">
                         <span className="text-2xl font-headline font-bold tracking-tighter text-emerald-primary">

@@ -43,6 +43,7 @@ export function useLobbyRequest({
     const run = async (
         request: (signal: AbortSignal) => Promise<AuthResponse>,
         fallback: string,
+        onRejected?: (error: unknown) => string | undefined,
     ): Promise<void> => {
         if (isBusy()) return;
 
@@ -67,9 +68,10 @@ export function useLobbyRequest({
         } catch (error) {
             if (mounted.current && !controller.signal.aborted) {
                 logger.error('Lobby request failed:', error);
+                const customMessage = onRejected?.(error);
                 const rawMessage = error instanceof Error ? error.message : null;
                 const normalized = normalizeErrorMessage(rawMessage);
-                onError(normalized && normalized.trim().length > 0 ? normalized : fallback);
+                onError(customMessage ?? (normalized && normalized.trim().length > 0 ? normalized : fallback));
             }
         } finally {
             if (mounted.current) {
@@ -81,5 +83,5 @@ export function useLobbyRequest({
         }
     };
 
-    return { isBusy, run };
+    return { isBusy, pending, run };
 }
