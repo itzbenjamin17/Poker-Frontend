@@ -56,6 +56,7 @@ npm run dev
 | `npm run layout:overlap` | Run Playwright bounding-box overlap & containment checks across seat counts/viewports |
 | `npm run layout:screenshots` | Capture 3–10 player table & showdown screenshots across 8 viewports into `test-results/layout-screenshots/` |
 | `npm run layout:all` | Run all layout diagnostic suites using [`playwright.layout.config.ts`](playwright.layout.config.ts) |
+| `npm run playtest` | Run the unmocked real-backend playtest suite in `scripts/playtest/` using [`playwright.playtest.config.ts`](playwright.playtest.config.ts) (short timers) |
 
 Optional build-time environment variables (configured in [`src/services/api.ts`](src/services/api.ts)):
 - `VITE_API_BASE_URL` — REST base path (defaults to `/api`)
@@ -103,6 +104,7 @@ src/
 |   `-- useElementSize.ts          # ResizeObserver hook for measured table stage sizing
 |-- components/
 |   |-- PokerRoomLayout.tsx        # Viewport gate, header/stage/dock shell, reconnect overlay
+|   |-- RoomHeader.tsx             # Room metadata, connection status, and Leave control
 |   |-- RotatePrompt.tsx           # Prompt displayed when viewport falls below minimum gates
 |   |-- GameLobbyView.tsx          # Pre-game waiting room and host start controls
 |   |-- GameTableView.tsx          # Active poker table view
@@ -112,7 +114,7 @@ src/
 |   |-- ActionPanel.tsx            # Persistent lower betting controls and raise sizing dock
 |   |-- ResultDock.tsx             # Inter-hand showdown summary and ready countdown gate
 |   |-- GameUI.tsx & UI.tsx        # PlayerPod, CardUI, and reusable Button/Input/Card primitives
-|   `-- lobby/                     # CreateRoomForm, JoinRoomForm, validation, and request lock
+|   `-- lobby/                     # CreateRoomForm, JoinRoomForm, RejoinSeats, validation, and request lock
 |-- lib/
 |   |-- tableGeometry.ts           # Parametric ellipse seating, footprint fitting, containment guard
 |   |-- payloads.ts                # Runtime wire decoders and error message normalization
@@ -122,7 +124,8 @@ src/
 |-- services/
 |   |-- api.ts                     # REST client (timeouts, abort signals, error normalization)
 |   |-- transport.ts               # GameTransport port, STOMP adapter, and in-memory test adapter
-|   `-- gameEndStorage.ts          # Versioned sessionStorage persistence for post-game review
+|   |-- gameEndStorage.ts          # Versioned sessionStorage persistence for post-game review
+|   `-- recentSeats.ts             # Browser-wide opt-in recent-seats list for lobby Rejoin buttons
 |-- constants/
 |   `-- strings.ts                 # Centralized UI copy and accessible labels
 |-- security/
@@ -131,6 +134,7 @@ src/
 `-- __tests__/                     # Cross-component integration suites (plus co-located __tests__)
 e2e/                               # Playwright multi-client and mocked WebSocket browser specs
 scripts/layout/                    # Playwright layout overlap and screenshot diagnostic specs
+scripts/playtest/                  # Unmocked real-backend playtest specs with short timers
 ```
 
 ## Key Features
@@ -142,10 +146,12 @@ scripts/layout/                    # Playwright layout overlap and screenshot di
 
 ### Adaptive Table-First UI
 - **Parametric Elliptical Seating (2–10 Players):** [`tableGeometry.ts`](src/lib/tableGeometry.ts) and [`LiveTableStage.tsx`](src/components/LiveTableStage.tsx) measure the available stage container and place opponents along a continuous ellipse (`TABLE_ASPECT = 2.15`) with density scaling and containment guards, while pinning the hero seat at `(50%, 86%)`.
+- **Corner-Chrome Phone Landscape Layout:** Landscape viewports under `500px` tall move room info/street and Leave into the top dead corners and compact action/result controls into bottom corners so `HeroSeat` and all opponents remain unobstructed (keeping Leave usable during reconnect overlays).
 - **Showdown, Ready Gate & Final Review:** Distinct in-game [`ResultDock`](src/components/ResultDock.tsx) for single-hand showdowns and `ready`/`unready` countdowns, plus a dedicated [`GameReviewView`](src/components/GameReviewView.tsx) that survives page refreshes after server cleanup via versioned `sessionStorage` snapshots.
 
 ### Tab-Isolated Authentication
 - **Multi-Tab Friendly Storage:** [`useAuthSession.ts`](src/hooks/useAuthSession.ts) stores the room-bound JWT and player context in tab-local `sessionStorage` under `poker-auth` (migrating and clearing legacy `localStorage` once), allowing multiple players or seats to be tested side-by-side in separate browser tabs.
+- **Opt-In Recent Seats Rejoin:** [`recentSeats.ts`](src/services/recentSeats.ts) keeps a browser-wide `poker-recent-seats` list in `localStorage` strictly to populate opt-in lobby Rejoin buttons ([ADR-0008](docs/adr/0008-recent-seats-rejoin-via-local-storage.md)) without ever auto-logging a tab in.
 - **Session Validation & Expiry Handling:** Validates JWT structure/expiry locally, verifies active room membership during hydration, and cleanly returns to the lobby on `auth-expired` events or invalidated seats.
 
 ## Architecture
@@ -180,7 +186,7 @@ Per [ADR-0002](docs/adr/0002-in-process-game-session-and-transport-port.md), [`G
 - **Input Validation & Sanitization:** Client-side trimming, length bounds, HTML/control-character rejection, and 72-byte UTF-8 password validation in [`validation.ts`](src/components/lobby/validation.ts).
 - **Output Encoding:** `encodeURIComponent` applied to dynamic path segments in REST URLs and STOMP destinations.
 - **Redacting Gated Logger:** [`logger.ts`](src/security/logger.ts) strips sensitive fields and silences debug output in production builds.
-- **Error Normalization & CSP:** Normalizes backend problem/error responses to prevent raw stack/markup exposure and enforces a Content Security Policy in `index.html`.
+- **Error Normalization & CSP:** Normalizes backend problem/error responses to prevent raw stack/markup exposure, enforces a strict Content Security Policy (including `script-src 'self'`, `frame-ancestors 'none'`, and `require-trusted-types-for 'script'`), and sets standard browser security headers (`X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy`, `COOP`, `CORP`) via [`security-headers.conf`](security-headers.conf), served by [`nginx.conf`](nginx.conf) in production and `vite preview` locally.
 
 ## Testing
 
@@ -226,7 +232,7 @@ Theme tokens are defined in [`src/index.css`](src/index.css) using Tailwind CSS 
 ### Minimum Viewport Eligibility Gates
 [`PokerRoomLayout.tsx`](src/components/PokerRoomLayout.tsx) checks window dimensions and renders [`RotatePrompt.tsx`](src/components/RotatePrompt.tsx) when the viewport is smaller than the supported table-first bounds:
 - **Portrait:** minimum `600 × 800`
-- **Compact Landscape (`width < 1024px`):** minimum `667 × 320`
+- **Compact Landscape (`width < 1024px`):** minimum `667 × 265` (viewports under `500px` tall switch to the corner-chrome layout)
 - **Desktop (`width >= 1024px`):** minimum `1024 × 600`
 
 ## API Integration
@@ -241,7 +247,7 @@ REST endpoints return resource DTOs directly (`TokenResponse`, `RoomDataResponse
 | `POST` | `/api/room/join` | Join an existing room by name |
 | `GET` | `/api/room/:roomId` | Fetch room details and player list for hydration |
 | `POST` | `/api/room/:roomId/start-game` | Start the game (host only) |
-| `POST` | `/api/room/:roomId/leave` | Leave the lobby room |
+| `POST` | `/api/room/:roomId/leave` | Leave the room (lobby or active game) |
 | `GET` | `/api/game/:gameId/state` | Fetch the current public game snapshot |
 | `GET` | `/api/game/:gameId/private-state` | Fetch the authenticated player's hole cards |
 | `GET` | `/api/game/:gameId/review` | Fetch the frozen terminal game review snapshot |
@@ -254,13 +260,13 @@ REST endpoints return resource DTOs directly (`TokenResponse`, `RoomDataResponse
   - `/game/{gameId}` — `PublicGameStateResponse` snapshots for live play, showdowns, auto-advance, and match completion (`gameEnd`)
   - `/user/queue/private` — `PrivatePlayerState` hole cards and `PlayerFeedbackResponse` (`ACTION_ERROR` / `PLAYER_NOTIFICATION`)
 - **Publish:**
-  - `/app/{gameId}/action` — Send player betting action (`FOLD`, `CHECK`, `CALL`, `RAISE`, `ALL_IN`)
+  - `/app/{gameId}/action` — Send player betting action (`FOLD`, `CHECK`, `CALL`, `BET`, `RAISE`, `ALL_IN`)
   - `/app/{gameId}/ready` — Mark ready for the next hand
   - `/app/{gameId}/unready` — Cancel ready state during the inter-hand countdown
 
 ## Docker, Nginx & CI/CD
 
-- **Container & Reverse Proxy ([`Dockerfile`](Dockerfile) & [`nginx.conf`](nginx.conf)):** Multi-stage build compiling static assets with `node:20-alpine` and serving them via `nginx:alpine` on port `80`. Nginx handles SPA routing (`try_files`), gzip compression, immutable asset caching, and reverse-proxying `/api` and `/ws` to `http://backend:8080` with `3600s` WebSocket read/send timeouts.
+- **Container & Reverse Proxy ([`Dockerfile`](Dockerfile), [`nginx.conf`](nginx.conf), & [`security-headers.conf`](security-headers.conf)):** Multi-stage build compiling static assets with `node:20-alpine` and serving them via `nginx:alpine` on port `80`. Nginx handles SPA routing (`try_files`), gzip compression, immutable asset caching, CSP/security response headers across HTML and cached static assets, and reverse-proxying `/api` and `/ws` to `http://backend:8080` with `3600s` WebSocket read/send timeouts.
 - **CI/CD Workflow ([`.github/workflows/deploy.yml`](.github/workflows/deploy.yml)):** On every push and PR to `main`, GitHub Actions checks out both `Poker-Frontend` and `Poker-Backend`, runs ESLint, Vitest, full Playwright E2E against the live Java 25 backend, and verifies the production build. Pushes to `main` publish multi-arch (`linux/amd64`, `linux/arm64`) images (`suame/poker-frontend:latest` and `:<sha>`).
 
 ```bash
@@ -272,7 +278,8 @@ docker run --rm -p 8080:80 poker-frontend
 ## Documentation
 
 - [AI & Project Context](docs/ai/PROJECT.md) — Canonical architecture, session/transport lifecycle, and table geometry reference.
-- [Architecture Decision Records](docs/adr/) — ADRs covering the adaptive table-first game page, in-process `GameSession` & `GameTransport` port, and seat layout invariants.
+- [Domain Glossary](GLOSSARY.md) — Plain-English definitions of table, session, and layout terms.
+- [Architecture Decision Records](docs/adr/) — ADRs covering in-process `GameSession` & `GameTransport` port, tab-scoped auth, monotonic revision/abort guard, parametric elliptical seating, versioned offline review envelope, and recent-seats rejoin.
 
 ## Portfolio Context
 
