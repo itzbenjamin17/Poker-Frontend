@@ -233,7 +233,7 @@ export function ActionPanel({
         ? `${WAITING_RECONNECT_PREFIX}${reconnectingPlayerName}${WAITING_RECONNECT_SUFFIX}`
         : `Waiting for ${waitingName} to act`;
     const canCheck = legalActions.has('CHECK');
-    const canCall = legalActions.has('CALL');
+    const canCall = legalActions.has('CALL') && availableChips > callAmount;
     const canAllIn = legalActions.has('ALL_IN');
     const canBetOrRaise = legalActions.has(actionType);
 

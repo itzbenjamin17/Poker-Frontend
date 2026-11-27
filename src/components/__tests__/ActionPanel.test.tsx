@@ -744,4 +744,20 @@ describe('ActionPanel', () => {
             }
         });
     });
+
+    it('omits duplicate Call button when server sends both CALL and ALL_IN for short or exact stacks', () => {
+        renderActionPanel({
+            gameState: {
+                ...mockGameState,
+                currentBet: 1010,
+                pot: 1030,
+                legalActions: ['FOLD', 'CALL', 'ALL_IN'],
+            },
+            me: { ...mockMe, chips: 970, currentBet: 20 },
+        });
+
+        expect(screen.getByRole('button', { name: /^fold$/i })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /^all in 970$/i })).toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: /^call\b/i })).not.toBeInTheDocument();
+    });
 });
