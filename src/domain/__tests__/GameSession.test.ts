@@ -1799,6 +1799,48 @@ describe('GameSession Domain Store', () => {
             session.disconnect();
             expect(session.getSnapshot().wsStatus).toBe('disconnected');
         });
+
+        it('tracks hasConnectedOnce and guards terminal GameReviewView against post-game sync or 401/404 teardown', async () => {
+            const { session, transport, onLeave } = createAuthedSession();
+            expect(session.getSnapshot().hasConnectedOnce).toBe(false);
+
+            session.connect();
+            transport.simulateStatus('connected');
+            expect(session.getSnapshot().hasConnectedOnce).toBe(true);
+            transport.simulateStatus('disconnected');
+            expect(session.getSnapshot().hasConnectedOnce).toBe(true);
+
+            const disconnectSpy = vi.spyOn(transport, 'disconnect');
+            session.installTerminalResult({
+                ...createValidGameState({
+                    gameId: 'room-123',
+                    phase: 'SHOWDOWN',
+                    players: [createValidPlayer({ name: 'Hero', chips: 2000 })],
+                }),
+                gameEnd: {
+                    winner: 'Hero',
+                    winnerChips: 2000,
+                    isForfeit: false,
+                    message: 'Hero wins!',
+                },
+            });
+            expect(disconnectSpy).toHaveBeenCalled();
+
+            const getPublicSpy = vi.spyOn(pokerApi, 'getPublicGameState').mockRejectedValue(Object.assign(new Error('Unauthorized'), { status: 401 }));
+            const getReviewSpy = vi.spyOn(pokerApi, 'getReview').mockRejectedValue(Object.assign(new Error('Room not found'), { status: 404 }));
+
+            try {
+                await session.synchronizeSession({ resetBudget: true });
+                expect(getPublicSpy).not.toHaveBeenCalled();
+                expect(getReviewSpy).not.toHaveBeenCalled();
+                expect(session.getSnapshot().isGameOver).toBe(true);
+                expect(session.getSnapshot().isRedirecting).toBe(false);
+                expect(onLeave).not.toHaveBeenCalled();
+            } finally {
+                getPublicSpy.mockRestore();
+                getReviewSpy.mockRestore();
+            }
+        });
     });
 });
 

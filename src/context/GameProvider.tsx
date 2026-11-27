@@ -169,6 +169,7 @@ export function GameProvider({
         myPlayerId: state.myPlayerId,
         claimPending: state.claimPending,
         wsStatus: state.wsStatus,
+        hasConnectedOnce: state.hasConnectedOnce,
         isHydrated: state.isHydrated,
         isGameOver: state.isGameOver,
         gameEndResult: state.gameEndResult,

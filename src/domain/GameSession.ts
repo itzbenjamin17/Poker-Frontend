@@ -159,6 +159,7 @@ export class GameSession {
             myPlayerId: initialHeroId,
             claimPending: false,
             wsStatus: 'disconnected' as WsStatus,
+            hasConnectedOnce: false,
             isHydrated: isGameOver,
             isGameOver,
             gameEndResult: options.initialGameEndResult ?? null,
@@ -521,8 +522,9 @@ export class GameSession {
             this.cancelActionLocks();
         }
 
-        this.updateSnapshot(() => ({
+        this.updateSnapshot((prev) => ({
             wsStatus: status,
+            hasConnectedOnce: prev.hasConnectedOnce || status === 'connected',
         }));
 
         if (status === 'connected') {
@@ -1213,8 +1215,9 @@ export class GameSession {
 
     public setWsStatus(status: WsStatus): void {
         if (!this.attached || this.isDisposed) return;
-        this.updateSnapshot(() => ({
+        this.updateSnapshot((prev) => ({
             wsStatus: status,
+            hasConnectedOnce: prev.hasConnectedOnce || status === 'connected',
         }));
     }
 
@@ -1281,7 +1284,7 @@ export class GameSession {
     public synchronizeSession = (
         options: { resetBudget?: boolean } = {}
     ): Promise<void> => {
-        if (!this.hasLifecyclePermission()) {
+        if (!this.hasLifecyclePermission() || this.snapshot.isGameOver) {
             return Promise.resolve();
         }
 
@@ -1592,6 +1595,10 @@ export class GameSession {
     }
 
     private handleSyncFailure(err: unknown): void {
+        if (this.snapshot.isGameOver) {
+            this.cancelRecovery();
+            return;
+        }
         const code = getErrorStatusCode(err);
         if (code === 401) {
             this.cancelRecovery();
@@ -1738,6 +1745,14 @@ export class GameSession {
         this.clearShowdownTimers();
         this.clearNotificationTimer();
         this.cancelRecovery();
+        if (result !== null) {
+            if (this.activeAttemptController) {
+                this.activeAttemptController.abort();
+                this.activeAttemptController = null;
+            }
+            this.cleanupSubscriptions();
+            this.transport.disconnect();
+        }
         this.updateSnapshot(() => ({
             gameEndResult: result,
             isGameOver: result !== null,

@@ -24,6 +24,7 @@ export interface GameContextState {
     myPlayerId: string | null;
     claimPending: boolean;
     wsStatus: WsStatus;
+    hasConnectedOnce?: boolean;
     isHydrated: boolean;
     isGameOver: boolean;
     gameEndResult: PublicGameStateResponse | null;
