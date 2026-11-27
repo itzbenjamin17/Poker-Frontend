@@ -1,9 +1,10 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { GameProvider } from '../GameProvider';
 import { useGameContext } from '../GameContext';
-import type { IncomingGameStatePayload, PublicGameStateResponse, RoomState, WsStatus } from '../../types';
+import type { AuthResponse, IncomingGameStatePayload, PublicGameStateResponse, RoomState, WsStatus } from '../../types';
+import { InMemoryTransportAdapter } from '../../services/transport';
 import { savePersistedGameEnd } from '../../services/gameEndStorage';
 import { createValidGameState } from '../../test/fixtures';
 import '@testing-library/jest-dom';
@@ -442,17 +443,20 @@ describe('GameProvider and useGameContext', () => {
             return null;
         }
 
-        const initialAuth = {
+        const transport = new InMemoryTransportAdapter();
+        const disconnectSpy = vi.spyOn(transport, 'disconnect');
+
+        const initialAuth: AuthResponse = {
             roomId: 'room-1',
             playerName: 'Player1',
             token: 'token-1',
-            message: 'Success',
         };
 
         const { rerender } = render(
             <GameProvider
                 key={`${initialAuth.roomId}:${initialAuth.playerName}:${initialAuth.token}`}
                 auth={initialAuth}
+                transport={transport}
             >
                 <CaptureSession />
             </GameProvider>
@@ -460,24 +464,25 @@ describe('GameProvider and useGameContext', () => {
 
         const session1 = sessions.at(-1);
 
-        // Re-render with new object reference with identical key
-        const sameAuthNewRef = {
+        // Re-render with new object reference with identical identity fields
+        const sameAuthNewRef: AuthResponse = {
             roomId: 'room-1',
             playerName: 'Player1',
             token: 'token-1',
-            message: 'Success',
         };
 
         rerender(
             <GameProvider
                 key={`${sameAuthNewRef.roomId}:${sameAuthNewRef.playerName}:${sameAuthNewRef.token}`}
-                auth={initialAuth}
+                auth={sameAuthNewRef}
+                transport={transport}
             >
                 <CaptureSession />
             </GameProvider>
         );
 
         expect(sessions.at(-1)).toBe(session1);
+        expect(disconnectSpy).not.toHaveBeenCalled();
     });
 });
 

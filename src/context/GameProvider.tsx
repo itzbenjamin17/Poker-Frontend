@@ -51,14 +51,15 @@ export function GameProvider({
 
     const session = useMemo(() => {
         if (sessionProp) return sessionProp;
-        const persistedGameEnd = loadPersistedGameEnd(auth);
+        const stableAuth: AuthResponse = { roomId, playerName, token };
+        const persistedGameEnd = loadPersistedGameEnd(stableAuth);
         return new GameSession({
-            auth: { roomId, playerName, token },
+            auth: stableAuth,
             transport: transportProp ?? new StompTransportAdapter(token),
             clock,
             initialGameEndResult: persistedGameEnd,
         });
-    }, [sessionProp, auth, roomId, playerName, token, transportProp, clock]);
+    }, [sessionProp, roomId, playerName, token, transportProp, clock]);
 
     const onLeaveRef = useRef(onLeave);
     useEffect(() => {
@@ -97,14 +98,14 @@ export function GameProvider({
         if (!session.isAttached()) return;
         const sessionAuth = session.getAuth();
         if (
-            sessionAuth.roomId !== auth.roomId ||
-            sessionAuth.playerName !== auth.playerName ||
-            sessionAuth.token !== auth.token
+            sessionAuth.roomId !== roomId ||
+            sessionAuth.playerName !== playerName ||
+            sessionAuth.token !== token
         ) {
             return;
         }
-        savePersistedGameEnd(auth, state.gameEndResult);
-    }, [auth, session, state.gameEndResult]);
+        savePersistedGameEnd({ roomId, playerName, token }, state.gameEndResult);
+    }, [roomId, playerName, token, session, state.gameEndResult]);
 
     const dispatch = useCallback((action: Action) => {
         switch (action.type) {
