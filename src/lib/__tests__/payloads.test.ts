@@ -652,8 +652,8 @@ describe('lib/payloads - Type Guards and Normalizers', () => {
 
         it('returns false for null, undefined, or empty inputs', () => {
             const privateState = { playerId: 'p-alice', handNumber: 1, holeCards: ['AS', 'KD'] };
-            expect(validatePrivatePlayerIdentity(null as any, publicState, 'Alice')).toBe(false);
-            expect(validatePrivatePlayerIdentity(privateState, null as any, 'Alice')).toBe(false);
+            expect(validatePrivatePlayerIdentity(null as unknown as Parameters<typeof validatePrivatePlayerIdentity>[0], publicState, 'Alice')).toBe(false);
+            expect(validatePrivatePlayerIdentity(privateState, null as unknown as Parameters<typeof validatePrivatePlayerIdentity>[1], 'Alice')).toBe(false);
             expect(validatePrivatePlayerIdentity(privateState, publicState, '')).toBe(false);
         });
     });

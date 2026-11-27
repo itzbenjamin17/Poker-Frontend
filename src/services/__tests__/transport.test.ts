@@ -418,4 +418,42 @@ describe('GameTransport - StompTransportAdapter', () => {
             body: JSON.stringify({ action: 'CALL' }),
         });
     });
+
+    it('out-of-order reconnect completions activate only the latest generation', async () => {
+        const activate = vi.fn<Client['activate']>();
+        const deactivate = vi.fn<Client['deactivate']>();
+        const client = {
+            active: true,
+            activate,
+            deactivate,
+            subscribe: vi.fn<Client['subscribe']>(),
+            publish: vi.fn<Client['publish']>(),
+            onConnect: undefined,
+            onWebSocketClose: undefined,
+            onStompError: undefined,
+            beforeConnect: undefined,
+        } as unknown as Client;
+
+        let resolveDeactivate1!: () => void;
+        let resolveDeactivate2!: () => void;
+
+        deactivate
+            .mockImplementationOnce(() => new Promise<void>((res) => { resolveDeactivate1 = res; }))
+            .mockImplementationOnce(() => new Promise<void>((res) => { resolveDeactivate2 = res; }));
+
+        const adapter = new StompTransportAdapter(client);
+
+        adapter.forceReconnect();
+        adapter.forceReconnect();
+
+        resolveDeactivate1();
+        await Promise.resolve();
+
+        expect(activate).not.toHaveBeenCalled();
+
+        resolveDeactivate2();
+        await Promise.resolve();
+
+        expect(activate).toHaveBeenCalledTimes(1);
+    });
 });

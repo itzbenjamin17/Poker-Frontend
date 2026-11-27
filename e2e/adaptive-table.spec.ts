@@ -231,37 +231,55 @@ async function resizeAndSettle(page: Page, viewport: { width: number; height: nu
   await waitForLayoutStable([surface]);
 }
 
+async function setupAdaptiveTable(
+  page: Page,
+  options: {
+    gameState: Record<string, unknown>;
+    holeCards: string[];
+  },
+) {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.setViewportSize({ width: 1100, height: 700 });
+  const token = `test.${Buffer.from(JSON.stringify({ exp: Math.floor(Date.now() / 1000) + 3600 })).toString('base64url')}.test`;
+  await page.addInitScript(({ authToken }) => {
+    window.sessionStorage.setItem('poker-auth', JSON.stringify({
+      token: authToken,
+      roomId: 'ROOM123',
+      playerName: 'Host',
+    }));
+  }, { authToken: token });
+  const stomp = await setupStompWebSocketMock(page);
+  await page.route('**/api/room/ROOM123', (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({
+      roomId: 'ROOM123',
+      roomName: 'Adaptive Table',
+      players: [
+        { name: 'Host', isHost: true },
+        { name: 'Guest', isHost: false },
+      ],
+      gameStarted: true,
+    }),
+  }));
+  await page.route('**/api/game/ROOM123/state', (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify(options.gameState),
+  }));
+  await page.route('**/api/game/ROOM123/private-state', (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({ playerId: 'p-1', handNumber: 1, holeCards: options.holeCards }),
+  }));
+  return { stomp };
+}
+
 test.describe('Adaptive table-first foundation', () => {
   test('keeps the board cluster and hero seat usable across eligible viewport tiers', async ({
     page,
   }) => {
     const hostPage = page;
-    await hostPage.emulateMedia({ reducedMotion: 'reduce' });
-    await hostPage.setViewportSize({ width: 1100, height: 700 });
-    const token = `test.${Buffer.from(JSON.stringify({ exp: Math.floor(Date.now() / 1000) + 3600 })).toString('base64url')}.test`;
-    await hostPage.addInitScript(({ authToken }) => {
-      window.sessionStorage.setItem('poker-auth', JSON.stringify({
-        token: authToken,
-        roomId: 'ROOM123',
-        playerName: 'Host',
-      }));
-    }, { authToken: token });
-    const stomp = await setupStompWebSocketMock(hostPage);
-    await hostPage.route('**/api/room/ROOM123', (route) => route.fulfill({
-      contentType: 'application/json',
-      body: JSON.stringify({
-        roomId: 'ROOM123',
-        roomName: 'Adaptive Table',
-        players: [
-          { name: 'Host', isHost: true },
-          { name: 'Guest', isHost: false },
-        ],
-        gameStarted: true,
-      }),
-    }));
-    await hostPage.route('**/api/game/ROOM123/state', (route) => route.fulfill({
-      contentType: 'application/json',
-      body: JSON.stringify({
+    const { stomp } = await setupAdaptiveTable(hostPage, {
+      holeCards: ['AS', 'KS'],
+      gameState: {
         gameId: 'ROOM123',
         handNumber: 1,
         serverTimeEpochMs: Date.now(),
@@ -283,12 +301,8 @@ test.describe('Adaptive table-first foundation', () => {
           { id: 'p-5', name: 'Player 5', chips: 1000, currentBet: 0, status: 'ACTIVE', hasFolded: false },
           { id: 'p-6', name: 'Player 6', chips: 1000, currentBet: 0, status: 'ACTIVE', hasFolded: false },
         ],
-      }),
-    }));
-    await hostPage.route('**/api/game/ROOM123/private-state', (route) => route.fulfill({
-      contentType: 'application/json',
-      body: JSON.stringify({ playerId: 'p-1', handNumber: 1, holeCards: ['AS', 'KS'] }),
-    }));
+      },
+    });
     await hostPage.goto('/');
     await expect(hostPage.getByLabel(/main pot/i)).toContainText('20');
 
@@ -347,32 +361,9 @@ test.describe('Adaptive table-first foundation', () => {
     page,
   }) => {
     const hostPage = page;
-    await hostPage.emulateMedia({ reducedMotion: 'reduce' });
-    await hostPage.setViewportSize({ width: 1100, height: 700 });
-    const token = `test.${Buffer.from(JSON.stringify({ exp: Math.floor(Date.now() / 1000) + 3600 })).toString('base64url')}.test`;
-    await hostPage.addInitScript(({ authToken }) => {
-      window.sessionStorage.setItem('poker-auth', JSON.stringify({
-        token: authToken,
-        roomId: 'ROOM123',
-        playerName: 'Host',
-      }));
-    }, { authToken: token });
-    await setupStompWebSocketMock(hostPage);
-    await hostPage.route('**/api/room/ROOM123', (route) => route.fulfill({
-      contentType: 'application/json',
-      body: JSON.stringify({
-        roomId: 'ROOM123',
-        roomName: 'Adaptive Table',
-        players: [
-          { name: 'Host', isHost: true },
-          { name: 'Guest', isHost: false },
-        ],
-        gameStarted: true,
-      }),
-    }));
-    await hostPage.route('**/api/game/ROOM123/state', (route) => route.fulfill({
-      contentType: 'application/json',
-      body: JSON.stringify({
+    await setupAdaptiveTable(hostPage, {
+      holeCards: ['AS', 'KS'],
+      gameState: {
         gameId: 'ROOM123',
         handNumber: 1,
         maxPlayers: 6,
@@ -391,12 +382,8 @@ test.describe('Adaptive table-first foundation', () => {
           { id: 'p-5', name: 'Player 5', chips: 1000, currentBet: 0, status: 'ACTIVE', hasFolded: false },
           { id: 'p-6', name: 'Player 6', chips: 1000, currentBet: 0, status: 'ACTIVE', hasFolded: false },
         ],
-      }),
-    }));
-    await hostPage.route('**/api/game/ROOM123/private-state', (route) => route.fulfill({
-      contentType: 'application/json',
-      body: JSON.stringify({ playerId: 'p-1', handNumber: 1, holeCards: ['AS', 'KS'] }),
-    }));
+      },
+    });
     await hostPage.goto('/');
     await expect(hostPage.getByRole('region', { name: /action dock/i })).toContainText(/waiting for player 2 to act/i);
 
@@ -424,32 +411,9 @@ test.describe('Adaptive table-first foundation', () => {
     page,
   }) => {
     const hostPage = page;
-    await hostPage.emulateMedia({ reducedMotion: 'reduce' });
-    await hostPage.setViewportSize({ width: 1100, height: 700 });
-    const token = `test.${Buffer.from(JSON.stringify({ exp: Math.floor(Date.now() / 1000) + 3600 })).toString('base64url')}.test`;
-    await hostPage.addInitScript(({ authToken }) => {
-      window.sessionStorage.setItem('poker-auth', JSON.stringify({
-        token: authToken,
-        roomId: 'ROOM123',
-        playerName: 'Host',
-      }));
-    }, { authToken: token });
-    await setupStompWebSocketMock(hostPage);
-    await hostPage.route('**/api/room/ROOM123', (route) => route.fulfill({
-      contentType: 'application/json',
-      body: JSON.stringify({
-        roomId: 'ROOM123',
-        roomName: 'Adaptive Table',
-        players: [
-          { name: 'Host', isHost: true },
-          { name: 'Guest', isHost: false },
-        ],
-        gameStarted: true,
-      }),
-    }));
-    await hostPage.route('**/api/game/ROOM123/state', (route) => route.fulfill({
-      contentType: 'application/json',
-      body: JSON.stringify({
+    await setupAdaptiveTable(hostPage, {
+      holeCards: ['AS', '2D'],
+      gameState: {
         gameId: 'ROOM123',
         maxPlayers: 6,
         phase: 'SHOWDOWN',
@@ -472,12 +436,8 @@ test.describe('Adaptive table-first foundation', () => {
           { id: 'p-5', name: 'Player 5', chips: 1000, currentBet: 0, status: 'ACTIVE', hasFolded: false },
           { id: 'p-6', name: 'Player 6', chips: 1000, currentBet: 0, status: 'ACTIVE', hasFolded: false },
         ],
-      }),
-    }));
-    await hostPage.route('**/api/game/ROOM123/private-state', (route) => route.fulfill({
-      contentType: 'application/json',
-      body: JSON.stringify({ playerId: 'p-1', handNumber: 1, holeCards: ['AS', '2D'] }),
-    }));
+      },
+    });
 
     await hostPage.goto('/');
     await expect(hostPage.getByRole('region', { name: /round result/i })).toContainText(/host won/i);

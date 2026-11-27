@@ -1561,7 +1561,7 @@ describe('GameSession Domain Store', () => {
         it('malformed room/public/private/review responses follow the failure table and retain auth', async () => {
             const { session } = createAuthedSession();
 
-            vi.spyOn(pokerApi, 'getRoomData').mockResolvedValueOnce({ invalid: 'room-data' } as any);
+            vi.spyOn(pokerApi, 'getRoomData').mockResolvedValueOnce({ invalid: 'room-data' } as unknown as RoomDataResponse);
             await session.synchronizeSession();
             expect(session.hasPendingRecoveryTimer()).toBe(true);
             expect(session.getSnapshot().recoveryFailed).toBe(false);
@@ -1588,7 +1588,7 @@ describe('GameSession Domain Store', () => {
             session.clearRecoveryTimer();
 
             vi.spyOn(pokerApi, 'getPublicGameState').mockRejectedValueOnce({ status: 404 });
-            vi.spyOn(pokerApi, 'getReview').mockResolvedValueOnce({ invalid: 'review' } as any);
+            vi.spyOn(pokerApi, 'getReview').mockResolvedValueOnce({ invalid: 'review' } as unknown as ReturnType<typeof createValidGameState>);
             await session.synchronizeSession({ resetBudget: true });
             expect(session.hasPendingRecoveryTimer()).toBe(true);
         });
@@ -1686,7 +1686,7 @@ describe('GameSession Domain Store', () => {
             session.connect();
 
             const syncSpy = vi.spyOn(session, 'synchronizeSession').mockResolvedValue(undefined);
-            const revisionBefore = (session as unknown as { roomRevision: number }).roomRevision;
+            const snapshotBefore = session.getSnapshot();
 
             transport.simulateMessage('/room/room-123', {
                 roomId: 'wrong-room-999',
@@ -1696,7 +1696,7 @@ describe('GameSession Domain Store', () => {
             });
 
             expect(session.isStarted()).toBe(false);
-            expect((session as unknown as { roomRevision: number }).roomRevision).toBe(revisionBefore);
+            expect(session.getSnapshot()).toBe(snapshotBefore);
             expect(syncSpy).not.toHaveBeenCalled();
         });
 
@@ -1705,7 +1705,7 @@ describe('GameSession Domain Store', () => {
             session.connect();
 
             const syncSpy = vi.spyOn(session, 'synchronizeSession').mockResolvedValue(undefined);
-            const revisionBefore = (session as unknown as { roomRevision: number }).roomRevision;
+            const snapshotBefore = session.getSnapshot();
 
             transport.simulateMessage('/room/room-123', {
                 message: 'GAME_STARTED',
@@ -1716,7 +1716,7 @@ describe('GameSession Domain Store', () => {
             });
 
             expect(session.isStarted()).toBe(false);
-            expect((session as unknown as { roomRevision: number }).roomRevision).toBe(revisionBefore);
+            expect(session.getSnapshot()).toBe(snapshotBefore);
             expect(syncSpy).not.toHaveBeenCalled();
         });
 
@@ -1920,6 +1920,35 @@ describe('GameSession Domain Store', () => {
 
                 clock.tick(3000);
                 expect(onLeave).toHaveBeenCalledTimes(1);
+            } finally {
+                session.detach();
+            }
+        });
+
+        it('applyPrivateState rejects stale private payloads with older handNumber', () => {
+            const { session } = createSession();
+            try {
+                session.applyGameState(createValidGameState({
+                    gameId: 'room-123',
+                    handNumber: 2,
+                    currentPlayerName: 'Hero',
+                    currentPlayerId: 'p-1',
+                    players: [createValidPlayer({ id: 'p-1', name: 'Hero', chips: 1000 })],
+                }));
+                session.applyPrivateState({
+                    playerId: 'p-1',
+                    handNumber: 2,
+                    holeCards: ['KS', 'KC'],
+                });
+                expect(session.getSnapshot().privateState).toEqual({ holeCards: ['KS', 'KC'] });
+
+                // Stale hand 1 private cards are rejected
+                session.applyPrivateState({
+                    playerId: 'p-1',
+                    handNumber: 1,
+                    holeCards: ['2C', '3C'],
+                });
+                expect(session.getSnapshot().privateState).toEqual({ holeCards: ['KS', 'KC'] });
             } finally {
                 session.detach();
             }

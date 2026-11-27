@@ -1,9 +1,9 @@
 // @vitest-environment node
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { GameSession } from '../GameSession';
 import { TestClock } from '../clock';
 import { InMemoryTransportAdapter } from '../../services/transport';
-import type { AuthResponse, IncomingGameStatePayload, PokerAction } from '../../types';
+import type { AuthResponse, IncomingGameStatePayload, PokerAction, PublicGameStateResponse } from '../../types';
 import { createValidGameState, createValidPlayer } from '../../test/fixtures';
 import { pokerApi } from '../../services/api';
 
@@ -13,6 +13,11 @@ describe('GameSession Public State Ordering & Revision Invariants', () => {
         playerName: 'Hero',
         token: 'token-hero',
     };
+    const trackedSessions: GameSession[] = [];
+
+    afterEach(() => {
+        trackedSessions.splice(0).forEach((session) => session.detach());
+    });
 
     function createSession(clock = new TestClock(1000)) {
         const transport = new InMemoryTransportAdapter();
@@ -22,11 +27,12 @@ describe('GameSession Public State Ordering & Revision Invariants', () => {
             clock,
         });
         session.attach();
+        trackedSessions.push(session);
         return { session, transport, clock };
     }
 
-    function makeGameState(overrides: Partial<IncomingGameStatePayload> = {}): IncomingGameStatePayload {
-        return {
+    function makeGameState(overrides: Parameters<typeof createValidGameState>[0] = {}) {
+        return createValidGameState({
             gameId: 'room-ordering',
             maxPlayers: 6,
             pot: 100,
@@ -34,14 +40,14 @@ describe('GameSession Public State Ordering & Revision Invariants', () => {
             currentBet: 10,
             communityCards: [],
             players: [
-                { id: 'p1', name: 'Hero', chips: 1000, currentBet: 10, hasFolded: false, status: 'ACTIVE' },
-                { id: 'p2', name: 'Villain', chips: 1000, currentBet: 10, hasFolded: false, status: 'ACTIVE' },
+                createValidPlayer({ id: 'p1', name: 'Hero', chips: 1000, currentBet: 10 }),
+                createValidPlayer({ id: 'p2', name: 'Villain', chips: 1000, currentBet: 10 }),
             ],
             currentPlayerName: 'Hero',
             currentPlayerId: 'p1',
             legalActions: ['CHECK', 'BET'] as PokerAction[],
             ...overrides,
-        };
+        });
     }
 
     it('advances stateSyncRevision exactly once inside applyGameState and does not advance on duplicate or stale snapshot', () => {
@@ -180,25 +186,26 @@ describe('GameSession Public State Ordering & Revision Invariants', () => {
     it('prevents an unordered legacy REST response from overwriting state accepted since the REST request began', async () => {
         const { clock } = createSession();
 
-        let resolveRest: (value: any) => void;
-        const restPromise = new Promise((resolve) => {
+        let resolveRest!: (value: PublicGameStateResponse) => void;
+        const restPromise = new Promise<PublicGameStateResponse>((resolve) => {
             resolveRest = resolve;
         });
 
-        const customApi = {
+        const customApi: typeof pokerApi = {
             ...pokerApi,
-            getPublicGameState: vi.fn(() => restPromise),
-            getRoomData: vi.fn(() => Promise.resolve({ roomId: 'room-ordering', roomName: 'Room', players: [{ name: 'Hero', isHost: true }], maxPlayers: 6, buyIn: 100, smallBlind: 5, bigBlind: 10, canStartGame: false, gameStarted: true })),
-            getPrivatePlayerState: vi.fn(() => Promise.resolve({ handNumber: 0, playerId: 'p1', holeCards: ['Ah', 'Kh'] })),
+            getPublicGameState: vi.fn<typeof pokerApi.getPublicGameState>(() => restPromise),
+            getRoomData: vi.fn<typeof pokerApi.getRoomData>(() => Promise.resolve({ roomId: 'room-ordering', roomName: 'Room', players: [{ name: 'Hero', isHost: true }], maxPlayers: 6, buyIn: 100, smallBlind: 5, bigBlind: 10, canStartGame: false, gameStarted: true })),
+            getPrivatePlayerState: vi.fn<typeof pokerApi.getPrivatePlayerState>(() => Promise.resolve({ handNumber: 0, playerId: 'p1', holeCards: ['Ah', 'Kh'] })),
         };
 
         const sessionWithApi = new GameSession({
             auth,
             transport: new InMemoryTransportAdapter(),
             clock,
-            pokerApi: customApi as any,
+            pokerApi: customApi,
         });
         sessionWithApi.attach();
+        trackedSessions.push(sessionWithApi);
         sessionWithApi.markGameStarted();
 
         // Start REST sync
@@ -210,7 +217,7 @@ describe('GameSession Public State Ordering & Revision Invariants', () => {
         expect(sessionWithApi.getSnapshot().gameState?.pot).toBe(500);
 
         // Now REST finishes with an unordered legacy snapshot (missing stateRevision)
-        resolveRest!(makeGameState({ handNumber: 0, stateRevision: undefined, pot: 100 }));
+        resolveRest(makeGameState({ handNumber: 0, stateRevision: undefined, pot: 100 }));
         await syncPromise;
 
         // The newer state (pot: 500) must NOT have been overwritten by the unordered legacy response
@@ -248,20 +255,21 @@ describe('GameSession Public State Ordering & Revision Invariants', () => {
     it('equal-revision REST recovery hydrates coherent private data without rolling back or hanging', async () => {
         const { clock } = createSession();
 
-        const customApi = {
+        const customApi: typeof pokerApi = {
             ...pokerApi,
-            getPublicGameState: vi.fn(() => Promise.resolve(makeGameState({ handNumber: 1, stateRevision: 2, pot: 250 }))),
-            getRoomData: vi.fn(() => Promise.resolve({ roomId: 'room-ordering', roomName: 'Room', players: [{ name: 'Hero', isHost: true }], maxPlayers: 6, buyIn: 100, smallBlind: 5, bigBlind: 10, canStartGame: false, gameStarted: true })),
-            getPrivatePlayerState: vi.fn(() => Promise.resolve({ handNumber: 1, playerId: 'p1', holeCards: ['As', 'Ks'] })),
+            getPublicGameState: vi.fn<typeof pokerApi.getPublicGameState>(() => Promise.resolve(makeGameState({ handNumber: 1, stateRevision: 2, pot: 250 }))),
+            getRoomData: vi.fn<typeof pokerApi.getRoomData>(() => Promise.resolve({ roomId: 'room-ordering', roomName: 'Room', players: [{ name: 'Hero', isHost: true }], maxPlayers: 6, buyIn: 100, smallBlind: 5, bigBlind: 10, canStartGame: false, gameStarted: true })),
+            getPrivatePlayerState: vi.fn<typeof pokerApi.getPrivatePlayerState>(() => Promise.resolve({ handNumber: 1, playerId: 'p1', holeCards: ['As', 'Ks'] })),
         };
 
         const session = new GameSession({
             auth,
             transport: new InMemoryTransportAdapter(),
             clock,
-            pokerApi: customApi as any,
+            pokerApi: customApi,
         });
         session.attach();
+        trackedSessions.push(session);
         session.markGameStarted();
 
         // WS arrived already with hand 1, stateRevision 2

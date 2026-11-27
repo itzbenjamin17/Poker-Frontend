@@ -275,7 +275,7 @@ describe('Disconnect & Leave Edge Cases', () => {
 
         render(<GameView auth={mockAuth} session={session} />);
 
-        const tableMain = await screen.findByTestId('game-table-view');
+        const tableMain = await screen.findByRole('main', { name: /live poker table/i });
         act(() => {
             session.setNotification('Game not found:');
         });

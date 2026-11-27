@@ -107,10 +107,10 @@ test.describe('Comprehensive Poker Scenarios', () => {
         await raiseInput.fill('20');
         await betBtn.click();
 
-        // P2 is facing a $20 bet, calls $20.
-        const p2CallBtn = guestPage.getByRole('button', { name: /^call/i });
-        await expect(p2CallBtn).toBeVisible();
-        await p2CallBtn.click();
+        // P2 faces a $20 bet matching their remaining $20 stack, so All In 20 is the sole call/all-in option.
+        const p2AllInBtn = guestPage.getByRole('button', { name: /^all in/i });
+        await expect(p2AllInBtn).toBeVisible();
+        await p2AllInBtn.click();
 
         // Showdown modal is displayed since both players are all-in.
         await expect(hostPage.getByText(/round result|won/i).first()).toBeVisible({ timeout: 20000 });
