@@ -1,10 +1,11 @@
 import { render, screen, waitFor, act, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi } from 'vitest'
 import GameView from '../GameView'
 import { MockStompClient } from '../test/mocks/stomp'
 import { http, HttpResponse } from 'msw'
 import { server } from '../test/mocks/server'
-import { createValidRoomData, mockAuth } from '../test/fixtures'
+import { createValidGameState, createValidPlayer, createValidRoomData, mockAuth } from '../test/fixtures'
 
 const auth = {
   ...mockAuth,
@@ -135,6 +136,90 @@ describe('GameView - Room Lobby Integration', () => {
 
     // Lobby title should NOT be present (verifying we are not showing the lobby/raw room code prematurely)
     expect(screen.queryByText(/GAME LOBBY/i)).not.toBeInTheDocument()
+  })
+
+  it('hides Connection lost overlay and Disconnected badge while redirecting after turn timeout', async () => {
+    const deadline = Date.now() + 5000
+    server.use(
+      http.get('/api/room/ROOM123', () => HttpResponse.json(createValidRoomData({
+        roomId: 'ROOM123',
+        players: [
+          { name: 'HostPlayer', isHost: true },
+          { name: 'GuestPlayer', isHost: false },
+          { name: 'ThirdPlayer', isHost: false },
+        ],
+        gameStarted: true,
+      }))),
+      http.get('/api/game/ROOM123/state', () => HttpResponse.json(createValidGameState({
+        gameId: 'ROOM123',
+        handNumber: 1,
+        phase: 'PRE_FLOP',
+        currentPlayerId: 'p-1',
+        currentPlayerName: 'HostPlayer',
+        turnDeadlineEpochMs: deadline,
+        players: [
+          createValidPlayer({ id: 'p-1', name: 'HostPlayer', chips: 990, currentBet: 10 }),
+          createValidPlayer({ id: 'p-2', name: 'GuestPlayer', chips: 980, currentBet: 20 }),
+          createValidPlayer({ id: 'p-3', name: 'ThirdPlayer', chips: 1000, currentBet: 0 }),
+        ],
+      }))),
+      http.get('/api/game/ROOM123/private-state', () => HttpResponse.json({
+        playerId: 'p-1',
+        handNumber: 1,
+        holeCards: ['AS', 'KS'],
+      })),
+    )
+
+    render(<GameView auth={auth} />)
+
+    await waitFor(() => expect(screen.getByLabelText('Total Pot')).toBeInTheDocument())
+    await MockStompClient.waitForSubscription('/room/ROOM123')
+
+    await act(async () => {
+      MockStompClient.simulateMessage('/room/ROOM123', createValidRoomData({
+        roomId: 'ROOM123',
+        players: [
+          { name: 'GuestPlayer', isHost: true },
+          { name: 'ThirdPlayer', isHost: false },
+        ],
+        gameStarted: true,
+        serverTimeEpochMs: deadline + 1000,
+      }))
+    })
+
+    expect(await screen.findByText(/You were removed from the table due to turn timeout/i)).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: /connection lost/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('status', { name: /connection status: disconnected/i })).not.toBeInTheDocument()
+  })
+
+  it('warns lobby host that leaving closes the room when other players are present, unlike guests', async () => {
+    const user = userEvent.setup()
+    server.use(
+      http.get('/api/room/ROOM123', () => HttpResponse.json(createValidRoomData({
+        roomId: 'ROOM123',
+        players: [
+          { name: 'HostPlayer', isHost: true },
+          { name: 'GuestPlayer', isHost: false },
+        ],
+        gameStarted: false,
+      }))),
+      http.get('/api/game/ROOM123/state', () => new HttpResponse(null, { status: 404 })),
+      http.get('/api/game/ROOM123/private-state', () => new HttpResponse(null, { status: 404 })),
+    )
+
+    const { unmount } = render(<GameView auth={auth} />)
+    await waitFor(() => expect(screen.getByText(/GAME LOBBY/i)).toBeInTheDocument())
+
+    await user.click(screen.getByRole('button', { name: /leave table/i }))
+    expect(screen.getByRole('dialog')).toHaveTextContent(
+      'Leaving the lobby will close the room for everyone. Are you sure you want to leave?'
+    )
+    unmount()
+
+    render(<GameView auth={{ ...auth, playerName: 'GuestPlayer' }} />)
+    await waitFor(() => expect(screen.getByText(/GAME LOBBY/i)).toBeInTheDocument())
+    await user.click(screen.getByRole('button', { name: /leave table/i }))
+    expect(screen.getByRole('dialog')).toHaveTextContent('Are you sure you want to leave the lobby?')
   })
 })
 

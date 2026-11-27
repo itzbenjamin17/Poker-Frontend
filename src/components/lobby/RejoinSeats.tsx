@@ -16,6 +16,7 @@ import {
     REJOIN_STATUS_WAITING,
     REJOIN_SUBTITLE,
     formatRejoinLabel,
+    formatViewResultLabel,
 } from '../../constants/strings';
 import type { AuthResponse } from '../../types';
 
@@ -132,13 +133,15 @@ export function RejoinSeats({ onAuth, onError, disabled, setLoading, requestLock
 
     if (held.length === 0) return null;
 
+    const orderedHeld = [...held].sort((a, b) => Number(a.gameFinished) - Number(b.gameFinished));
+
     return (
         <section aria-label={REJOIN_HEADING} className="w-full max-w-6xl mb-8 [@media(max-height:500px)]:mb-4">
             <Card className="p-5 sm:p-6 md:p-8 [@media(max-height:500px)]:p-4">
                 <h2 className="font-headline text-2xl font-bold text-white mb-1">{REJOIN_HEADING}</h2>
                 <p className="text-zinc-400 text-sm mb-4 sm:mb-6 [@media(max-height:500px)]:mb-3">{REJOIN_SUBTITLE}</p>
                 <ul className="space-y-3">
-                    {held.map(({ seat, roomName, gameStarted, gameFinished }) => (
+                    {orderedHeld.map(({ seat, roomName, gameStarted, gameFinished }) => (
                         <li
                             key={seat.token}
                             className="grid grid-cols-1 sm:grid-cols-[auto_minmax(0,1fr)] items-center gap-x-4 gap-y-2"
@@ -153,7 +156,7 @@ export function RejoinSeats({ onAuth, onError, disabled, setLoading, requestLock
                                 className="normal-case max-w-full min-w-0 w-full sm:w-auto sm:justify-self-end justify-between"
                             >
                                 <span className="min-w-0 [overflow-wrap:anywhere] text-left">
-                                    {formatRejoinLabel(roomName, seat.playerName)}
+                                    {gameFinished ? formatViewResultLabel(roomName, seat.playerName) : formatRejoinLabel(roomName, seat.playerName)}
                                 </span>
                                 <ArrowRight aria-hidden="true" className="w-4 h-4 shrink-0" />
                             </Button>

@@ -54,15 +54,33 @@ describe('RejoinSeats', () => {
         expect(screen.getByText(REJOIN_STATUS_WAITING)).toBeInTheDocument();
     });
 
-    it('labels finished rooms as Game over rather than Game in progress', async () => {
+    it('labels finished rooms as Game over with a View result button and updated subtitle', async () => {
         rememberSeat(ann);
         serveRoomChecks({ [ann.token]: { roomName: 'Friday Game', gameStarted: true, gameFinished: true } });
 
         render(<RejoinSeats onAuth={vi.fn()} />);
 
         const panel = await screen.findByRole('region', { name: REJOIN_HEADING });
+        expect(panel).toHaveTextContent('Seats from this browser — pick one to open it in this tab.');
         expect(panel).toHaveTextContent('Game over');
         expect(panel).not.toHaveTextContent(REJOIN_STATUS_IN_GAME);
+        expect(screen.getByRole('button', { name: 'View Friday Game result as Ann' })).toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: /rejoin friday game/i })).not.toBeInTheDocument();
+    });
+
+    it('lists finished games after live seats', async () => {
+        rememberSeat(cal);
+        rememberSeat(ann); // newer in storage, but finished
+        serveRoomChecks({
+            [ann.token]: { roomName: 'Finished Table', gameStarted: true, gameFinished: true },
+            [cal.token]: { roomName: 'Live Table', gameStarted: true, gameFinished: false },
+        });
+
+        render(<RejoinSeats onAuth={vi.fn()} />);
+
+        await screen.findByRole('button', { name: 'View Finished Table result as Ann' });
+        const buttons = screen.getAllByRole('button').map(b => b.textContent);
+        expect(buttons).toEqual(['Rejoin Live Table as Cal', 'View Finished Table result as Ann']);
     });
 
     it('takes the seat only when its button is clicked', async () => {

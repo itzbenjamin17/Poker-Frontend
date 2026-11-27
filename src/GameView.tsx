@@ -13,7 +13,11 @@ import { GameReviewView } from './components/GameReviewView';
 import { PokerRoomLayout, RoomStage, useOrientationGating } from './components/PokerRoomLayout';
 import { RoomHeader } from './components/RoomHeader';
 import type { NotificationControls } from './components/NotificationBanner';
-import { CONFIRM_LEAVE_LOBBY_TITLE, CONFIRM_LEAVE_LOBBY_MESSAGE } from './constants/strings';
+import {
+    CONFIRM_LEAVE_LOBBY_TITLE,
+    CONFIRM_LEAVE_LOBBY_MESSAGE,
+    CONFIRM_LEAVE_LOBBY_HOST_MESSAGE,
+} from './constants/strings';
 
 type GameViewProps = {
     auth: AuthResponse;
@@ -40,9 +44,12 @@ function GameViewInner() {
         myPlayerId,
         claimPending,
         wsStatus,
+        hasConnectedOnce,
         isHydrated,
         gameEndResult,
+        isRecovering,
         recoveryFailed,
+        isRedirecting,
         retryConnection,
         session,
         isLobbyInactivityWarningActive,
@@ -90,6 +97,17 @@ function GameViewInner() {
         : undefined;
 
     // ── Routing (no hooks below this line) ──────────────────────────────────────
+    const suppressDisconnectChrome =
+        Boolean(isRedirecting) ||
+        (hasConnectedOnce === false && wsStatus === 'disconnected' && !isRecovering && !recoveryFailed);
+    const displayWsStatus = suppressDisconnectChrome ? 'connected' : wsStatus;
+    const isLobbyHost = Boolean(
+        roomState?.players?.some((player) => player.name === auth.playerName && player.isHost)
+    );
+    const confirmLeaveLobbyMessage =
+        isLobbyHost && (roomState?.players?.length ?? 0) > 1
+            ? CONFIRM_LEAVE_LOBBY_HOST_MESSAGE
+            : CONFIRM_LEAVE_LOBBY_MESSAGE;
 
     if (gameEndResult && !dispatcher.isPending('LEAVE_GAME')) {
         return (
@@ -116,13 +134,14 @@ function GameViewInner() {
                         <RoomHeader
                             roomName={roomState?.roomName}
                             playerCount={roomState?.players?.length || 0}
-                            wsStatus={wsStatus}
+                            wsStatus={displayWsStatus}
                             onLeave={handleLeaveRequest}
                             confirmLeaveTitle={CONFIRM_LEAVE_LOBBY_TITLE}
-                            confirmLeaveMessage={CONFIRM_LEAVE_LOBBY_MESSAGE}
+                            confirmLeaveMessage={confirmLeaveLobbyMessage}
                         />
                     }
-                    wsStatus={wsStatus}
+                    wsStatus={displayWsStatus}
+                    showReconnectOverlay={!suppressDisconnectChrome}
                     onLeave={handleLeaveRequest}
                 >
                     <RoomStage>
@@ -148,12 +167,12 @@ function GameViewInner() {
                     <RoomHeader
                         roomName={roomState?.roomName}
                         playerCount={roomState?.players?.length ?? 0}
-                        wsStatus={wsStatus}
+                        wsStatus={displayWsStatus}
                         onLeave={handleLeaveRequest}
                         confirmLeave={false}
                     />
                 }
-                wsStatus={wsStatus}
+                wsStatus={displayWsStatus}
                 showReconnectOverlay={false}
                 onLeave={handleLeaveRequest}
             >
@@ -170,7 +189,7 @@ function GameViewInner() {
         <RoomHeader
             roomName={roomState?.roomName}
             playerCount={gameState.players.filter((player) => player.status !== 'OUT').length}
-            wsStatus={wsStatus}
+            wsStatus={displayWsStatus}
             onLeave={handleLeaveRequest}
             phase={isCornerChrome ? gameState.phase : undefined}
             layout={isCornerChrome ? 'corner' : 'bar'}
@@ -180,7 +199,8 @@ function GameViewInner() {
         <PokerRoomLayout
             header={isCornerChrome ? undefined : tableHeader}
             cornerChrome={isCornerChrome}
-            wsStatus={wsStatus}
+            wsStatus={displayWsStatus}
+            showReconnectOverlay={!suppressDisconnectChrome}
             onLeave={handleLeaveRequest}
         >
             <GameTableView

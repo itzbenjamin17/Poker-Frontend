@@ -124,4 +124,34 @@ describe('GameView initial table loading', () => {
         expect(session.getSnapshot().privateState).toBeNull();
         expect(screen.getByRole('alert')).toHaveTextContent(failureMessage);
     });
+
+    it('does not flash Connection lost overlay or Disconnected badge before first STOMP connection, then shows them on later disconnects', async () => {
+        const auth = { ...mockAuth };
+        const transport = new InMemoryTransportAdapter();
+        vi.spyOn(transport, 'connect').mockImplementation(() => {});
+        const session = new GameSession({ auth, transport, clock: new TestClock() });
+        server.use(
+            http.get('/api/room/:roomId', () => HttpResponse.json(createValidRoomData({
+                roomId: auth.roomId,
+                players: [{ name: auth.playerName, isHost: true }],
+                gameStarted: false,
+            }))),
+        );
+
+        render(<GameView auth={auth} session={session} />);
+
+        await waitFor(() => expect(screen.getByText(/GAME LOBBY/i)).toBeInTheDocument());
+        expect(screen.queryByRole('heading', { name: /connection lost/i })).not.toBeInTheDocument();
+        expect(screen.queryByRole('status', { name: /connection status/i })).not.toBeInTheDocument();
+
+        act(() => {
+            transport.simulateStatus('connected');
+        });
+        act(() => {
+            transport.simulateStatus('reconnecting');
+        });
+
+        expect(await screen.findByRole('heading', { name: /connection lost/i })).toBeInTheDocument();
+        expect(screen.getByRole('status', { name: /connection status: reconnecting/i })).toBeInTheDocument();
+    });
 });
