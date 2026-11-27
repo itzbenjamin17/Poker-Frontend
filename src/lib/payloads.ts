@@ -451,6 +451,10 @@ export function normalizeErrorMessage(raw: unknown): string | null {
     // eslint-disable-next-line no-control-regex
     const clean = msg.replace(/[\x00-\x1F\x7F-\x9F]/g, '').trim();
     if (clean.length === 0) return null;
-    const MAX_LENGTH = 80;
-    return clean.length > MAX_LENGTH ? clean.substring(0, MAX_LENGTH - 3) + '...' : clean;
+    const MAX_LENGTH = 160;
+    if (clean.length <= MAX_LENGTH) return clean;
+    const limit = MAX_LENGTH - 3;
+    const lastSpace = clean.lastIndexOf(' ', limit);
+    const cutIndex = lastSpace > 0 ? lastSpace : limit;
+    return clean.substring(0, cutIndex).trimEnd() + '...';
 }

@@ -337,13 +337,13 @@ describe('api service', () => {
             });
             expect(await getErrorMessage(res, 'Default fallback')).toBe('Room is full.');
 
-            const longText = 'A very long error message that exceeds eighty characters: The game you are trying to join has already terminated.';
+            const longText = 'A very long error message that exceeds one hundred and sixty characters so normalization must cap it cleanly without splitting any trailing word right down the middle: The game has terminated.';
             const resLong = new Response(longText, {
                 status: 400,
                 headers: { 'Content-Type': 'text/plain' },
             });
             const normalizedLong = await getErrorMessage(resLong, 'Default fallback');
-            expect(normalizedLong.length).toBeLessThanOrEqual(80);
+            expect(normalizedLong.length).toBeLessThanOrEqual(160);
             expect(normalizedLong.endsWith('...')).toBe(true);
         });
 

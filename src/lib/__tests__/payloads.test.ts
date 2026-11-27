@@ -393,23 +393,23 @@ describe('lib/payloads - Type Guards and Normalizers', () => {
             expect(normalizeErrorMessage('java.lang.NullPointerException at com.pokergame')).toBe(ERROR_SYSTEM);
         });
 
-        it('cleanly truncates plaintext messages exceeding 80 characters with ... suffix', () => {
-            const longMessage = 'A'.repeat(90);
+        it('cleanly truncates plaintext messages exceeding 160 characters with ... suffix', () => {
+            const longMessage = 'A'.repeat(170);
             const result = normalizeErrorMessage(longMessage);
-            expect(result).toHaveLength(80);
+            expect(result).toHaveLength(160);
             expect(result?.endsWith('...')).toBe(true);
 
-            const msg85 = 'A'.repeat(85);
-            expect(normalizeErrorMessage(msg85)).toBe('A'.repeat(77) + '...');
-            expect(normalizeErrorMessage(msg85)).toHaveLength(80);
+            const msg165 = 'A'.repeat(165);
+            expect(normalizeErrorMessage(msg165)).toBe('A'.repeat(157) + '...');
+            expect(normalizeErrorMessage(msg165)).toHaveLength(160);
 
-            const msg80 = 'B'.repeat(80);
-            expect(normalizeErrorMessage(msg80)).toBe('B'.repeat(80));
-            expect(normalizeErrorMessage(msg80)).toHaveLength(80);
+            const msg160 = 'B'.repeat(160);
+            expect(normalizeErrorMessage(msg160)).toBe('B'.repeat(160));
+            expect(normalizeErrorMessage(msg160)).toHaveLength(160);
 
-            const msg81 = 'C'.repeat(81);
-            expect(normalizeErrorMessage(msg81)).toBe('C'.repeat(77) + '...');
-            expect(normalizeErrorMessage(msg81)).toHaveLength(80);
+            const msg161 = 'C'.repeat(161);
+            expect(normalizeErrorMessage(msg161)).toBe('C'.repeat(157) + '...');
+            expect(normalizeErrorMessage(msg161)).toHaveLength(160);
         });
 
         it('normalizes HTML documents, error pages, tags, and fragments to technical copy', () => {
@@ -495,6 +495,18 @@ describe('lib/payloads - Type Guards and Normalizers', () => {
             expect(normalizeErrorMessage('Minimum raise is 500 chips')).toBe('Minimum raise is 500 chips');
             expect(normalizeErrorMessage('Buy-in must be at least 500')).toBe('Buy-in must be at least 500');
             expect(normalizeErrorMessage('Insufficient chips to call 1500')).toBe('Insufficient chips to call 1500');
+            expect(normalizeErrorMessage('Your call was converted to all-in because the call amount exceeded your available chips.'))
+                .toBe('Your call was converted to all-in because the call amount exceeded your available chips.');
+        });
+
+        it('truncates messages over 160 characters at a word boundary without splitting mid-word', () => {
+            const overCap = 'This is a deliberate long server message designed to verify that truncation happens cleanly at a word boundary when the text exceeds one hundred sixty characters total.';
+            const result = normalizeErrorMessage(overCap);
+            expect(result).not.toBeNull();
+            expect(result!.length).toBeLessThanOrEqual(160);
+            expect(result!.endsWith('...')).toBe(true);
+            const prefixWithoutEllipsis = result!.slice(0, -3);
+            expect(overCap.startsWith(prefixWithoutEllipsis + ' ')).toBe(true);
         });
     });
 
