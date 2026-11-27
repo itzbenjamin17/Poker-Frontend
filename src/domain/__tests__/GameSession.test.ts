@@ -5,7 +5,7 @@ import { TestClock } from '../clock';
 import { InMemoryTransportAdapter } from '../../services/transport';
 import type { AuthResponse, IncomingGameStatePayload, RoomDataResponse } from '../../types';
 import { HOST_LEFT, SESSION_SEAT_GONE, SESSION_SEAT_TIMED_OUT } from '../../constants/strings';
-import { createValidGameState, createValidPlayer, createValidRoomData, createMockJwt } from '../../test/fixtures';
+import { createValidGameState, createValidPlayer, createValidRoomData, createRawGameStatePayload, createMockJwt } from '../../test/fixtures';
 import { pokerApi } from '../../services/api';
 
 describe('GameSession Domain Store', () => {
@@ -82,7 +82,7 @@ describe('GameSession Domain Store', () => {
                 const accepted = session.getSnapshot();
                 const revision = session.getStateSyncRevision();
 
-                transport.simulateMessage('/game/room-123', createValidGameState({
+                transport.simulateMessage('/game/room-123', createRawGameStatePayload({
                     pot: 999,
                     players: [{ id: 'hero-id', name: 'Hero', chips: 'private-invalid-value' }],
                 }));
@@ -613,10 +613,10 @@ describe('GameSession Domain Store', () => {
                 phase: 'SHOWDOWN', handNumber: 4, readyGateState: 'COUNTING_DOWN',
                 isReadyCountdownActive: true, readyCountdownDeadlineEpochMs: 25_000,
             }));
-            session.applyGameState(createValidGameState({
+            session.applyGameState(createRawGameStatePayload({
                 phase: 'SHOWDOWN', handNumber: 4, readyGateState: 'CLOSED',
                 isReadyCountdownActive: false, readyCountdownDeadlineEpochMs: null,
-            }));
+            }) as Parameters<GameSession['applyGameState']>[0]);
             expect(session.getSnapshot().gameState?.readyGateState).toBe('CLOSED');
             expect(session.getSnapshot().gameState?.isReadyCountdownActive).toBe(false);
             expect(session.getSnapshot().gameState?.readyCountdownDeadlineEpochMs).toBeUndefined();
@@ -1635,7 +1635,7 @@ describe('GameSession Domain Store', () => {
             const { session, transport } = createAuthedSession();
             session.connect();
 
-            const syncSpy = vi.spyOn(session, 'synchronizeSession');
+            const syncSpy = vi.spyOn(session, 'synchronizeSession').mockResolvedValue(undefined);
 
             transport.simulateMessage('/room/room-123', {
                 roomId: 'room-123',
@@ -1685,7 +1685,7 @@ describe('GameSession Domain Store', () => {
             const { session, transport } = createAuthedSession();
             session.connect();
 
-            const syncSpy = vi.spyOn(session, 'synchronizeSession');
+            const syncSpy = vi.spyOn(session, 'synchronizeSession').mockResolvedValue(undefined);
             const revisionBefore = (session as unknown as { roomRevision: number }).roomRevision;
 
             transport.simulateMessage('/room/room-123', {
@@ -1704,7 +1704,7 @@ describe('GameSession Domain Store', () => {
             const { session, transport } = createAuthedSession();
             session.connect();
 
-            const syncSpy = vi.spyOn(session, 'synchronizeSession');
+            const syncSpy = vi.spyOn(session, 'synchronizeSession').mockResolvedValue(undefined);
             const revisionBefore = (session as unknown as { roomRevision: number }).roomRevision;
 
             transport.simulateMessage('/room/room-123', {
@@ -1839,6 +1839,89 @@ describe('GameSession Domain Store', () => {
             } finally {
                 getPublicSpy.mockRestore();
                 getReviewSpy.mockRestore();
+            }
+        });
+    });
+
+    describe('Hero Identity & Redirect Edge Cases', () => {
+        it('populates session hero identity from initial state, accepted state, and setGameState', () => {
+            const heroAuth: AuthResponse = { token: createMockJwt({ sub: 'Alice' }), roomId: 'ROOM123', playerName: 'Alice' };
+            const transport = new InMemoryTransportAdapter();
+            const clock = new TestClock(1000);
+
+            const session = new GameSession({
+                auth: heroAuth,
+                transport,
+                clock,
+                initialGameState: createValidGameState({
+                    gameId: 'ROOM123',
+                    players: [
+                        createValidPlayer({ id: 'p-alice', name: 'Alice', chips: 1000 }),
+                        createValidPlayer({ id: 'p-bob', name: 'Bob', chips: 1000 }),
+                    ],
+                }),
+            });
+
+            try {
+                expect(session.getSnapshot().myPlayerId).toBe('p-alice');
+
+                session.setGameState(createValidGameState({
+                    gameId: 'ROOM123',
+                    players: [
+                        createValidPlayer({ id: 'p-alice-new', name: 'Alice', chips: 1500 }),
+                        createValidPlayer({ id: 'p-bob-new', name: 'Bob', chips: 500 }),
+                    ],
+                }));
+                expect(session.getSnapshot().myPlayerId).toBe('p-alice-new');
+
+                session.applyGameState(createValidGameState({
+                    gameId: 'ROOM123',
+                    handNumber: 3,
+                    players: [
+                        createValidPlayer({ id: 'p-alice-hand3', name: 'Alice', chips: 2000 }),
+                        createValidPlayer({ id: 'p-bob-hand3', name: 'Bob', chips: 0, status: 'OUT' }),
+                    ],
+                }));
+                expect(session.getSnapshot().myPlayerId).toBe('p-alice-hand3');
+
+                session.applyPrivateState({
+                    playerId: 'stale-other-id',
+                    handNumber: 3,
+                    holeCards: ['AH', 'KH'],
+                });
+                expect(session.getSnapshot().myPlayerId).toBe('p-alice-hand3');
+            } finally {
+                session.detach();
+            }
+        });
+
+        it('schedules redirect to lobby when ACTION_ERROR reports "Game not found"', () => {
+            const transport = new InMemoryTransportAdapter();
+            const clock = new TestClock(1000);
+            const onLeave = vi.fn();
+
+            const session = new GameSession({
+                auth,
+                transport,
+                clock,
+                onLeave,
+            });
+
+            try {
+                session.connect();
+                transport.simulateStatus('connected');
+
+                transport.simulateMessage('/user/queue/private', {
+                    type: 'ACTION_ERROR',
+                    code: 'GAME_NOT_FOUND',
+                    action: 'CHECK',
+                    message: 'Game unavailable',
+                });
+
+                clock.tick(3000);
+                expect(onLeave).toHaveBeenCalledTimes(1);
+            } finally {
+                session.detach();
             }
         });
     });

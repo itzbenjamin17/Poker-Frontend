@@ -6,7 +6,7 @@ import { GameProvider } from '../../context/GameProvider';
 import { GameSession } from '../../domain/GameSession';
 import { InMemoryTransportAdapter } from '../../services/transport';
 import { mapRoomDataToRoomState } from '../../lib/payloads';
-import { createValidGameState, createValidRoomData, mockAuth } from '../../test/fixtures';
+import { createValidGameState, createValidRoomData, createRawGameStatePayload, mockAuth } from '../../test/fixtures';
 import { server } from '../../test/mocks/server';
 import { useSessionHydration } from '../useSessionHydration';
 import { useGameWebSocket } from '../useGameWebSocket';
@@ -22,7 +22,7 @@ describe('public game snapshot diagnostics at REST boundaries', () => {
         const room = createValidRoomData({ gameStarted: true });
         server.use(
             http.get('/api/room/:roomId', () => HttpResponse.json(room)),
-            http.get('/api/game/:gameId/state', () => HttpResponse.json(createValidGameState({
+            http.get('/api/game/:gameId/state', () => HttpResponse.json(createRawGameStatePayload({
                 players: [{ chips: 'private-invalid-value' }],
             }))),
             http.get('/api/game/:gameId/private-state', () => HttpResponse.json({ holeCards: [] })),

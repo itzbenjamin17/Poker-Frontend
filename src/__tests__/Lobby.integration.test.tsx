@@ -199,7 +199,8 @@ describe('Lobby Integration', () => {
       })
     )
 
-    render(<Lobby onAuth={vi.fn()} />)
+    const onAuth = vi.fn()
+    render(<Lobby onAuth={onAuth} />)
 
     const quickJoinRegion = screen.getByRole('region', { name: /quick join/i })
     const createRegion = screen.getByRole('region', { name: /create table/i })
@@ -209,15 +210,18 @@ describe('Lobby Integration', () => {
 
     await user.click(within(quickJoinRegion).getByRole('button', { name: /join game/i }))
 
-    // Join button shows JOINING..., Create button remains CREATE GAME (disabled, not CREATING...)
-    const joinBtn = await within(quickJoinRegion).findByRole('button', { name: /joining\.\.\./i })
-    expect(joinBtn).toBeDisabled()
+    try {
+      // Join button shows JOINING..., Create button remains CREATE GAME (disabled, not CREATING...)
+      const joinBtn = await within(quickJoinRegion).findByRole('button', { name: /joining\.\.\./i })
+      expect(joinBtn).toBeDisabled()
 
-    const createBtn = within(createRegion).getByRole('button', { name: /create game/i })
-    expect(createBtn).toBeDisabled()
-    expect(within(createRegion).queryByRole('button', { name: /creating\.\.\./i })).not.toBeInTheDocument()
-
-    resolveJoin()
+      const createBtn = within(createRegion).getByRole('button', { name: /create game/i })
+      expect(createBtn).toBeDisabled()
+      expect(within(createRegion).queryByRole('button', { name: /creating\.\.\./i })).not.toBeInTheDocument()
+    } finally {
+      resolveJoin()
+    }
+    await waitFor(() => expect(onAuth).toHaveBeenCalledTimes(1))
   })
 
   it('blocks JoinRoomForm while CreateRoomForm owns the shared request lock', async () => {
@@ -234,7 +238,8 @@ describe('Lobby Integration', () => {
         })
       }),
     )
-    render(<Lobby onAuth={vi.fn()} />)
+    const onAuth = vi.fn()
+    render(<Lobby onAuth={onAuth} />)
     const createRegion = screen.getByRole('region', { name: /create table/i })
     const quickJoinRegion = screen.getByRole('region', { name: /quick join/i })
     await user.type(within(createRegion).getByLabelText(/room name/i), 'Locked Room')
@@ -242,9 +247,13 @@ describe('Lobby Integration', () => {
 
     await user.click(within(createRegion).getByRole('button', { name: /create game/i }))
 
-    expect(await within(createRegion).findByRole('button', { name: /creating/i })).toBeDisabled()
-    expect(within(quickJoinRegion).getByRole('button', { name: /join game/i })).toBeDisabled()
-    resolveCreate()
+    try {
+      expect(await within(createRegion).findByRole('button', { name: /creating/i })).toBeDisabled()
+      expect(within(quickJoinRegion).getByRole('button', { name: /join game/i })).toBeDisabled()
+    } finally {
+      resolveCreate()
+    }
+    await waitFor(() => expect(onAuth).toHaveBeenCalledTimes(1))
   })
 
   it('aborts a pending request on unmount and suppresses onAuth', async () => {
@@ -252,10 +261,13 @@ describe('Lobby Integration', () => {
     const onAuth = vi.fn()
     let requestSignal: AbortSignal | undefined
     let resolveJoin!: () => void
+    let markHandlerDone!: () => void
+    const handlerDone = new Promise<void>((resolve) => { markHandlerDone = resolve })
     server.use(
       http.post('/api/room/join', async ({ request }) => {
         requestSignal = request.signal
         await new Promise<void>((resolve) => { resolveJoin = resolve })
+        markHandlerDone()
         return HttpResponse.json({
           token: 'mock-jwt-token',
           playerName: 'Joiner',
@@ -273,7 +285,8 @@ describe('Lobby Integration', () => {
     unmount()
     expect(requestSignal?.aborted).toBe(true)
     resolveJoin()
-    await Promise.resolve()
+    await handlerDone
+    await new Promise((resolve) => setTimeout(resolve, 0))
 
     expect(onAuth).not.toHaveBeenCalled()
   })

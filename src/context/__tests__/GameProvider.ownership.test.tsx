@@ -1,6 +1,9 @@
 import { StrictMode, createElement, useState } from 'react';
-import { render, act, screen } from '@testing-library/react';
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { render, act, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { http, HttpResponse } from 'msw';
+import { server } from '../../test/mocks/server';
 import { GameProvider } from '../GameProvider';
 import { GameSession } from '../../domain/GameSession';
 import { TestClock } from '../../domain/clock';
@@ -8,48 +11,26 @@ import { InMemoryTransportAdapter } from '../../services/transport';
 import { useSessionHydration } from '../../hooks/useSessionHydration';
 import { useGameWebSocket } from '../../hooks/useGameWebSocket';
 import { useGameContext } from '../GameContext';
-import { pokerApi } from '../../services/api';
 import type { AuthResponse } from '../../types';
-import { createValidGameState, createValidRoomData } from '../../test/fixtures';
-
-vi.mock('../../services/api', async (importOriginal) => {
-    const actual = await importOriginal<typeof import('../../services/api')>();
-    return {
-        ...actual,
-        pokerApi: {
-            ...actual.pokerApi,
-            getRoomData: vi.fn(),
-            getPublicGameState: vi.fn(),
-            getPrivatePlayerState: vi.fn(),
-            getReview: vi.fn(),
-            claimWin: vi.fn(),
-            startGame: vi.fn(),
-            leaveRoom: vi.fn(),
-        },
-    };
-});
+import { createMockJwt, createValidGameState, createValidRoomData } from '../../test/fixtures';
 
 describe('GameProvider Ownership Lifecycle & StrictMode', () => {
     const authA: AuthResponse = {
         roomId: 'room-A',
         playerName: 'PlayerA',
-        token: 'token-A',
+        token: createMockJwt({ sub: 'PlayerA' }),
     };
 
     const authB: AuthResponse = {
         roomId: 'room-B',
         playerName: 'PlayerB',
-        token: 'token-B',
+        token: createMockJwt({ sub: 'PlayerB' }),
     };
 
     beforeEach(() => {
         vi.clearAllMocks();
         sessionStorage.clear();
         localStorage.clear();
-    });
-
-    afterEach(() => {
-        vi.restoreAllMocks();
     });
 
     it('unmounting GameProvider before hydration or socket setup cleans up session completely', () => {
@@ -91,6 +72,7 @@ describe('GameProvider Ownership Lifecycle & StrictMode', () => {
     });
 
     it('replacing session A with session B cancels A redirect/hydration and leaves B fully intact', async () => {
+        const user = userEvent.setup();
         const clock = new TestClock(1000);
         const transportA = new InMemoryTransportAdapter();
         const transportB = new InMemoryTransportAdapter();
@@ -144,15 +126,13 @@ describe('GameProvider Ownership Lifecycle & StrictMode', () => {
             );
         }
 
-        const { getByText } = render(createElement(Switcher));
+        render(createElement(Switcher));
 
         expect(sessionA.isAttached()).toBe(true);
         expect(screen.getByTestId('current-player').textContent).toBe('PlayerA');
 
         // Switch to Session B before A's redirect completes
-        act(() => {
-            getByText('Switch to B').click();
-        });
+        await user.click(screen.getByRole('button', { name: 'Switch to B' }));
 
         expect(screen.getByTestId('current-player').textContent).toBe('PlayerB');
         expect(sessionA.isAttached()).toBe(false);
@@ -177,7 +157,9 @@ describe('GameProvider Ownership Lifecycle & StrictMode', () => {
             gameStarted: false,
         });
 
-        vi.mocked(pokerApi.getRoomData).mockResolvedValue(roomDataResponse);
+        server.use(
+            http.get('*/api/room/room-A', () => HttpResponse.json(roomDataResponse))
+        );
 
         function RealChild() {
             useSessionHydration();
@@ -191,34 +173,71 @@ describe('GameProvider Ownership Lifecycle & StrictMode', () => {
             );
         }
 
-        let unmountFn!: () => void;
-        await act(async () => {
-            const { unmount } = render(
+        const { unmount } = render(
+            createElement(
+                StrictMode,
+                null,
                 createElement(
-                    StrictMode,
-                    null,
-                    createElement(
-                        GameProvider,
-                        {
-                            auth: authA,
-                            transport,
-                        },
-                        createElement(RealChild)
-                    )
+                    GameProvider,
+                    {
+                        auth: authA,
+                        transport,
+                    },
+                    createElement(RealChild)
                 )
-            );
-            unmountFn = unmount;
-        });
+            )
+        );
 
         // Hydration succeeded and WebSocket connected
-        expect(screen.getByTestId('hydrated').textContent).toBe('true');
+        await waitFor(() => expect(screen.getByTestId('hydrated').textContent).toBe('true'));
         expect(connectSpy).toHaveBeenCalledTimes(1);
 
         // Final unmount cleans up everything
-        act(() => {
-            unmountFn();
-        });
+        unmount();
 
+        expect(disconnectSpy).toHaveBeenCalled();
+    });
+
+    it('stays mounted cleanly when initial room hydration fails with HTTP 500 and cleans up on unmount', async () => {
+        const transport = new InMemoryTransportAdapter();
+        const disconnectSpy = vi.spyOn(transport, 'disconnect');
+        const clock = new TestClock(1000);
+        let roomRequests = 0;
+
+        server.use(
+            http.get('*/api/room/room-A', () => {
+                roomRequests += 1;
+                return HttpResponse.json({ detail: 'Server error' }, { status: 500 });
+            })
+        );
+
+        function RealChild() {
+            const { initialLoadFailed } = useSessionHydration();
+            const { isHydrated } = useGameContext();
+            return createElement(
+                'div',
+                null,
+                createElement('span', { 'data-testid': 'hydrated' }, String(isHydrated)),
+                createElement('span', { 'data-testid': 'failed' }, String(initialLoadFailed))
+            );
+        }
+
+        const session = new GameSession({ auth: authA, transport, clock });
+        const { unmount } = render(
+            createElement(
+                GameProvider,
+                { auth: authA, session, transport },
+                createElement(RealChild)
+            )
+        );
+
+        await waitFor(() => expect(roomRequests).toBe(1));
+        await waitFor(() => expect(session.hasPendingRecoveryTimer()).toBe(true));
+        expect(screen.getByTestId('hydrated').textContent).toBe('false');
+
+        unmount();
+        expect(session.isAttached()).toBe(false);
+        expect(session.hasPendingRecoveryTimer()).toBe(false);
         expect(disconnectSpy).toHaveBeenCalled();
     });
 
@@ -287,7 +306,8 @@ describe('GameProvider Ownership Lifecycle & StrictMode', () => {
         expect(sessionStorage.getItem(`poker-game-end:${authA.roomId}`)).toBeNull();
     });
 
-    it('changing auth in GameProvider automatically detaches previous session and prevents old session from evicting new session', () => {
+    it('changing auth in GameProvider automatically detaches previous session and prevents old session from evicting new session', async () => {
+        const user = userEvent.setup();
         const clock = new TestClock(1000);
         const onLeaveA = vi.fn();
         const onLeaveB = vi.fn();
@@ -328,7 +348,7 @@ describe('GameProvider Ownership Lifecycle & StrictMode', () => {
             );
         }
 
-        const { getByText } = render(createElement(DynamicProvider));
+        render(createElement(DynamicProvider));
 
         expect(screen.getByTestId('room').textContent).toBe('room-A');
         const sessionA = currentSessionInstance!;
@@ -342,9 +362,7 @@ describe('GameProvider Ownership Lifecycle & StrictMode', () => {
         expect(sessionA.isRedirectingActive()).toBe(true);
 
         // Before 3,000ms elapses, the auth is switched to Auth B (cross-tab login or re-auth)
-        act(() => {
-            getByText('Switch Auth').click();
-        });
+        await user.click(screen.getByRole('button', { name: 'Switch Auth' }));
 
         expect(screen.getByTestId('room').textContent).toBe('room-B');
         const sessionB = currentSessionInstance!;

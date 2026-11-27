@@ -118,6 +118,7 @@ describe('GameSession Lobby Inactivity Lifecycle & Enforcement', () => {
         };
 
         const { session, transport } = createSession(clock, initialRoom);
+        vi.spyOn(session, 'synchronizeSession').mockResolvedValue(undefined);
         expect(session.getSnapshot().isLobbyInactivityWarningActive).toBe(true);
 
         // Host starts game
@@ -131,6 +132,33 @@ describe('GameSession Lobby Inactivity Lifecycle & Enforcement', () => {
 
         expect(session.getSnapshot().isLobbyInactivityWarningActive).toBe(false);
         expect(session.getSnapshot().roomState?.gameStarted).toBe(true);
+    });
+
+    it('starting a game cancels an armed future lobby-inactivity timer', () => {
+        const clock = new TestClock(1000);
+        const initialRoom: RoomState = {
+            roomId: auth.roomId,
+            roomName: 'Lobby-1',
+            players: [{ name: auth.playerName, isHost: true }],
+            gameStarted: false,
+            inactivityDeadlineEpochMs: clock.now() + 30 * 60_000,
+            serverTimeEpochMs: clock.now(),
+        };
+
+        const { session, transport } = createSession(clock, initialRoom);
+        vi.spyOn(session, 'synchronizeSession').mockResolvedValue(undefined);
+        expect(session.getSnapshot().isLobbyInactivityWarningActive).toBe(false);
+
+        transport.simulateMessage(`/room/${auth.roomId}`, {
+            roomId: auth.roomId,
+            roomName: 'Lobby-1',
+            players: [{ name: auth.playerName, isHost: true }],
+            gameStarted: true,
+            inactivityDeadlineEpochMs: null,
+        });
+
+        clock.tick(30 * 60_000);
+        expect(session.getSnapshot().isLobbyInactivityWarningActive).toBe(false);
     });
 
     it('closes lobby with LOBBY_INACTIVE_CLOSED when closedReason is INACTIVITY', () => {

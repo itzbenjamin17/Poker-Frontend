@@ -1,10 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 import { GameTableView } from '../../GameTableView';
-import { GameSession } from '../../../domain/GameSession';
-import { InMemoryTransportAdapter } from '../../../services/transport';
-import type { AuthResponse, GameState, RoomState } from '../../../types';
-import '@testing-library/jest-dom';
+import type { GameState, RoomState } from '../../../types';
 
 describe('Table Identity Resolution', () => {
     const mockRoomState: RoomState = {
@@ -60,7 +57,7 @@ describe('Table Identity Resolution', () => {
         const { rerender } = render(
             <GameTableView
                 auth={{ token: 'tok', roomId: 'ROOM123', playerName: 'Alice' }}
-                playerName="Alice"
+                playerName={null}
                 myPlayerId="stale-invalid-id"
                 gameState={gameState}
                 roomState={mockRoomState}
@@ -85,7 +82,7 @@ describe('Table Identity Resolution', () => {
         rerender(
             <GameTableView
                 auth={{ token: 'tok', roomId: 'ROOM123', playerName: 'Alice' }}
-                playerName="Alice"
+                playerName={null}
                 myPlayerId={null}
                 gameState={gameState}
                 roomState={mockRoomState}
@@ -111,7 +108,7 @@ describe('Table Identity Resolution', () => {
         const { rerender } = render(
             <GameTableView
                 auth={{ token: 'tok', roomId: 'ROOM123', playerName: 'Alice' }}
-                playerName="Alice"
+                playerName={null}
                 myPlayerId="invalid-stale"
                 gameState={gameStateAliceTurn}
                 roomState={mockRoomState}
@@ -138,7 +135,7 @@ describe('Table Identity Resolution', () => {
         rerender(
             <GameTableView
                 auth={{ token: 'tok', roomId: 'ROOM123', playerName: 'Alice' }}
-                playerName="Alice"
+                playerName={null}
                 myPlayerId="invalid-stale"
                 gameState={gameStateBobTurn}
                 roomState={mockRoomState}
@@ -156,6 +153,32 @@ describe('Table Identity Resolution', () => {
         await waitFor(() => {
             expect(screen.getByText(/waiting for bob/i)).toBeInTheDocument();
         });
+    });
+
+    it('does not resolve another player via stale myPlayerId when auth.playerName is absent from players', () => {
+        const gameState = createGameState({
+            currentPlayerId: 'p-bob',
+            currentPlayerName: 'Bob',
+        });
+        render(
+            <GameTableView
+                auth={{ token: 'tok', roomId: 'ROOM123', playerName: 'Spectator' }}
+                playerName={null}
+                myPlayerId="p-bob"
+                gameState={gameState}
+                roomState={mockRoomState}
+                nowMs={1000}
+                onAction={vi.fn()}
+                onReady={vi.fn()}
+                onUnready={vi.fn()}
+                onClaimWin={vi.fn()}
+                onLeaveGame={vi.fn()}
+            />
+        );
+
+        expect(screen.queryByRole('group', { name: 'Bob hero seat' })).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'Fold' })).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'Check' })).not.toBeInTheDocument();
     });
 
     it('uses supplied player ID only when no player name is available', () => {
@@ -179,48 +202,5 @@ describe('Table Identity Resolution', () => {
         // When no player name is given, supplied myPlayerId resolves Bob as hero
         const heroSeat = screen.getByRole('group', { name: 'Bob hero seat' });
         expect(heroSeat).toBeInTheDocument();
-    });
-
-    it('populates session hero identity from initial state, accepted state, and setGameState', () => {
-        const auth: AuthResponse = { token: 'tok', roomId: 'ROOM123', playerName: 'Alice' };
-        const transport = new InMemoryTransportAdapter();
-
-        // 1. Initial state constructor resolution
-        const session = new GameSession({
-            auth,
-            transport,
-            initialGameState: createGameState(),
-        });
-        expect(session.getSnapshot().myPlayerId).toBe('p-alice');
-
-        // 2. setGameState resolution
-        const updatedState = createGameState({
-            players: [
-                { id: 'p-alice-new', name: 'Alice', chips: 1500, currentBet: 0, status: 'ACTIVE', hasFolded: false },
-                { id: 'p-bob-new', name: 'Bob', chips: 500, currentBet: 0, status: 'ACTIVE', hasFolded: false },
-            ],
-        });
-        session.setGameState(updatedState);
-        expect(session.getSnapshot().myPlayerId).toBe('p-alice-new');
-
-        // 3. Accepted state in applyGameState
-        const incomingState = createGameState({
-            players: [
-                { id: 'p-alice-hand3', name: 'Alice', chips: 2000, currentBet: 0, status: 'ACTIVE', hasFolded: false },
-                { id: 'p-bob-hand3', name: 'Bob', chips: 0, currentBet: 0, status: 'OUT', hasFolded: false },
-            ],
-            handNumber: 3,
-        });
-        session.applyGameState(incomingState);
-        expect(session.getSnapshot().myPlayerId).toBe('p-alice-hand3');
-
-        // 4. Stale supplied ID in applyPrivateState is rejected if it doesn't match public roster
-        session.applyPrivateState({
-            playerId: 'stale-other-id',
-            handNumber: 3,
-            holeCards: ['AH', 'KH'],
-        });
-        // myPlayerId remains p-alice-hand3
-        expect(session.getSnapshot().myPlayerId).toBe('p-alice-hand3');
     });
 });

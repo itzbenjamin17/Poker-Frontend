@@ -1,3 +1,5 @@
+// Must be imported before modules that load @stomp/stompjs.
+import { MockStompClient, activeSubscriptions } from '../test/mocks/stomp';
 import { render, screen, act, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -5,7 +7,6 @@ import { http, HttpResponse } from 'msw';
 import GameView from '../GameView';
 import App from '../App';
 import { server } from '../test/mocks/server';
-import { MockStompClient, activeSubscriptions } from '../test/mocks/stomp';
 import { createValidGameState, createValidRoomData, createMockJwt, mockAuth } from '../test/fixtures';
 import {
     savePersistedGameEnd,
@@ -30,14 +31,14 @@ describe('GameEnd Auth Binding & Offline Review Integration', () => {
             ...mockAuth,
             roomId: 'ROOM-100',
             playerName: 'Alice',
-            token: createMockJwt(),
+            token: createMockJwt({ sub: 'alice', jti: 'tok-a' }),
         };
 
         authB = {
             ...mockAuth,
             roomId: 'ROOM-100',
             playerName: 'Bob',
-            token: createMockJwt(),
+            token: createMockJwt({ sub: 'bob', jti: 'tok-b' }),
         };
 
         terminalResultA = createValidGameState({
@@ -133,6 +134,7 @@ describe('GameEnd Auth Binding & Offline Review Integration', () => {
     });
 
     it('rejects terminal review when same room has fresh token B and hydrates normally', async () => {
+        expect(authA.token).not.toBe(authB.token);
         // Stored cache belongs to Alice (authA), but Bob arrives
         savePersistedGameEnd(authA, terminalResultA);
 
@@ -154,7 +156,7 @@ describe('GameEnd Auth Binding & Offline Review Integration', () => {
 
         const authAFreshToken: AuthResponse = {
             ...authA,
-            token: createMockJwt(Math.floor(Date.now() / 1000) + 7200),
+            token: createMockJwt({ sub: 'alice', jti: 'tok-a-fresh' }),
         };
 
         render(<GameView auth={authAFreshToken} />);

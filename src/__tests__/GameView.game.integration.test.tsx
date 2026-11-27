@@ -1,7 +1,8 @@
+// Must be imported before modules that load @stomp/stompjs.
+import { MockStompClient, activeSubscriptions } from '../test/mocks/stomp'
 import { render, screen, waitFor, act, within } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import GameView from '../GameView'
-import { MockStompClient, activeSubscriptions } from '../test/mocks/stomp'
 import { http, HttpResponse } from 'msw'
 import { server } from '../test/mocks/server'
 import { createValidGameState, createValidRoomData, mockAuth } from '../test/fixtures'
@@ -315,8 +316,8 @@ describe('GameView - Game Table Integration', () => {
         readyGateState: 'COUNTING_DOWN',
         pot: 300,
         communityCards: ['AH', 'KD', 'QC', 'JS', '2C'],
-        currentPlayerId: null,
-        currentPlayerName: null,
+        currentPlayerId: '',
+        currentPlayerName: '',
         winners: ['Opponent'],
         isReadyCountdownActive: true,
         readyCountdownDeadlineEpochMs: Date.now() + 30000,
@@ -348,8 +349,8 @@ describe('GameView - Game Table Integration', () => {
         readyGateState: 'COUNTING_DOWN',
         pot: 0,
         communityCards: ['AH', 'KD', 'QC', 'JS', '2C'],
-        currentPlayerId: null,
-        currentPlayerName: null,
+        currentPlayerId: '',
+        currentPlayerName: '',
         isReadyCountdownActive: true,
         readyCountdownDeadlineEpochMs: Date.now() + 28000,
         players: [
@@ -369,8 +370,8 @@ describe('GameView - Game Table Integration', () => {
         readyGateState: 'COUNTING_DOWN',
         pot: 0,
         communityCards: ['AH', 'KD', 'QC', 'JS', '2C'],
-        currentPlayerId: null,
-        currentPlayerName: null,
+        currentPlayerId: '',
+        currentPlayerName: '',
         isReadyCountdownActive: true,
         readyCountdownDeadlineEpochMs: Date.now() + 26000,
         players: [

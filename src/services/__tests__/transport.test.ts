@@ -61,7 +61,7 @@ describe('GameTransport - InMemoryTransportAdapter', () => {
         const handler = vi.fn();
         transport.subscribe('/topic/test', handler);
 
-        transport.simulateMessage('/topic/test', JSON.stringify({ a: 1 }));
+        transport.simulateMessage('/topic/test', { a: 1 });
         expect(handler).toHaveBeenCalledWith(JSON.stringify({ a: 1 }));
     });
 

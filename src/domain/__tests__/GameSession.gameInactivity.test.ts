@@ -124,6 +124,7 @@ describe('GameSession Active Game Inactivity Lifecycle & Enforcement', () => {
         };
 
         const { session, transport } = createSession(clock, initialRoom);
+        vi.spyOn(session, 'synchronizeSession').mockResolvedValue(undefined);
         expect(session.getSnapshot().isLobbyInactivityWarningActive).toBe(true);
 
         // Game starts with 15m active game deadline
@@ -138,6 +139,35 @@ describe('GameSession Active Game Inactivity Lifecycle & Enforcement', () => {
 
         // Lobby warning is dismissed and game warning is not yet active
         expect(session.getSnapshot().isLobbyInactivityWarningActive).toBe(false);
+        expect(session.getSnapshot().isGameInactivityWarningActive).toBe(false);
+
+        // Advancing 13 minutes reaches the 2-minute warning window for the active game deadline
+        clock.tick(13 * 60_000);
+        expect(session.getSnapshot().isGameInactivityWarningActive).toBe(true);
+    });
+
+    it('terminal abandonment cancels an armed future game-inactivity timer', () => {
+        const clock = new TestClock(1000);
+        const initialGame: GameState = {
+            ...baseGameState,
+            inactivityDeadlineEpochMs: clock.now() + 15 * 60_000,
+        };
+
+        const { session } = createSession(clock, undefined, initialGame);
+        expect(session.getSnapshot().isGameInactivityWarningActive).toBe(false);
+
+        session.setGameEndResult({
+            ...initialGame,
+            gameEnd: {
+                winner: null,
+                abandoned: true,
+                reason: 'INACTIVITY',
+                message: 'Game abandoned due to inactivity.',
+                isForfeit: false,
+            },
+        });
+
+        clock.tick(15 * 60_000);
         expect(session.getSnapshot().isGameInactivityWarningActive).toBe(false);
     });
 

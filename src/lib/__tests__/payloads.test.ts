@@ -21,12 +21,12 @@ import {
     ERROR_SYSTEM,
     ERROR_TECHNICAL,
 } from '../../constants/strings';
-import { createValidGameState, createValidPlayer } from '../../test/fixtures';
+import { createRawGameStatePayload, createValidGameState, createValidPlayer } from '../../test/fixtures';
 
 describe('lib/payloads - Type Guards and Normalizers', () => {
     describe('isGameStatePayload', () => {
         it('accepts nullable awards and empty legal actions, but rejects unsafe minima', () => {
-            expect(isGameStatePayload(createValidGameState({
+            expect(isGameStatePayload(createRawGameStatePayload({
                 legalActions: [], minimumBetAmount: null, minimumRaiseAmount: 60,
                 winningsPerPlayer: null, handSettled: true, carryOverAmount: 10,
                 gameEnd: null,
@@ -34,7 +34,7 @@ describe('lib/payloads - Type Guards and Normalizers', () => {
             expect(isGameStatePayload(createValidGameState({ minimumRaiseAmount: Number.MAX_SAFE_INTEGER + 1 }))).toBe(false);
         });
         it('returns true for a valid complete game state payload', () => {
-            const valid = createValidGameState({
+            const valid = createRawGameStatePayload({
                 pot: 30,
                 claimWinAvailable: false,
                 claimWinPlayerName: null,
@@ -53,7 +53,7 @@ describe('lib/payloads - Type Guards and Normalizers', () => {
             }));
             expect(validWithDeadline?.turnDeadlineEpochMs).toBe(123456789);
 
-            const validWithNullDeadline = decodeGameStatePayload(createValidGameState({
+            const validWithNullDeadline = decodeGameStatePayload(createRawGameStatePayload({
                 turnDeadlineEpochMs: null,
             }));
             expect(validWithNullDeadline?.turnDeadlineEpochMs).toBeNull();
@@ -103,8 +103,8 @@ describe('lib/payloads - Type Guards and Normalizers', () => {
         it('diagnoses the first nested player failure without exposing payload values', () => {
             const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
             try {
-                const payload = createValidGameState({
-                    players: [createValidPlayer({ chips: 'secret-chip-value', currentBet: -1 })],
+                const payload = createRawGameStatePayload({
+                    players: [{ chips: 'secret-chip-value', currentBet: -1 }],
                     token: 'secret-token',
                 });
 
@@ -124,7 +124,7 @@ describe('lib/payloads - Type Guards and Normalizers', () => {
         });
 
         it('normalizes a null current player name to an empty string', () => {
-            const decoded = decodeGameStatePayload(createValidGameState({ currentPlayerName: null }));
+            const decoded = decodeGameStatePayload(createRawGameStatePayload({ currentPlayerName: null }));
 
             expect(decoded?.currentPlayerName).toBe('');
         });
@@ -134,9 +134,9 @@ describe('lib/payloads - Type Guards and Normalizers', () => {
             [[], '$', 'object', 'array'],
             ['private-root-value', '$', 'object', 'string'],
             [{ ...createValidGameState(), players: {} }, '$.players', 'array with at most 10 entries', 'object'],
-            [createValidGameState({ players: [null] }), '$.players[0]', 'object', 'null'],
-            [createValidGameState({ communityCards: ['AS', 7] }), '$.communityCards[1]', 'card string (rank followed by C, D, H, or S)', 'number'],
-            [createValidGameState({ players: [{ bestHand: ['AS', false] }] }), '$.players[0].bestHand[1]', 'card string (rank followed by C, D, H, or S)', 'boolean'],
+            [createRawGameStatePayload({ players: [null] }), '$.players[0]', 'object', 'null'],
+            [createRawGameStatePayload({ communityCards: ['AS', 7] }), '$.communityCards[1]', 'card string (rank followed by C, D, H, or S)', 'number'],
+            [createRawGameStatePayload({ players: [{ bestHand: ['AS', false] }] }), '$.players[0].bestHand[1]', 'card string (rank followed by C, D, H, or S)', 'boolean'],
             [createValidGameState({ players: Array.from({ length: 11 }, () => createValidPlayer()) }), '$.players', 'array with at most 10 entries', 'array'],
         ])('diagnoses malformed root and array shapes at %s', (payload, path, expected, receivedType) => {
             const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
@@ -153,7 +153,7 @@ describe('lib/payloads - Type Guards and Normalizers', () => {
         it('retains all accepted nullable wire metadata and its normalization without diagnostics', () => {
             const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
             try {
-                const decoded = decodeGameStatePayload(createValidGameState({
+                const decoded = decodeGameStatePayload(createRawGameStatePayload({
                     currentPlayerName: null, currentPlayerId: null,
                     legalActions: null, winners: null, winningsPerPlayer: null,
                     isAutoAdvancing: null, autoAdvanceMessage: null,
@@ -191,7 +191,7 @@ describe('lib/payloads - Type Guards and Normalizers', () => {
             { players: [{ chips: null }] }, { players: [{ chips: -1 }] },
             { players: [{ currentBet: '20' }] }, { players: [{ currentBet: 0.5 }] },
         ])('continues to reject corrupt authoritative money values: %j', overrides => {
-            expect(decodeGameStatePayload(createValidGameState(overrides))).toBeNull();
+            expect(decodeGameStatePayload(createRawGameStatePayload(overrides))).toBeNull();
         });
 
         it('keeps development diagnostics silent in production', () => {
@@ -207,7 +207,7 @@ describe('lib/payloads - Type Guards and Normalizers', () => {
         });
 
         it('rejects null player entries', () => {
-            expect(decodeGameStatePayload(createValidGameState({ players: [null] }))).toBeNull();
+            expect(decodeGameStatePayload(createRawGameStatePayload({ players: [null] }))).toBeNull();
         });
 
         it('accepts validator-complete shared player fixtures', () => {
@@ -429,6 +429,7 @@ describe('lib/payloads - Type Guards and Normalizers', () => {
             expect(normalizeErrorMessage('HTTP 502 Bad Gateway')).toBe(ERROR_TECHNICAL);
 
             // Embedded HTML tags and fragments
+            expect(normalizeErrorMessage('<!DOCTYPE html><html><body>502 Bad Gateway</body></html>')).toBe(ERROR_TECHNICAL);
             expect(normalizeErrorMessage('<div>An unexpected error occurred</div>')).toBe(ERROR_TECHNICAL);
             expect(normalizeErrorMessage('<p>Server down</p>')).toBe(ERROR_TECHNICAL);
             expect(normalizeErrorMessage('<tag>some technical error</tag>')).toBe(ERROR_TECHNICAL);
@@ -443,6 +444,7 @@ describe('lib/payloads - Type Guards and Normalizers', () => {
         });
 
         it('normalizes serialized JSON bodies and embedded JSON objects to format or technical copy', () => {
+            expect(normalizeErrorMessage('{"status": 500, "error": "Internal"}')).toBe(ERROR_INVALID_FORMAT);
             expect(normalizeErrorMessage('{"status": 500, "error": "Internal Server Error"}')).toBe(ERROR_INVALID_FORMAT);
             expect(normalizeErrorMessage('[{"message": "Validation failed"}]')).toBe(ERROR_INVALID_FORMAT);
             expect(normalizeErrorMessage('Server error: {"code": 500, "reason": "Failed"}')).toBe(ERROR_INVALID_FORMAT);
@@ -452,6 +454,7 @@ describe('lib/payloads - Type Guards and Normalizers', () => {
         it('normalizes multi-line Java/Spring stack traces and server exception strings to system copy', () => {
             expect(normalizeErrorMessage('NullPointerException: player session is missing')).toBe(ERROR_SYSTEM);
             expect(normalizeErrorMessage('java.lang.NullPointerException: Cannot invoke "String.length()"')).toBe(ERROR_SYSTEM);
+            expect(normalizeErrorMessage('java.lang.NullPointerException at com.pokergame.Lobby')).toBe(ERROR_SYSTEM);
             expect(normalizeErrorMessage('IllegalStateException: Room is not open for joining')).toBe(ERROR_SYSTEM);
             expect(normalizeErrorMessage('java.lang.IllegalStateException: Game not in betting round')).toBe(ERROR_SYSTEM);
             expect(normalizeErrorMessage('Exception: unexpected state transition')).toBe(ERROR_SYSTEM);
@@ -748,21 +751,21 @@ describe('lib/payloads - Type Guards and Normalizers', () => {
         });
 
         it.each<[string, unknown, string | undefined]>([
-            ['negative winnerChips', createValidGameState({ gameId: 'g1', gameEnd: { winner: 'A', winnerChips: -1, isForfeit: false, message: 'm' } }), undefined],
-            ['float winnerChips', createValidGameState({ gameId: 'g1', gameEnd: { winner: 'A', winnerChips: 1.5, isForfeit: false, message: 'm' } }), undefined],
-            ['string winnerChips', createValidGameState({ gameId: 'g1', gameEnd: { winner: 'A', winnerChips: '500', isForfeit: false, message: 'm' } }), undefined],
-            ['empty gameId', createValidGameState({ gameId: '   ', gameEnd: { winner: 'A', isForfeit: false, message: 'm' } }), undefined],
-            ['empty gameId with expectedGameId', createValidGameState({ gameId: '', gameEnd: { winner: 'A', isForfeit: false, message: 'm' } }), 'g1'],
-            ['missing gameId without fallback', createValidGameState({ gameId: undefined, gameEnd: { winner: 'A', isForfeit: false, message: 'm' } }), undefined],
-            ['mismatched expectedGameId', createValidGameState({ gameId: 'g1', gameEnd: { winner: 'A', isForfeit: false, message: 'm' } }), 'g2'],
-            ['non-boolean isForfeit', createValidGameState({ gameId: 'g1', gameEnd: { winner: 'A', isForfeit: 'true', message: 'm' } }), undefined],
-            ['non-boolean isForfeit when reason is INACTIVITY', createValidGameState({ gameId: 'g1', gameEnd: { winner: null, isForfeit: 'false', reason: 'INACTIVITY', message: 'm' } }), undefined],
-            ['non-boolean abandoned', createValidGameState({ gameId: 'g1', gameEnd: { winner: null, isForfeit: false, abandoned: 'true', message: 'm' } }), undefined],
-            ['non-string/non-null winner when abandoned is true', createValidGameState({ gameId: 'g1', gameEnd: { winner: 123, isForfeit: false, abandoned: true, message: 'm' } }), undefined],
-            ['empty message', createValidGameState({ gameId: 'g1', gameEnd: { winner: 'A', isForfeit: false, message: '   ' } }), undefined],
-            ['non-string message', createValidGameState({ gameId: 'g1', gameEnd: { winner: 'A', isForfeit: false, message: 123 } }), undefined],
-            ['empty winner string', createValidGameState({ gameId: 'g1', gameEnd: { winner: '   ', isForfeit: false, message: 'm' } }), undefined],
-            ['invalid winner type', createValidGameState({ gameId: 'g1', gameEnd: { winner: 123, isForfeit: false, message: 'm' } }), undefined],
+            ['negative winnerChips', createRawGameStatePayload({ gameId: 'g1', gameEnd: { winner: 'A', winnerChips: -1, isForfeit: false, message: 'm' } }), undefined],
+            ['float winnerChips', createRawGameStatePayload({ gameId: 'g1', gameEnd: { winner: 'A', winnerChips: 1.5, isForfeit: false, message: 'm' } }), undefined],
+            ['string winnerChips', createRawGameStatePayload({ gameId: 'g1', gameEnd: { winner: 'A', winnerChips: '500', isForfeit: false, message: 'm' } }), undefined],
+            ['empty gameId', createRawGameStatePayload({ gameId: '   ', gameEnd: { winner: 'A', isForfeit: false, message: 'm' } }), undefined],
+            ['empty gameId with expectedGameId', createRawGameStatePayload({ gameId: '', gameEnd: { winner: 'A', isForfeit: false, message: 'm' } }), 'g1'],
+            ['missing gameId without fallback', createRawGameStatePayload({ gameId: undefined, gameEnd: { winner: 'A', isForfeit: false, message: 'm' } }), undefined],
+            ['mismatched expectedGameId', createRawGameStatePayload({ gameId: 'g1', gameEnd: { winner: 'A', isForfeit: false, message: 'm' } }), 'g2'],
+            ['non-boolean isForfeit', createRawGameStatePayload({ gameId: 'g1', gameEnd: { winner: 'A', isForfeit: 'true', message: 'm' } }), undefined],
+            ['non-boolean isForfeit when reason is INACTIVITY', createRawGameStatePayload({ gameId: 'g1', gameEnd: { winner: null, isForfeit: 'false', reason: 'INACTIVITY', message: 'm' } }), undefined],
+            ['non-boolean abandoned', createRawGameStatePayload({ gameId: 'g1', gameEnd: { winner: null, isForfeit: false, abandoned: 'true', message: 'm' } }), undefined],
+            ['non-string/non-null winner when abandoned is true', createRawGameStatePayload({ gameId: 'g1', gameEnd: { winner: 123, isForfeit: false, abandoned: true, message: 'm' } }), undefined],
+            ['empty message', createRawGameStatePayload({ gameId: 'g1', gameEnd: { winner: 'A', isForfeit: false, message: '   ' } }), undefined],
+            ['non-string message', createRawGameStatePayload({ gameId: 'g1', gameEnd: { winner: 'A', isForfeit: false, message: 123 } }), undefined],
+            ['empty winner string', createRawGameStatePayload({ gameId: 'g1', gameEnd: { winner: '   ', isForfeit: false, message: 'm' } }), undefined],
+            ['invalid winner type', createRawGameStatePayload({ gameId: 'g1', gameEnd: { winner: 123, isForfeit: false, message: 'm' } }), undefined],
             ['null input', null, undefined],
         ])('rejects malformed completed game state: %s', (_desc, payload, expectedGameId) => {
             expect(decodeCompletedGameState(payload, expectedGameId)).toBeNull();

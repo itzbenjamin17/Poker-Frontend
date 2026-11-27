@@ -233,7 +233,9 @@ describe('PokerRoomLayout', () => {
             />
         );
 
-        expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+        expect(screen.queryByText(/connection lost/i)).not.toBeInTheDocument();
+        expect(screen.queryByText(/reconnecting/i)).not.toBeInTheDocument();
+        expect(screen.getByTestId('room-stage').parentElement).not.toHaveAttribute('inert');
     });
 
     it('avoids orientation gating discontinuity when widening a short portrait window (600x601 -> 650x601 -> 667x601) while allowing 600x800+', () => {

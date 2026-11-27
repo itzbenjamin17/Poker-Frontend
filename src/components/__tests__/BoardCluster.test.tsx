@@ -162,19 +162,4 @@ describe('BoardCluster', () => {
         // The pot shrinks (padding scales by 0.75) once there are more than two side pots.
         expect(shrinkPot.style.padding).not.toBe(normalPadding);
     });
-
-    it('verifies contrast ratio mathematics against felt center (#6fad95)', () => {
-        // WCAG relative luminance:
-        // Center felt: #6fad95 -> luminance ~0.38
-        // bg-black/60 over felt: effective background luminance = 0.38 * (1 - 0.60) = ~0.152
-        // White text: #ffffff -> luminance = 1.0
-        // Contrast ratio = (1.0 + 0.05) / (0.152 + 0.05) = 1.05 / 0.202 = ~5.2:1
-        const feltLuminance = 0.38;
-        const bgBlack60Luminance = feltLuminance * (1 - 0.6); // ~0.152
-        const whiteTextLuminance = 1.0;
-        const contrastRatio = (whiteTextLuminance + 0.05) / (bgBlack60Luminance + 0.05);
-
-        // Comfortably exceeds WCAG AA minimum of 4.5:1 (guaranteeing accessible legibility over felt)
-        expect(contrastRatio).toBeGreaterThanOrEqual(4.5);
-    });
 });

@@ -111,12 +111,26 @@ describe('RejoinSeats', () => {
 
     it.each([429, 500, 503])('keeps a seat it could not check (%i) for next time, without offering it now', async status => {
         rememberSeat(ann);
-        serveRoomChecks({ [ann.token]: status });
+        rememberSeat(ben);
+        let annChecked = false;
+        server.use(http.get('/api/room/:roomId', ({ request, params }) => {
+            const token = request.headers.get('Authorization')?.replace('Bearer ', '') ?? '';
+            if (token === ann.token) {
+                annChecked = true;
+                return HttpResponse.json({ message: 'unavailable' }, { status });
+            }
+            return HttpResponse.json({
+                roomId: params.roomId, roomName: 'Friday Game', maxPlayers: 6, buyIn: 1000, smallBlind: 10, bigBlind: 20,
+                players: [], canStartGame: false, gameStarted: false, gameFinished: false,
+            });
+        }));
 
-        const { container } = render(<RejoinSeats onAuth={vi.fn()} />);
+        render(<RejoinSeats onAuth={vi.fn()} />);
 
-        await waitFor(() => expect(loadRecentSeats()).toEqual([ann]));
-        expect(container).toBeEmptyDOMElement();
+        await screen.findByRole('button', { name: /as ben/i });
+        expect(annChecked).toBe(true);
+        expect(screen.queryByRole('button', { name: /as ann/i })).not.toBeInTheDocument();
+        expect(loadRecentSeats()).toEqual([ben, ann]);
     });
 
     it('disables the buttons while a create or join request is running', async () => {

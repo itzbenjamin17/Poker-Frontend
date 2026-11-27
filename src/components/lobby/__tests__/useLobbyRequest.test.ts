@@ -3,7 +3,17 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { useLobbyRequest } from '../useLobbyRequest';
 import type { LobbyRequestLock } from '../useLobbyRequest';
 import type { AuthResponse } from '../../../types';
-import { ERROR_MALFORMED_RESPONSE, ERROR_TECHNICAL, ERROR_SYSTEM, ERROR_INVALID_FORMAT } from '../../../constants/strings';
+import { ERROR_MALFORMED_RESPONSE } from '../../../constants/strings';
+
+function deferred<T>() {
+    let resolve!: (value: T) => void;
+    let reject!: (reason?: unknown) => void;
+    const promise = new Promise<T>((res, rej) => {
+        resolve = res;
+        reject = rej;
+    });
+    return { promise, resolve, reject };
+}
 
 describe('useLobbyRequest', () => {
     const onAuth = vi.fn();
@@ -20,7 +30,7 @@ describe('useLobbyRequest', () => {
         playerName: 'Alice',
     };
 
-    it('invokes onAuth on successful request and locks during transition', async () => {
+    it('invokes onAuth on successful request and keeps submission locked during transition', async () => {
         const requestLock: LobbyRequestLock = { current: null };
         const { result, unmount } = renderHook(() =>
             useLobbyRequest({ requestLock, onAuth, onError, setLoading })
@@ -34,91 +44,134 @@ describe('useLobbyRequest', () => {
         expect(onError).not.toHaveBeenCalled();
         expect(setLoading).toHaveBeenCalledWith(true);
         expect(setLoading).toHaveBeenCalledWith(false);
-        // Lock remains held after auth to prevent double-submit while unmounting
-        expect(requestLock.current).not.toBeNull();
+        expect(result.current.pending).toBe(false);
+        expect(result.current.isBusy()).toBe(true);
+
+        const secondRequest = vi.fn(async () => validAuth);
+        await act(async () => {
+            await result.current.run(secondRequest, 'Fallback error');
+        });
+        expect(secondRequest).not.toHaveBeenCalled();
+
         unmount();
     });
 
-    it('normalizes non-API Error with HTML markup and releases lock for retry', async () => {
+    it('blocks concurrent calls while a request is pending and allows retry after rejection', async () => {
         const requestLock: LobbyRequestLock = { current: null };
+        const pendingRequest = deferred<AuthResponse>();
         const { result } = renderHook(() =>
             useLobbyRequest({ requestLock, onAuth, onError, setLoading })
         );
 
-        await act(async () => {
-            await result.current.run(async () => {
-                throw new Error('<!DOCTYPE html><html><body>502 Bad Gateway</body></html>');
-            }, 'Fallback error');
+        let firstRun!: Promise<void>;
+        act(() => {
+            firstRun = result.current.run(() => pendingRequest.promise, 'Fallback error');
         });
 
-        expect(onError).toHaveBeenCalledWith(ERROR_TECHNICAL);
-        expect(onAuth).not.toHaveBeenCalled();
-        expect(requestLock.current).toBeNull();
-        expect(result.current.isBusy()).toBe(false);
+        expect(result.current.pending).toBe(true);
+        expect(result.current.isBusy()).toBe(true);
+        expect(setLoading).toHaveBeenLastCalledWith(true);
 
-        // Retry succeeds
+        const concurrentRequest = vi.fn(async () => validAuth);
+        await act(async () => {
+            await result.current.run(concurrentRequest, 'Fallback error');
+        });
+        expect(concurrentRequest).not.toHaveBeenCalled();
+
+        await act(async () => {
+            pendingRequest.reject(new Error('   \t\n   '));
+            await firstRun;
+        });
+
+        expect(onError).toHaveBeenCalledWith('Fallback error');
+        expect(onAuth).not.toHaveBeenCalled();
+        expect(result.current.pending).toBe(false);
+        expect(result.current.isBusy()).toBe(false);
+        expect(setLoading).toHaveBeenLastCalledWith(false);
+
         await act(async () => {
             await result.current.run(async () => validAuth, 'Fallback error');
         });
         expect(onAuth).toHaveBeenCalledWith(validAuth);
     });
 
-    it('normalizes non-API Error with stack trace to system copy', async () => {
+    it('uses onRejected custom mapping when provided and normalizes fallback messages', async () => {
         const requestLock: LobbyRequestLock = { current: null };
         const { result } = renderHook(() =>
             useLobbyRequest({ requestLock, onAuth, onError, setLoading })
         );
 
         await act(async () => {
-            await result.current.run(async () => {
-                throw new Error('java.lang.NullPointerException at com.pokergame.Lobby');
-            }, 'Fallback error');
+            await result.current.run(
+                async () => {
+                    throw new Error('Raw server failure');
+                },
+                'Custom fallback',
+                () => 'Mapped conflict message'
+            );
         });
 
-        expect(onError).toHaveBeenCalledWith(ERROR_SYSTEM);
-        expect(requestLock.current).toBeNull();
-    });
-
-    it('normalizes non-API Error with embedded JSON to format copy', async () => {
-        const requestLock: LobbyRequestLock = { current: null };
-        const { result } = renderHook(() =>
-            useLobbyRequest({ requestLock, onAuth, onError, setLoading })
-        );
+        expect(onError).toHaveBeenCalledWith('Mapped conflict message');
+        expect(result.current.isBusy()).toBe(false);
 
         await act(async () => {
-            await result.current.run(async () => {
-                throw new Error('{"status": 500, "error": "Internal"}');
-            }, 'Fallback error');
-        });
-
-        expect(onError).toHaveBeenCalledWith(ERROR_INVALID_FORMAT);
-        expect(requestLock.current).toBeNull();
-    });
-
-    it('falls back to fallback error message when error message is empty or whitespace-only', async () => {
-        const requestLock: LobbyRequestLock = { current: null };
-        const { result } = renderHook(() =>
-            useLobbyRequest({ requestLock, onAuth, onError, setLoading })
-        );
-
-        await act(async () => {
-            await result.current.run(async () => {
-                throw new Error('   \t\n   ');
-            }, 'Custom fallback');
+            await result.current.run(
+                async () => {
+                    throw 'non-error rejection';
+                },
+                'Custom fallback',
+                () => undefined
+            );
         });
 
         expect(onError).toHaveBeenCalledWith('Custom fallback');
-        expect(requestLock.current).toBeNull();
+        expect(result.current.isBusy()).toBe(false);
     });
 
-    it('rejects malformed auth responses and calls onError with malformed response copy', async () => {
+    it('aborts the active signal on unmount and suppresses late callbacks', async () => {
+        const requestLock: LobbyRequestLock = { current: null };
+        const pendingSuccess = deferred<AuthResponse>();
+        let capturedSignal: AbortSignal | undefined;
+
+        const { result, unmount } = renderHook(() =>
+            useLobbyRequest({ requestLock, onAuth, onError, setLoading })
+        );
+
+        let runPromise!: Promise<void>;
+        act(() => {
+            runPromise = result.current.run((signal) => {
+                capturedSignal = signal;
+                return pendingSuccess.promise;
+            }, 'Fallback error');
+        });
+
+        expect(capturedSignal?.aborted).toBe(false);
+        unmount();
+        expect(capturedSignal?.aborted).toBe(true);
+
+        const nextMount = renderHook(() =>
+            useLobbyRequest({ requestLock, onAuth, onError, setLoading })
+        );
+        expect(nextMount.result.current.isBusy()).toBe(false);
+
+        await act(async () => {
+            pendingSuccess.resolve(validAuth);
+            await runPromise;
+        });
+
+        expect(onAuth).not.toHaveBeenCalled();
+        expect(onError).not.toHaveBeenCalled();
+        nextMount.unmount();
+    });
+
+    it('rejects malformed auth responses and releases the lock for retry', async () => {
         const requestLock: LobbyRequestLock = { current: null };
         const { result } = renderHook(() =>
             useLobbyRequest({ requestLock, onAuth, onError, setLoading })
         );
 
         const malformed = {
-            token: 'valid-token',
+            token: 'valid.jwt.token',
             roomId: 'room-1',
             playerName: '',
         } as unknown as AuthResponse;
@@ -129,6 +182,11 @@ describe('useLobbyRequest', () => {
 
         expect(onAuth).not.toHaveBeenCalled();
         expect(onError).toHaveBeenCalledWith(ERROR_MALFORMED_RESPONSE);
-        expect(requestLock.current).toBeNull();
+        expect(result.current.isBusy()).toBe(false);
+
+        await act(async () => {
+            await result.current.run(async () => validAuth, 'Fallback error');
+        });
+        expect(onAuth).toHaveBeenCalledWith(validAuth);
     });
 });

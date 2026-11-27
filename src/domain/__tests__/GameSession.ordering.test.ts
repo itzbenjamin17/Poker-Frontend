@@ -4,6 +4,7 @@ import { GameSession } from '../GameSession';
 import { TestClock } from '../clock';
 import { InMemoryTransportAdapter } from '../../services/transport';
 import type { AuthResponse, IncomingGameStatePayload, PokerAction } from '../../types';
+import { createValidGameState, createValidPlayer } from '../../test/fixtures';
 import { pokerApi } from '../../services/api';
 
 describe('GameSession Public State Ordering & Revision Invariants', () => {
@@ -276,5 +277,117 @@ describe('GameSession Public State Ordering & Revision Invariants', () => {
         expect(session.getSnapshot().gameState?.pot).toBe(250);
         // Duplicate public snapshot did not advance stateSyncRevision a second time
         expect(session.getStateSyncRevision()).toBe(1);
+    });
+
+    it('handles out-of-order showdown packets without resurrecting ready state', () => {
+        const { session, clock } = createSession();
+        try {
+            const showdownWithWinners: IncomingGameStatePayload = createValidGameState({
+                gameId: 'room-ordering',
+                maxPlayers: 2,
+                currentBet: 0,
+                phase: 'SHOWDOWN',
+                handNumber: 1,
+                pot: 100,
+                communityCards: [],
+                players: [
+                    createValidPlayer({ id: 'p1', name: 'Player1', chips: 1000 }),
+                    createValidPlayer({ id: 'p2', name: 'Player2', chips: 1000 }),
+                ],
+                currentPlayerName: '',
+                currentPlayerId: '',
+                winners: ['Player1'],
+                isReadyCountdownActive: true,
+                readyCountdownDeadlineEpochMs: clock.now() + 5000,
+            });
+            session.applyGameState(showdownWithWinners);
+            expect(session.getSnapshot().gameState?.phase).toBe('SHOWDOWN');
+            expect(session.getSnapshot().gameState?.isReadyCountdownActive).toBe(true);
+            expect(session.getSnapshot().showdownResult).not.toBeNull();
+
+            // Intermediate ready update (1/2 ready, winners omitted)
+            session.applyGameState(createValidGameState({
+                gameId: 'room-ordering',
+                maxPlayers: 2,
+                currentBet: 0,
+                phase: 'SHOWDOWN',
+                handNumber: 1,
+                pot: 100,
+                communityCards: [],
+                players: [
+                    createValidPlayer({ id: 'p1', name: 'Player1', chips: 1000, isReadyForNextHand: true }),
+                    createValidPlayer({ id: 'p2', name: 'Player2', chips: 1000 }),
+                ],
+                currentPlayerName: '',
+                currentPlayerId: '',
+                isReadyCountdownActive: true,
+                readyCountdownDeadlineEpochMs: clock.now() + 5000,
+            }));
+
+            // Final ready update (2/2 ready)
+            session.applyGameState(createValidGameState({
+                gameId: 'room-ordering',
+                maxPlayers: 2,
+                currentBet: 0,
+                phase: 'SHOWDOWN',
+                handNumber: 1,
+                pot: 100,
+                communityCards: [],
+                players: [
+                    createValidPlayer({ id: 'p1', name: 'Player1', chips: 1000, isReadyForNextHand: true }),
+                    createValidPlayer({ id: 'p2', name: 'Player2', chips: 1000, isReadyForNextHand: true }),
+                ],
+                currentPlayerName: '',
+                currentPlayerId: '',
+                isReadyCountdownActive: true,
+                readyCountdownDeadlineEpochMs: clock.now() + 5000,
+            }));
+
+            // PRE_FLOP state
+            session.applyGameState(createValidGameState({
+                gameId: 'room-ordering',
+                maxPlayers: 2,
+                currentBet: 0,
+                phase: 'PRE_FLOP',
+                handNumber: 2,
+                pot: 75,
+                communityCards: [],
+                players: [
+                    createValidPlayer({ id: 'p1', name: 'Player1', chips: 1000 }),
+                    createValidPlayer({ id: 'p2', name: 'Player2', chips: 1000 }),
+                ],
+                currentPlayerName: 'Player1',
+                currentPlayerId: 'p1',
+                isReadyCountdownActive: false,
+            }));
+            expect(session.getSnapshot().gameState?.phase).toBe('PRE_FLOP');
+            expect(session.getSnapshot().gameState?.isReadyCountdownActive).toBe(false);
+            expect(session.getSnapshot().showdownResult).toBeNull();
+
+            // Late arriving SHOWDOWN packet (out of order)
+            session.applyGameState(createValidGameState({
+                gameId: 'room-ordering',
+                maxPlayers: 2,
+                currentBet: 0,
+                phase: 'SHOWDOWN',
+                handNumber: 1,
+                pot: 100,
+                communityCards: [],
+                players: [
+                    createValidPlayer({ id: 'p1', name: 'Player1', chips: 1000, isReadyForNextHand: true }),
+                    createValidPlayer({ id: 'p2', name: 'Player2', chips: 1000 }),
+                ],
+                currentPlayerName: '',
+                currentPlayerId: '',
+                isReadyCountdownActive: true,
+                readyCountdownDeadlineEpochMs: clock.now() - 1000,
+            }));
+
+            expect(session.getSnapshot().gameState?.phase).toBe('PRE_FLOP');
+            expect(session.getSnapshot().gameState?.isReadyCountdownActive).toBe(false);
+            expect(session.getSnapshot().showdownResult).toBeNull();
+        } finally {
+            session.detach();
+        }
     });
 });

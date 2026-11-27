@@ -224,14 +224,8 @@ describe('gameEndStorage', () => {
         expect(loadPersistedGameEnd(authA)).toEqual(validResult);
     });
 
-    it('handles storage exceptions gracefully during load, save, clear, and retire', () => {
+    it('handles storage read errors gracefully during load, save, clear, and retire', () => {
         const getItemSpy = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
-            throw new DOMException('Denied', 'SecurityError');
-        });
-        const setItemSpy = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
-            throw new DOMException('QuotaExceeded', 'QuotaExceededError');
-        });
-        const removeItemSpy = vi.spyOn(Storage.prototype, 'removeItem').mockImplementation(() => {
             throw new DOMException('Denied', 'SecurityError');
         });
 
@@ -239,10 +233,27 @@ describe('gameEndStorage', () => {
         expect(() => savePersistedGameEnd(authA, validResult)).not.toThrow();
         expect(() => clearPersistedGameEnd(authA)).not.toThrow();
         expect(() => retireDifferentlyOwnedGameEnd(authA)).not.toThrow();
+        expect(getItemSpy).toHaveBeenCalled();
+    });
 
-        getItemSpy.mockRestore();
-        setItemSpy.mockRestore();
-        removeItemSpy.mockRestore();
+    it('handles storage write errors (QuotaExceededError) gracefully when saving', () => {
+        const setItemSpy = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+            throw new DOMException('QuotaExceeded', 'QuotaExceededError');
+        });
+
+        expect(() => savePersistedGameEnd(authA, validResult)).not.toThrow();
+        expect(setItemSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it('handles storage remove errors gracefully during clear and retire', () => {
+        savePersistedGameEnd(authA, validResult);
+        const removeItemSpy = vi.spyOn(Storage.prototype, 'removeItem').mockImplementation(() => {
+            throw new DOMException('Denied', 'SecurityError');
+        });
+
+        expect(() => clearPersistedGameEnd(authA)).not.toThrow();
+        expect(() => retireDifferentlyOwnedGameEnd(authB)).not.toThrow();
+        expect(removeItemSpy).toHaveBeenCalledTimes(2);
     });
 
     describe('auth envelope binding and stale review rejection (F3-3)', () => {

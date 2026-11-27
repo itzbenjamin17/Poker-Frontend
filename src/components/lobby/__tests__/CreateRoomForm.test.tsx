@@ -4,13 +4,11 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { http, HttpResponse } from 'msw';
 import { CreateRoomForm } from '../CreateRoomForm';
 import { server } from '../../../test/mocks/server';
-import { pokerApi } from '../../../services/api';
 import {
     VALIDATION_PASSWORD_CONTROL,
     formatPasswordMaxError,
 } from '../../../constants/strings';
 import { VALIDATION } from '../validation';
-import '@testing-library/jest-dom';
 
 describe('CreateRoomForm', () => {
     const mockOnAuth = vi.fn();
@@ -34,8 +32,16 @@ describe('CreateRoomForm', () => {
         expect(screen.getByLabelText(/password/i)).toHaveAttribute('autocomplete', 'new-password');
     });
 
-    it('calls onError without calling pokerApi when local validation fails', async () => {
+    it('calls onError without sending a network request when local validation fails', async () => {
         const user = userEvent.setup();
+        let requestCount = 0;
+        server.use(
+            http.post('*/api/room/create', () => {
+                requestCount += 1;
+                return HttpResponse.json({ token: 'tok', roomId: 'ABCD', playerName: 'Player1' });
+            })
+        );
+
         render(
             <CreateRoomForm
                 onAuth={mockOnAuth}
@@ -45,21 +51,22 @@ describe('CreateRoomForm', () => {
             />
         );
 
-        // Fill in room name and player alias
         const roomInput = screen.getByLabelText(/room name/i);
         const playerInput = screen.getByLabelText(/player alias/i);
-        const smallBlindInput = screen.getByLabelText(/small blind/i) as HTMLInputElement;
-        const bigBlindInput = screen.getByLabelText(/big blind/i) as HTMLInputElement;
+        const smallBlindInput = screen.getByLabelText(/small blind/i);
+        const bigBlindInput = screen.getByLabelText(/big blind/i);
 
-        fireEvent.change(roomInput, { target: { value: 'Test Room' } });
-        fireEvent.change(playerInput, { target: { value: 'Player1' } });
-        fireEvent.change(smallBlindInput, { target: { value: '10' } });
-        fireEvent.change(bigBlindInput, { target: { value: '15' } });
+        await user.type(roomInput, 'Test Room');
+        await user.type(playerInput, 'Player1');
+        await user.clear(smallBlindInput);
+        await user.type(smallBlindInput, '10');
+        await user.clear(bigBlindInput);
+        await user.type(bigBlindInput, '15');
 
-        const submitButton = screen.getByRole('button', { name: /create game/i });
-        await user.click(submitButton);
+        await user.click(screen.getByRole('button', { name: /create game/i }));
 
         expect(mockOnError).toHaveBeenCalledWith('Big blind must be at least 2× the small blind.');
+        expect(requestCount).toBe(0);
         expect(mockOnAuth).not.toHaveBeenCalled();
         expect(mockSetLoading).not.toHaveBeenCalled();
     });
@@ -77,18 +84,20 @@ describe('CreateRoomForm', () => {
 
         const roomInput = screen.getByLabelText(/room name/i);
         const playerInput = screen.getByLabelText(/player alias/i);
-        const smallBlindInput = screen.getByLabelText(/small blind/i) as HTMLInputElement;
-        const bigBlindInput = screen.getByLabelText(/big blind/i) as HTMLInputElement;
-        const buyInInput = screen.getByLabelText(/buy-in/i) as HTMLInputElement;
+        const smallBlindInput = screen.getByLabelText(/small blind/i);
+        const bigBlindInput = screen.getByLabelText(/big blind/i);
+        const buyInInput = screen.getByLabelText(/buy-in/i);
 
-        fireEvent.change(roomInput, { target: { value: 'Vip High Stakes' } });
-        fireEvent.change(playerInput, { target: { value: 'CardShark' } });
-        fireEvent.change(smallBlindInput, { target: { value: '50' } });
-        fireEvent.change(bigBlindInput, { target: { value: '100' } });
-        fireEvent.change(buyInInput, { target: { value: '2000' } });
+        await user.type(roomInput, 'Vip High Stakes');
+        await user.type(playerInput, 'CardShark');
+        await user.clear(smallBlindInput);
+        await user.type(smallBlindInput, '50');
+        await user.clear(bigBlindInput);
+        await user.type(bigBlindInput, '100');
+        await user.clear(buyInInput);
+        await user.type(buyInInput, '2000');
 
-        const submitButton = screen.getByRole('button', { name: /create game/i });
-        await user.click(submitButton);
+        await user.click(screen.getByRole('button', { name: /create game/i }));
 
         await waitFor(() => {
             expect(mockOnAuth).toHaveBeenCalledWith({
@@ -101,10 +110,10 @@ describe('CreateRoomForm', () => {
         });
     });
 
-    it('calls onError with backend error message when room creation fails', async () => {
+    it('calls onError with backend error message when room creation fails with 400 or 500', async () => {
         const user = userEvent.setup();
         server.use(
-            http.post('/api/room/create', () => {
+            http.post('*/api/room/create', () => {
                 return HttpResponse.json({ detail: 'Room already exists' }, { status: 400 });
             })
         );
@@ -118,19 +127,78 @@ describe('CreateRoomForm', () => {
             />
         );
 
-        const roomInput = screen.getByLabelText(/room name/i);
-        const playerInput = screen.getByLabelText(/player alias/i);
-
-        fireEvent.change(roomInput, { target: { value: 'Duplicate Room' } });
-        fireEvent.change(playerInput, { target: { value: 'Alice' } });
-
-        const submitButton = screen.getByRole('button', { name: /create game/i });
-        await user.click(submitButton);
+        await user.type(screen.getByLabelText(/room name/i), 'Duplicate Room');
+        await user.type(screen.getByLabelText(/player alias/i), 'Alice');
+        await user.click(screen.getByRole('button', { name: /create game/i }));
 
         await waitFor(() => {
             expect(mockOnError).toHaveBeenCalledWith('Room already exists');
             expect(mockOnAuth).not.toHaveBeenCalled();
             expect(mockSetLoading).toHaveBeenCalledWith(false);
+        });
+
+        vi.clearAllMocks();
+        server.use(
+            http.post('*/api/room/create', () => {
+                return HttpResponse.json({ detail: 'Internal server error' }, { status: 500 });
+            })
+        );
+
+        await user.click(screen.getByRole('button', { name: /create game/i }));
+
+        await waitFor(() => {
+            expect(mockOnError).toHaveBeenCalledWith('Something went wrong on our end. Please try again.');
+            expect(mockOnAuth).not.toHaveBeenCalled();
+            expect(mockSetLoading).toHaveBeenCalledWith(false);
+        });
+    });
+
+    it('recovers cleanly when an initial network failure is followed by a successful retry', async () => {
+        const user = userEvent.setup();
+        let attempt = 0;
+        server.use(
+            http.post('*/api/room/create', () => {
+                attempt += 1;
+                if (attempt === 1) {
+                    return HttpResponse.error();
+                }
+                return HttpResponse.json({
+                    token: 'retry.jwt.token',
+                    roomId: 'RETRY1',
+                    playerName: 'Alice',
+                });
+            })
+        );
+
+        render(
+            <CreateRoomForm
+                onAuth={mockOnAuth}
+                onError={mockOnError}
+                loading={false}
+                setLoading={mockSetLoading}
+            />
+        );
+
+        await user.type(screen.getByLabelText(/room name/i), 'Retry Room');
+        await user.type(screen.getByLabelText(/player alias/i), 'Alice');
+
+        const submitButton = screen.getByRole('button', { name: /create game/i });
+        await user.click(submitButton);
+
+        await waitFor(() => {
+            expect(mockOnError).toHaveBeenCalledWith('Unable to reach the server. Check your connection.');
+            expect(mockSetLoading).toHaveBeenCalledWith(false);
+        });
+        expect(mockOnAuth).not.toHaveBeenCalled();
+
+        await user.click(submitButton);
+
+        await waitFor(() => {
+            expect(mockOnAuth).toHaveBeenCalledWith({
+                token: 'retry.jwt.token',
+                roomId: 'RETRY1',
+                playerName: 'Alice',
+            });
         });
     });
 
@@ -155,12 +223,11 @@ describe('CreateRoomForm', () => {
         expect(passwordInput).toHaveValue('Secret123');
     });
 
-    it('submitting with password forwards normalized password string to pokerApi and wire request', async () => {
+    it('submitting with password forwards password string on the wire request', async () => {
         const user = userEvent.setup();
-        const createRoomSpy = vi.spyOn(pokerApi, 'createRoom');
         let capturedWireBody: Record<string, unknown> | null = null;
         server.use(
-            http.post('/api/room/create', async ({ request }) => {
+            http.post('*/api/room/create', async ({ request }) => {
                 capturedWireBody = (await request.json()) as Record<string, unknown>;
                 return HttpResponse.json({
                     token: 'mock-token',
@@ -179,39 +246,32 @@ describe('CreateRoomForm', () => {
             />
         );
 
-        fireEvent.change(screen.getByLabelText(/room name/i), { target: { value: 'SecretRoom' } });
-        fireEvent.change(screen.getByLabelText(/player alias/i), { target: { value: 'HostUser' } });
-        fireEvent.change(screen.getByLabelText(/password \(optional\)/i), { target: { value: 'MyP@ssw0rd!' } });
+        await user.type(screen.getByLabelText(/room name/i), 'SecretRoom');
+        await user.type(screen.getByLabelText(/player alias/i), 'HostUser');
+        await user.type(screen.getByLabelText(/password \(optional\)/i), 'MyP@ssw0rd!');
 
-        const submitButton = screen.getByRole('button', { name: /create game/i });
-        await user.click(submitButton);
+        await user.click(screen.getByRole('button', { name: /create game/i }));
 
         await waitFor(() => {
-            expect(createRoomSpy).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    roomName: 'SecretRoom',
-                    playerName: 'HostUser',
-                    password: 'MyP@ssw0rd!',
-                }),
-                expect.any(AbortSignal)
-            );
+            expect(capturedWireBody).toMatchObject({
+                roomName: 'SecretRoom',
+                playerName: 'HostUser',
+                password: 'MyP@ssw0rd!',
+            });
             expect(mockOnAuth).toHaveBeenCalledWith(
                 expect.objectContaining({
                     roomId: 'ROOM_PW',
                     playerName: 'HostUser',
                 })
             );
-            expect(capturedWireBody).not.toBeNull();
-            expect(capturedWireBody?.password).toBe('MyP@ssw0rd!');
         });
     });
 
-    it('submitting without password forwards undefined to pokerApi', async () => {
+    it('submitting without password omits password from the wire request', async () => {
         const user = userEvent.setup();
-        const createRoomSpy = vi.spyOn(pokerApi, 'createRoom');
         let capturedWireBody: Record<string, unknown> | null = null;
         server.use(
-            http.post('/api/room/create', async ({ request }) => {
+            http.post('*/api/room/create', async ({ request }) => {
                 capturedWireBody = (await request.json()) as Record<string, unknown>;
                 return HttpResponse.json({
                     token: 'mock-token',
@@ -230,30 +290,34 @@ describe('CreateRoomForm', () => {
             />
         );
 
-        fireEvent.change(screen.getByLabelText(/room name/i), { target: { value: 'PublicRoom' } });
-        fireEvent.change(screen.getByLabelText(/player alias/i), { target: { value: 'HostUser' } });
+        await user.type(screen.getByLabelText(/room name/i), 'PublicRoom');
+        await user.type(screen.getByLabelText(/player alias/i), 'HostUser');
 
-        const submitButton = screen.getByRole('button', { name: /create game/i });
-        await user.click(submitButton);
+        await user.click(screen.getByRole('button', { name: /create game/i }));
 
         await waitFor(() => {
-            expect(createRoomSpy).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    roomName: 'PublicRoom',
-                    playerName: 'HostUser',
-                }),
-                expect.any(AbortSignal)
-            );
-            const callArgs = createRoomSpy.mock.calls[0][0];
-            expect(callArgs.password).toBeUndefined();
+            expect(capturedWireBody).toMatchObject({
+                roomName: 'PublicRoom',
+                playerName: 'HostUser',
+            });
             expect(capturedWireBody?.password).toBeUndefined();
             expect(mockOnAuth).toHaveBeenCalled();
         });
     });
 
-    it('submitting with whitespace-only password normalizes to undefined and forwards undefined', async () => {
+    it('submitting with whitespace-only password normalizes to undefined on the wire request', async () => {
         const user = userEvent.setup();
-        const createRoomSpy = vi.spyOn(pokerApi, 'createRoom');
+        let capturedWireBody: Record<string, unknown> | null = null;
+        server.use(
+            http.post('*/api/room/create', async ({ request }) => {
+                capturedWireBody = (await request.json()) as Record<string, unknown>;
+                return HttpResponse.json({
+                    token: 'mock-token',
+                    roomId: 'ROOM_WS',
+                    playerName: 'HostUser',
+                });
+            })
+        );
 
         render(
             <CreateRoomForm
@@ -264,30 +328,31 @@ describe('CreateRoomForm', () => {
             />
         );
 
-        fireEvent.change(screen.getByLabelText(/room name/i), { target: { value: 'WhitespaceRoom' } });
-        fireEvent.change(screen.getByLabelText(/player alias/i), { target: { value: 'HostUser' } });
-        fireEvent.change(screen.getByLabelText(/password \(optional\)/i), { target: { value: '    ' } });
+        await user.type(screen.getByLabelText(/room name/i), 'WhitespaceRoom');
+        await user.type(screen.getByLabelText(/player alias/i), 'HostUser');
+        await user.type(screen.getByLabelText(/password \(optional\)/i), '    ');
 
-        const submitButton = screen.getByRole('button', { name: /create game/i });
-        await user.click(submitButton);
+        await user.click(screen.getByRole('button', { name: /create game/i }));
 
         await waitFor(() => {
-            expect(createRoomSpy).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    roomName: 'WhitespaceRoom',
-                    playerName: 'HostUser',
-                }),
-                expect.any(AbortSignal)
-            );
-            const callArgs = createRoomSpy.mock.calls[0][0];
-            expect(callArgs.password).toBeUndefined();
+            expect(capturedWireBody).toMatchObject({
+                roomName: 'WhitespaceRoom',
+                playerName: 'HostUser',
+            });
+            expect(capturedWireBody?.password).toBeUndefined();
             expect(mockOnAuth).toHaveBeenCalled();
         });
     });
 
     it('invalid password exceeding 50 chars displays validation error and blocks submission', async () => {
         const user = userEvent.setup();
-        const createRoomSpy = vi.spyOn(pokerApi, 'createRoom');
+        let requestCount = 0;
+        server.use(
+            http.post('*/api/room/create', () => {
+                requestCount += 1;
+                return HttpResponse.json({ token: 't', roomId: 'r', playerName: 'HostUser' });
+            })
+        );
 
         render(
             <CreateRoomForm
@@ -298,22 +363,28 @@ describe('CreateRoomForm', () => {
             />
         );
 
-        fireEvent.change(screen.getByLabelText(/room name/i), { target: { value: 'ValidRoom' } });
-        fireEvent.change(screen.getByLabelText(/player alias/i), { target: { value: 'HostUser' } });
+        await user.type(screen.getByLabelText(/room name/i), 'ValidRoom');
+        await user.type(screen.getByLabelText(/player alias/i), 'HostUser');
+        // Bypass native input maxLength=50 to exercise the JS validation guard directly.
         fireEvent.change(screen.getByLabelText(/password \(optional\)/i), { target: { value: 'a'.repeat(51) } });
 
-        const submitButton = screen.getByRole('button', { name: /create game/i });
-        await user.click(submitButton);
+        await user.click(screen.getByRole('button', { name: /create game/i }));
 
         expect(mockOnError).toHaveBeenCalledWith(formatPasswordMaxError(VALIDATION.password.max));
-        expect(createRoomSpy).not.toHaveBeenCalled();
+        expect(requestCount).toBe(0);
         expect(mockOnAuth).not.toHaveBeenCalled();
         expect(mockSetLoading).not.toHaveBeenCalled();
     });
 
     it('invalid password with control characters displays validation error and blocks submission', async () => {
         const user = userEvent.setup();
-        const createRoomSpy = vi.spyOn(pokerApi, 'createRoom');
+        let requestCount = 0;
+        server.use(
+            http.post('*/api/room/create', () => {
+                requestCount += 1;
+                return HttpResponse.json({ token: 't', roomId: 'r', playerName: 'HostUser' });
+            })
+        );
 
         render(
             <CreateRoomForm
@@ -324,15 +395,15 @@ describe('CreateRoomForm', () => {
             />
         );
 
-        fireEvent.change(screen.getByLabelText(/room name/i), { target: { value: 'ValidRoom' } });
-        fireEvent.change(screen.getByLabelText(/player alias/i), { target: { value: 'HostUser' } });
+        await user.type(screen.getByLabelText(/room name/i), 'ValidRoom');
+        await user.type(screen.getByLabelText(/player alias/i), 'HostUser');
+        // Programmatically inject NUL control character since typing does not emit control characters.
         fireEvent.change(screen.getByLabelText(/password \(optional\)/i), { target: { value: 'ctrl\u0000pass' } });
 
-        const submitButton = screen.getByRole('button', { name: /create game/i });
-        await user.click(submitButton);
+        await user.click(screen.getByRole('button', { name: /create game/i }));
 
         expect(mockOnError).toHaveBeenCalledWith(VALIDATION_PASSWORD_CONTROL);
-        expect(createRoomSpy).not.toHaveBeenCalled();
+        expect(requestCount).toBe(0);
         expect(mockOnAuth).not.toHaveBeenCalled();
         expect(mockSetLoading).not.toHaveBeenCalled();
     });

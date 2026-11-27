@@ -6,7 +6,7 @@ import GameView from '../GameView';
 import { GameSession } from '../domain/GameSession';
 import { TestClock } from '../domain/clock';
 import { InMemoryTransportAdapter } from '../services/transport';
-import { createValidGameState, createValidRoomData, mockAuth } from '../test/fixtures';
+import { createValidGameState, createValidRoomData, createRawGameStatePayload, mockAuth } from '../test/fixtures';
 import { server } from '../test/mocks/server';
 
 const failureMessage = 'Couldn’t load the table data. Please retry.';
@@ -31,7 +31,7 @@ describe('GameView initial table loading', () => {
         let valid = false;
         server.use(
             http.get('/api/room/:roomId', () => HttpResponse.json(createValidRoomData({ gameStarted: true }))),
-            http.get('/api/game/:gameId/state', () => HttpResponse.json(createValidGameState({
+            http.get('/api/game/:gameId/state', () => HttpResponse.json(createRawGameStatePayload({
                 gameId: auth.roomId, handNumber: 1,
                 pot: valid ? 125 : 'invalid-money',
             }))),

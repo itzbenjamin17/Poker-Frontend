@@ -1,3 +1,5 @@
+// Must be imported before modules that load @stomp/stompjs.
+import { MockStompClient } from '../test/mocks/stomp';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { http, HttpResponse } from 'msw';
@@ -6,7 +8,6 @@ import GameView from '../GameView';
 import { AUTH_KEY, HOST_LEFT, LOBBY_INACTIVE_CLOSED, LOBBY_INACTIVITY_WARNING_TITLE, TABLE_INACTIVITY_WARNING_TITLE } from '../constants/strings';
 import { createValidGameState, createValidRoomData, mockAuth } from '../test/fixtures';
 import { server } from '../test/mocks/server';
-import { MockStompClient } from '../test/mocks/stomp';
 
 const auth = { ...mockAuth, roomId: 'inactivity-room' };
 const roomTopic = `/room/${auth.roomId}`;

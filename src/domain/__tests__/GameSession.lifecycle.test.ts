@@ -5,7 +5,7 @@ import { TestClock } from '../clock';
 import { InMemoryTransportAdapter } from '../../services/transport';
 import type { AuthResponse } from '../../types';
 import { pokerApi } from '../../services/api';
-import { createValidGameState } from '../../test/fixtures';
+import { createValidGameState, createValidRoomData } from '../../test/fixtures';
 
 describe('GameSession Lifecycle Ownership & Attachment Epochs', () => {
     const auth: AuthResponse = {
@@ -140,7 +140,23 @@ describe('GameSession Lifecycle Ownership & Attachment Epochs', () => {
     });
 
     it('supports Strict Mode reversible detach -> attach with pre-hydration work re-enabled', async () => {
-        const { session } = createSession();
+        const getRoomData = vi.fn().mockResolvedValue(
+            createValidRoomData({
+                roomId: auth.roomId,
+                gameStarted: false,
+                players: [{ name: auth.playerName, isHost: true }],
+            })
+        );
+        const session = new GameSession({
+            auth,
+            transport: new InMemoryTransportAdapter(),
+            clock: new TestClock(1000),
+            onLeave: vi.fn(),
+            pokerApi: {
+                ...pokerApi,
+                getRoomData,
+            },
+        });
 
         // 1st mount: attach
         const epoch1 = session.attach();
@@ -157,14 +173,10 @@ describe('GameSession Lifecycle Ownership & Attachment Epochs', () => {
         expect(session.isAttached()).toBe(true);
         expect(session.hasLifecyclePermission()).toBe(true);
 
-        // Pre-hydration work works without needing connect()
-        let loadCalled = false;
-        vi.spyOn(session, 'synchronizeSession').mockImplementation(async () => {
-            loadCalled = true;
-        });
-
+        // Pre-hydration work executes real synchronizeSession without needing connect()
         await session.synchronizeSession();
-        expect(loadCalled).toBe(true);
+        expect(getRoomData).toHaveBeenCalledTimes(1);
+        expect(session.getSnapshot().isHydrated).toBe(true);
     });
 
     it('dispose permanently prevents re-attachment lifecycle permission', () => {

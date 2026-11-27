@@ -184,8 +184,10 @@ describe('Stage Layout & Viewports', () => {
     });
 
     it('reconnect status excludes the hero and folded players and identifies the current actor', () => {
-        // Scenario A: Hero Alice is disconnected -> hero should be excluded from the opponent reconnect status
+        // Scenario A: Hero Alice is disconnected and on turn -> hero should be excluded from the opponent reconnect status
         const gameStateHeroDc = createGameState({
+            currentPlayerId: 'p-alice',
+            currentPlayerName: 'Alice',
             players: [
                 { id: 'p-alice', name: 'Alice', chips: 1000, currentBet: 20, status: 'DISCONNECTED', hasFolded: false },
                 { id: 'p-bob', name: 'Bob', chips: 1000, currentBet: 10, status: 'ACTIVE', hasFolded: false },

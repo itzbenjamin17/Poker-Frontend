@@ -1,3 +1,5 @@
+// Must be imported before modules that load @stomp/stompjs.
+import { MockStompClient, activeSubscriptions } from '../../test/mocks/stomp';
 import { createElement, type ReactNode } from 'react';
 import { renderHook, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -8,7 +10,6 @@ import { TestClock } from '../../domain/clock';
 import type { Client } from '@stomp/stompjs';
 import { pokerApi } from '../../services/api';
 import { StompTransportAdapter, InMemoryTransportAdapter } from '../../services/transport';
-import { MockStompClient, activeSubscriptions } from '../../test/mocks/stomp';
 import { createMockJwt, createValidGameState, createValidRoomData } from '../../test/fixtures';
 import { HOST_LEFT } from '../../constants/strings';
 
@@ -248,12 +249,12 @@ describe('useGameWebSocket', () => {
         await act(async () => { await vi.advanceTimersByTimeAsync(10); });
 
         act(() => {
-            MockStompClient.simulateMessage('/game/ROOM123', {
+            MockStompClient.simulateMessage('/game/ROOM123', createValidGameState({
+                gameId: 'ROOM123',
                 phase: 'PRE_FLOP',
-                pot: 0,
-                players: [],
-                communityCards: [],
-            });
+                pot: 50,
+                players: [{ id: 'p-1', name: 'Player1', chips: 950 }],
+            }));
         });
 
         expect(session.getSnapshot().gameState?.phase).toBe('SHOWDOWN');
@@ -602,10 +603,7 @@ describe('useGameWebSocket', () => {
         const disconnectSpy = vi.spyOn(inMemoryTransport, 'disconnect');
 
         // Trigger visibilitychange -> visible while connected
-        Object.defineProperty(document, 'visibilityState', {
-            configurable: true,
-            get: () => 'visible',
-        });
+        vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible');
         await act(async () => {
             document.dispatchEvent(new Event('visibilitychange'));
             await Promise.resolve();
@@ -685,10 +683,7 @@ describe('useGameWebSocket', () => {
         expect(pokerApi.getPrivatePlayerState).toHaveBeenCalledTimes(1);
         expect(session.getSnapshot().isRecovering).toBe(false);
 
-        Object.defineProperty(document, 'visibilityState', {
-            configurable: true,
-            get: () => 'visible',
-        });
+        vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible');
 
         // Fire online, visibilitychange, and another connected status while the first is in flight
         act(() => {
@@ -1297,10 +1292,7 @@ describe('useGameWebSocket', () => {
             holeCards: ['AS', 'KS'],
         } as never);
 
-        Object.defineProperty(document, 'visibilityState', {
-            configurable: true,
-            get: () => 'visible',
-        });
+        vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible');
 
         renderHook(() => useGameWebSocket({ onSocketError, transport: inMemoryTransport }), {
             wrapper: createWrapper(),

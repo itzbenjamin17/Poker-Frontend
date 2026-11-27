@@ -39,7 +39,8 @@ describe('Lobby Component Password Fields', () => {
             })
         );
 
-        render(<Lobby onAuth={vi.fn()} />);
+        const onAuth = vi.fn();
+        render(<Lobby onAuth={onAuth} />);
         const createRegion = screen.getByRole('region', { name: /create table/i });
         const joinRegion = screen.getByRole('region', { name: /quick join/i });
 
@@ -54,12 +55,15 @@ describe('Lobby Component Password Fields', () => {
 
         await user.click(within(createRegion).getByRole('button', { name: /create game/i }));
 
-        await waitFor(() => {
-            expect(createPasswordInput).toBeDisabled();
-            expect(joinPasswordInput).toBeDisabled();
-        });
-
-        resolveCreate();
+        try {
+            await waitFor(() => {
+                expect(createPasswordInput).toBeDisabled();
+                expect(joinPasswordInput).toBeDisabled();
+            });
+        } finally {
+            resolveCreate();
+        }
+        await waitFor(() => expect(onAuth).toHaveBeenCalledTimes(1));
     });
 
     it('disables password inputs when join request is pending', async () => {
@@ -76,7 +80,8 @@ describe('Lobby Component Password Fields', () => {
             })
         );
 
-        render(<Lobby onAuth={vi.fn()} />);
+        const onAuth = vi.fn();
+        render(<Lobby onAuth={onAuth} />);
         const createRegion = screen.getByRole('region', { name: /create table/i });
         const joinRegion = screen.getByRole('region', { name: /quick join/i });
 
@@ -91,12 +96,15 @@ describe('Lobby Component Password Fields', () => {
 
         await user.click(within(joinRegion).getByRole('button', { name: /join game/i }));
 
-        await waitFor(() => {
-            expect(createPasswordInput).toBeDisabled();
-            expect(joinPasswordInput).toBeDisabled();
-        });
-
-        resolveJoin();
+        try {
+            await waitFor(() => {
+                expect(createPasswordInput).toBeDisabled();
+                expect(joinPasswordInput).toBeDisabled();
+            });
+        } finally {
+            resolveJoin();
+        }
+        await waitFor(() => expect(onAuth).toHaveBeenCalledTimes(1));
     });
 
     it('submits create room with entered password preserved', async () => {

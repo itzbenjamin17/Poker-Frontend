@@ -1,8 +1,9 @@
+// Must be imported before modules that load @stomp/stompjs.
+import { MockStompClient } from '../test/mocks/stomp'
 import { render, screen, waitFor, act, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi } from 'vitest'
 import GameView from '../GameView'
-import { MockStompClient } from '../test/mocks/stomp'
 import { http, HttpResponse } from 'msw'
 import { server } from '../test/mocks/server'
 import { createValidGameState, createValidPlayer, createValidRoomData, mockAuth } from '../test/fixtures'

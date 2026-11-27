@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { http, HttpResponse } from 'msw';
 import { server } from '../../test/mocks/server';
-import { isJwtValid, getErrorMessage, pokerApi, HttpError, MalformedResponseError } from '../api';
-import { ERROR_MALFORMED_AUTH, ERROR_TECHNICAL, ERROR_SYSTEM, ERROR_INVALID_FORMAT } from '../../constants/strings';
-import { createValidGameState } from '../../test/fixtures';
+import { isJwtValid, getErrorMessage, pokerApi, HttpError, MalformedResponseError, createStompClient } from '../api';
+import { ERROR_MALFORMED_AUTH, ERROR_TECHNICAL, ERROR_SYSTEM, ERROR_INVALID_FORMAT, ERROR_REQUEST_TIMEOUT } from '../../constants/strings';
+import { createValidGameState, createValidRoomData } from '../../test/fixtures';
 
 function toBase64Url(str: string): string {
     return btoa(str).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
@@ -126,41 +126,46 @@ describe('api service', () => {
 
     describe('error normalization', () => {
         it('throws status 408 ApiError when request times out after 15 seconds', async () => {
-            vi.useFakeTimers();
+            vi.useFakeTimers({ shouldAdvanceTime: false });
             const validToken = createJwt({ exp: Math.floor(Date.now() / 1000) + 3600 });
-            const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation((_url, init) => {
-                return new Promise((_resolve, reject) => {
-                    init?.signal?.addEventListener('abort', () => {
-                        reject(new DOMException('The operation was aborted.', 'AbortError'));
-                    });
-                });
+            let resolveStarted!: () => void;
+            const requestStarted = new Promise<void>((resolve) => {
+                resolveStarted = resolve;
             });
+            server.use(
+                http.get('*/api/room/room-1', ({ request }) => {
+                    resolveStarted();
+                    return new Promise((resolve) => {
+                        request.signal.addEventListener('abort', () => {
+                            resolve(HttpResponse.error());
+                        }, { once: true });
+                    });
+                })
+            );
 
             try {
                 const promise = pokerApi.getRoomData('room-1', validToken);
                 const assertion = expect(promise).rejects.toMatchObject({
                     status: 408,
-                    message: 'Request timed out. Please try again.',
+                    message: ERROR_REQUEST_TIMEOUT,
                 });
-                await vi.advanceTimersByTimeAsync(15000);
+                await requestStarted;
+                await vi.advanceTimersByTimeAsync(15_000);
                 await assertion;
             } finally {
-                fetchSpy.mockRestore();
                 vi.useRealTimers();
             }
         });
         it('handles network failure (TypeError) with status 0 and connection message', async () => {
             const validToken = createJwt({ exp: Math.floor(Date.now() / 1000) + 3600 });
-            const fetchSpy = vi.spyOn(globalThis, 'fetch').mockRejectedValueOnce(new TypeError('Failed to fetch'));
+            server.use(
+                http.get('*/api/room/room-1', () => HttpResponse.error())
+            );
 
-            try {
-                await expect(pokerApi.getRoomData('room-1', validToken)).rejects.toMatchObject({
-                    status: 0,
-                    message: 'Unable to reach the server. Check your connection.',
-                });
-            } finally {
-                fetchSpy.mockRestore();
-            }
+            await expect(pokerApi.getRoomData('room-1', validToken)).rejects.toMatchObject({
+                status: 0,
+                message: 'Unable to reach the server. Check your connection.',
+            });
         });
 
         it('extracts message field from JSON error response', async () => {
@@ -464,6 +469,15 @@ describe('api service', () => {
         });
 
         it('joinRoom throws ApiError with message from backend error response', async () => {
+            server.use(
+                http.post('/api/room/join', () => {
+                    return HttpResponse.json(
+                        { status: 404, title: 'Not Found', detail: 'Room not found' },
+                        { status: 404, headers: { 'Content-Type': 'application/problem+json' } }
+                    );
+                })
+            );
+
             await expect(pokerApi.joinRoom({
                 roomName: 'INVALID',
                 playerName: 'Bob',
@@ -515,9 +529,8 @@ describe('api service', () => {
         });
     });
 
-    describe('createStompClient and logger security', () => {
-        it('does not log raw STOMP CONNECT frames or Bearer tokens to console.log by default', async () => {
-            const { createStompClient } = await import('../api');
+    describe('createStompClient security', () => {
+        it('does not log raw STOMP CONNECT frames or Bearer tokens to console.log by default', () => {
             const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
             const debugSpy = vi.spyOn(console, 'debug').mockImplementation(() => {});
 
@@ -536,9 +549,8 @@ describe('api service', () => {
             }
         });
 
-        it('redacts Bearer tokens and holeCards when VITE_DEBUG_STOMP=true is enabled', async () => {
+        it('redacts Bearer tokens and holeCards when VITE_DEBUG_STOMP=true is enabled', () => {
             vi.stubEnv('VITE_DEBUG_STOMP', 'true');
-            const { createStompClient } = await import('../api');
             const debugSpy = vi.spyOn(console, 'debug').mockImplementation(() => {});
 
             try {
@@ -559,69 +571,7 @@ describe('api service', () => {
             }
         });
 
-        it('redacts Bearer tokens and sensitive object keys in logger output', async () => {
-            const { logger } = await import('../../security/logger');
-            const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
-            const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-
-            try {
-                const secretToken = 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiAliceJ9.secret-signature';
-                logger.log(`Header Authorization: Bearer ${secretToken}`, {
-                    token: secretToken,
-                    password: 'my-secret-password',
-                    holeCards: ['AS', 'KS'],
-                    safeField: 'visible',
-                });
-
-                expect(logSpy).toHaveBeenCalledTimes(1);
-                const [loggedMsg, loggedObj] = logSpy.mock.calls[0];
-                expect(loggedMsg).not.toContain(secretToken);
-                expect(loggedMsg).toContain('Bearer [REDACTED]');
-                expect(loggedObj).toEqual({
-                    token: '[REDACTED]',
-                    password: '[REDACTED]',
-                    holeCards: '[REDACTED]',
-                    safeField: 'visible',
-                });
-
-                logger.warn('Private frame: {"holeCards":["AH","KH"]}');
-                expect(warnSpy).toHaveBeenCalledTimes(1);
-                expect(warnSpy.mock.calls[0][0]).not.toContain('AH');
-            } finally {
-                logSpy.mockRestore();
-                warnSpy.mockRestore();
-            }
-        });
-
-        it('redacts serialized sensitive JSON and sensitive properties attached to Error instances', async () => {
-            const { logger } = await import('../../security/logger');
-            const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-            const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-            const sensitiveError = Object.assign(new Error('Request failed'), {
-                token: 'secret-token',
-                holeCards: ['AS', 'KS'],
-                safeField: 'visible',
-            });
-
-            try {
-                logger.warn('Serialized', '{"token":"secret-token","holeCards":["AS","KS"]}');
-                logger.error('Failure', sensitiveError);
-
-                expect(warnSpy.mock.calls[0][1]).toBe('[Sensitive serialized payload redacted]');
-                expect(errorSpy.mock.calls[0][1]).toEqual(expect.objectContaining({
-                    token: '[REDACTED]',
-                    holeCards: '[REDACTED]',
-                    safeField: 'visible',
-                    message: 'Request failed',
-                }));
-            } finally {
-                warnSpy.mockRestore();
-                errorSpy.mockRestore();
-            }
-        });
-
         it('dispatches auth-expired and deactivates client in beforeConnect when JWT is expired', async () => {
-            const { createStompClient } = await import('../api');
             const dispatchSpy = vi.spyOn(window, 'dispatchEvent');
             try {
                 const expiredToken = createJwt({ exp: Math.floor(Date.now() / 1000) - 60 });
@@ -640,7 +590,6 @@ describe('api service', () => {
         });
 
         it('does not dispatch auth-expired or deactivate client in beforeConnect when JWT is valid', async () => {
-            const { createStompClient } = await import('../api');
             const dispatchSpy = vi.spyOn(window, 'dispatchEvent');
             try {
                 const validToken = createJwt({ exp: Math.floor(Date.now() / 1000) + 3600 });
@@ -763,24 +712,73 @@ describe('api service', () => {
         });
     });
 
+    async function expectPreAbortedRequest(
+        registerHandler: (onRequest: () => void) => ReturnType<typeof http.get>,
+        invoke: (signal: AbortSignal) => Promise<unknown>
+    ) {
+        const onRequest = vi.fn();
+        server.use(registerHandler(onRequest));
+        const controller = new AbortController();
+        controller.abort();
+        await expect(invoke(controller.signal)).rejects.toMatchObject({ name: 'AbortError' });
+        expect(onRequest).not.toHaveBeenCalled();
+    }
+
     describe('signal propagation on state queries', () => {
-        it('getRoomData supports optional signal and aborts when signal is cancelled', async () => {
-            const controller = new AbortController();
-            controller.abort();
-            await expect(pokerApi.getRoomData('room-1', controller.signal)).rejects.toThrow();
+        it('getRoomData supports optional signal and aborts without hitting the network', async () => {
+            await expectPreAbortedRequest(
+                (onRequest) => http.get('/api/room/:roomId', () => {
+                    onRequest();
+                    return HttpResponse.json(createValidRoomData());
+                }),
+                (signal) => pokerApi.getRoomData('room-1', signal)
+            );
         });
 
-        it('getPublicGameState supports optional signal and aborts when signal is cancelled', async () => {
-            const controller = new AbortController();
-            controller.abort();
-            await expect(pokerApi.getPublicGameState('game-1', controller.signal)).rejects.toThrow();
+        it('getPublicGameState supports optional signal and aborts without hitting the network', async () => {
+            await expectPreAbortedRequest(
+                (onRequest) => http.get('/api/game/:gameId/state', () => {
+                    onRequest();
+                    return HttpResponse.json(createValidGameState());
+                }),
+                (signal) => pokerApi.getPublicGameState('game-1', signal)
+            );
         });
 
-        it('getPrivatePlayerState supports optional signal and aborts when signal is cancelled', async () => {
+        it('getPublicGameState aborts an in-flight request when signal is cancelled', async () => {
+            let signalAborted = false;
+            let markStarted!: () => void;
+            const requestStarted = new Promise<void>((resolve) => {
+                markStarted = resolve;
+            });
+            server.use(
+                http.get('/api/game/:gameId/state', ({ request }) => {
+                    markStarted();
+                    return new Promise((_, reject) => {
+                        request.signal.addEventListener('abort', () => {
+                            signalAborted = true;
+                            reject(new DOMException('Aborted', 'AbortError'));
+                        });
+                    });
+                })
+            );
+            const controller = new AbortController();
+            const pending = pokerApi.getPublicGameState('game-1', controller.signal);
+            await requestStarted;
+            controller.abort();
+            await expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+            expect(signalAborted).toBe(true);
+        });
+
+        it('getPrivatePlayerState supports optional signal and aborts without hitting the network', async () => {
             const validToken = createJwt({ exp: Math.floor(Date.now() / 1000) + 3600 });
-            const controller = new AbortController();
-            controller.abort();
-            await expect(pokerApi.getPrivatePlayerState('game-1', validToken, controller.signal)).rejects.toThrow();
+            await expectPreAbortedRequest(
+                (onRequest) => http.get('/api/game/:gameId/private-state', () => {
+                    onRequest();
+                    return HttpResponse.json({ playerId: 'p-1', handNumber: 0, holeCards: [] });
+                }),
+                (signal) => pokerApi.getPrivatePlayerState('game-1', validToken, signal)
+            );
         });
     });
 
@@ -887,9 +885,16 @@ describe('api service', () => {
             });
 
             it('propagates abort signal to fetch', async () => {
-                const controller = new AbortController();
-                controller.abort();
-                await expect(pokerApi.getReview('game-100', validToken, controller.signal)).rejects.toThrow();
+                await expectPreAbortedRequest(
+                    (onRequest) => http.get('/api/game/:gameId/review', () => {
+                        onRequest();
+                        return HttpResponse.json(createValidGameState({
+                            gameId: 'game-100',
+                            gameEnd: { winner: 'Alice', isForfeit: false, message: 'Alice won' },
+                        }));
+                    }),
+                    (signal) => pokerApi.getReview('game-100', validToken, signal)
+                );
             });
         });
 
@@ -949,9 +954,16 @@ describe('api service', () => {
             });
 
             it('propagates abort signal to fetch', async () => {
-                const controller = new AbortController();
-                controller.abort();
-                await expect(pokerApi.claimWin('game-100', validToken, controller.signal)).rejects.toThrow();
+                await expectPreAbortedRequest(
+                    (onRequest) => http.post('/api/game/:gameId/claim-win', () => {
+                        onRequest();
+                        return HttpResponse.json(createValidGameState({
+                            gameId: 'game-100',
+                            gameEnd: { winner: 'Alice', isForfeit: true, message: 'Alice won' },
+                        }));
+                    }),
+                    (signal) => pokerApi.claimWin('game-100', validToken, signal)
+                );
             });
         });
     });

@@ -1,39 +1,53 @@
 import { createElement, type ReactNode } from 'react';
-import { renderHook, act } from '@testing-library/react';
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { renderHook, act, waitFor } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { http, HttpResponse } from 'msw';
+import { server } from '../../test/mocks/server';
 import { useGameDispatcher } from '../useGameDispatcher';
 import { GameProvider } from '../../context/GameProvider';
 import { GameSession } from '../../domain/GameSession';
+import { TestClock } from '../../domain/clock';
 import { InMemoryTransportAdapter } from '../../services/transport';
-import { pokerApi } from '../../services/api';
-import type { GameState, PublicGameStateResponse } from '../../types';
-import { createValidGameState } from '../../test/fixtures';
+import type { AuthResponse, PublicGameStateResponse } from '../../types';
+import { createMockJwt, createValidGameState, createValidRoomData } from '../../test/fixtures';
 
-vi.mock('../../services/api', async (importOriginal) => {
-    const actual = await importOriginal<typeof import('../../services/api')>();
-    return {
-        ...actual,
-        pokerApi: {
-            ...actual.pokerApi,
-            startGame: vi.fn(),
-            claimWin: vi.fn(),
-            getReview: vi.fn(),
-            leaveRoom: vi.fn(),
-        },
-    };
-});
+async function advanceRecoveryRetries(
+    clock: TestClock,
+    session: GameSession,
+    getCallCount: () => number,
+    maxSteps = 4
+) {
+    for (let step = 0; step < maxSteps && session.hasPendingRecoveryTimer(); step += 1) {
+        const previousCalls = getCallCount();
+        act(() => {
+            clock.tick(10_000);
+        });
+        await waitFor(() => {
+            expect(getCallCount()).toBeGreaterThan(previousCalls);
+        });
+        await waitFor(() => {
+            expect(session.hasPendingRecoveryTimer() || session.getSnapshot().recoveryFailed).toBe(true);
+        });
+    }
+}
 
 describe('useGameDispatcher', () => {
-    const mockAuth = {
-        token: 'test-token',
+    const tokenA = createMockJwt({ sub: 'TestPlayer' });
+    const mockAuth: AuthResponse = {
+        token: tokenA,
         roomId: 'ROOM123',
         playerName: 'TestPlayer',
     };
     const onLeave = vi.fn();
     let transport: InMemoryTransportAdapter;
+    let clock: TestClock;
     let session: GameSession;
 
-    function createWrapper(customSession = session, customAuth = mockAuth, customRequestLeave?: (originatingToken?: string) => Promise<boolean>) {
+    function createWrapper(
+        customSession = session,
+        customAuth = mockAuth,
+        customRequestLeave?: (originatingToken?: string) => Promise<boolean>
+    ) {
         return function Wrapper({ children }: { children: ReactNode }) {
             return createElement(GameProvider, {
                 auth: customAuth,
@@ -47,16 +61,17 @@ describe('useGameDispatcher', () => {
 
     beforeEach(() => {
         vi.clearAllMocks();
-        vi.useFakeTimers();
         localStorage.clear();
         sessionStorage.clear();
 
         transport = new InMemoryTransportAdapter();
+        clock = new TestClock(1000);
         session = new GameSession({
             auth: mockAuth,
             transport,
+            clock,
             onLeave,
-            initialGameState: {
+            initialGameState: createValidGameState({
                 gameId: 'GAME123',
                 phase: 'PRE_FLOP',
                 pot: 30,
@@ -68,13 +83,9 @@ describe('useGameDispatcher', () => {
                 players: [
                     { id: 'p-1', name: 'TestPlayer', chips: 980, currentBet: 20, hasFolded: false, status: 'ACTIVE' },
                 ],
-            } as GameState,
+            }),
         });
         session.connect();
-    });
-
-    afterEach(() => {
-        vi.restoreAllMocks();
     });
 
     it('dispatch PLAY_ACTION publishes STOMP message', async () => {
@@ -108,8 +119,8 @@ describe('useGameDispatcher', () => {
 
         expect(transport.getPublishedMessages('/app/GAME123/action')).toHaveLength(1);
 
-        await act(async () => {
-            vi.advanceTimersByTime(3000);
+        act(() => {
+            clock.tick(3000);
         });
 
         await act(async () => {
@@ -157,8 +168,16 @@ describe('useGameDispatcher', () => {
         ]);
     });
 
-    it('dispatch START_GAME calls pokerApi', async () => {
-        const startGameSpy = vi.mocked(pokerApi.startGame).mockResolvedValue(undefined);
+    it('dispatch START_GAME calls start-game endpoint with Bearer token', async () => {
+        let startGameCalls = 0;
+        let capturedAuthHeader: string | null = null;
+        server.use(
+            http.post('*/api/room/ROOM123/start-game', ({ request }) => {
+                startGameCalls += 1;
+                capturedAuthHeader = request.headers.get('Authorization');
+                return new HttpResponse(null, { status: 204 });
+            })
+        );
         const { result } = renderHook(() => useGameDispatcher(), {
             wrapper: createWrapper(),
         });
@@ -167,11 +186,16 @@ describe('useGameDispatcher', () => {
             await result.current.dispatch({ type: 'START_GAME' });
         });
 
-        expect(startGameSpy).toHaveBeenCalledWith('ROOM123', 'test-token', expect.any(AbortSignal));
+        expect(startGameCalls).toBe(1);
+        expect(capturedAuthHeader).toBe(`Bearer ${tokenA}`);
     });
 
     it('dispatch START_GAME handles error', async () => {
-        vi.mocked(pokerApi.startGame).mockRejectedValue(new Error('Start failed'));
+        server.use(
+            http.post('*/api/room/ROOM123/start-game', () =>
+                HttpResponse.json({ detail: 'Start failed' }, { status: 400 })
+            )
+        );
         const { result } = renderHook(() => useGameDispatcher(), {
             wrapper: createWrapper(),
         });
@@ -184,7 +208,6 @@ describe('useGameDispatcher', () => {
     });
 
     it('dispatch CLAIM_WIN success installs terminal result and clears claimPending', async () => {
-        const installSpy = vi.spyOn(session, 'installTerminalResult');
         const terminalData: PublicGameStateResponse = createValidGameState({
             gameId: 'GAME123',
             phase: 'SHOWDOWN',
@@ -196,7 +219,15 @@ describe('useGameDispatcher', () => {
                 message: 'Win claimed',
             },
         });
-        const claimWinSpy = vi.mocked(pokerApi.claimWin).mockResolvedValue(terminalData);
+        let claimWinCalls = 0;
+        let capturedAuthHeader: string | null = null;
+        server.use(
+            http.post('*/api/game/GAME123/claim-win', ({ request }) => {
+                claimWinCalls += 1;
+                capturedAuthHeader = request.headers.get('Authorization');
+                return HttpResponse.json(terminalData);
+            })
+        );
         const { result } = renderHook(() => useGameDispatcher(), {
             wrapper: createWrapper(),
         });
@@ -205,14 +236,14 @@ describe('useGameDispatcher', () => {
             await result.current.dispatch({ type: 'CLAIM_WIN' });
         });
 
-        expect(claimWinSpy).toHaveBeenCalledWith('GAME123', 'test-token', expect.any(AbortSignal));
-        expect(installSpy).toHaveBeenCalledWith(terminalData);
+        expect(claimWinCalls).toBe(1);
+        expect(capturedAuthHeader).toBe(`Bearer ${tokenA}`);
         expect(session.getSnapshot().claimPending).toBe(false);
         expect(session.getSnapshot().isGameOver).toBe(true);
         expect(session.getSnapshot().gameEndResult?.gameEnd?.winner).toBe('TestPlayer');
     });
 
-    it('dispatch CLAIM_WIN directly transitions session to review state and invokes setGameEndResult without waiting for STOMP', async () => {
+    it('dispatch CLAIM_WIN directly transitions session to review state without waiting for STOMP or polling getReview', async () => {
         const terminalData: PublicGameStateResponse = createValidGameState({
             gameId: 'GAME123',
             phase: 'SHOWDOWN',
@@ -224,9 +255,18 @@ describe('useGameDispatcher', () => {
                 message: 'Win claimed directly',
             },
         });
-        const claimWinSpy = vi.mocked(pokerApi.claimWin).mockResolvedValue(terminalData);
-        const setGameEndResultSpy = vi.spyOn(session, 'setGameEndResult');
-        const installSpy = vi.spyOn(session, 'installTerminalResult');
+        let claimWinCalls = 0;
+        let reviewCalls = 0;
+        server.use(
+            http.post('*/api/game/GAME123/claim-win', () => {
+                claimWinCalls += 1;
+                return HttpResponse.json(terminalData);
+            }),
+            http.get('*/api/game/:gameId/review', () => {
+                reviewCalls += 1;
+                return HttpResponse.json({ detail: 'Not needed' }, { status: 404 });
+            })
+        );
 
         const { result } = renderHook(() => useGameDispatcher(), {
             wrapper: createWrapper(),
@@ -236,17 +276,14 @@ describe('useGameDispatcher', () => {
             await result.current.dispatch({ type: 'CLAIM_WIN' });
         });
 
-        expect(claimWinSpy).toHaveBeenCalledWith('GAME123', 'test-token', expect.any(AbortSignal));
-        expect(installSpy).toHaveBeenCalledWith(terminalData);
-        expect(setGameEndResultSpy).toHaveBeenCalledTimes(1);
-        expect(setGameEndResultSpy).toHaveBeenCalledWith(expect.objectContaining({
-            gameId: 'GAME123',
-            gameEnd: terminalData.gameEnd,
-        }));
-        expect(pokerApi.getReview).not.toHaveBeenCalled();
+        expect(claimWinCalls).toBe(1);
+        expect(reviewCalls).toBe(0);
         expect(session.getSnapshot().claimPending).toBe(false);
         expect(session.getSnapshot().isGameOver).toBe(true);
-        expect(session.getSnapshot().gameEndResult?.gameEnd?.winner).toBe('TestPlayer');
+        expect(session.getSnapshot().gameEndResult).toMatchObject({
+            gameId: 'GAME123',
+            gameEnd: terminalData.gameEnd,
+        });
     });
 
     it('recovers terminal game review from getReview when public state polling encounters 404', async () => {
@@ -262,9 +299,23 @@ describe('useGameDispatcher', () => {
                 message: 'Recovered review from polling 404',
             },
         });
-        const getPublicSpy = vi.spyOn(pokerApi, 'getPublicGameState').mockRejectedValue({ status: 404 });
-        vi.spyOn(pokerApi, 'getPrivatePlayerState').mockRejectedValue({ status: 404 });
-        const getReviewSpy = vi.mocked(pokerApi.getReview).mockResolvedValue(reviewResult);
+        let publicCalls = 0;
+        let reviewCalls = 0;
+        let capturedReviewAuth: string | null = null;
+        server.use(
+            http.get('*/api/game/ROOM123/state', () => {
+                publicCalls += 1;
+                return HttpResponse.json({ detail: 'Not found' }, { status: 404 });
+            }),
+            http.get('*/api/game/ROOM123/private-state', () =>
+                HttpResponse.json({ detail: 'Not found' }, { status: 404 })
+            ),
+            http.get('*/api/game/ROOM123/review', ({ request }) => {
+                reviewCalls += 1;
+                capturedReviewAuth = request.headers.get('Authorization');
+                return HttpResponse.json(reviewResult);
+            })
+        );
 
         renderHook(() => useGameDispatcher(), {
             wrapper: createWrapper(),
@@ -274,16 +325,15 @@ describe('useGameDispatcher', () => {
             await session.synchronizeSession({ resetBudget: true });
         });
 
-        expect(getPublicSpy).toHaveBeenCalled();
-        expect(getReviewSpy).toHaveBeenCalledWith('ROOM123', 'test-token', expect.any(AbortSignal));
+        expect(publicCalls).toBeGreaterThanOrEqual(1);
+        expect(reviewCalls).toBe(1);
+        expect(capturedReviewAuth).toBe(`Bearer ${tokenA}`);
         expect(session.getSnapshot().isGameOver).toBe(true);
         expect(session.getSnapshot().gameEndResult?.gameEnd?.winner).toBe('TestPlayer');
         expect(session.getSnapshot().gameEndResult?.gameEnd?.message).toBe('Recovered review from polling 404');
     });
 
-    it('dispatch CLAIM_WIN triggers review recovery via pokerApi.getReview on network/timeout failure and installs terminal result', async () => {
-        const networkError = new TypeError('Failed to fetch');
-        vi.mocked(pokerApi.claimWin).mockRejectedValue(networkError);
+    it('dispatch CLAIM_WIN triggers review recovery via getReview on network failure and installs terminal result', async () => {
         const reviewResult: PublicGameStateResponse = createValidGameState({
             gameId: 'GAME123',
             phase: 'SHOWDOWN',
@@ -295,8 +345,16 @@ describe('useGameDispatcher', () => {
                 message: 'Recovered review: TestPlayer won',
             },
         });
-        const getReviewSpy = vi.mocked(pokerApi.getReview).mockResolvedValue(reviewResult);
-        const installSpy = vi.spyOn(session, 'installTerminalResult');
+        let reviewCalls = 0;
+        let capturedReviewAuth: string | null = null;
+        server.use(
+            http.post('*/api/game/GAME123/claim-win', () => HttpResponse.error()),
+            http.get('*/api/game/GAME123/review', ({ request }) => {
+                reviewCalls += 1;
+                capturedReviewAuth = request.headers.get('Authorization');
+                return HttpResponse.json(reviewResult);
+            })
+        );
 
         const { result } = renderHook(() => useGameDispatcher(), {
             wrapper: createWrapper(),
@@ -306,16 +364,49 @@ describe('useGameDispatcher', () => {
             await result.current.dispatch({ type: 'CLAIM_WIN' });
         });
 
-        expect(getReviewSpy).toHaveBeenCalledWith('GAME123', 'test-token', expect.any(AbortSignal));
-        expect(installSpy).toHaveBeenCalledWith(reviewResult);
+        expect(reviewCalls).toBe(1);
+        expect(capturedReviewAuth).toBe(`Bearer ${tokenA}`);
         expect(session.getSnapshot().claimPending).toBe(false);
         expect(session.getSnapshot().isGameOver).toBe(true);
         expect(session.getSnapshot().gameEndResult?.gameEnd?.winner).toBe('TestPlayer');
     });
 
-    it('recovers by review after a timed-out claim response', async () => {
-        vi.mocked(pokerApi.claimWin).mockRejectedValue(Object.assign(new Error('Request timed out'), { status: 408 }));
-        vi.mocked(pokerApi.getReview).mockResolvedValue(createValidGameState({
+    it('recovers by review after a timed-out claim response (408)', async () => {
+        let reviewCalls = 0;
+        let capturedReviewAuth: string | null = null;
+        server.use(
+            http.post('*/api/game/GAME123/claim-win', () =>
+                HttpResponse.json({ detail: 'Request timed out' }, { status: 408 })
+            ),
+            http.get('*/api/game/GAME123/review', ({ request }) => {
+                reviewCalls += 1;
+                capturedReviewAuth = request.headers.get('Authorization');
+                return HttpResponse.json(createValidGameState({
+                    gameId: 'GAME123',
+                    phase: 'SHOWDOWN',
+                    players: [{ id: 'p-1', name: 'TestPlayer', chips: 2000 }],
+                    gameEnd: {
+                        winner: 'TestPlayer',
+                        winnerChips: 2000,
+                        isForfeit: true,
+                        message: 'Recovered review',
+                    },
+                }));
+            })
+        );
+        const { result } = renderHook(() => useGameDispatcher(), { wrapper: createWrapper() });
+
+        await act(async () => { await result.current.dispatch({ type: 'CLAIM_WIN' }); });
+
+        expect(reviewCalls).toBe(1);
+        expect(capturedReviewAuth).toBe(`Bearer ${tokenA}`);
+        expect(session.getSnapshot().isGameOver).toBe(true);
+    });
+
+    it('keeps claim pending across public socket updates during deferred review recovery', async () => {
+        let resolveReview!: () => void;
+        let reviewCalls = 0;
+        const reviewPayload = createValidGameState({
             gameId: 'GAME123',
             phase: 'SHOWDOWN',
             players: [{ id: 'p-1', name: 'TestPlayer', chips: 2000 }],
@@ -325,44 +416,34 @@ describe('useGameDispatcher', () => {
                 isForfeit: true,
                 message: 'Recovered review',
             },
-        }));
-        const { result } = renderHook(() => useGameDispatcher(), { wrapper: createWrapper() });
-
-        await act(async () => { await result.current.dispatch({ type: 'CLAIM_WIN' }); });
-
-        expect(pokerApi.getReview).toHaveBeenCalledWith('GAME123', 'test-token', expect.any(AbortSignal));
-        expect(session.getSnapshot().isGameOver).toBe(true);
-    });
-
-    it('keeps claim pending across public socket updates during deferred review recovery', async () => {
-        let resolveReview!: (value: PublicGameStateResponse) => void;
-        vi.mocked(pokerApi.claimWin).mockRejectedValue(new TypeError('Lost claim response'));
-        vi.mocked(pokerApi.getReview).mockReturnValue(new Promise((resolve) => { resolveReview = resolve; }));
+        });
+        server.use(
+            http.post('*/api/game/GAME123/claim-win', () => HttpResponse.error()),
+            http.get('*/api/game/GAME123/review', () => {
+                reviewCalls += 1;
+                return new Promise<Response>((resolve) => {
+                    resolveReview = () => resolve(HttpResponse.json(reviewPayload));
+                });
+            })
+        );
         const { result } = renderHook(() => useGameDispatcher(), { wrapper: createWrapper() });
 
         let dispatchPromise!: Promise<void>;
         act(() => { dispatchPromise = result.current.dispatch({ type: 'CLAIM_WIN' }); });
-        await vi.waitFor(() => expect(pokerApi.getReview).toHaveBeenCalledTimes(1));
+        await waitFor(() => expect(reviewCalls).toBe(1));
         expect(session.getSnapshot().claimPending).toBe(true);
-        transport.simulateMessage('/game/ROOM123', createValidGameState({
-            gameId: 'ROOM123', handNumber: 1, pot: 42,
-            players: [{ id: 'p-1', name: 'TestPlayer', chips: 980 }],
-        }));
+
+        act(() => {
+            transport.simulateMessage('/game/ROOM123', createValidGameState({
+                gameId: 'ROOM123', handNumber: 1, pot: 42,
+                players: [{ id: 'p-1', name: 'TestPlayer', chips: 980 }],
+            }));
+        });
         expect(session.getSnapshot().gameState?.pot).toBe(42);
         expect(session.getSnapshot().claimPending).toBe(true);
 
         await act(async () => {
-            resolveReview(createValidGameState({
-                gameId: 'GAME123',
-                phase: 'SHOWDOWN',
-                players: [{ id: 'p-1', name: 'TestPlayer', chips: 2000 }],
-                gameEnd: {
-                    winner: 'TestPlayer',
-                    winnerChips: 2000,
-                    isForfeit: true,
-                    message: 'Recovered review',
-                },
-            }));
+            resolveReview();
             await dispatchPromise;
         });
         expect(session.getSnapshot().isGameOver).toBe(true);
@@ -370,9 +451,16 @@ describe('useGameDispatcher', () => {
     });
 
     it('dispatch CLAIM_WIN clears claimPending and exposes retry when review recovery is exhausted', async () => {
-        const error500 = Object.assign(new Error('Internal Server Error'), { status: 500 });
-        vi.mocked(pokerApi.claimWin).mockRejectedValue(error500);
-        vi.mocked(pokerApi.getReview).mockRejectedValue(new Error('Review unavailable'));
+        let reviewCalls = 0;
+        server.use(
+            http.post('*/api/game/GAME123/claim-win', () =>
+                HttpResponse.json({ detail: 'Internal Server Error' }, { status: 500 })
+            ),
+            http.get('*/api/game/GAME123/review', () => {
+                reviewCalls += 1;
+                return HttpResponse.json({ detail: 'Review unavailable' }, { status: 503 });
+            })
+        );
 
         const { result } = renderHook(() => useGameDispatcher(), {
             wrapper: createWrapper(),
@@ -380,20 +468,27 @@ describe('useGameDispatcher', () => {
 
         await act(async () => {
             await result.current.dispatch({ type: 'CLAIM_WIN' });
-            await vi.advanceTimersByTimeAsync(20_000);
         });
+        await advanceRecoveryRetries(clock, session, () => reviewCalls);
 
         expect(session.getSnapshot().claimPending).toBe(false);
         expect(session.getSnapshot().isGameOver).toBe(false);
         expect(result.current.isPending('CLAIM_WIN')).toBe(false);
         expect(session.getSnapshot().recoveryFailed).toBe(true);
-        expect(pokerApi.getReview).toHaveBeenCalledTimes(4);
+        expect(reviewCalls).toBe(4);
     });
 
     it('does not retry review after a definite claim rejection', async () => {
-        const error = Object.assign(new Error('Cannot claim win right now.'), { status: 403 });
-        vi.mocked(pokerApi.claimWin).mockRejectedValue(error);
-        const getReviewSpy = vi.mocked(pokerApi.getReview).mockRejectedValue(new Error('No review available'));
+        let reviewCalls = 0;
+        server.use(
+            http.post('*/api/game/GAME123/claim-win', () =>
+                HttpResponse.json({ detail: 'Cannot claim win right now.' }, { status: 403 })
+            ),
+            http.get('*/api/game/GAME123/review', () => {
+                reviewCalls += 1;
+                return HttpResponse.json({ detail: 'No review available' }, { status: 404 });
+            })
+        );
         const { result } = renderHook(() => useGameDispatcher(), {
             wrapper: createWrapper(),
         });
@@ -402,13 +497,21 @@ describe('useGameDispatcher', () => {
             await result.current.dispatch({ type: 'CLAIM_WIN' });
         });
 
-        expect(getReviewSpy).not.toHaveBeenCalled();
+        expect(reviewCalls).toBe(0);
         expect(session.getSnapshot().claimPending).toBe(false);
         expect(session.getSnapshot().notification).toBe('Cannot claim win right now.');
     });
 
     it('dispatch LEAVE_GAME calls the shared room departure endpoint once', async () => {
-        const leaveRoomSpy = vi.mocked(pokerApi.leaveRoom).mockResolvedValue();
+        let leaveCalls = 0;
+        let capturedAuthHeader: string | null = null;
+        server.use(
+            http.post('*/api/room/ROOM123/leave', ({ request }) => {
+                leaveCalls += 1;
+                capturedAuthHeader = request.headers.get('Authorization');
+                return new HttpResponse(null, { status: 204 });
+            })
+        );
         const clearShowdownSpy = vi.spyOn(session, 'clearShowdownTimers');
         session.applyPrivateState({ playerId: 'p-1', holeCards: ['AS', 'KS'] });
 
@@ -422,15 +525,37 @@ describe('useGameDispatcher', () => {
 
         expect(clearShowdownSpy).toHaveBeenCalled();
         expect(session.getSnapshot().privateState).toBeNull();
-        expect(leaveRoomSpy).toHaveBeenCalledWith('ROOM123', 'test-token', false, expect.any(AbortSignal));
-        expect(leaveRoomSpy).toHaveBeenCalledTimes(1);
+        expect(leaveCalls).toBe(1);
+        expect(capturedAuthHeader).toBe(`Bearer ${tokenA}`);
         expect(onLeave).toHaveBeenCalled();
     });
 
     it('retains the session and surfaces an error when room departure fails', async () => {
-        const error = Object.assign(new Error('Network failure'), { status: 500 });
-        const leaveRoomSpy = vi.mocked(pokerApi.leaveRoom).mockRejectedValue(error);
-        const clearShowdownSpy = vi.spyOn(session, 'clearShowdownTimers');
+        let leaveCalls = 0;
+        server.use(
+            http.post('*/api/room/ROOM123/leave', () => {
+                leaveCalls += 1;
+                return HttpResponse.json({ detail: 'Network failure' }, { status: 500 });
+            }),
+            http.get('*/api/room/ROOM123', () =>
+                HttpResponse.json(createValidRoomData({
+                    roomId: 'ROOM123',
+                    players: [{ name: 'TestPlayer', isHost: true }],
+                    gameStarted: true,
+                }))
+            ),
+            http.get('*/api/game/ROOM123/state', () =>
+                HttpResponse.json(createValidGameState({
+                    gameId: 'ROOM123',
+                    phase: 'PRE_FLOP',
+                    players: [{ id: 'p-1', name: 'TestPlayer', chips: 980 }],
+                }))
+            ),
+            http.get('*/api/game/ROOM123/private-state', () =>
+                HttpResponse.json({ playerId: 'p-1', handNumber: 0, holeCards: ['AS', 'KS'] })
+            )
+        );
+        const disconnectSpy = vi.spyOn(transport, 'disconnect');
         session.applyPrivateState({ playerId: 'p-1', holeCards: ['AS', 'KS'] });
         localStorage.setItem(
             'poker-game-end:ROOM123',
@@ -438,7 +563,7 @@ describe('useGameDispatcher', () => {
                 version: 2,
                 roomId: 'ROOM123',
                 playerName: 'TestPlayer',
-                token: 'test-token',
+                token: tokenA,
                 result: createValidGameState({
                     gameId: 'ROOM123',
                     gameEnd: { winner: 'TestPlayer', isForfeit: false, message: 'TestPlayer wins!' },
@@ -454,16 +579,21 @@ describe('useGameDispatcher', () => {
             await result.current.dispatch({ type: 'LEAVE_GAME' });
         });
 
-        expect(leaveRoomSpy).toHaveBeenCalledWith('ROOM123', 'test-token', false, expect.any(AbortSignal));
-        expect(leaveRoomSpy).toHaveBeenCalledTimes(1);
-        expect(clearShowdownSpy).not.toHaveBeenCalled();
+        expect(leaveCalls).toBe(1);
+        expect(disconnectSpy).not.toHaveBeenCalled();
         expect(session.getSnapshot().privateState).not.toBeNull();
         expect(onLeave).not.toHaveBeenCalled();
         expect(session.getSnapshot().notification).toContain('Network failure');
     });
 
-    it('dispatch LEAVE_REVIEW clears persisted game-end snapshot and calls onLeave even if REST fails', async () => {
-        const leaveRoomSpy = vi.mocked(pokerApi.leaveRoom);
+    it('dispatch LEAVE_REVIEW clears persisted game-end snapshot and calls onLeave without posting leave', async () => {
+        let leaveCalls = 0;
+        server.use(
+            http.post('*/api/room/ROOM123/leave', () => {
+                leaveCalls += 1;
+                return new HttpResponse(null, { status: 204 });
+            })
+        );
         const clearShowdownSpy = vi.spyOn(session, 'clearShowdownTimers');
         const { result } = renderHook(() => useGameDispatcher(), {
             wrapper: createWrapper(),
@@ -474,7 +604,7 @@ describe('useGameDispatcher', () => {
                 version: 2,
                 roomId: 'ROOM123',
                 playerName: 'TestPlayer',
-                token: 'test-token',
+                token: tokenA,
                 result: createValidGameState({
                     gameId: 'ROOM123',
                     gameEnd: { winner: 'TestPlayer', isForfeit: false, message: 'TestPlayer wins!' },
@@ -487,7 +617,7 @@ describe('useGameDispatcher', () => {
         });
 
         expect(sessionStorage.getItem('poker-game-end:ROOM123')).toBeNull();
-        expect(leaveRoomSpy).not.toHaveBeenCalled();
+        expect(leaveCalls).toBe(0);
         expect(clearShowdownSpy).toHaveBeenCalled();
         expect(session.getSnapshot().gameState).toBeNull();
         expect(onLeave).toHaveBeenCalled();
@@ -495,9 +625,13 @@ describe('useGameDispatcher', () => {
     });
 
     it('dispatch LEAVE_GAME calls onLeave even on 404 error', async () => {
-        const error = new Error('Not Found') as Error & { status?: number };
-        error.status = 404;
-        vi.mocked(pokerApi.leaveRoom).mockRejectedValue(error);
+        let leaveCalls = 0;
+        server.use(
+            http.post('*/api/room/ROOM123/leave', () => {
+                leaveCalls += 1;
+                return HttpResponse.json({ detail: 'Not Found' }, { status: 404 });
+            })
+        );
 
         const { result } = renderHook(() => useGameDispatcher(), {
             wrapper: createWrapper(),
@@ -508,7 +642,7 @@ describe('useGameDispatcher', () => {
         });
 
         expect(onLeave).toHaveBeenCalled();
-        expect(pokerApi.leaveRoom).toHaveBeenCalledTimes(1);
+        expect(leaveCalls).toBe(1);
         expect(session.getSnapshot().notification).toBeNull();
     });
 
@@ -532,8 +666,11 @@ describe('useGameDispatcher', () => {
     });
 
     it('handles HTTP 503 from START_GAME as retryable feedback and keeps controls usable', async () => {
-        const error503 = Object.assign(new Error('Server unavailable'), { status: 503 });
-        vi.mocked(pokerApi.startGame).mockRejectedValue(error503);
+        server.use(
+            http.post('*/api/room/ROOM123/start-game', () =>
+                HttpResponse.json({ detail: 'Server unavailable' }, { status: 503 })
+            )
+        );
         const { result } = renderHook(() => useGameDispatcher(), {
             wrapper: createWrapper(),
         });
@@ -554,30 +691,54 @@ describe('useGameDispatcher', () => {
     });
 
     it('handles HTTP 503 from CLAIM_WIN as retryable feedback and keeps session', async () => {
-        const error503 = Object.assign(new Error('Server recovering'), { status: 503 });
-        vi.mocked(pokerApi.claimWin).mockRejectedValue(error503);
+        let reviewCalls = 0;
+        server.use(
+            http.post('*/api/game/GAME123/claim-win', () =>
+                HttpResponse.json({ detail: 'Server recovering' }, { status: 503 })
+            ),
+            http.get('*/api/game/GAME123/review', () => {
+                reviewCalls += 1;
+                return HttpResponse.json({ detail: 'Review recovering' }, { status: 503 });
+            })
+        );
         const { result } = renderHook(() => useGameDispatcher(), {
             wrapper: createWrapper(),
         });
 
         await act(async () => {
             await result.current.dispatch({ type: 'CLAIM_WIN' });
-            await vi.advanceTimersByTimeAsync(20_000);
         });
+        await advanceRecoveryRetries(clock, session, () => reviewCalls);
 
         expect(session.getSnapshot().claimPending).toBe(false);
         expect(result.current.isPending('CLAIM_WIN')).toBe(false);
         expect(session.getSnapshot().error).toBeNull();
         expect(session.getSnapshot().recoveryFailed).toBe(true);
-        expect(pokerApi.getReview).toHaveBeenCalledTimes(4);
+        expect(reviewCalls).toBe(4);
         expect(onLeave).not.toHaveBeenCalled();
     });
 
     it('missing GAME_STARTED or public STOMP after successful Start still reaches the table through REST; duplicate clicks produce one POST', async () => {
-        const startGameSpy = vi.mocked(pokerApi.startGame).mockResolvedValue(undefined);
-        const syncSpy = vi.spyOn(session, 'synchronizeSession').mockImplementation(async () => {
-            session.setGameState(createValidGameState({ gameId: 'ROOM123', phase: 'PRE_FLOP' }));
-        });
+        let startGameCalls = 0;
+        server.use(
+            http.post('*/api/room/ROOM123/start-game', () => {
+                startGameCalls += 1;
+                return new HttpResponse(null, { status: 204 });
+            }),
+            http.get('*/api/room/ROOM123', () =>
+                HttpResponse.json(createValidRoomData({ roomId: 'ROOM123', gameStarted: true }))
+            ),
+            http.get('*/api/game/ROOM123/state', () =>
+                HttpResponse.json(createValidGameState({
+                    gameId: 'ROOM123',
+                    phase: 'PRE_FLOP',
+                    players: [{ id: 'p-1', name: 'TestPlayer', chips: 1000 }],
+                }))
+            ),
+            http.get('*/api/game/ROOM123/private-state', () =>
+                HttpResponse.json({ playerId: 'p-1', handNumber: 0, holeCards: ['AS', 'KS'] })
+            )
+        );
 
         const { result } = renderHook(() => useGameDispatcher(), {
             wrapper: createWrapper(),
@@ -587,27 +748,34 @@ describe('useGameDispatcher', () => {
             await result.current.dispatch({ type: 'START_GAME' });
         });
 
-        expect(startGameSpy).toHaveBeenCalledTimes(1);
+        expect(startGameCalls).toBe(1);
         expect(session.isStarted()).toBe(true);
-        expect(syncSpy).toHaveBeenCalled();
-        expect(session.getSnapshot().gameState?.phase).toBe('PRE_FLOP');
+        await waitFor(() => expect(session.getSnapshot().gameState?.phase).toBe('PRE_FLOP'));
 
         await act(async () => {
             await result.current.dispatch({ type: 'START_GAME' });
         });
-        expect(startGameSpy).toHaveBeenCalledTimes(1);
+        expect(startGameCalls).toBe(1);
     });
 
     it('ignores START_GAME continuation and does not update state if detached before completion', async () => {
         let resolveStart!: () => void;
         let capturedSignal: AbortSignal | undefined;
-        vi.mocked(pokerApi.startGame).mockImplementation((_roomId, _token, signal) => {
-            capturedSignal = signal;
-            return new Promise((resolve) => {
-                resolveStart = resolve;
-            });
-        });
-        const syncSpy = vi.spyOn(session, 'synchronizeSession');
+        let requestStarted = false;
+        let syncRequests = 0;
+        server.use(
+            http.post('*/api/room/ROOM123/start-game', ({ request }) => {
+                capturedSignal = request.signal;
+                requestStarted = true;
+                return new Promise<Response>((resolve) => {
+                    resolveStart = () => resolve(new HttpResponse(null, { status: 204 }));
+                });
+            }),
+            http.get('*/api/game/ROOM123/state', () => {
+                syncRequests += 1;
+                return HttpResponse.json(createValidGameState({ gameId: 'ROOM123' }));
+            })
+        );
 
         const { result, unmount } = renderHook(() => useGameDispatcher(), {
             wrapper: createWrapper(),
@@ -619,6 +787,7 @@ describe('useGameDispatcher', () => {
         });
 
         expect(result.current.isPending('START_GAME')).toBe(true);
+        await waitFor(() => expect(requestStarted).toBe(true));
 
         // Detach session / unmount hook before START_GAME finishes
         unmount();
@@ -632,16 +801,20 @@ describe('useGameDispatcher', () => {
 
         // Continuation must NOT run
         expect(session.isStarted()).toBe(false);
-        expect(syncSpy).not.toHaveBeenCalled();
+        expect(syncRequests).toBe(0);
     });
 
     it('ignores START_GAME rejection and does not set error notification if detached before completion', async () => {
-        let rejectStart!: (err: unknown) => void;
-        vi.mocked(pokerApi.startGame).mockImplementation(() => {
-            return new Promise((_, reject) => {
-                rejectStart = reject;
-            });
-        });
+        let rejectStart!: () => void;
+        let requestStarted = false;
+        server.use(
+            http.post('*/api/room/ROOM123/start-game', () => {
+                requestStarted = true;
+                return new Promise<Response>((resolve) => {
+                    rejectStart = () => resolve(HttpResponse.json({ detail: 'Server crashed' }, { status: 500 }));
+                });
+            })
+        );
 
         const { result, unmount } = renderHook(() => useGameDispatcher(), {
             wrapper: createWrapper(),
@@ -651,12 +824,13 @@ describe('useGameDispatcher', () => {
         act(() => {
             dispatchPromise = result.current.dispatch({ type: 'START_GAME' });
         });
+        await waitFor(() => expect(requestStarted).toBe(true));
 
         // Detach session / unmount
         unmount();
 
         await act(async () => {
-            rejectStart(new Error('Server crashed'));
+            rejectStart();
             await dispatchPromise;
         });
 
@@ -691,19 +865,24 @@ describe('useGameDispatcher', () => {
             await dispatchPromise;
         });
 
-        // Stale dispatcher must NOT change privateState or dispatch CLEAR_GAME_STATE on obsolete session
-        // (the mock session was detached, but should not be wiped by the obsolete continuation)
+        expect(session.getSnapshot().privateState).toEqual({ holeCards: ['AS', 'KS'] });
+        expect(session.getSnapshot().gameState).not.toBeNull();
+        expect(onLeave).not.toHaveBeenCalled();
     });
 
     it('passes AbortSignal to hook-owned fallback leave and aborts on unmount', async () => {
         let capturedSignal: AbortSignal | undefined;
         let resolveLeave!: () => void;
-        vi.mocked(pokerApi.leaveRoom).mockImplementation((_roomId, _token, _keepalive, signal) => {
-            capturedSignal = signal;
-            return new Promise((resolve) => {
-                resolveLeave = resolve;
-            });
-        });
+        let requestStarted = false;
+        server.use(
+            http.post('*/api/room/ROOM123/leave', ({ request }) => {
+                capturedSignal = request.signal;
+                requestStarted = true;
+                return new Promise<Response>((resolve) => {
+                    resolveLeave = () => resolve(new HttpResponse(null, { status: 204 }));
+                });
+            })
+        );
 
         const { result, unmount } = renderHook(() => useGameDispatcher(), {
             wrapper: createWrapper(session, mockAuth, undefined), // fallback leave
@@ -714,6 +893,7 @@ describe('useGameDispatcher', () => {
             dispatchPromise = result.current.dispatch({ type: 'LEAVE_GAME' });
         });
 
+        await waitFor(() => expect(requestStarted).toBe(true));
         expect(capturedSignal).toBeDefined();
         expect(capturedSignal?.aborted).toBe(false);
 
@@ -728,7 +908,13 @@ describe('useGameDispatcher', () => {
     });
 
     it('dispatch LEAVE_GAME passes originating token to onLeave callback', async () => {
-        vi.mocked(pokerApi.leaveRoom).mockResolvedValue();
+        let capturedAuthHeader: string | null = null;
+        server.use(
+            http.post('*/api/room/ROOM123/leave', ({ request }) => {
+                capturedAuthHeader = request.headers.get('Authorization');
+                return new HttpResponse(null, { status: 204 });
+            })
+        );
         const { result } = renderHook(() => useGameDispatcher(), {
             wrapper: createWrapper(),
         });
@@ -737,8 +923,8 @@ describe('useGameDispatcher', () => {
             await result.current.dispatch({ type: 'LEAVE_GAME' });
         });
 
-        expect(pokerApi.leaveRoom).toHaveBeenCalledWith('ROOM123', 'test-token', false, expect.any(AbortSignal));
-        expect(onLeave).toHaveBeenCalledWith('test-token');
+        expect(capturedAuthHeader).toBe(`Bearer ${tokenA}`);
+        expect(onLeave).toHaveBeenCalledWith(tokenA);
     });
 
     it('dispatch LEAVE_GAME passes originating token to requestLeave callback', async () => {
@@ -751,7 +937,7 @@ describe('useGameDispatcher', () => {
             await result.current.dispatch({ type: 'LEAVE_GAME' });
         });
 
-        expect(mockRequestLeave).toHaveBeenCalledWith('test-token');
+        expect(mockRequestLeave).toHaveBeenCalledWith(tokenA);
     });
 
     it('dispatch LEAVE_REVIEW passes originating token to onLeave callback', async () => {
@@ -763,14 +949,20 @@ describe('useGameDispatcher', () => {
             await result.current.dispatch({ type: 'LEAVE_REVIEW' });
         });
 
-        expect(onLeave).toHaveBeenCalledWith('test-token');
+        expect(onLeave).toHaveBeenCalledWith(tokenA);
     });
 
     it('does not invoke onLeave or clear state when auth token changes before fallback leaveRoom completes', async () => {
         let resolveLeave!: () => void;
-        vi.mocked(pokerApi.leaveRoom).mockImplementation(() => new Promise((resolve) => {
-            resolveLeave = resolve;
-        }));
+        let leaveStarted = false;
+        server.use(
+            http.post('*/api/room/ROOM123/leave', () => {
+                leaveStarted = true;
+                return new Promise<Response>((resolve) => {
+                    resolveLeave = () => resolve(new HttpResponse(null, { status: 204 }));
+                });
+            })
+        );
 
         let currentAuth = mockAuth;
         const { result, rerender } = renderHook(() => useGameDispatcher(), {
@@ -788,9 +980,10 @@ describe('useGameDispatcher', () => {
         act(() => {
             dispatchPromise = result.current.dispatch({ type: 'LEAVE_GAME' });
         });
+        await waitFor(() => expect(leaveStarted).toBe(true));
 
         // While leave is in flight, auth switches to token-b
-        currentAuth = { ...mockAuth, token: 'token-b' };
+        currentAuth = { ...mockAuth, token: createMockJwt({ sub: 'token-b' }) };
         rerender();
 
         await act(async () => {
@@ -798,10 +991,8 @@ describe('useGameDispatcher', () => {
             await dispatchPromise;
         });
 
-        // Because token changed from test-token to token-b, isCurrent() returned false,
+        // Because token changed from tokenA to token-b, isCurrent() returned false,
         // so stale onLeave was NOT called
         expect(onLeave).not.toHaveBeenCalled();
     });
 });
-
-

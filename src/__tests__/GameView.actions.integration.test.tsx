@@ -1,8 +1,9 @@
+// Must be imported before modules that load @stomp/stompjs.
+import { MockStompClient, activeSubscriptions } from '../test/mocks/stomp';
 import { render, screen, waitFor, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import GameView from '../GameView';
-import { MockStompClient, activeSubscriptions } from '../test/mocks/stomp';
 import { http, HttpResponse } from 'msw';
 import { server } from '../test/mocks/server';
 import { createValidGameState, createValidRoomData, mockAuth } from '../test/fixtures';
@@ -298,10 +299,9 @@ describe('GameView - Actions & Flows Integration', () => {
         render(<GameView auth={auth} />);
         expect(await screen.findByLabelText('Total Pot')).toBeInTheDocument();
 
-        // Initially connected, no overlay (wait for connection to complete)
-        await waitFor(() => {
-            expect(screen.queryByText(/Connection lost/i)).not.toBeInTheDocument();
-        });
+        // Initially connected, no overlay (wait for STOMP subscription to complete)
+        await MockStompClient.waitForSubscription('/game/ROOM123');
+        expect(screen.queryByText(/Connection lost/i)).not.toBeInTheDocument();
 
         // Simulate WS disconnect event
         await act(async () => {
@@ -469,9 +469,8 @@ describe('GameView - Actions & Flows Integration', () => {
         render(<GameView auth={auth} />);
         expect(await screen.findByLabelText('Total Pot')).toBeInTheDocument();
 
-        await waitFor(() => {
-            expect(screen.queryByText(/Connection lost/i)).not.toBeInTheDocument();
-        });
+        await MockStompClient.waitForSubscription('/game/ROOM123');
+        expect(screen.queryByText(/Connection lost/i)).not.toBeInTheDocument();
 
         await act(async () => {
             MockStompClient.simulateStompError({
