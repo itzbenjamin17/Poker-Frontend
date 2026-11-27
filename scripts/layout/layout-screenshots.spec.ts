@@ -2,6 +2,7 @@ import { test, expect } from '@playwright/test';
 import path from 'path';
 import fs from 'fs';
 import { setupStompWebSocketMock } from '../../e2e/support/stompWsMock';
+import type { Player, PrivatePlayerState, PublicGameStateResponse, RoomDataResponse } from '../../src/types';
 
 const viewports = [
     { name: 'iPhone14Landscape', width: 844, height: 390 },
@@ -38,14 +39,13 @@ test.describe('Layout Screenshots 3 to 10 players', () => {
                     token: authToken,
                     roomId: id,
                     playerName: 'Host',
-                    playerId: 'p-1',
                 }));
             }, { authToken: token, id: roomId });
 
             await setupStompWebSocketMock(page);
 
-            const generatePlayers = (count: number) => {
-                const players = [];
+            const generatePlayers = (count: number): Player[] => {
+                const players: Player[] = [];
                 for (let i = 1; i <= count; i++) {
                     players.push({
                         id: `p-${i}`,
@@ -61,7 +61,7 @@ test.describe('Layout Screenshots 3 to 10 players', () => {
                 return players;
             };
 
-            const mockRoom = {
+            const mockRoom: RoomDataResponse = {
                 roomId,
                 roomName: `Test Room ${numPlayers}P`,
                 maxPlayers: numPlayers,
@@ -79,7 +79,7 @@ test.describe('Layout Screenshots 3 to 10 players', () => {
             }));
 
             // 1. Regular State Mock (FLOP)
-            const mockFlopState = {
+            const mockFlopState: PublicGameStateResponse = {
                 gameId: roomId, handNumber: 1,
                 maxPlayers: numPlayers,
                 phase: 'FLOP',
@@ -91,7 +91,6 @@ test.describe('Layout Screenshots 3 to 10 players', () => {
                 currentPlayerName: 'Host',
                 legalActions: ['FOLD', 'CALL', 'RAISE'],
                 players: generatePlayers(numPlayers),
-                isGameOver: false
             };
 
             await page.route(`**/api/game/${roomId}/state`, (route) => route.fulfill({
@@ -99,10 +98,13 @@ test.describe('Layout Screenshots 3 to 10 players', () => {
                 body: JSON.stringify(mockFlopState),
             }));
 
-            await page.route(`**/api/game/${roomId}/private-state`, (route) => route.fulfill({
-                contentType: 'application/json',
-                body: JSON.stringify({ playerId: 'p-1', handNumber: 1, holeCards: ['AS', 'KS'] }),
-            }));
+            await page.route(`**/api/game/${roomId}/private-state`, (route) => {
+                const privateState: PrivatePlayerState = { playerId: 'p-1', handNumber: 1, holeCards: ['AS', 'KS'] };
+                return route.fulfill({
+                    contentType: 'application/json',
+                    body: JSON.stringify(privateState),
+                });
+            });
 
             await page.goto(`http://localhost:5173/room/${roomId}`);
             
@@ -119,17 +121,17 @@ test.describe('Layout Screenshots 3 to 10 players', () => {
             }
 
             // 2. Showdown State Mock
-            const mockShowdownState = {
+            const now = Date.now();
+            const mockShowdownState: PublicGameStateResponse = {
                 ...mockFlopState,
                 phase: 'SHOWDOWN',
                 communityCards: ['QH', 'JH', 'TH', '2S', '2D'],
-                isGameOver: true,
-                showdownWinner: {
-                    playerId: 'p-1',
-                    handRank: 'Royal Flush',
-                    bestHand: ['AS', 'KS', 'QH', 'JH', 'TH'],
-                    payouts: { 'p-1': 80 }
-                },
+                winners: ['Host'],
+                handSettled: true,
+                isReadyCountdownActive: true,
+                readyGateState: 'COUNTING_DOWN',
+                serverTimeEpochMs: now,
+                readyCountdownDeadlineEpochMs: now + 30_000,
                 players: mockFlopState.players.map(p => ({
                     ...p,
                     holeCards: p.id === 'p-1' ? ['AS', 'KS'] : ['9H', '8H'],

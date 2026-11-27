@@ -1,6 +1,6 @@
 import {
     test, expect, act, actionButton, checkOrCall, expectChipsConserved, playHand, playerIn, probe, readyUp,
-    startGame, stateOf, waitForActor, waitForSettled, type GameState, type Page, type Policy,
+    startGame, stateOf, stompMessages, waitForActor, waitForSettled, type GameState, type Page, type Policy,
 } from './helpers';
 import { bestHand, expectedWinners } from './handEvaluator';
 import { mulberry32, randomInt } from '../../src/test/prng';
@@ -151,18 +151,27 @@ test.describe('Rules', () => {
 
         const shove: Policy = (_actor, state) => (state.legalActions?.includes('ALL_IN') ? 'ALL_IN' : 'CALL');
         for (let i = 0; i < 3; i++) {
-            const state = await waitForActor(t.page('Ann')).catch(() => null);
-            if (!state) break;
+            const current = await stateOf(t.page('Ann'));
+            if (current.isAutoAdvancing || current.handSettled || current.phase === 'SHOWDOWN') break;
+            const state = await waitForActor(t.page('Ann'));
             await act(t.page(state.currentPlayerName!), shove(state.currentPlayerName!, state));
         }
 
         const runout = await stateOf(t.page('Ann'));
-        const contributions = runout.players.map(p => startStacks[p.name] - p.chips);
-        const expected = expectedPotLayers(contributions);
         expect(runout.isAutoAdvancing || runout.handSettled, 'board runs out with nobody left to act').toBe(true);
+
+        const potSource = !runout.handSettled
+            ? runout
+            : stompMessages(t.frames('Ann'))
+                .map(m => (m.destination.startsWith('/game/') ? (m.body as GameState) : null))
+                .find((s): s is GameState => Boolean(s && s.handNumber === hand2.handNumber && s.isAutoAdvancing));
+        expect(potSource, 'all-in runout state with pot layers was observed').toBeDefined();
+        const contributions = potSource!.players.map(p => startStacks[p.name] - p.chips);
+        const expected = expectedPotLayers(contributions);
+        expect(potSource!.pots).toEqual(expected.pots);
+        expect(potSource!.uncalledAmount ?? 0).toBe(expected.uncalled);
+
         if (!runout.handSettled) {
-            expect(runout.pots).toEqual(expected.pots);
-            expect(runout.uncalledAmount ?? 0).toBe(expected.uncalled);
             for (const name of t.names) await expect(actionButton(t.page(name), 'FOLD')).toBeHidden();
             const sidePots = t.page('Ann').getByTestId('side-pot-chip');
             await expect(sidePots).toContainText(`+${expected.pots.length - 1} Side Pot${expected.pots.length > 2 ? 's' : ''}`);

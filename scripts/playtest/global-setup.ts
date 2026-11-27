@@ -20,26 +20,44 @@ async function post(path: string, body?: unknown, token?: string): Promise<Respo
  */
 export default async function globalSetup(): Promise<void> {
     const roomName = `pt-setup-${Date.now()}`;
-    const created = await post('/room/create', {
-        roomName, playerName: 'SetupA', maxPlayers: 2, smallBlind: 10, bigBlind: 20, buyIn: 1000,
-    });
-    if (!created.ok) throw new Error(`Playtest setup: create room failed (${created.status}): ${await created.text()}`);
-    const host = await created.json() as { token: string; roomId: string };
-    const joined = await post('/room/join', { roomName, playerName: 'SetupB' });
-    if (!joined.ok) throw new Error(`Playtest setup: join failed (${joined.status}): ${await joined.text()}`);
-    const guest = await joined.json() as { token: string };
+    let roomId: string | undefined;
+    let hostToken: string | undefined;
+    let guestToken: string | undefined;
+    let state: { turnDeadlineEpochMs?: number; serverTimeEpochMs?: number };
 
-    const started = await post(`/room/${host.roomId}/start-game`, undefined, host.token);
-    if (started.status !== 204) throw new Error(`Playtest setup: start failed (${started.status})`);
-    const stateRes = await fetch(`${API}/game/${host.roomId}/state`, { headers: { Authorization: `Bearer ${host.token}` } });
-    const state = await stateRes.json() as { turnDeadlineEpochMs: number; serverTimeEpochMs: number };
-    await post(`/room/${host.roomId}/leave`, undefined, guest.token);
-    await post(`/room/${host.roomId}/leave`, undefined, host.token);
+    try {
+        const created = await post('/room/create', {
+            roomName, playerName: 'SetupA', maxPlayers: 2, smallBlind: 10, bigBlind: 20, buyIn: 1000,
+        });
+        if (!created.ok) throw new Error(`Playtest setup: create room failed (${created.status}): ${await created.text()}`);
+        const host = await created.json() as { token: string; roomId: string };
+        roomId = host.roomId;
+        hostToken = host.token;
 
-    const turnMs = state.turnDeadlineEpochMs - state.serverTimeEpochMs;
-    if (Math.abs(turnMs - PLAYTEST_TIMINGS.turnAllowanceMs) > TOLERANCE_MS) {
+        const joined = await post('/room/join', { roomName, playerName: 'SetupB' });
+        if (!joined.ok) throw new Error(`Playtest setup: join failed (${joined.status}): ${await joined.text()}`);
+        const guest = await joined.json() as { token: string };
+        guestToken = guest.token;
+
+        const started = await post(`/room/${roomId}/start-game`, undefined, hostToken);
+        if (started.status !== 204) throw new Error(`Playtest setup: start failed (${started.status})`);
+
+        const stateRes = await fetch(`${API}/game/${roomId}/state`, { headers: { Authorization: `Bearer ${hostToken}` } });
+        if (!stateRes.ok) throw new Error(`Playtest setup: state probe failed (${stateRes.status}): ${await stateRes.text()}`);
+        state = await stateRes.json() as { turnDeadlineEpochMs?: number; serverTimeEpochMs?: number };
+    } finally {
+        if (roomId && guestToken) {
+            await post(`/room/${roomId}/leave`, undefined, guestToken).catch(() => undefined);
+        }
+        if (roomId && hostToken) {
+            await post(`/room/${roomId}/leave`, undefined, hostToken).catch(() => undefined);
+        }
+    }
+
+    const turnMs = (state.turnDeadlineEpochMs ?? NaN) - (state.serverTimeEpochMs ?? NaN);
+    if (!Number.isFinite(turnMs) || Math.abs(turnMs - PLAYTEST_TIMINGS.turnAllowanceMs) > TOLERANCE_MS) {
         throw new Error(
-            `The backend on :8080 has a ${Math.round(turnMs / 1000)}s turn allowance, not the playtest's `
+            `The backend on :8080 has a ${Number.isFinite(turnMs) ? `${Math.round(turnMs / 1000)}s` : String(turnMs)} turn allowance, not the playtest's `
             + `${PLAYTEST_TIMINGS.turnAllowanceMs / 1000}s. Stop it and rerun: the playtest config starts `
             + 'its own backend with scripts/playtest/timings.ts.',
         );

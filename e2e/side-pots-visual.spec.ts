@@ -90,11 +90,10 @@ test.describe('Item 35: Visual rendering of side pots in multi-way all-in', () =
     await expect(mainPotBadge).toBeVisible();
     await expect(mainPotBadge).toContainText('300');
 
-    // 2. Pot Breakdown region displays both Main Pot ($300) and Side Pot 1 ($200)
+    // 2. Expand Pot Breakdown and verify both Main Pot ($300) and Side Pot 1 ($200)
     const breakdownToggle = page.getByRole('button', { name: /show pot details/i });
-    if (await breakdownToggle.isVisible()) {
-      await breakdownToggle.click();
-    }
+    await expect(breakdownToggle).toBeVisible();
+    await breakdownToggle.click();
     const breakdownRegion = page.getByRole('region', { name: /pot breakdown/i });
     await expect(breakdownRegion).toBeVisible();
 

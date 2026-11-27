@@ -230,6 +230,26 @@ export async function reviewOf(page: Page): Promise<{ status: number; state: Gam
     });
 }
 
+export interface StompMessage { destination: string; body: unknown }
+
+/** Parses the server's STOMP MESSAGE frames out of raw WebSocket text frames. */
+export function stompMessages(frames: string[]): StompMessage[] {
+    const messages: StompMessage[] = [];
+    for (const raw of frames) {
+        for (const frame of raw.split('\u0000')) {
+            if (!frame.startsWith('MESSAGE')) continue;
+            const split = frame.indexOf('\n\n');
+            const destination = /\ndestination:([^\n]*)/.exec(frame.slice(0, split))?.[1] ?? '';
+            try {
+                messages.push({ destination, body: JSON.parse(frame.slice(split + 2)) });
+            } catch {
+                // Non-JSON bodies are not game payloads.
+            }
+        }
+    }
+    return messages;
+}
+
 export async function stateOf(page: Page): Promise<GameState> {
     const result = await probe(page);
     if (!result.state) throw new Error(`No game state for ${result.me ?? 'an unauthenticated page'} (HTTP ${result.status})`);
@@ -356,7 +376,18 @@ export async function readyUp(table: Table, names: string[] = table.names): Prom
     for (const name of names) {
         const page = table.page(name);
         const ready = page.getByRole('button', { name: /^ready$/i });
-        if (await ready.isVisible().catch(() => false)) await ready.click();
+        let readyVisible = false;
+        let handAdvanced = false;
+        await expect.poll(async () => {
+            readyVisible = await ready.isVisible();
+            if (readyVisible) return true;
+            const current = await stateOf(observer);
+            handAdvanced = current.handNumber > before.handNumber && !current.handSettled;
+            return handAdvanced;
+        }, { timeout: 20_000, message: `waiting for ${name}'s READY button or next hand` }).toBe(true);
+        if (readyVisible && !handAdvanced) {
+            await ready.click();
+        }
     }
     let next: GameState | null = null;
     await expect.poll(async () => {

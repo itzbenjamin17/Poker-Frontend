@@ -9,7 +9,7 @@ test.describe('Item 34: Form validation', () => {
     // Track any call to /api/room/create
     await page.route('**/api/room/create', async (route) => {
       apiCreateCallOccurred = true;
-      await route.continue();
+      await route.abort();
     });
 
     await page.goto('/');

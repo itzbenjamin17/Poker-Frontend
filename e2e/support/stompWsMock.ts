@@ -7,6 +7,12 @@ export interface StompMockController {
     close: () => void;
 }
 
+interface SubscriptionWaiter {
+    resolve: (subId: string) => void;
+    reject: (error: Error) => void;
+    timer: ReturnType<typeof setTimeout>;
+}
+
 /**
  * Intercepts browser STOMP WebSocket connections via Playwright native routeWebSocket.
  * Eliminates the need for any in-app backdoor flags.
@@ -16,11 +22,41 @@ export async function setupStompWebSocketMock(
 ): Promise<StompMockController> {
     let activeWs: WebSocketRoute | null = null;
     let messageIdCounter = 1;
-    const subscriptions = new Map<string, string>(); // destination -> subId
-    const subscriptionResolvers = new Map<string, (subId: string) => void>();
+    const openSockets = new Set<WebSocketRoute>();
+    const socketSubscriptions = new Map<WebSocketRoute, Map<string, string>>();
+    const subscriptionWaiters = new Map<string, SubscriptionWaiter[]>();
+
+    const findSubscription = (destination: string): { ws: WebSocketRoute; subId: string } | null => {
+        if (activeWs && openSockets.has(activeWs)) {
+            const activeSubId = socketSubscriptions.get(activeWs)?.get(destination);
+            if (activeSubId) {
+                return { ws: activeWs, subId: activeSubId };
+            }
+        }
+        for (const ws of openSockets) {
+            const subId = socketSubscriptions.get(ws)?.get(destination);
+            if (subId) {
+                return { ws, subId };
+            }
+        }
+        return null;
+    };
+
+    const removeWaiter = (destination: string, waiter: SubscriptionWaiter) => {
+        const waiters = subscriptionWaiters.get(destination);
+        if (!waiters) return;
+        const nextWaiters = waiters.filter((entry) => entry !== waiter);
+        if (nextWaiters.length === 0) {
+            subscriptionWaiters.delete(destination);
+        } else {
+            subscriptionWaiters.set(destination, nextWaiters);
+        }
+    };
 
     await target.routeWebSocket(/.*\/ws.*/, (ws) => {
-        subscriptions.clear();
+        openSockets.add(ws);
+        const wsSubs = new Map<string, string>();
+        socketSubscriptions.set(ws, wsSubs);
         activeWs = ws;
 
         ws.onMessage((message) => {
@@ -50,11 +86,14 @@ export async function setupStompWebSocketMock(
                     }
                 }
                 if (destination && id) {
-                    subscriptions.set(destination, id);
-                    const resolver = subscriptionResolvers.get(destination);
-                    if (resolver) {
-                        resolver(id);
-                        subscriptionResolvers.delete(destination);
+                    wsSubs.set(destination, id);
+                    const waiters = subscriptionWaiters.get(destination);
+                    if (waiters) {
+                        subscriptionWaiters.delete(destination);
+                        for (const waiter of waiters) {
+                            clearTimeout(waiter.timer);
+                            waiter.resolve(id);
+                        }
                     }
                 }
                 return;
@@ -66,9 +105,9 @@ export async function setupStompWebSocketMock(
                 for (const line of lines) {
                     if (line.startsWith('id:')) {
                         const id = line.substring(3).trim();
-                        for (const [dest, subId] of subscriptions.entries()) {
+                        for (const [dest, subId] of wsSubs.entries()) {
                             if (subId === id) {
-                                subscriptions.delete(dest);
+                                wsSubs.delete(dest);
                                 break;
                             }
                         }
@@ -84,22 +123,23 @@ export async function setupStompWebSocketMock(
         });
 
         ws.onClose(() => {
+            openSockets.delete(ws);
+            socketSubscriptions.delete(ws);
             if (activeWs === ws) {
-                activeWs = null;
-                subscriptions.clear();
+                activeWs = Array.from(openSockets).pop() ?? null;
             }
         });
     });
 
     return {
         sendMessage(destination: string, payload: unknown) {
-            if (!activeWs) throw new Error('No active mock WebSocket');
-            const subId = subscriptions.get(destination);
-            if (!subId) throw new Error(`No subscription for ${destination}`);
+            if (openSockets.size === 0) throw new Error('No active mock WebSocket');
+            const match = findSubscription(destination);
+            if (!match) throw new Error(`No subscription for ${destination}`);
             const body = typeof payload === 'string' ? payload : JSON.stringify(payload);
             const msgId = `msg-${messageIdCounter++}`;
-            const frame = `MESSAGE\ndestination:${destination}\nsubscription:${subId}\nmessage-id:${msgId}\ncontent-type:application/json\n\n${body}\0`;
-            activeWs.send(frame);
+            const frame = `MESSAGE\ndestination:${destination}\nsubscription:${match.subId}\nmessage-id:${msgId}\ncontent-type:application/json\n\n${body}\0`;
+            match.ws.send(frame);
         },
 
         sendError(errorMessage: string) {
@@ -109,28 +149,40 @@ export async function setupStompWebSocketMock(
         },
 
         async waitForSubscription(destination: string, timeoutMs = 5000): Promise<string> {
-            if (subscriptions.has(destination)) {
-                return subscriptions.get(destination)!;
+            const existing = findSubscription(destination);
+            if (existing) {
+                return existing.subId;
             }
             return new Promise((resolve, reject) => {
-                const timer = setTimeout(() => {
-                    subscriptionResolvers.delete(destination);
-                    reject(new Error(`Timeout waiting for STOMP subscription to ${destination}`));
-                }, timeoutMs);
+                const waiter: SubscriptionWaiter = {
+                    resolve,
+                    reject,
+                    timer: setTimeout(() => {
+                        removeWaiter(destination, waiter);
+                        reject(new Error(`Timeout waiting for STOMP subscription to ${destination}`));
+                    }, timeoutMs),
+                };
 
-                subscriptionResolvers.set(destination, (subId) => {
-                    clearTimeout(timer);
-                    resolve(subId);
-                });
+                const existingWaiters = subscriptionWaiters.get(destination) ?? [];
+                existingWaiters.push(waiter);
+                subscriptionWaiters.set(destination, existingWaiters);
             });
         },
 
         close() {
-            subscriptions.clear();
-            if (activeWs) {
-                activeWs.close();
-                activeWs = null;
+            for (const [, waiters] of subscriptionWaiters.entries()) {
+                for (const waiter of waiters) {
+                    clearTimeout(waiter.timer);
+                    waiter.reject(new Error('STOMP mock closed before subscription completed'));
+                }
             }
+            subscriptionWaiters.clear();
+            for (const ws of openSockets) {
+                ws.close();
+            }
+            openSockets.clear();
+            socketSubscriptions.clear();
+            activeWs = null;
         },
     };
 }

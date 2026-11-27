@@ -55,17 +55,31 @@ test.describe('Lobby and Room Lifecycle', () => {
     const joinRegion = guestPage.getByRole('region', { name: /quick join/i });
     await joinRegion.getByLabel(/room name/i).fill(roomName);
     await joinRegion.getByLabel(/player alias/i).fill(guestName);
-    await guestPage.getByRole('button', { name: /^join game$/i }).click();
+    const [missingPwRes] = await Promise.all([
+      guestPage.waitForResponse((res) => res.url().includes('/api/room/join') && res.request().method() === 'POST'),
+      guestPage.getByRole('button', { name: /^join game$/i }).click(),
+    ]);
+    expect(missingPwRes.status()).toBeGreaterThanOrEqual(400);
+    expect(missingPwRes.status()).toBeLessThan(500);
 
-    await expect(guestPage.getByRole('alert')).toBeVisible();
+    const joinAlert = guestPage.getByRole('alert');
+    await expect(joinAlert).toBeVisible();
+    const missingPwText = (await joinAlert.innerText()).trim();
+    expect(missingPwText.length).toBeGreaterThan(0);
     await expect(guestPage.getByRole('button', { name: /^join game$/i })).toBeVisible();
 
     // Guest attempts to join with wrong password
     await joinRegion.getByLabel(/password/i).fill('WrongPass');
-    await guestPage.getByRole('button', { name: /^join game$/i }).click();
+    const [wrongPwRes] = await Promise.all([
+      guestPage.waitForResponse((res) => res.url().includes('/api/room/join') && res.request().method() === 'POST'),
+      guestPage.getByRole('button', { name: /^join game$/i }).click(),
+    ]);
+    expect(wrongPwRes.status()).toBeGreaterThanOrEqual(400);
+    expect(wrongPwRes.status()).toBeLessThan(500);
 
-    // Verify guest sees error alert and stays on join form
-    await expect(guestPage.getByRole('alert')).toBeVisible();
+    // Verify guest sees error alert from the second rejection and stays on join form
+    await expect(joinAlert).toBeVisible();
+    await expect(joinAlert).not.toHaveText('');
     await expect(guestPage.getByRole('button', { name: /^join game$/i })).toBeVisible();
 
     // Guest joins with matching password

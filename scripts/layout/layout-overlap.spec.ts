@@ -3,6 +3,7 @@ import path from 'path';
 import fs from 'fs';
 import { cardGlyphViolations, feltContainmentViolations, feltFromRect } from '../../src/lib/layoutChecks';
 import type { CardGlyphMeasurement, GlyphMeasurement, PartShape, ShapePart } from '../../src/lib/layoutChecks';
+import type { Player, PrivatePlayerState, PublicGameStateResponse, RoomDataResponse } from '../../src/types';
 import { setupStompWebSocketMock } from '../../e2e/support/stompWsMock';
 
 /**
@@ -656,8 +657,8 @@ function analyze(m: Measurement, count: number, heroLast: boolean): { violations
 // Scenario runner
 // ---------------------------------------------------------------------------------------------
 
-const generatePlayers = (count: number) => {
-    const players = [];
+const generatePlayers = (count: number): Player[] => {
+    const players: Player[] = [];
     for (let i = 1; i <= count; i++) {
         players.push({
             id: `p-${i}`,
@@ -704,12 +705,12 @@ const DISCONNECT_WINDOW_MS = 5 * 60 * 1000 - 500;
 
 const playerNumber = (id: string) => Number(id.replace('p-', ''));
 
-function buildMocks(roomId: string, numPlayers: number, spec: MockSpec) {
+function buildMocks(roomId: string, numPlayers: number, spec: MockSpec): { room: RoomDataResponse; state: PublicGameStateResponse } {
     // R3 scenario: Host (the hero) is moved to the LAST index of players.
-    const ordered = (list: ReturnType<typeof generatePlayers>) =>
+    const ordered = (list: Player[]): Player[] =>
         spec.heroLast ? [...list.slice(1), list[0]] : list;
 
-    const room = {
+    const room: RoomDataResponse = {
         roomId,
         roomName: `Test Room ${numPlayers}P`,
         maxPlayers: numPlayers,
@@ -721,7 +722,7 @@ function buildMocks(roomId: string, numPlayers: number, spec: MockSpec) {
         gameStarted: true,
     };
 
-    const flop = {
+    const flop: PublicGameStateResponse = {
         gameId: roomId, handNumber: 1,
         maxPlayers: numPlayers,
         phase: 'FLOP',
@@ -733,7 +734,6 @@ function buildMocks(roomId: string, numPlayers: number, spec: MockSpec) {
         currentPlayerName: 'Host',
         legalActions: ['FOLD', 'CALL', 'RAISE'],
         players: ordered(generatePlayers(numPlayers)),
-        isGameOver: false,
     };
 
     if (spec.phase === 'flop') return { room, state: flop };
@@ -741,9 +741,10 @@ function buildMocks(roomId: string, numPlayers: number, spec: MockSpec) {
     const winners = new Set(spec.winnerIds);
     const disconnected = new Set(spec.disconnectedIds);
     const firstWinner = spec.winnerIds[0] ?? 'p-1';
-    const deadline = Date.now() + DISCONNECT_WINDOW_MS;
+    const now = Date.now();
+    const deadline = now + DISCONNECT_WINDOW_MS;
 
-    const players = flop.players.map((p) => {
+    const players: Player[] = flop.players.map((p) => {
         if (!spec.rich) {
             return {
                 ...p,
@@ -781,8 +782,8 @@ function buildMocks(roomId: string, numPlayers: number, spec: MockSpec) {
         };
     });
 
-    const winnerCategory = HAND_CATEGORIES[(playerNumber(firstWinner) + numPlayers) % HAND_CATEGORIES.length];
-    const state = {
+    const winnerNames = players.filter((p) => winners.has(p.id)).map((p) => p.name);
+    const state: PublicGameStateResponse = {
         ...flop,
         // GameTableView shows a "Waiting for <current player> to reconnect" banner (outside the stage, shrinking it)
         // whenever a player is DISCONNECTED and somebody is on turn. A finished hand has nobody on turn, so the
@@ -790,13 +791,12 @@ function buildMocks(roomId: string, numPlayers: number, spec: MockSpec) {
         ...(spec.rich ? { currentPlayerId: '', currentPlayerName: '' } : {}),
         phase: 'SHOWDOWN',
         communityCards: ['QH', 'JH', 'TH', '2S', '2D'],
-        isGameOver: true,
-        showdownWinner: {
-            playerId: firstWinner,
-            handRank: spec.rich && firstWinner !== 'p-1' ? winnerCategory.rank : 'Royal Flush',
-            bestHand: spec.rich && firstWinner !== 'p-1' ? winnerCategory.best : ['AS', 'KS', 'QH', 'JH', 'TH'],
-            payouts: Object.fromEntries(spec.winnerIds.map((id) => [id, Math.round(80 / spec.winnerIds.length)])),
-        },
+        winners: winnerNames,
+        handSettled: true,
+        isReadyCountdownActive: true,
+        readyGateState: 'COUNTING_DOWN',
+        serverTimeEpochMs: now,
+        readyCountdownDeadlineEpochMs: now + 30_000,
         players,
     };
     return { room, state };
@@ -818,7 +818,6 @@ async function openShowdown(
             token: authToken,
             roomId: id,
             playerName: 'Host',
-            playerId: 'p-1',
         }));
     }, { authToken: token, id: roomId });
 
@@ -835,10 +834,13 @@ async function openShowdown(
             contentType: 'application/json',
             body: JSON.stringify(state),
         }));
-        await page.route(`**/api/game/${roomId}/private-state`, (route) => route.fulfill({
-            contentType: 'application/json',
-            body: JSON.stringify({ playerId: 'p-1', handNumber: 1, holeCards: ['AS', 'KS'] }),
-        }));
+        await page.route(`**/api/game/${roomId}/private-state`, (route) => {
+            const privateState: PrivatePlayerState = { playerId: 'p-1', handNumber: 1, holeCards: ['AS', 'KS'] };
+            return route.fulfill({
+                contentType: 'application/json',
+                body: JSON.stringify(privateState),
+            });
+        });
     };
     const settle = async () => {
         await expect(page.getByRole('region', { name: /poker table/i })).toBeVisible();
