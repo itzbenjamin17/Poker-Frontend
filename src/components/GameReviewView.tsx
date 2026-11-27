@@ -164,7 +164,7 @@ export function GameReviewView({ gameEndResult, playerName, onLeave, leaveError,
                                                 {formatChips(player.chips)}
                                                 {formatHandRank(player.handRank, player.bestHand) && (
                                                     <span className="text-zinc-400 capitalize">
-                                                        • {formatHandRank(player.handRank, player.bestHand)}
+                                                        {' • '}{formatHandRank(player.handRank, player.bestHand)}
                                                     </span>
                                                 )}
                                             </div>

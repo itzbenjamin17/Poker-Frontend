@@ -120,17 +120,17 @@ export function GameLobbyView({
                     </span>
                     <h1 className="text-5xl short:text-2xl font-headline font-bold mt-2 short:mt-1 flex items-center flex-wrap gap-4 short:gap-2">
                         <span className="text-white">GAME LOBBY </span>
-                        <span className="relative inline-flex">
+                        <span className="relative inline-flex max-w-full min-w-0">
                             {/* The visible room code is part of the name, prefixed with the action for screen readers. */}
-                            <button type="button" className="flex items-center gap-4 short:gap-2 bg-white/5 px-6 py-2 short:px-3 short:py-1 rounded-2xl cursor-pointer hover:bg-white/10 transition-colors group" onClick={handleCopyCode}>
+                            <button type="button" className="flex items-center gap-4 short:gap-2 max-w-full min-w-0 bg-white/5 px-6 py-2 short:px-3 short:py-1 rounded-2xl cursor-pointer hover:bg-white/10 transition-colors group" onClick={handleCopyCode}>
                                 <span className="sr-only">{ARIA_COPY_ROOM_CODE} </span>
-                                <span className="text-emerald-primary/80 group-hover:text-emerald-primary transition-colors">
+                                <span className="text-emerald-primary/80 group-hover:text-emerald-primary transition-colors min-w-0 [overflow-wrap:anywhere] text-left">
                                     {roomState.roomName || ''}
                                 </span>
                                 {copyState === 'copied' ? (
-                                    <Check aria-hidden="true" className="w-6 h-6 short:w-4 short:h-4 text-emerald-primary ml-2 short:ml-1" />
+                                    <Check aria-hidden="true" className="w-6 h-6 short:w-4 short:h-4 text-emerald-primary ml-2 short:ml-1 shrink-0" />
                                 ) : (
-                                    <Copy aria-hidden="true" className="w-6 h-6 short:w-4 short:h-4 text-emerald-primary/40 group-hover:text-emerald-primary/80 transition-colors ml-2 short:ml-1" />
+                                    <Copy aria-hidden="true" className="w-6 h-6 short:w-4 short:h-4 text-emerald-primary/40 group-hover:text-emerald-primary/80 transition-colors ml-2 short:ml-1 shrink-0" />
                                 )}
                             </button>
                             {/* Outside the button: a button's children are presentational, so a live region inside it is not reliably announced. */}

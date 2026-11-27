@@ -288,4 +288,21 @@ describe('GameLobbyView', () => {
         expect(lobby).toHaveClass('overflow-y-auto', 'max-h-full', 'short:p-3');
         expect(screen.getByRole('heading', { level: 1 })).toHaveClass('short:text-2xl');
     });
+
+    it('wraps a 50-character room name inside the lobby heading without overflowing', () => {
+        const longRoomName = 'Playtest_Long_Room_Name_For_Header_Chip_Expansion1';
+        render(
+            <GameLobbyView
+                roomState={{ ...baseRoomState, roomName: longRoomName }}
+                playerName="HostPlayer"
+                onStartGame={mockOnStartGame}
+            />
+        );
+
+        const copyButton = screen.getByRole('button', { name: /copy room code/i });
+        expect(copyButton).toHaveClass('max-w-full', 'min-w-0');
+        const roomText = screen.getByText(longRoomName);
+        expect(roomText).toHaveClass('min-w-0', '[overflow-wrap:anywhere]');
+        expect(copyButton.querySelector('svg')).toHaveClass('shrink-0');
+    });
 });

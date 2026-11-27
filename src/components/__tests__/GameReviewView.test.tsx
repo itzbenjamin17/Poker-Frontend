@@ -67,6 +67,7 @@ describe('GameReviewView', () => {
         expect(screen.getByText('WinnerPlayer')).toBeInTheDocument();
         expect(screen.getByText('LoserPlayer')).toBeInTheDocument();
         expect(screen.getByText(/• ROYAL FLUSH/i)).toBeInTheDocument();
+        expect(screen.getByText('5,000 chips').textContent).toMatch(/^5,000 chips • /);
 
         // Leave button
         expect(screen.getByRole('button', { name: /LEAVE/i })).toBeInTheDocument();
