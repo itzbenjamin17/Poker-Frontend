@@ -60,6 +60,9 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: './src/test/setup.ts',
     exclude: ['**/e2e/**', '**/scripts/**', '**/node_modules/**', '**/.scratch/**'],
-    testTimeout: 20000,
+    restoreMocks: true,
+    unstubGlobals: true,
+    unstubEnvs: true,
+    testTimeout: 10000,
   }
 })

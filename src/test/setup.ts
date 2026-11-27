@@ -1,30 +1,43 @@
-import '@testing-library/jest-dom'
-import type { TestingLibraryMatchers } from '@testing-library/jest-dom/matchers'
-import { beforeAll, afterEach, afterAll } from 'vitest'
-import { activeSubscriptions } from './mocks/stomp'
-
-declare module 'vitest' {
-  // eslint-disable-next-line @typescript-eslint/no-empty-object-type
-  interface Matchers<R extends void | Promise<void> = void | Promise<void>, T = unknown> extends TestingLibraryMatchers<T, R> {}
-}
+import type {} from '@testing-library/jest-dom/vitest';
+import { afterAll, afterEach, beforeAll, vi } from 'vitest';
+import { server } from './mocks/server';
 
 import.meta.env.VITE_API_BASE_URL = '/api';
 import.meta.env.VITE_WS_URL = 'ws://localhost:8080/ws';
 
+// Start MSW server before all tests (both Node and JSDOM environments)
+beforeAll(() => server.listen({ onUnhandledRequest: 'error' }));
+
+// Reset handlers, timers, mocks, globals, and env stubs after each test
+afterEach(() => {
+  server.resetHandlers();
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
+});
+
+// Close MSW server after all tests
+afterAll(() => server.close());
+
 if (typeof window !== 'undefined') {
-  const { server } = await import('./mocks/server');
+  await import('@testing-library/jest-dom/vitest');
 
-  // Start MSW server before all tests
-  beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
+  const initialInnerWidthDescriptor = Object.getOwnPropertyDescriptor(window, 'innerWidth');
+  const initialInnerHeightDescriptor = Object.getOwnPropertyDescriptor(window, 'innerHeight');
+  const openModalStack: HTMLDialogElement[] = [];
 
-  // Reset handlers after each test to ensure test isolation
   afterEach(() => {
-    server.resetHandlers()
-    activeSubscriptions.clear()
-  })
-
-  // Close MSW server after all tests
-  afterAll(() => server.close())
+    openModalStack.length = 0;
+    window.sessionStorage.clear();
+    window.localStorage.clear();
+    if (initialInnerWidthDescriptor) {
+      Object.defineProperty(window, 'innerWidth', initialInnerWidthDescriptor);
+    }
+    if (initialInnerHeightDescriptor) {
+      Object.defineProperty(window, 'innerHeight', initialInnerHeightDescriptor);
+    }
+  });
 
   // jsdom has no modal <dialog> support. Mimic the browser behaviour the app relies on:
   // showModal() focuses the first control, <form method="dialog"> closes with the
@@ -44,29 +57,45 @@ if (typeof window !== 'undefined') {
     proto.show = function (this: HTMLDialogElement) { this.open = true; };
     proto.showModal = function (this: HTMLDialogElement) {
       this.open = true;
-      this.setAttribute('data-test-modal', '');
-      this.querySelector<HTMLElement>('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])')?.focus();
+      const existingIndex = openModalStack.indexOf(this);
+      if (existingIndex !== -1) openModalStack.splice(existingIndex, 1);
+      openModalStack.push(this);
+      const focusTarget =
+        this.querySelector<HTMLElement>('[autofocus]:not(:disabled)') ??
+        this.querySelector<HTMLElement>(
+          'button:not(:disabled), [href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"]):not(:disabled)'
+        );
+      focusTarget?.focus();
     };
     proto.close = function (this: HTMLDialogElement, returnValue?: string) {
+      const stackIndex = openModalStack.indexOf(this);
+      if (stackIndex !== -1) openModalStack.splice(stackIndex, 1);
       if (!this.open) return;
       if (returnValue !== undefined) this.returnValue = returnValue;
       this.open = false;
-      this.removeAttribute('data-test-modal');
       this.dispatchEvent(new Event('close'));
     };
     document.addEventListener('submit', (event) => {
-      const form = event.target as HTMLFormElement;
-      if (form.getAttribute('method') !== 'dialog') return;
+      if (event.defaultPrevented) return;
+      const form = event.target;
+      if (!(form instanceof HTMLFormElement)) return;
+      if ((form.getAttribute('method') ?? '').toLowerCase() !== 'dialog') return;
       event.preventDefault();
       const submitter = (event as SubmitEvent).submitter as HTMLButtonElement | null;
       form.closest('dialog')?.close(submitter?.value ?? '');
     });
     document.addEventListener('keydown', (event) => {
-      if (event.key !== 'Escape') return;
-      const modals = document.querySelectorAll<HTMLDialogElement>('dialog[data-test-modal][open]');
-      const top = modals[modals.length - 1];
-      if (!top) return;
-      if (top.dispatchEvent(new Event('cancel', { cancelable: true }))) top.close();
+      if (event.defaultPrevented || event.key !== 'Escape') return;
+      while (openModalStack.length > 0) {
+        const candidate = openModalStack[openModalStack.length - 1];
+        if (candidate.isConnected && candidate.open) {
+          if (candidate.dispatchEvent(new Event('cancel', { cancelable: true }))) {
+            candidate.close();
+          }
+          return;
+        }
+        openModalStack.pop();
+      }
     });
   }
 
@@ -84,8 +113,4 @@ if (typeof window !== 'undefined') {
     window.ResizeObserver = MockResizeObserver as unknown as typeof ResizeObserver;
     globalThis.ResizeObserver = MockResizeObserver as unknown as typeof ResizeObserver;
   }
-} else {
-  afterEach(() => {
-    activeSubscriptions.clear()
-  })
 }
